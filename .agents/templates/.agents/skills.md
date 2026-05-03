@@ -33,5 +33,4 @@ Universal best-practice skills bkit recommends for every project.
 | `vercel-labs/skills` | find-skills | Skill discovery meta-utility |
 
 ## Project Skills
-
 <!-- bkit:end -->

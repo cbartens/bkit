@@ -1,0 +1,36 @@
+<!-- bkit:start -->
+
+# Skills
+
+> [!CAUTION]
+> **Purpose:** Registry of installed agent skills and install/update commands.
+>
+> **Rules:**
+>
+> - Token-efficient dense phrasing; agent readers only.
+> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Only invoke skills relevant to current workflow/task/step.
+> - Discover via `npx skills find [query]` — do NOT hand-curate.
+> - Update when adopting/retiring core technologies.
+> - Managed via [skills.sh](https://skills.sh). Installed to `.agents/skills/`.
+
+## Install / Update
+
+```bash
+npx skills find [query]          # search
+npx skills add <owner/repo> -y   # install (project-local)
+npx skills update                # update all installed
+```
+
+## Universal Skills
+
+Universal best-practice skills bkit recommends for every project.
+
+<!-- prettier-ignore -->
+| Package | Skills | Purpose |
+| --- | --- | --- |
+| `obra/superpowers` | brainstorming, writing-plans, executing-plans, systematic-debugging, test-driven-development, verification-before-completion, using-git-worktrees, finishing-a-development-branch, requesting-code-review, receiving-code-review, dispatching-parallel-agents, subagent-driven-development, writing-skills, using-superpowers | Agent best practices used by every bkit phase |
+| `vercel-labs/skills` | find-skills | Skill discovery meta-utility |
+
+## Project Skills
+<!-- bkit:end -->
