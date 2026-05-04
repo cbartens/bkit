@@ -1,7 +1,3 @@
-Verdict: PASS
-
-<!-- verdict:end -->
-
 # BAR-130 — Plan v4 Split (Parent Index)
 
 > **Source:** `plan-v3-checked.md` partitioned into three single-session-executable children per the complexity-check recommendation. No tasks dropped; no tasks duplicated; ordering preserved across children.
