@@ -77,6 +77,17 @@
         "artifacts": [
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v3-checked.md"
         ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-04T10:36:11Z",
+        "commitSha": "47e9ba756df4e9c5817ea411b56e56ee23ba90f0",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-complexity-check.md"
+        ]
       }
     ]
   }
