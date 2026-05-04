@@ -2,7 +2,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { runInit } from "./bkit-init.js";
+import { parseArgs, printDeprecationWarnings, printUsage } from "./bkit-cli.js";
+import { dispatchModules, type ModuleContext } from "./bkit-modules.js";
+import { resolveTokens } from "./bkit-tokens.js";
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -25,33 +27,6 @@ const BKIT_PREFIX = "bkit-";
 let LOG_PREFIX = "[bkit-install]";
 
 export type Host = "claude" | "cursor";
-type Verb = "init" | "install" | "check" | "help";
-
-function parseArgs(): { verb: Verb; hosts: Host[] } {
-  const args = process.argv.slice(2);
-  let verb: Verb = "help";
-  let hosts: Host[] = ["claude", "cursor"];
-
-  if (args[0] === "init" || args[0] === "install" || args[0] === "check") {
-    verb = args[0] as Verb;
-    args.shift();
-  } else if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
-    verb = "help";
-    args.shift();
-  }
-
-  const hostFlag = args.find((a) => a.startsWith("--host="));
-  if (hostFlag) {
-    const h = hostFlag.slice("--host=".length) as Host;
-    if (h !== "claude" && h !== "cursor") {
-      console.error(`${LOG_PREFIX} Unknown host: ${h}`);
-      process.exit(1);
-    }
-    hosts = [h];
-  }
-
-  return { verb, hosts };
-}
 
 // Parse .agents/prompts.md § Models table → Map<name, cursorModel>
 export function parseModelLookup(subagentsMdPath = ".agents/prompts.md"): Map<string, string> {
@@ -646,151 +621,66 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
   return { writes, deletes };
 }
 
-function runHost(
-  host: Host,
-  modelLookup: Map<string, string>,
-  dryRun: boolean,
-): { writes: number; deletes: number } {
-  let writes = 0;
-  let deletes = 0;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  if (host === "claude") {
-    // Byte-identical passthrough: commands and subagents
-    const pairs: Array<[string, string]> = [
-      [".agents/workflows", ".claude/commands"],
-      [".agents/prompts", ".claude/agents"],
-    ];
-    for (const [src, dest] of pairs) {
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        if (installFile(path.join(src, f), path.join(dest, f), null, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-  } else {
-    // Cursor: commands (T1+T2), subagents (T3)
-    {
-      const src = ".agents/workflows";
-      const dest = ".cursor/commands";
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        const transform = (c: string) => applyT2(applyT1(c));
-        if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-    {
-      const src = ".agents/prompts";
-      const dest = ".cursor/agents";
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        const transform = (c: string) => applyT3(c, modelLookup);
-        if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-  }
-
-  return { writes, deletes };
-}
-
-function printUsage() {
-  console.log(`bkit — agent-stack consolidation CLI
-
-Usage:
-  bkit init              First-time bootstrap — copies bundled .agents/ payload into
-                         <cwd>, writes .agents/.bkit-version, then runs install.
-  bkit install           Sync — payload pass + host pass + templates pass. Idempotent.
-                         Run after \`pnpm update @cbartens/bkit\`.
-  bkit check             Dry-run install — reports drift without writing. Exits 1 on drift.
-
-Flags:
-  --host=claude|cursor   Run only the named host pass (default: both).
-  -h, --help             Print this message.
-
-bkit owns the \`bkit-\` namespace inside .agents/{workflows,prompts}/ and
-.{claude,cursor}/{agents,commands}/. Files without the \`bkit-\` prefix are
-project-managed and never touched.
-
-Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
-}
-
-function main() {
-  const { verb, hosts } = parseArgs();
+async function main() {
+  const { verb, modules, deprecations } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
     return;
   }
 
+  // Emit deprecation warnings before any work
+  printDeprecationWarnings(deprecations);
+
   const dryRun = verb === "check";
   if (dryRun) LOG_PREFIX = "[bkit-check]";
 
-  if (verb !== "init" && !fs.existsSync(".agents/prompts.md")) {
-    console.error(`${LOG_PREFIX} no \`.agents/\` in cwd — run \`bkit init\` first`);
-    process.exit(1);
-  }
-
   if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
-  let totalWrites = 0;
-  let totalDeletes = 0;
+  // Resolve tokens once for the whole install
+  const tokens = await resolveTokens(process.cwd()).catch((err: unknown) => {
+    console.error(`${LOG_PREFIX} Token resolution failed: ${(err as Error).message}`);
+    process.exit(1);
+  });
 
-  if (verb === "init") {
-    const { writes } = runInit({ dryRun: false });
-    totalWrites += writes;
+  // Parse model lookup (needed for cursor transforms; graceful fallback if prompts.md absent)
+  let modelLookup: Map<string, string> = new Map();
+  if (fs.existsSync(".agents/prompts.md")) {
+    try {
+      modelLookup = parseModelLookup();
+    } catch {
+      // Not fatal — cursor module will fail per-file if a model is missing
+    }
   }
 
-  console.log(`${LOG_PREFIX} Running payload pass${dryRun ? " (dry-run)" : ""}`);
-  const payloadResult = runPayload(dryRun);
-  totalWrites += payloadResult.writes;
-  totalDeletes += payloadResult.deletes;
+  const printSink: string[] = [];
+  const ws: WriteSet = { writes: [] };
 
-  const modelLookup = parseModelLookup();
+  const ctx: ModuleContext = {
+    dryRun,
+    tokens,
+    modelLookup,
+    printSink,
+    ws,
+    logPrefix: LOG_PREFIX,
+  };
 
-  for (const host of hosts) {
-    console.log(`${LOG_PREFIX} Running host pass: ${host}${dryRun ? " (dry-run)" : ""}`);
-    const { writes, deletes } = runHost(host, modelLookup, dryRun);
-    totalWrites += writes;
-    totalDeletes += deletes;
+  // Dispatch modules in canonical order
+  dispatchModules(modules, ctx);
+
+  // Flush print-sink (Tier 3 suggestions + first-run extra logging)
+  for (const msg of printSink) {
+    console.log(msg);
   }
 
-  console.log(`${LOG_PREFIX} Running templates pass${dryRun ? " (dry-run)" : ""}`);
-  totalWrites += runTemplates(dryRun).writes;
+  const totalWrites = ws.writes.length;
 
-  if (dryRun && (totalWrites > 0 || totalDeletes > 0)) {
-    console.error(
-      `${LOG_PREFIX} check: ${totalWrites} writes and ${totalDeletes} deletes would occur — DRIFT DETECTED`,
-    );
+  if (dryRun && totalWrites > 0) {
+    console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
     process.exit(1);
   }
 
-  console.log(`${LOG_PREFIX} Done. ${totalWrites} writes, ${totalDeletes} deletes.`);
+  console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
 }
 
 function isMainScript(): boolean {
@@ -805,5 +695,8 @@ function isMainScript(): boolean {
 }
 
 if (isMainScript()) {
-  main();
+  main().catch((err: unknown) => {
+    console.error(`${LOG_PREFIX} Unhandled error: ${(err as Error).message}`);
+    process.exit(1);
+  });
 }

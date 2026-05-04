@@ -8,7 +8,7 @@ bkit is distributed as a **git dependency** from this private GitHub repo (no np
 
 ```bash
 # pinned to a release tag (recommended)
-pnpm add -D github:cbartens/bkit#v0.1.1
+pnpm add -D github:cbartens/bkit#v0.1.2
 
 # or floating on `main`
 pnpm add -D github:cbartens/bkit
@@ -39,15 +39,77 @@ Re-run `pnpm install` after adding this. Without it, bkit's `dist/` won't be bui
 
 ### Then in the consumer repo
 
-`bkit init` is a one-time bootstrap that ends with a full `install` — running it leaves you with a fully synced repo. After that, re-run `install` (not `init`) for ongoing sync, and `check` as a CI gate.
+Run `bkit install` once to seed the full stack (agent files, CI, lint, git-hooks). After that, re-run `install` after package updates. Use `bkit check` as a CI drift gate.
 
 ```bash
-pnpm exec bkit init       # one-time: copies .agents/ payload, writes .bkit-version, runs first install
-pnpm exec bkit install    # ongoing sync — re-run after `pnpm update @cbartens/bkit`
-pnpm exec bkit check      # drift detection — exits non-zero if `.claude/`, `.cursor/`, etc. drift from `.agents/`
+# First install — seeds full stack (all modules: core + claude + cursor + ci + lint + git-hooks)
+pnpm exec bkit install
+
+# Selective install — only the modules you need + core (implicit)
+pnpm exec bkit install --claude         # .claude/** + core only
+pnpm exec bkit install --ci --lint      # CI + lint stack + core; nothing else
+pnpm exec bkit install --cursor         # .cursor/** + core only
+pnpm exec bkit install --full           # all modules (explicit; same as no flags)
+
+# Ongoing sync — re-run after `pnpm update @cbartens/bkit`
+pnpm exec bkit install
+
+# Drift detection — exits non-zero if managed files drift from bkit templates (CI gate)
+pnpm exec bkit check --full
+```
+
+**Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
+
+**Deprecated (v0.1.x; removed in v0.2):**
+
+```bash
+pnpm exec bkit init               # → use `bkit install` instead
+pnpm exec bkit install --host=claude   # → use `bkit install --claude` instead
 ```
 
 **Auth:** consumer needs read access to `github.com/cbartens/bkit` — SSH key or HTTPS PAT (`GH_TOKEN`) configured for git.
+
+## Consumer CI auth
+
+bkit seeds a CI auth shim in `.github/workflows/ci.yml` that allows private-repo `pnpm install` to succeed in GitHub Actions. You must add a secret to your repo:
+
+1. **Create a fine-grained PAT** on GitHub:
+   - Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
+   - Repository access: `cbartens/bkit` only
+   - Permissions: **Contents: read** (minimum)
+   - Copy the generated token
+
+2. **Add the secret** to your consumer repo:
+   - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+   - Name: `BKIT_READ_TOKEN`
+   - Value: paste the PAT
+
+3. **Add allowlist** to your `pnpm-workspace.yaml` or `package.json` (if not already done):
+
+   ```yaml
+   # pnpm-workspace.yaml
+   onlyBuiltDependencies:
+     - "@cbartens/bkit"
+   ```
+
+4. **Add CI scripts** to your `package.json` (bkit prints these on first install):
+   ```json
+   {
+     "scripts": {
+       "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'",
+       "lint:slop": "slop-scan scan .",
+       "format:check": "prettier --check .",
+       "prepare": "husky install"
+     }
+   }
+   ```
+
+The CI shim in `ci.yml` configures git to use `BKIT_READ_TOKEN` for HTTPS auth:
+
+```yaml
+- name: Configure bkit auth
+  run: git config --global url."https://${{ secrets.BKIT_READ_TOKEN }}@github.com/cbartens/".insteadOf "https://github.com/cbartens/"
+```
 
 ## Documentation
 

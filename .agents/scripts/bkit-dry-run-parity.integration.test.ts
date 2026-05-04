@@ -158,11 +158,56 @@ describe("Dry-run parity — check writeset ≡ install writeset", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cross-module dry-run parity stubs — promoted in v4-3 Phase 4
+// Cross-module dry-run parity — promoted in v4-3 Phase 4
+//
+// These tests verify that `bkit check --<module>` produces the same writeset
+// as `bkit install --<module>` by running both dispatchModules calls against
+// identical starting state (fresh tmpdir each time) and comparing relative paths.
 // ---------------------------------------------------------------------------
 
-it.todo("check --ci ≡ install --ci writeset (cross-module parity, v4-3)");
-it.todo("check --claude ≡ install --claude writeset (cross-module parity, v4-3)");
-it.todo("check --lint ≡ install --lint writeset (cross-module parity, v4-3)");
-it.todo("check --git-hooks ≡ install --git-hooks writeset (cross-module parity, v4-3)");
-it.todo("check --core ≡ install --core writeset (cross-module parity, v4-3)");
+import { dispatchModules, type ModuleContext } from "./bkit-modules";
+import type { ModuleFlag } from "./bkit-cli";
+
+function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
+  return {
+    dryRun,
+    tokens: {
+      NODE_VERSION: "22",
+      PNPM_VERSION: "10",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "test-project",
+    },
+    modelLookup: new Map(),
+    printSink: [],
+    ws,
+    logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
+  };
+}
+
+function runParityCheck(modules: Set<ModuleFlag>, testLabel: string): void {
+  describe(`check ≡ install writeset parity — ${testLabel} (cross-module parity, v4-3)`, () => {
+    it(`check --${testLabel} writeset ≡ install --${testLabel} writeset`, () => {
+      // Capture cwd before dispatch (it changes inside modules)
+      const cwd = process.cwd();
+
+      // dry-run (check mode)
+      const wsCheck = { writes: [] } as WriteSet;
+      dispatchModules(modules, makeModuleCtx(true, wsCheck));
+      const checkPaths = wsCheck.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+      // live-run (install mode) — same starting state since dry-run didn't write anything
+      const wsInstall = { writes: [] } as WriteSet;
+      dispatchModules(modules, makeModuleCtx(false, wsInstall));
+      const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+      // Both modes must predict/write exactly the same set of paths
+      expect(checkPaths).toEqual(installPaths);
+    });
+  });
+}
+
+runParityCheck(new Set(["core", "ci"]), "ci");
+runParityCheck(new Set(["core", "claude"]), "claude");
+runParityCheck(new Set(["core", "lint"]), "lint");
+runParityCheck(new Set(["core", "git-hooks"]), "git-hooks");
+runParityCheck(new Set(["core"]), "core");

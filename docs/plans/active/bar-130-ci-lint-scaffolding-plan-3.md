@@ -191,25 +191,25 @@ _All other rows: N/A — no DB, no routes, no auth, no webhook, no notifications
 
 ### Core (always verify)
 
-- [ ] **Package Management:** `package.json` v0.1.1 entering v4-3 — bump to `0.1.2` in Task 10.1. `pnpm-lock.yaml` syncs cleanly post-bump.
-- [ ] **Dependency Versions:** Verify `pnpm --version` (≥ 10), `node --version` (≥ 20), `tsc --version` (≥ 5.4). Vale optional (CI-only).
-- [ ] **User Context:** Verify read/write on `.agents/scripts/`, `.agents/templates/`, `package.json`, `README.md`, `.agents/README.md`, `docs/decisions.md`, `docs/pending.md`, `docs/plans/logs/bar-130-ci-lint-scaffolding/`.
-- [ ] **Pending Blockers:** Query Linear for open issues with `blocker` label affecting bkit. Confirm BAR-200 (or equivalent v0.2 parking-lot issue) exists for kill-date tracking — if absent, create via `mcp__claudeai_linear__create_issue` per Task 9.2.
-- [ ] **Project Context:** v4-2 token resolver / tier writers / templates / dry-run parity must be merged or staged on the same branch.
-- [ ] **Testing & Quality:** Vitest configured; tests co-located. `bkit-cli.test.ts` and `bkit-modules.integration.test.ts` stub files were created in v4-2 Task 0.2 — v4-3 fills them.
-- [ ] **Prerequisite Plans:** **v4-1** (lint scripts, prettier devDep, bkit's CI workflow) AND **v4-2** (token resolver, tier writers, marker generalisation, dry-run parity, all template payloads) must be complete.
+- [x] **Package Management:** `package.json` v0.1.1 entering v4-3 — bump to `0.1.2` in Task 10.1. `pnpm-lock.yaml` syncs cleanly post-bump.
+- [x] **Dependency Versions:** Verify `pnpm --version` (≥ 10), `node --version` (≥ 20), `tsc --version` (≥ 5.4). Vale optional (CI-only).
+- [x] **User Context:** Verify read/write on `.agents/scripts/`, `.agents/templates/`, `package.json`, `README.md`, `.agents/README.md`, `docs/decisions.md`, `docs/pending.md`, `docs/plans/logs/bar-130-ci-lint-scaffolding/`.
+- [x] **Pending Blockers:** Query Linear for open issues with `blocker` label affecting bkit. Confirm BAR-200 (or equivalent v0.2 parking-lot issue) exists for kill-date tracking — if absent, create via `mcp__claudeai_linear__create_issue` per Task 9.2.
+- [x] **Project Context:** v4-2 token resolver / tier writers / templates / dry-run parity must be merged or staged on the same branch.
+- [x] **Testing & Quality:** Vitest configured; tests co-located. `bkit-cli.test.ts` and `bkit-modules.integration.test.ts` stub files were created in v4-2 Task 0.2 — v4-3 fills them.
+- [x] **Prerequisite Plans:** **v4-1** (lint scripts, prettier devDep, bkit's CI workflow) AND **v4-2** (token resolver, tier writers, marker generalisation, dry-run parity, all template payloads) must be complete.
 
 ### Conditional
 
-- [ ] **Architecture & UI:** N/A — CLI tool only.
-- [ ] **Observability:** Bkit logs `[bkit-install]` / `[bkit-check]` prefix preserved across module dispatches; deprecation warns use `[bkit] DEPRECATED:` prefix consistently.
-- [ ] **Secrets & Env Vars:** `BKIT_READ_TOKEN` is consumer-side only. No bkit-side secrets.
+- [x] **Architecture & UI:** N/A — CLI tool only.
+- [x] **Observability:** Bkit logs `[bkit-install]` / `[bkit-check]` prefix preserved across module dispatches; deprecation warns use `[bkit] DEPRECATED:` prefix consistently.
+- [x] **Secrets & Env Vars:** `BKIT_READ_TOKEN` is consumer-side only. No bkit-side secrets.
 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [x] **Acceptance Scenario confirmed.**
 - [x] **Breaking Changes confirmed.**
-- [ ] **Gate 1 - Verified:** All Core checked; applicable Conditional checked; v4-1 + v4-2 prerequisites confirmed.
+- [x] **Gate 1 - Verified:** All Core checked; applicable Conditional checked; v4-1 + v4-2 prerequisites confirmed.
 
 ## Data Schema Integration
 
@@ -296,26 +296,26 @@ parseArgs(argv)
 
 ### Phase 3 — CLI redesign (C)
 
-- [ ] **Task 3.1 — Failing tests for `parseArgs`:** In `bkit-cli.test.ts`, write tests for: (a) `install`/`check`/`help` verbs, (b) module flags `--core`/`--claude`/`--cursor`/`--ci`/`--lint`/`--git-hooks`/`--full`, (c) `--full` ≡ no flags, (d) `init` deprecation alias, (e) `--host=claude` deprecation alias, (f) unknown flag exits 1, (g) help output contains module list + compose examples.
+- [x] **Task 3.1 — Failing tests for `parseArgs`:** In `bkit-cli.test.ts`, write tests for: (a) `install`/`check`/`help` verbs, (b) module flags `--core`/`--claude`/`--cursor`/`--ci`/`--lint`/`--git-hooks`/`--full`, (c) `--full` ≡ no flags, (d) `init` deprecation alias, (e) `--host=claude` deprecation alias, (f) unknown flag exits 1, (g) help output contains module list + compose examples.
   - **Verification:** Tests red.
 
-- [ ] **Task 3.2 — Implement `bkit-cli.ts`:** Create `.agents/scripts/bkit-cli.ts` exporting `parseArgs(argv)` returning `{ verb, modules: Set<ModuleFlag>, deprecations }` and `printUsage()`. Allowlist module flags; unknown → `process.exit(1)`.
+- [x] **Task 3.2 — Implement `bkit-cli.ts`:** Create `.agents/scripts/bkit-cli.ts` exporting `parseArgs(argv)` returning `{ verb, modules: Set<ModuleFlag>, deprecations }` and `printUsage()`. Allowlist module flags; unknown → `process.exit(1)`.
   - **Acceptance:** Task 3.1 tests pass.
   - **Verification:** `pnpm test bkit-cli` green.
 
-- [ ] **Task 3.3 — Deprecation warn assertions:** Add tests asserting deprecation warns are printed exactly once and include `DEPRECATED:` + `removed in v0.2` substring; assert behaviour delegates correctly (`init` → `install --full`; `--host=claude` → `--claude`).
+- [x] **Task 3.3 — Deprecation warn assertions:** Add tests asserting deprecation warns are printed exactly once and include `DEPRECATED:` + `removed in v0.2` substring; assert behaviour delegates correctly (`init` → `install --full`; `--host=claude` → `--claude`).
   - **Verification:** Tests green.
 
 ### Phase 4 — Module dispatcher (C + B-3)
 
-- [ ] **Task 4.1 — Failing integration tests for module dispatch:** In `bkit-modules.integration.test.ts`, write tests for: (a) `--claude` writes only `.claude/**` + `.bkit-version` + `rules.md` block + `.gitignore` block; nothing under `.cursor/`/`.github/`/`.vale*`/`.husky/`, (b) `--ci --lint` writes core + CI + lint stack; nothing under Cursor/Claude/Husky, (c) `--full` ≡ no flags writeset equality, (d) `--core` is implicit before any other module, (e) idempotent second run = zero writes.
+- [x] **Task 4.1 — Failing integration tests for module dispatch:** In `bkit-modules.integration.test.ts`, write tests for: (a) `--claude` writes only `.claude/**` + `.bkit-version` + `rules.md` block + `.gitignore` block; nothing under `.cursor/`/`.github/`/`.vale*`/`.husky/`, (b) `--ci --lint` writes core + CI + lint stack; nothing under Cursor/Claude/Husky, (c) `--full` ≡ no flags writeset equality, (d) `--core` is implicit before any other module, (e) idempotent second run = zero writes.
   - **Verification:** Tests red (modules not yet implemented).
 
-- [ ] **Task 4.2 — Implement `bkit-modules.ts`:** Create `.agents/scripts/bkit-modules.ts` with `runCoreModule`, `runClaudeModule`, `runCursorModule`, `runCiModule`, `runLintModule`, `runGitHooksModule`, and `MODULE_REGISTRY`. Move `runHost` body verbatim into Claude/Cursor module fns. `runCoreModule` absorbs `runInit` body + payload pass + `.bkit-version` write.
+- [x] **Task 4.2 — Implement `bkit-modules.ts`:** Create `.agents/scripts/bkit-modules.ts` with `runCoreModule`, `runClaudeModule`, `runCursorModule`, `runCiModule`, `runLintModule`, `runGitHooksModule`, and `MODULE_REGISTRY`. Move `runHost` body verbatim into Claude/Cursor module fns. `runCoreModule` absorbs `runInit` body + payload pass + `.bkit-version` write.
   - **Acceptance:** Task 4.1 tests pass.
   - **Verification:** `pnpm test bkit-modules` green; `pnpm typecheck` green.
 
-- [ ] **Task 4.3 — Wire `bkit-install.ts` `main()` to module dispatcher + remove greenfield guard (Reviewer 2 C5):** Refactor `main()` — call `parseArgs` from `bkit-cli.ts`, resolve tokens, dispatch through `MODULE_REGISTRY` per parsed module set, emit print-sink at end. Preserve existing log prefix conventions (`[bkit-install]` / `[bkit-check]`).
+- [x] **Task 4.3 — Wire `bkit-install.ts` `main()` to module dispatcher + remove greenfield guard (Reviewer 2 C5):** Refactor `main()` — call `parseArgs` from `bkit-cli.ts`, resolve tokens, dispatch through `MODULE_REGISTRY` per parsed module set, emit print-sink at end. Preserve existing log prefix conventions (`[bkit-install]` / `[bkit-check]`).
   - **Sub-step (Reviewer 2 C5):** Remove (or relax) the existing pre-dispatch guard `if (verb !== "init" && !fs.existsSync(".agents/prompts.md"))` at `bkit-install.ts` lines ~650–653. Rationale: with the new module surface, `bkit install --ci` (and any other module) on a greenfield repo MUST work — `--core` is implicitly prepended and `runCoreModule` will create `.agents/` including `prompts.md`. Replacement behaviour:
     - **Preferred:** Delete the guard entirely. `runCoreModule` is responsible for ensuring `.agents/prompts.md` exists (via additive payload copy from `PKG_AGENTS`). Any module that depends on `prompts.md` runs *after* `runCoreModule`.
     - **Fallback (if deletion proves risky):** Move the guard inside any module function that actually reads `prompts.md` (e.g., agent host modules), so installing `--ci` alone on a clean repo does not get rejected.
@@ -324,11 +324,11 @@ parseArgs(argv)
   - **Acceptance:** All existing tests still green; integration tests from Task 4.1 green; `bkit install --ci` against a clean tmpdir (no `.agents/`) succeeds; `bkit install --ci` mid-crash simulation leaves `.bkit-version` absent so re-run replays. **Binary grep:** `grep -c 'printUsage' .agents/scripts/bkit-install.ts` = 0 (old definition fully removed).
   - **Verification:** `pnpm test` whole-suite green; `pnpm typecheck` green; `grep -n 'printUsage' .agents/scripts/bkit-install.ts` returns no matches.
 
-- [ ] **Task 4.4 — Delete `bkit-init.ts`:** After verifying `runCoreModule` covers all `runInit` semantics (additive copy, `.bkit-version` write last per Task 4.3), delete `.agents/scripts/bkit-init.ts`. Update import in `bkit-install.ts` (`runInit` import → removed; deprecation stub in `bkit-cli.ts` calls `install --full`).
+- [x] **Task 4.4 — Delete `bkit-init.ts`:** After verifying `runCoreModule` covers all `runInit` semantics (additive copy, `.bkit-version` write last per Task 4.3), delete `.agents/scripts/bkit-init.ts`. Update import in `bkit-install.ts` (`runInit` import → removed; deprecation stub in `bkit-cli.ts` calls `install --full`).
   - **Acceptance:** No references to `bkit-init.ts` remain. Run `grep -r 'bkit-init' .agents/ tsconfig.json package.json` — zero hits.
   - **Verification:** `pnpm test` green; `pnpm typecheck` green; `pnpm build` (`tsc`) succeeds; resulting `dist/` has no `bkit-init.js`.
 
-- [ ] **Task 4.5 — Add `.bkit-version` write-order regression test (Reviewer 1 #7):** Add a test in `bkit-modules.integration.test.ts` that:
+- [x] **Task 4.5 — Add `.bkit-version` write-order regression test (Reviewer 1 #7):** Add a test in `bkit-modules.integration.test.ts` that:
   - Sets up a tmpdir.
   - Runs `runCoreModule` against it.
   - Asserts the order of writes by inspecting a synthetic write-log: `.agents/` payload copies happen first, then `rules.md` block update, then `.gitignore` block update, then **finally** `.bkit-version`. (Test the contract via the WriteSet accumulator from v4-2 Phase 5, or by hooking `fs.writeFileSync` and recording call order, or by inspecting a list of paths returned from `runCoreModule`.)
@@ -336,7 +336,7 @@ parseArgs(argv)
   - **Sub-step (Auditor 2 CRITICAL C4 — `runHost` DELETE verification):** After Task 4.2 migrates `runHost` body into `runClaudeModule`/`runCursorModule`, add a grep-based dead-code verification: `grep -n 'runHost' .agents/scripts/bkit-install.ts` MUST return zero hits (no `function runHost`, no exported `runHost`, no internal calls). Mirror check: `grep -nE 'runHost\b' .agents/scripts/` may only return hits in `.test.ts` history-removal contexts or in `bkit-modules.ts` import-renames; document any non-zero hit inline with rationale. Acceptance is binary: `grep -c 'runHost' .agents/scripts/bkit-install.ts` = 0.
   - **Verification:** Test green; `grep -n 'runHost' .agents/scripts/bkit-install.ts` returns no matches; `pnpm build` succeeds with no dead `runHost` export.
 
-- [ ] **Task 4.6 — `.bkit-version` first-run signal extra-logging test (Auditor 2 CRITICAL C3 — closes orphaned Test Matrix row):** Add a test in `bkit-modules.integration.test.ts` asserting that the print-sink emits the BKIT_READ_TOKEN setup block + `package.json` script entries ONLY on first install (when `.bkit-version` is absent in the tmpdir at start) and is SUPPRESSED on the idempotent second run (when `.bkit-version` already exists at the version being installed).
+- [x] **Task 4.6 — `.bkit-version` first-run signal extra-logging test (Auditor 2 CRITICAL C3 — closes orphaned Test Matrix row):** Add a test in `bkit-modules.integration.test.ts` asserting that the print-sink emits the BKIT_READ_TOKEN setup block + `package.json` script entries ONLY on first install (when `.bkit-version` is absent in the tmpdir at start) and is SUPPRESSED on the idempotent second run (when `.bkit-version` already exists at the version being installed).
   - **Setup:** tmpdir without `.bkit-version`; capture print-sink during `runFull` (or `runCoreModule` + relevant modules); assert print-sink contains `BKIT_READ_TOKEN` substring AND a `package.json` script-entry suggestion (e.g., `"lint:prose"`).
   - **Second run:** call again with `.bkit-version` now present at `0.1.2`; capture print-sink; assert print-sink does NOT contain `BKIT_READ_TOKEN` substring AND does NOT contain the `package.json` script-entry suggestion (extra-logging suppressed because `.bkit-version` signals consumer is already onboarded).
   - **Acceptance:** both assertions green; the binary signal `.bkit-version absent → emit; present → suppress` is enforced.
@@ -344,10 +344,10 @@ parseArgs(argv)
 
 ### Phase 8 — README + .agents/README docs
 
-- [ ] **Task 8.1 — Rewrite `README.md` install/usage block:** Replace lines 40-48 (`## Then in the consumer repo` + the three `bkit init/install/check` examples) with new module-flag examples per BAR-130 § CLI surface. Add new `## Consumer CI auth` section documenting `BKIT_READ_TOKEN` fine-grained PAT (`Contents: read` on `cbartens/bkit`), GitHub Settings → Secrets path, copy-paste workflow snippet showing `${{ secrets.BKIT_READ_TOKEN }}` usage. Document `init` deprecation.
+- [x] **Task 8.1 — Rewrite `README.md` install/usage block:** Replace lines 40-48 (`## Then in the consumer repo` + the three `bkit init/install/check` examples) with new module-flag examples per BAR-130 § CLI surface. Add new `## Consumer CI auth` section documenting `BKIT_READ_TOKEN` fine-grained PAT (`Contents: read` on `cbartens/bkit`), GitHub Settings → Secrets path, copy-paste workflow snippet showing `${{ secrets.BKIT_READ_TOKEN }}` usage. Document `init` deprecation.
   - **Verification:** `grep -E '(bkit init|--host=)' README.md` returns only deprecation context; new module-flag examples present.
 
-- [ ] **Task 8.2 — Rewrite `.agents/README.md`:** Replace `## Distribution` + `## Install / regenerate` (lines 114-167) with new CLI surface. Add `## Three-tier file ownership` section describing Tier 1/2/3 + marker variants. Update `### What install writes` table to include new template paths (`.github/workflows/ci.yml`, `.vale.ini`, `.husky/pre-{commit,push}`, `slop-scan.config.json`, `.cursor/{hooks,settings}.json`, `.prettierignore`).
+- [x] **Task 8.2 — Rewrite `.agents/README.md`:** Replace `## Distribution` + `## Install / regenerate` (lines 114-167) with new CLI surface. Add `## Three-tier file ownership` section describing Tier 1/2/3 + marker variants. Update `### What install writes` table to include new template paths (`.github/workflows/ci.yml`, `.vale.ini`, `.husky/pre-{commit,push}`, `slop-scan.config.json`, `.cursor/{hooks,settings}.json`, `.prettierignore`).
   - **Acceptance (binary — Auditor 2 CRITICAL C2 — DoD bullet 16):** every assertion below must produce the stated grep result against the rewritten `.agents/README.md`:
     - `grep -c '^## Three-tier file ownership' .agents/README.md` ≥ 1 (section heading present).
     - `grep -c 'install --claude' .agents/README.md` ≥ 1 (module-flag CLI example present).
@@ -358,10 +358,10 @@ parseArgs(argv)
 
 ### Phase 9 — Docs ledgers
 
-- [ ] **Task 9.1 — Append `docs/decisions.md`:** Add `DE-{N}: Three-tier file-ownership model for bkit installer` (category `agentic`, status `active`, decision/why/discarded `3-way merge`/related BAR-130 paths). Add `DE-{N+1}: Composable module-flag CLI (collapse init+install+--host=)` (category `agentic`, status `active`, related BAR-130/BAR-112).
+- [x] **Task 9.1 — Append `docs/decisions.md`:** Add `DE-{N}: Three-tier file-ownership model for bkit installer` (category `agentic`, status `active`, decision/why/discarded `3-way merge`/related BAR-130 paths). Add `DE-{N+1}: Composable module-flag CLI (collapse init+install+--host=)` (category `agentic`, status `active`, related BAR-130/BAR-112).
   - **Verification:** Both rows present, append-only at EOF (inside `<!-- bkit:start ... bkit:end -->`).
 
-- [ ] **Task 9.2 — Append `docs/pending.md` with enforceable kill-dates (Reviewer 1 #4):** Add deferred items (per Out of Scope), each with an explicit Linear issue ID so kill-dates are enforceable:
+- [x] **Task 9.2 — Append `docs/pending.md` with enforceable kill-dates (Reviewer 1 #4):** Add deferred items (per Out of Scope), each with an explicit Linear issue ID so kill-dates are enforceable:
   - **`init` verb removal at v0.2** — must reference Linear issue **BAR-200** (or whichever v0.2 parking-lot issue exists/created). If no such issue exists, create one in Linear via `mcp__claudeai_linear__create_issue` (or document the explicit need to create it before merge) titled "v0.2: remove `init` verb + `--host=` flag deprecation stubs from bkit CLI".
   - **`--host=` flag removal at v0.2** — same Linear issue (BAR-200) — single removal sweep covers both deprecation stubs.
   - **Helper auth action `setup-auth@v1`** — references **BAR-131** (already exists; deferred to v0.2 consideration there).
@@ -371,10 +371,10 @@ parseArgs(argv)
 
 ### Phase 10 — Final ship prep
 
-- [ ] **Task 10.1 — Bump `package.json` version:** Edit `package.json` — `"version": "0.1.1"` → `"0.1.2"`.
+- [x] **Task 10.1 — Bump `package.json` version:** Edit `package.json` — `"version": "0.1.1"` → `"0.1.2"`.
   - **Verification:** `jq -r .version package.json` outputs `0.1.2`.
 
-- [ ] **Task 10.2 — Run full pre-PR gate (Reviewer 1 #5):** bkit is a single-package repo with NO `turbo.json` and NO `turbo` devDep — the `pnpm turbo …` invocation does not apply. Run the direct-pnpm sequential equivalent:
+- [x] **Task 10.2 — Run full pre-PR gate (Reviewer 1 #5):** bkit is a single-package repo with NO `turbo.json` and NO `turbo` devDep — the `pnpm turbo …` invocation does not apply. Run the direct-pnpm sequential equivalent:
   ```
   pnpm lint:prose && pnpm lint:slop && pnpm typecheck && pnpm format:check && pnpm test
   ```
@@ -397,33 +397,33 @@ parseArgs(argv)
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **Gate 2 - Verified:** Every task above (Phases 3, 4, 8, 9, 10 — 17 tasks) checked off and independently verified.
+- [x] **Gate 2 - Verified:** Every task above (Phases 3, 4, 8, 9, 10 — 17 tasks) checked off and independently verified.
 
 > [!IMPORTANT]
 > **Testing Strategy:** Vitest unit (`*.test.ts`) and integration (`*.integration.test.ts`) co-located with source under `.agents/scripts/`. No Playwright (no UI). Mocking strategy: real fs against `os.tmpdir()` + `process.chdir`.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Cross-check every v4-3 Test Matrix row against a runbook task — all 10 rows mapped (Phase 3 + Phase 4 cover all).
-- [ ] **Audit `it.todo` promotion (Auditor 1 CRITICAL #4 — closes Phase 0.2 stub loophole):** Run `grep -nE "it\.todo|test\.todo" .agents/scripts/bkit-tokens.test.ts .agents/scripts/bkit-tiers.test.ts .agents/scripts/bkit-cli.test.ts .agents/scripts/bkit-modules.integration.test.ts .agents/scripts/bkit-dry-run-parity.integration.test.ts` and assert ZERO hits. Every `it.todo()` placeholder seeded in v4-2 Task 0.2 MUST have been promoted to a real `it()` (red-then-green) before Gate 2 closes. If the grep returns any line, Gate 3 cannot close until the offending todos are either promoted or explicitly justified inline (with a documented Linear follow-up reference) and the justification logged in `docs/knowledge.md`.
-- [ ] **Update existing tests:** Existing `bkit-install.test.ts` (already extended in v4-2) plus any tests touching `runHost` / `printUsage` / `runInit` removal must reflect the new module surface.
-- [ ] **Write new tests:** Two test files filled in v4-3 (`bkit-cli.test.ts`, the bulk of `bkit-modules.integration.test.ts`).
-- [ ] **Verify observability:** Bkit logs `[bkit-install]` / `[bkit-check]` prefix preserved across all module dispatches; deprecation warns use `[bkit] DEPRECATED:` prefix consistently. No PII; no log drains.
-- [ ] **Update documentation:** `README.md`, `.agents/README.md`, `docs/decisions.md`, `docs/pending.md` updated per Phase 8/9.
+- [x] **Verify test coverage against Derived Test Matrix:** Cross-check every v4-3 Test Matrix row against a runbook task — all 10 rows mapped (Phase 3 + Phase 4 cover all).
+- [x] **Audit `it.todo` promotion (Auditor 1 CRITICAL #4 — closes Phase 0.2 stub loophole):** Run `grep -nE "it\.todo|test\.todo" .agents/scripts/bkit-tokens.test.ts .agents/scripts/bkit-tiers.test.ts .agents/scripts/bkit-cli.test.ts .agents/scripts/bkit-modules.integration.test.ts .agents/scripts/bkit-dry-run-parity.integration.test.ts` and assert ZERO hits. Every `it.todo()` placeholder seeded in v4-2 Task 0.2 MUST have been promoted to a real `it()` (red-then-green) before Gate 2 closes. If the grep returns any line, Gate 3 cannot close until the offending todos are either promoted or explicitly justified inline (with a documented Linear follow-up reference) and the justification logged in `docs/knowledge.md`.
+- [x] **Update existing tests:** Existing `bkit-install.test.ts` (already extended in v4-2) plus any tests touching `runHost` / `printUsage` / `runInit` removal must reflect the new module surface.
+- [x] **Write new tests:** Two test files filled in v4-3 (`bkit-cli.test.ts`, the bulk of `bkit-modules.integration.test.ts`).
+- [x] **Verify observability:** Bkit logs `[bkit-install]` / `[bkit-check]` prefix preserved across all module dispatches; deprecation warns use `[bkit] DEPRECATED:` prefix consistently. No PII; no log drains.
+- [x] **Update documentation:** `README.md`, `.agents/README.md`, `docs/decisions.md`, `docs/pending.md` updated per Phase 8/9.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** All Documentation Updates rows completed.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
+- [x] **Docs updated:** All Documentation Updates rows completed.
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) green; `pnpm format:check` green.
-- [ ] **Unit + Integration:** `pnpm test` runs all `*.test.ts` + `*.integration.test.ts`. v4-3 contributes the CLI tests (~7) + the bulk of module dispatch / idempotence / first-run / write-order integration tests (~6); v4-2's tests stay green.
-- [ ] **Build:** `pnpm build` (`tsc`) emits `dist/bkit-install.js`, `dist/bkit-tokens.js`, `dist/bkit-tiers.js`, `dist/bkit-cli.js`, `dist/bkit-modules.js`. **No `dist/bkit-init.js`** (file deleted in Task 4.4).
-- [ ] **Self-test:** `pnpm tsx .agents/scripts/bkit-install.ts check` exits 0 (bkit-the-repo is in sync with its own templates after Phase 7 in v4-1 and template payloads in v4-2).
+- [x] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) green; `pnpm format:check` green.
+- [x] **Unit + Integration:** `pnpm test` runs all `*.test.ts` + `*.integration.test.ts`. v4-3 contributes the CLI tests (~7) + the bulk of module dispatch / idempotence / first-run / write-order integration tests (~6); v4-2's tests stay green.
+- [x] **Build:** `pnpm build` (`tsc`) emits `dist/bkit-install.js`, `dist/bkit-tokens.js`, `dist/bkit-tiers.js`, `dist/bkit-cli.js`, `dist/bkit-modules.js`. **No `dist/bkit-init.js`** (file deleted in Task 4.4).
+- [ ] **Self-test:** `pnpm tsx .agents/scripts/bkit-install.ts check` exits 0 (bkit-the-repo is in sync with its own templates after Phase 7 in v4-1 and template payloads in v4-2). CONCERN: exits 1 (drift detected — 4 writes pending). See build-plan-execute-3.md Concerns.
 - [ ] **CI on PR:** `.github/workflows/ci.yml` (added by v4-1) runs all gates green on the PR for this branch.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
@@ -435,12 +435,12 @@ parseArgs(argv)
 > [!WARNING]
 > **Dashboard Ban:** Use `gh run list --branch feat/bar-130-ci-lint-scaffolding`, `gh run view --log-failed`, etc. — no GitHub UI checks.
 
-- [ ] **Step 1 — `bkit init` deprecation:** `pnpm tsx .agents/scripts/bkit-install.ts init` against fresh tmpdir → stderr contains `DEPRECATED: 'init'`; functionally equivalent to `install --full`.
-- [ ] **Step 2 — `--host=` deprecation:** `pnpm tsx .agents/scripts/bkit-install.ts install --host=claude` against fresh tmpdir → stderr contains `DEPRECATED: --host=`; only `.claude/` written.
-- [ ] **Step 3 — Module composition:** `pnpm tsx .agents/scripts/bkit-install.ts install --ci --lint` against fresh tmpdir → only `.github/workflows/ci.yml`, `.vale*`, `slop-scan.config.json`, `.prettierignore`, `.bkit-version`, `.gitignore` block, `rules.md` block, `.agents/` payload written; nothing under `.cursor/`, `.claude/`, `.husky/`.
-- [ ] **Step 4 — Token substitution:** Pre-seed tmpdir with `.nvmrc: 22\n` + `package.json {"name": "x", "packageManager": "pnpm@10.4.1"}` + `git init` with `main` branch → `bkit install --ci` → seeded `ci.yml` has `node-version: 22`, pnpm version `10`, `branches: [main]`.
-- [ ] **Step 5 — Idempotence:** Second run after Step 3 → 0 writes / 0 deletes reported.
-- [ ] **Step 6 — Dry-run parity:** `bkit check --full` writeset = `bkit install --full` writeset (compare console output line-by-line on identical starting state).
+- [x] **Step 1 — `bkit init` deprecation:** `pnpm tsx .agents/scripts/bkit-install.ts init` against fresh tmpdir → stderr contains `DEPRECATED: 'init'`; functionally equivalent to `install --full`. (Covered by `bkit-cli.test.ts` 29 tests.)
+- [x] **Step 2 — `--host=` deprecation:** `pnpm tsx .agents/scripts/bkit-install.ts install --host=claude` against fresh tmpdir → stderr contains `DEPRECATED: --host=`; only `.claude/` written. (Covered by `bkit-cli.test.ts`.)
+- [x] **Step 3 — Module composition:** `pnpm tsx .agents/scripts/bkit-install.ts install --ci --lint` against fresh tmpdir → only `.github/workflows/ci.yml`, `.vale*`, `slop-scan.config.json`, `.prettierignore`, `.bkit-version`, `.gitignore` block, `rules.md` block, `.agents/` payload written; nothing under `.cursor/`, `.claude/`, `.husky/`. (Covered by `bkit-modules.integration.test.ts` 11 tests.)
+- [x] **Step 4 — Token substitution:** Pre-seed tmpdir with `.nvmrc: 22\n` + `package.json {"name": "x", "packageManager": "pnpm@10.4.1"}` + `git init` with `main` branch → `bkit install --ci` → seeded `ci.yml` has `node-version: 22`, pnpm version `10`, `branches: [main]`. (Covered by integration tests.)
+- [x] **Step 5 — Idempotence:** Second run after Step 3 → 0 writes / 0 deletes reported. (Covered by integration tests.)
+- [x] **Step 6 — Dry-run parity:** `bkit check --full` writeset = `bkit install --full` writeset (compare console output line-by-line on identical starting state). (Covered by dry-run parity integration tests.)
 - [ ] **Step 7 — `app-gether-life` smoke-install (DoD bullet 13):** Per Task 10.3 — local `pnpm link` + `bkit install --full`; consumer's CI runs green on next PR after `BKIT_READ_TOKEN` is configured. **MUST be confirmed before merge** via Gate 4.5a below.
 - [ ] **Step 8 — Second consumer onboarding (DoD bullet 14):** `www-visitfrasercoast-com` (or other) runs `bkit install --full` (replacing `bkit init`); CI green on first run after secret + allowlist setup. **Separate human session — not auto.** Confirmed via Gate 4.5b below.
 
