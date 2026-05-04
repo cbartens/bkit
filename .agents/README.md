@@ -128,14 +128,14 @@ pnpm 10 blocks `prepare` (and other lifecycle scripts) on git-hosted deps by def
 ```yaml
 # pnpm-workspace.yaml
 onlyBuiltDependencies:
-  - "@bartens/bkit"
+  - "@cbartens/bkit"
 ```
 
 ```json
 // package.json (alternative)
 {
   "pnpm": {
-    "onlyBuiltDependencies": ["@bartens/bkit"]
+    "onlyBuiltDependencies": ["@cbartens/bkit"]
   }
 }
 ```

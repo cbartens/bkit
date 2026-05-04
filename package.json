@@ -1,5 +1,5 @@
 {
-  "name": "@bartens/bkit",
+  "name": "@cbartens/bkit",
   "version": "0.1.0",
   "private": true,
   "description": "Agent-stack consolidation CLI — installed as a git dependency from a private GitHub repo (no npm registry).",

@@ -22,7 +22,7 @@ pnpm 10 sandboxes build scripts of git-hosted dependencies by default for securi
 
 ```yaml
 onlyBuiltDependencies:
-  - "@bartens/bkit"
+  - "@cbartens/bkit"
 ```
 
 **Option B — `package.json`** (single-package repos):
@@ -30,7 +30,7 @@ onlyBuiltDependencies:
 ```json
 {
   "pnpm": {
-    "onlyBuiltDependencies": ["@bartens/bkit"]
+    "onlyBuiltDependencies": ["@cbartens/bkit"]
   }
 }
 ```
@@ -41,7 +41,7 @@ Re-run `pnpm install` after adding this. Without it, bkit's `dist/` won't be bui
 
 ```bash
 pnpm exec bkit init       # first-time bootstrap (also runs first install)
-pnpm exec bkit install    # ongoing sync (run after `pnpm update @bartens/bkit`)
+pnpm exec bkit install    # ongoing sync (run after `pnpm update @cbartens/bkit`)
 pnpm exec bkit check      # drift detection (CI gate; exit non-zero on drift)
 ```
 

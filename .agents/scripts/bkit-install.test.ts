@@ -76,8 +76,8 @@ describe("T2 — command body rewrites", () => {
     expect(applyT2(input)).toBe(input);
   });
 
-  it("does NOT rewrite npm scopes like @bartens/bkit", () => {
-    const input = "Install via `@bartens/bkit` package.\n";
+  it("does NOT rewrite npm scopes like @cbartens/bkit", () => {
+    const input = "Install via `@cbartens/bkit` package.\n";
     expect(applyT2(input)).toBe(input);
   });
 
