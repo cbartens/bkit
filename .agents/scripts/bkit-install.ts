@@ -20,16 +20,23 @@ const WRITE_DIRS = [
 // project-managed and never written to, overwritten, or pruned by install.
 const BKIT_PREFIX = "bkit-";
 
+// Log prefix — mutated by main() to "[bkit-check]" when verb === "check"
+// so log scanners can tell which verb actually ran.
+let LOG_PREFIX = "[bkit-install]";
+
 export type Host = "claude" | "cursor";
-type Verb = "init" | "install" | "check";
+type Verb = "init" | "install" | "check" | "help";
 
 function parseArgs(): { verb: Verb; hosts: Host[] } {
   const args = process.argv.slice(2);
-  let verb: Verb = "install";
+  let verb: Verb = "help";
   let hosts: Host[] = ["claude", "cursor"];
 
   if (args[0] === "init" || args[0] === "install" || args[0] === "check") {
     verb = args[0] as Verb;
+    args.shift();
+  } else if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
+    verb = "help";
     args.shift();
   }
 
@@ -37,7 +44,7 @@ function parseArgs(): { verb: Verb; hosts: Host[] } {
   if (hostFlag) {
     const h = hostFlag.slice("--host=".length) as Host;
     if (h !== "claude" && h !== "cursor") {
-      console.error(`[bkit-install] Unknown host: ${h}`);
+      console.error(`${LOG_PREFIX} Unknown host: ${h}`);
       process.exit(1);
     }
     hosts = [h];
@@ -53,7 +60,7 @@ export function parseModelLookup(subagentsMdPath = ".agents/prompts.md"): Map<st
 
   const modelsIdx = content.indexOf("## Models");
   if (modelsIdx === -1) {
-    console.error("[bkit-install] Could not find ## Models section in .agents/prompts.md");
+    console.error(`${LOG_PREFIX} Could not find ## Models section in .agents/prompts.md`);
     process.exit(1);
   }
 
@@ -160,13 +167,13 @@ export function applyT3(content: string, modelLookup: Map<string, string>): stri
 
   const name = parsed.get("name") ?? "";
   if (!name) {
-    console.error("[bkit-install] Subagent frontmatter missing 'name' field");
+    console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
     process.exit(1);
   }
 
   const cursorModel = modelLookup.get(name);
   if (!cursorModel) {
-    console.error(`[bkit-install] Missing model lookup for ${name}`);
+    console.error(`${LOG_PREFIX} Missing model lookup for ${name}`);
     process.exit(1);
   }
 
@@ -235,7 +242,7 @@ function removeOrphans(
   const allowed = WRITE_DIRS.map((d) => path.resolve(d));
   const resolved = path.resolve(destDir);
   if (!allowed.includes(resolved)) {
-    console.error(`[bkit-install] Refusing orphan removal outside allowlist: ${destDir}`);
+    console.error(`${LOG_PREFIX} Refusing orphan removal outside allowlist: ${destDir}`);
     process.exit(1);
   }
 
@@ -296,12 +303,12 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
   const starts = findLineAnchoredMarkers(existing, START_MARKER);
   const ends = findLineAnchoredMarkers(existing, END_MARKER);
   if (starts.length === 0 || ends.length === 0) {
-    console.warn(`[bkit-install] Managed block markers absent in ${filePath} — skipping`);
+    console.warn(`${LOG_PREFIX} Managed block markers absent in ${filePath} — skipping`);
     return false;
   }
   if (starts.length > 1 || ends.length > 1) {
     console.warn(
-      `[bkit-install] Multiple managed-block markers in ${filePath} — skipping (expected exactly one of each)`,
+      `${LOG_PREFIX} Multiple managed-block markers in ${filePath} — skipping (expected exactly one of each)`,
     );
     return false;
   }
@@ -309,7 +316,7 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
   const endIdx = ends[0];
   if (startIdx >= endIdx) {
     console.warn(
-      `[bkit-install] Inverted managed-block markers in ${filePath} (end before start) — skipping`,
+      `${LOG_PREFIX} Inverted managed-block markers in ${filePath} (end before start) — skipping`,
     );
     return false;
   }
@@ -397,7 +404,7 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
     const destPath = remapDestPath(path.relative(root, srcPath));
     const resolvedDest = path.resolve(destPath);
     if (resolvedDest !== repoRoot && !resolvedDest.startsWith(repoRoot + path.sep)) {
-      console.error(`[bkit-install] Refusing to write outside repo root: ${destPath}`);
+      console.error(`${LOG_PREFIX} Refusing to write outside repo root: ${destPath}`);
       process.exit(1);
     }
 
@@ -408,7 +415,7 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
         fs.chmodSync(destPath, fs.statSync(srcPath).mode);
       }
       writes++;
-      console.log(`[bkit-install] ${tag}write template: ${destPath}`);
+      console.log(`${LOG_PREFIX} ${tag}write template: ${destPath}`);
       continue;
     }
 
@@ -431,21 +438,21 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
       const tail = fullBlock.endsWith("\n") ? "" : "\n";
       if (!dryRun) fs.writeFileSync(destPath, destContent + sep + fullBlock + tail, "utf-8");
       writes++;
-      console.log(`[bkit-install] ${tag}append block: ${destPath}`);
+      console.log(`${LOG_PREFIX} ${tag}append block: ${destPath}`);
       continue;
     }
 
     const blockContent = extractManagedBlock(srcContent);
     if (blockContent === null) {
       console.warn(
-        `[bkit-install] Template has no usable bkit block but dest does: ${srcPath} — skipping`,
+        `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
       );
       continue;
     }
 
     if (updateManagedBlock(destPath, blockContent, dryRun)) {
       writes++;
-      console.log(`[bkit-install] ${tag}update block: ${destPath}`);
+      console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
     }
   }
 
@@ -515,12 +522,12 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
     for (const f of srcFiles) {
       if (installFile(path.join(srcDir, f), path.join(dstDir, f), null, dryRun)) {
         writes++;
-        console.log(`[bkit-install] ${tag}payload: ${path.join(dstDir, f)}`);
+        console.log(`${LOG_PREFIX} ${tag}payload: ${path.join(dstDir, f)}`);
       }
     }
     for (const f of removeOrphans(dstDir, sourceSet, dryRun, BKIT_PREFIX)) {
       deletes++;
-      console.log(`[bkit-install] ${tag}payload delete: ${path.join(dstDir, f)}`);
+      console.log(`${LOG_PREFIX} ${tag}payload delete: ${path.join(dstDir, f)}`);
     }
   }
 
@@ -528,7 +535,7 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
   const tplDst = path.join(".agents", "templates");
   if (fs.existsSync(tplSrc) && path.resolve(tplSrc) !== path.resolve(tplDst)) {
     writes += mirrorDirAlways(tplSrc, tplDst, dryRun, (rel) => {
-      console.log(`[bkit-install] ${tag}payload: ${path.join(tplDst, rel)}`);
+      console.log(`${LOG_PREFIX} ${tag}payload: ${path.join(tplDst, rel)}`);
     });
   }
 
@@ -557,12 +564,12 @@ function runHost(
       for (const f of files) {
         if (installFile(path.join(src, f), path.join(dest, f), null, dryRun)) {
           writes++;
-          console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
+          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
         }
       }
       for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
-        console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
+        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
       }
     }
   } else {
@@ -577,12 +584,12 @@ function runHost(
         const transform = (c: string) => applyT2(applyT1(c));
         if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
           writes++;
-          console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
+          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
         }
       }
       for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
-        console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
+        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
       }
     }
     {
@@ -595,12 +602,12 @@ function runHost(
         const transform = (c: string) => applyT3(c, modelLookup);
         if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
           writes++;
-          console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
+          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
         }
       }
       for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
-        console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
+        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
       }
     }
   }
@@ -608,11 +615,44 @@ function runHost(
   return { writes, deletes };
 }
 
+function printUsage() {
+  console.log(`bkit — agent-stack consolidation CLI
+
+Usage:
+  bkit init              First-time bootstrap — copies bundled .agents/ payload into
+                         <cwd>, writes .agents/.bkit-version, then runs install.
+  bkit install           Sync — payload pass + host pass + templates pass. Idempotent.
+                         Run after \`pnpm update @cbartens/bkit\`.
+  bkit check             Dry-run install — reports drift without writing. Exits 1 on drift.
+
+Flags:
+  --host=claude|cursor   Run only the named host pass (default: both).
+  -h, --help             Print this message.
+
+bkit owns the \`bkit-\` namespace inside .agents/{workflows,prompts}/ and
+.{claude,cursor}/{agents,commands}/. Files without the \`bkit-\` prefix are
+project-managed and never touched.
+
+Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
+}
+
 function main() {
   const { verb, hosts } = parseArgs();
-  const dryRun = verb === "check";
 
-  if (dryRun) console.log("[bkit-install] Running in check (dry-run) mode");
+  if (verb === "help") {
+    printUsage();
+    return;
+  }
+
+  const dryRun = verb === "check";
+  if (dryRun) LOG_PREFIX = "[bkit-check]";
+
+  if (verb !== "init" && !fs.existsSync(".agents/prompts.md")) {
+    console.error(`${LOG_PREFIX} no \`.agents/\` in cwd — run \`bkit init\` first`);
+    process.exit(1);
+  }
+
+  if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
   let totalWrites = 0;
   let totalDeletes = 0;
@@ -622,7 +662,7 @@ function main() {
     totalWrites += writes;
   }
 
-  console.log(`[bkit-install] Running payload pass${dryRun ? " (dry-run)" : ""}`);
+  console.log(`${LOG_PREFIX} Running payload pass${dryRun ? " (dry-run)" : ""}`);
   const payloadResult = runPayload(dryRun);
   totalWrites += payloadResult.writes;
   totalDeletes += payloadResult.deletes;
@@ -630,23 +670,23 @@ function main() {
   const modelLookup = parseModelLookup();
 
   for (const host of hosts) {
-    console.log(`[bkit-install] Installing for host: ${host}${dryRun ? " (dry-run)" : ""}`);
+    console.log(`${LOG_PREFIX} Installing for host: ${host}${dryRun ? " (dry-run)" : ""}`);
     const { writes, deletes } = runHost(host, modelLookup, dryRun);
     totalWrites += writes;
     totalDeletes += deletes;
   }
 
-  console.log(`[bkit-install] Running templates pass${dryRun ? " (dry-run)" : ""}`);
+  console.log(`${LOG_PREFIX} Running templates pass${dryRun ? " (dry-run)" : ""}`);
   totalWrites += runTemplates(dryRun).writes;
 
   if (dryRun && (totalWrites > 0 || totalDeletes > 0)) {
     console.error(
-      `[bkit-install] check: ${totalWrites} writes and ${totalDeletes} deletes would occur — DRIFT DETECTED`,
+      `${LOG_PREFIX} check: ${totalWrites} writes and ${totalDeletes} deletes would occur — DRIFT DETECTED`,
     );
     process.exit(1);
   }
 
-  console.log(`[bkit-install] Done. ${totalWrites} writes, ${totalDeletes} deletes.`);
+  console.log(`${LOG_PREFIX} Done. ${totalWrites} writes, ${totalDeletes} deletes.`);
 }
 
 function isMainScript(): boolean {
