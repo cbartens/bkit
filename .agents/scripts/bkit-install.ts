@@ -261,6 +261,29 @@ function removeOrphans(
 
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
+const HASH_START_MARKER = "# bkit:start";
+const HASH_END_MARKER = "# bkit:end";
+
+// Marker style selector: html-comment (default, backward-compat) or hash-comment (YAML/INI/shell).
+export type MarkerStyle = "html-comment" | "hash-comment";
+
+// Shared WriteSet accumulator — both check and install paths populate this identically,
+// ensuring parity by construction (eliminates future dry-run divergence).
+export interface WriteEntry {
+  path: string;
+  action: "write" | "update" | "append";
+}
+
+export interface WriteSet {
+  writes: WriteEntry[];
+}
+
+// Select marker pair based on markerStyle.
+function selectMarkers(markerStyle: MarkerStyle): [string, string] {
+  return markerStyle === "hash-comment"
+    ? [HASH_START_MARKER, HASH_END_MARKER]
+    : [START_MARKER, END_MARKER];
+}
 
 // Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
 const ALLOWED_PREFIXES = ["", "# ", "// "];
@@ -269,7 +292,44 @@ const ALLOWED_PREFIXES = ["", "# ", "// "];
 //   - The line before the marker is empty, "# ", or "// " (comment prefixes).
 //   - The character after the marker is end-of-line or end-of-file.
 // Backtick-quoted prose mentions are ignored.
-function findLineAnchoredMarkers(content: string, marker: string): number[] {
+// markerStyle defaults to "html-comment" for backward compat.
+export function findLineAnchoredMarkers(
+  content: string,
+  markerOrStyle: string | MarkerStyle,
+  _markerStyle?: MarkerStyle,
+): number[] {
+  // Support both legacy call-site (content, markerString) and new call-site (content, markerStyle).
+  // If markerOrStyle is a known MarkerStyle literal, treat it as style; otherwise treat as marker string.
+  let marker: string;
+  if (markerOrStyle === "html-comment" || markerOrStyle === "hash-comment") {
+    // Called as findLineAnchoredMarkers(content, markerStyle) — internal helper path
+    // This overload is used only internally; callers pass marker string directly.
+    // Retain backward-compat: interpret as the START marker of the given style.
+    const [start] = selectMarkers(markerOrStyle as MarkerStyle);
+    marker = start;
+  } else {
+    marker = markerOrStyle;
+  }
+
+  const positions: number[] = [];
+  const len = marker.length;
+  let pos = 0;
+  while (true) {
+    const idx = content.indexOf(marker, pos);
+    if (idx === -1) break;
+    let lineStart = idx;
+    while (lineStart > 0 && content[lineStart - 1] !== "\n") lineStart--;
+    const beforeMarker = content.slice(lineStart, idx);
+    const after = idx + len >= content.length ? "\n" : content[idx + len];
+    const isLineEnd = after === "\n" || after === undefined;
+    if (ALLOWED_PREFIXES.includes(beforeMarker) && isLineEnd) positions.push(idx);
+    pos = idx + len;
+  }
+  return positions;
+}
+
+// Internal helper: find anchored positions for a specific marker string (private).
+function findAnchored(content: string, marker: string): number[] {
   const positions: number[] = [];
   const len = marker.length;
   let pos = 0;
@@ -294,14 +354,21 @@ function lineStartOf(content: string, idx: number): number {
   return i;
 }
 
-// Managed-block writer: update content between <!-- bkit:start --> and <!-- bkit:end -->.
+// Managed-block writer: update content between markers.
+// markerStyle defaults to "html-comment" for backward compat.
 // Markers may be bare (markdown) or comment-prefixed (`# ` shell, `// ` JS/TS) — prefixes
 // are preserved on update. No-op (warn + skip) when markers absent, duplicated, or inverted.
-export function updateManagedBlock(filePath: string, newContent: string, dryRun = false): boolean {
+export function updateManagedBlock(
+  filePath: string,
+  newContent: string,
+  dryRun = false,
+  markerStyle: MarkerStyle = "html-comment",
+): boolean {
   if (!fs.existsSync(filePath)) return false;
   const existing = fs.readFileSync(filePath, "utf-8");
-  const starts = findLineAnchoredMarkers(existing, START_MARKER);
-  const ends = findLineAnchoredMarkers(existing, END_MARKER);
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(existing, startMarker);
+  const ends = findAnchored(existing, endMarker);
   if (starts.length === 0 || ends.length === 0) {
     console.warn(`${LOG_PREFIX} Managed block markers absent in ${filePath} — skipping`);
     return false;
@@ -312,8 +379,8 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
     );
     return false;
   }
-  const startIdx = starts[0];
-  const endIdx = ends[0];
+  const startIdx = starts[0]!;
+  const endIdx = ends[0]!;
   if (startIdx >= endIdx) {
     console.warn(
       `${LOG_PREFIX} Inverted managed-block markers in ${filePath} (end before start) — skipping`,
@@ -321,10 +388,10 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
     return false;
   }
   // Slice on line boundaries so any comment prefix on the marker lines is preserved.
-  const startLineEnd = existing.indexOf("\n", startIdx + START_MARKER.length);
+  const startLineEnd = existing.indexOf("\n", startIdx + startMarker.length);
   const beforeBlock =
     startLineEnd === -1
-      ? existing.slice(0, startIdx + START_MARKER.length)
+      ? existing.slice(0, startIdx + startMarker.length)
       : existing.slice(0, startLineEnd);
   const afterBlock = existing.slice(lineStartOf(existing, endIdx));
   const normalisedContent = newContent.replace(/^\n+/, "").replace(/\n+$/, "");
@@ -335,28 +402,38 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
 }
 
 // Extract the bkit-managed block content from a file, stripping surrounding newlines.
+// markerStyle defaults to "html-comment" for backward compat.
 // Markers may be bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractManagedBlock(content: string): string | null {
-  const starts = findLineAnchoredMarkers(content, START_MARKER);
-  const ends = findLineAnchoredMarkers(content, END_MARKER);
+export function extractManagedBlock(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string | null {
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(content, startMarker);
+  const ends = findAnchored(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0] >= ends[0]) return null;
-  const startLineEnd = content.indexOf("\n", starts[0] + START_MARKER.length);
+  if (starts[0]! >= ends[0]!) return null;
+  const startLineEnd = content.indexOf("\n", starts[0]! + startMarker.length);
   const inner =
-    startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]));
+    startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]!));
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
+// markerStyle defaults to "html-comment" for backward compat.
 // Used to append a fresh block to a destination that has none. Markers may be
 // bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractFullManagedBlock(content: string): string | null {
-  const starts = findLineAnchoredMarkers(content, START_MARKER);
-  const ends = findLineAnchoredMarkers(content, END_MARKER);
+export function extractFullManagedBlock(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string | null {
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(content, startMarker);
+  const ends = findAnchored(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0] >= ends[0]) return null;
-  const startLineStart = lineStartOf(content, starts[0]);
-  const endLineEnd = content.indexOf("\n", ends[0] + END_MARKER.length);
+  if (starts[0]! >= ends[0]!) return null;
+  const startLineStart = lineStartOf(content, starts[0]!);
+  const endLineEnd = content.indexOf("\n", ends[0]! + endMarker.length);
   return endLineEnd === -1
     ? content.slice(startLineStart)
     : content.slice(startLineStart, endLineEnd + 1);
@@ -394,10 +471,17 @@ function remapDestPath(rel: string): string {
 //   2.  Dest exists, has bkit markers                 → update only the managed block from template
 //   3a. Dest exists, no markers, template HAS block   → append managed block at EOF (preserve existing content)
 //   3b. Dest exists, no markers, template has no block → no-op (preserve project content)
-export function runTemplates(dryRun: boolean, root = ".agents/templates"): { writes: number } {
-  if (!fs.existsSync(root)) return { writes: 0 };
+//
+// Returns both a count (`writes`) and a structured `writeSet` accumulator.
+// Both dry-run and live-run paths populate `writeSet` identically — parity by construction.
+export function runTemplates(
+  dryRun: boolean,
+  root = ".agents/templates",
+): { writes: number; writeSet: WriteEntry[] } {
+  if (!fs.existsSync(root)) return { writes: 0, writeSet: [] };
   const repoRoot = path.resolve(".");
   let writes = 0;
+  const writeSet: WriteEntry[] = [];
   const tag = dryRun ? "[dry-run] " : "";
 
   for (const srcPath of listFilesRecursive(root)) {
@@ -415,6 +499,7 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
         fs.chmodSync(destPath, fs.statSync(srcPath).mode);
       }
       writes++;
+      writeSet.push({ path: destPath, action: "write" });
       console.log(`${LOG_PREFIX} ${tag}write template: ${destPath}`);
       continue;
     }
@@ -422,9 +507,15 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
     const destContent = fs.readFileSync(destPath, "utf-8");
     const srcContent = fs.readFileSync(srcPath, "utf-8");
 
-    if (findLineAnchoredMarkers(destContent, START_MARKER).length === 0) {
-      // case 3: dest has no markers
-      const fullBlock = extractFullManagedBlock(srcContent);
+    // Check for both html-comment and hash-comment markers in dest
+    const hasHtmlMarkers = findAnchored(destContent, START_MARKER).length > 0;
+    const hasHashMarkers = findAnchored(destContent, HASH_START_MARKER).length > 0;
+
+    if (!hasHtmlMarkers && !hasHashMarkers) {
+      // case 3: dest has no markers — try both styles in template
+      const fullBlockHtml = extractFullManagedBlock(srcContent, "html-comment");
+      const fullBlockHash = extractFullManagedBlock(srcContent, "hash-comment");
+      const fullBlock = fullBlockHtml ?? fullBlockHash;
       if (fullBlock === null) continue; // 3b — template also has no block; preserve dest as-is
       // 3a — append the template's full block at EOF, preserve all existing dest content
       const sep =
@@ -438,25 +529,40 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
       const tail = fullBlock.endsWith("\n") ? "" : "\n";
       if (!dryRun) fs.writeFileSync(destPath, destContent + sep + fullBlock + tail, "utf-8");
       writes++;
+      writeSet.push({ path: destPath, action: "append" });
       console.log(`${LOG_PREFIX} ${tag}append block: ${destPath}`);
       continue;
     }
 
-    const blockContent = extractManagedBlock(srcContent);
+    // case 2: dest has markers — determine which style and update
+    const style: MarkerStyle = hasHashMarkers ? "hash-comment" : "html-comment";
+    const blockContent = extractManagedBlock(srcContent, style);
     if (blockContent === null) {
-      console.warn(
-        `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
-      );
+      // Try the other style in case template uses different style than dest
+      const altStyle: MarkerStyle = style === "hash-comment" ? "html-comment" : "hash-comment";
+      const altBlock = extractManagedBlock(srcContent, altStyle);
+      if (altBlock === null) {
+        console.warn(
+          `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
+        );
+        continue;
+      }
+      if (updateManagedBlock(destPath, altBlock, dryRun, style)) {
+        writes++;
+        writeSet.push({ path: destPath, action: "update" });
+        console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
+      }
       continue;
     }
 
-    if (updateManagedBlock(destPath, blockContent, dryRun)) {
+    if (updateManagedBlock(destPath, blockContent, dryRun, style)) {
       writes++;
+      writeSet.push({ path: destPath, action: "update" });
       console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
     }
   }
 
-  return { writes };
+  return { writes, writeSet };
 }
 
 function mirrorDirAlways(

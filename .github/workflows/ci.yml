@@ -1,73 +1,47 @@
 # bkit:start
+
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-      - dev
   pull_request:
-    branches:
-      - main
-      - dev
-
-permissions:
-  contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    branches: [{{DEFAULT_BRANCH}}]
 
 jobs:
   bkit-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
         with:
-          version: 10
+          node-version: {{NODE_VERSION}}
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v4
         with:
-          node-version: 20
-          cache: pnpm
+          version: {{PNPM_VERSION}}
 
-      - name: Install Dependencies
+      - name: Configure private-repo auth
+        run: git config --global url."https://x-access-token:${{ secrets.BKIT_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck
+      - name: Type check
         run: pnpm typecheck
 
-      - name: Run Tests
+      - name: Test
         run: pnpm test
 
-      - name: Format Check
+      - name: Format check
         run: pnpm format:check
 
-      - name: Install Vale
-        # Vale binary is not bundled with pnpm/Node. Pin version to keep CI ↔ local in sync.
-        # `vale sync` downloads the external write-good package declared in .vale.ini.
-        run: |
-          VALE_VERSION=3.14.1
-          curl -sL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" \
-            | sudo tar -xz -C /usr/local/bin vale
-          vale --version
-          vale sync
-
-      - name: Prose Lint
+      - name: Lint prose
         run: pnpm lint:prose
 
-      - name: Slop Scan
+      - name: Lint slop
         run: pnpm lint:slop
 
-      - name: bkit Self-Test
-        # Dry-run install (check verb) — asserts no drift between bkit's own
-        # .agents/ payload and the installed host dirs (.claude/, .cursor/).
-        # Uses pnpm tsx (no extra runtime setup needed beyond existing pnpm).
-        run: pnpm tsx .agents/scripts/bkit-install.ts check
+      - name: bkit check
+        run: pnpm bkit check
+
 # bkit:end

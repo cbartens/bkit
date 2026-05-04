@@ -1,0 +1,45 @@
+# bkit:start
+name: CI
+
+on:
+  pull_request:
+    branches: [{{DEFAULT_BRANCH}}]
+
+jobs:
+  bkit-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: {{NODE_VERSION}}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: {{PNPM_VERSION}}
+
+      - name: Configure private-repo auth
+        run: git config --global url."https://x-access-token:${{ secrets.BKIT_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint prose
+        run: pnpm lint:prose
+
+      - name: Lint slop
+        run: pnpm lint:slop
+
+      - name: bkit check
+        run: pnpm bkit check
+# bkit:end

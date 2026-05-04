@@ -1,8 +1,12 @@
 # bkit:start
+
 node_modules/
 dist/
 .agents/skills/
+.agents/templates/
+.github/
 *.tsbuildinfo
 docs/
 pnpm-lock.yaml
+
 # bkit:end
