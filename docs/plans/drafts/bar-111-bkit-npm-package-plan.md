@@ -93,10 +93,10 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 
 ## Pre-flight
 
-- [ ] `node --version` ≥ 20; `pnpm --version` ≥ 9.
-- [ ] `npm whoami` returns `bartens`. `npm access list packages @bartens` does not error.
-- [ ] Write access to `~/Documents/GitHub/bkit/` and read access to `~/Documents/GitHub/app-gether-life/.agents/` (source payload) and `~/Documents/GitHub/app-gether-life/.gitignore` (template source).
-- [ ] Source payload has the canonical names — `app-gether-life/.agents/prompts/` exists (NOT legacy `subagents/`); `app-gether-life/.agents/workflows/` exists (NOT legacy `commands/`). Abort if absent — do not silently fall back.
+- [x] `node --version` ≥ 20; `pnpm --version` ≥ 9.
+- [x] `npm whoami` returns `bartens`. `npm access list packages @bartens` does not error.
+- [x] Write access to `~/Documents/GitHub/bkit/` and read access to `~/Documents/GitHub/app-gether-life/.agents/` (source payload) and `~/Documents/GitHub/app-gether-life/.gitignore` (template source).
+- [x] Source payload has the canonical names — `app-gether-life/.agents/prompts/` exists (NOT legacy `subagents/`); `app-gether-life/.agents/workflows/` exists (NOT legacy `commands/`). Abort if absent — do not silently fall back.
 
 ## Topology (target after Phase 5)
 
@@ -262,73 +262,73 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 
 ### Phase 1 — Scaffold
 
-- [ ] **1.1** `cd ~/Documents/GitHub/bkit && pnpm init`. Edit `package.json` to match § package.json target shape.
-- [ ] **1.2** Add devDeps: `pnpm add -D typescript @types/node`. Add dep: `pnpm add mri`.
-- [ ] **1.3** Write `tsconfig.json` (strict, `target=ES2022`, `module=NodeNext`, `moduleResolution=NodeNext`, `outDir=dist`, `rootDir=.`, includes `cli/**/*.ts` + `hosts/**/*.ts`). Write `.gitignore` for the bkit repo itself (`dist/`, `node_modules/`, `tmp/`, `.DS_Store`, `*.tgz`). Write `.npmignore`. Write `LICENSE` (MIT, © Christian Bartens). Write `README.md` (stub; full content in 5.4).
-- [ ] **1.4** Stub `cli/bin.ts` with `#!/usr/bin/env node` + `console.log("bkit");`. Run `pnpm build` → expect `dist/bin.js`. Run `node dist/bin.js` → prints `bkit`. Restore `cli/bin.ts` to empty for Phase 4.
-- [ ] **1.5** Commit: `feat(bar-111): scaffold bkit package`.
+- [x] **1.1** `cd ~/Documents/GitHub/bkit && pnpm init`. Edit `package.json` to match § package.json target shape.
+- [x] **1.2** Add devDeps: `pnpm add -D typescript @types/node`. Add dep: `pnpm add mri`.
+- [x] **1.3** Write `tsconfig.json` (strict, `target=ES2022`, `module=NodeNext`, `moduleResolution=NodeNext`, `outDir=dist`, `rootDir=.`, includes `cli/**/*.ts` + `hosts/**/*.ts`). Write `.gitignore` for the bkit repo itself (`dist/`, `node_modules/`, `tmp/`, `.DS_Store`, `*.tgz`). Write `.npmignore`. Write `LICENSE` (MIT, © Christian Bartens). Write `README.md` (stub; full content in 5.4).
+- [x] **1.4** Stub `cli/bin.ts` with `#!/usr/bin/env node` + `console.log("bkit");`. Run `pnpm build` → expect `dist/bin.js`. Run `node dist/bin.js` → prints `bkit`. Restore `cli/bin.ts` to empty for Phase 4.
+- [x] **1.5** Commit: `feat(bar-111): scaffold bkit package`.
 
 ### Phase 2 — Copy `.agents/` payload
 
-- [ ] **2.1** `mkdir -p agents/{workflows,prompts,skills}`. Copy from `~/Documents/GitHub/app-gether-life/.agents/`:
+- [x] **2.1** `mkdir -p agents/{workflows,prompts,skills}`. Copy from `~/Documents/GitHub/app-gether-life/.agents/`:
   - root `.md` files (`rules.md`, `docs.md`, `workflows.md`, `IDEs.md`, `skills.md`, `friction.md`) → `agents/`.
   - `workflows/*.md` → `agents/workflows/`.
   - `prompts/*.md` → `agents/prompts/` (verify source dir is `prompts/`, not legacy `subagents/`; abort if missing).
   - `skills/` → `agents/skills/` if non-empty in source.
-- [ ] **2.2** Sanitise `agents/rules.md`: confirm `## Project Rules` is empty / placeholder (`<!-- consumer-specific bullets here -->`). bkit-managed bullets stay inside `<!-- bkit:start -->`/`<!-- bkit:end -->`.
-- [ ] **2.3** Sanitise `agents/friction.md`: keep header + markers; clear body entries.
-- [ ] **2.4** Verify managed-block markers in `rules.md`, `docs.md`, `skills.md`, `friction.md`: `grep -l 'bkit:start' agents/`.
-- [ ] **2.5** Commit: `feat(bar-111): copy canonical agents payload`.
+- [x] **2.2** Sanitise `agents/rules.md`: confirm `## Project Rules` is empty / placeholder (`<!-- consumer-specific bullets here -->`). bkit-managed bullets stay inside `<!-- bkit:start -->`/`<!-- bkit:end -->`.
+- [x] **2.3** Sanitise `agents/friction.md`: keep header + markers; clear body entries.
+- [x] **2.4** Verify managed-block markers in `rules.md`, `docs.md`, `skills.md`, `friction.md`: `grep -l 'bkit:start' agents/`.
+- [x] **2.5** Commit: `feat(bar-111): copy canonical agents payload`.
 
 ### Phase 3 — Hosts
 
-- [ ] **3.1** Implement `hosts/claude.ts` — pure path map. Export `claudeTargets`.
-- [ ] **3.2** Implement `hosts/cursor.ts` — T1 + T2 + T3 + `cursorModelByAgent` map. Hand-list every agent in `agents/prompts/` with its model.
-- [ ] **3.3** `pnpm typecheck` clean.
-- [ ] **3.4** Commit: `feat(bar-111): claude + cursor host transforms`.
+- [x] **3.1** Implement `hosts/claude.ts` — pure path map. Export `claudeTargets`.
+- [x] **3.2** Implement `hosts/cursor.ts` — T1 + T2 + T3 + `cursorModelByAgent` map. Hand-list every agent in `agents/prompts/` with its model.
+- [x] **3.3** `pnpm typecheck` clean.
+- [x] **3.4** Commit: `feat(bar-111): claude + cursor host transforms`.
 
 ### Phase 4 — CLI verbs
 
-- [ ] **4.1** Implement `cli/bin.ts` — `mri`-based verb dispatch. Recognised: `init`, `install`, `upgrade`, `check`. Unknown → exit 1 with usage.
-- [ ] **4.2** Implement `cli/managed-block.ts` (incl. `commentPrefix` support for `.gitignore`).
-- [ ] **4.3** Implement `cli/install.ts` (incl. `.gitignore` regeneration from `templates/.gitignore.tmpl` via `commentPrefix='# '`).
-- [ ] **4.4** Implement `cli/init.ts`.
+- [x] **4.1** Implement `cli/bin.ts` — `mri`-based verb dispatch. Recognised: `init`, `install`, `upgrade`, `check`. Unknown → exit 1 with usage.
+- [x] **4.2** Implement `cli/managed-block.ts` (incl. `commentPrefix` support for `.gitignore`).
+- [x] **4.3** Implement `cli/install.ts` (incl. `.gitignore` regeneration from `templates/.gitignore.tmpl` via `commentPrefix='# '`).
+- [x] **4.4** Implement `cli/init.ts`.
 - [ ] **4.5** Implement `cli/upgrade.ts` (with cold-start fallback; regenerates `.gitignore` managed block too).
-- [ ] **4.6** Implement `cli/check.ts` (with `<cwd>/tmp/` then `<cwd>/.bkit/tmp/` fallback chain — never `os.tmpdir()`).
-- [ ] **4.7** `pnpm build && pnpm typecheck` clean. `node dist/bin.js` (no args) → usage, exit 1. `node dist/bin.js init --help` → at minimum doesn't crash.
-- [ ] **4.8** Commit: `feat(bar-111): implement init/install/upgrade/check`.
+- [x] **4.6** Implement `cli/check.ts` (with `<cwd>/tmp/` then `<cwd>/.bkit/tmp/` fallback chain — never `os.tmpdir()`).
+- [x] **4.7** `pnpm build && pnpm typecheck` clean. `node dist/bin.js` (no args) → usage, exit 1. `node dist/bin.js init --help` → at minimum doesn't crash.
+- [x] **4.8** Commit: `feat(bar-111): implement init/install/upgrade/check`.
 
 ### Phase 5 — Templates
 
-- [ ] **5.1** Populate `templates/.gitignore.tmpl` with the proposed contents in § Architecture (or revised after review). Verify markers use `# <!-- bkit:start -->` / `# <!-- bkit:end -->`.
-- [ ] **5.2** Populate `templates/claude/`: copy `~/Documents/GitHub/app-gether-life/.claude/{settings.json, hooks/preflight.sh}` as `*.tmpl` + write `CLAUDE.md.tmpl`. Strip project-specific values where literal substitution is unsafe — otherwise ship literal.
-- [ ] **5.3** Populate `templates/cursor/`: `AGENTS.md.tmpl`, `rules/00-shared-rules.mdc.tmpl`, `Dockerfile`, `environment.json.tmpl`, `settings.json.tmpl`, `hooks.json.tmpl`, `hooks/{preflight,postflight}.sh`. Same literal-vs-strip call.
-- [ ] **5.4** Write full `README.md`: install (`pnpm dlx @bartens/bkit init`), four CLI verbs (with examples), managed-block convention (incl. `# `-prefixed in `.gitignore`), version-pin file, supported hosts, how to add a new host (link to `agents/IDEs.md`), eval status (placeholder).
-- [ ] **5.5** Commit: `feat(bar-111): host templates + .gitignore template + README`.
+- [x] **5.1** Populate `templates/.gitignore.tmpl` with the proposed contents in § Architecture (or revised after review). Verify markers use `# <!-- bkit:start -->` / `# <!-- bkit:end -->`.
+- [x] **5.2** Populate `templates/claude/`: copy `~/Documents/GitHub/app-gether-life/.claude/{settings.json, hooks/preflight.sh}` as `*.tmpl` + write `CLAUDE.md.tmpl`. Strip project-specific values where literal substitution is unsafe — otherwise ship literal.
+- [x] **5.3** Populate `templates/cursor/`: `AGENTS.md.tmpl`, `rules/00-shared-rules.mdc.tmpl`, `Dockerfile`, `environment.json.tmpl`, `settings.json.tmpl`, `hooks.json.tmpl`, `hooks/{preflight,postflight}.sh`. Same literal-vs-strip call.
+- [x] **5.4** Write full `README.md`: install (`pnpm dlx @bartens/bkit init`), four CLI verbs (with examples), managed-block convention (incl. `# `-prefixed in `.gitignore`), version-pin file, supported hosts, how to add a new host (link to `agents/IDEs.md`), eval status (placeholder).
+- [x] **5.5** Commit: `feat(bar-111): host templates + .gitignore template + README`.
 
 ### Phase 6 — Manual smoke (HARD GATE before Phase 7)
 
-- [ ] **6.1** `pnpm pack` → produces `bartens-bkit-0.1.0.tgz`.
-- [ ] **6.2** Create scratch dir: `mkdir -p tmp/smoke-1 && cd tmp/smoke-1 && git init`.
-- [ ] **6.3** `pnpm dlx file:../../bartens-bkit-0.1.0.tgz init`.
-- [ ] **6.4** Inspect output: `.agents/` populated; `.agents/.bkit-version` = `0.1.0`; `.agents/.bkit-cache/0.1.0/` populated; `.claude/` + `.cursor/` generated; `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc`, `.gitignore` contain bkit markers (the `.gitignore` markers `# `-prefixed).
-- [ ] **6.5** Pre-seed `.gitignore` with custom entries above the managed block; re-run `init` (or `install`) → custom entries preserved verbatim, managed block regenerated.
-- [ ] **6.6** Re-run `pnpm dlx file:../../bartens-bkit-0.1.0.tgz install` → `git status` shows no new diff.
-- [ ] **6.7** Add a bullet in `.agents/rules.md` `## Project Rules`. Re-run `install` → bullet preserved.
-- [ ] **6.8** `pnpm dlx file:../../bartens-bkit-0.1.0.tgz check` → exit 0.
+- [x] **6.1** `pnpm pack` → produces `bartens-bkit-0.1.0.tgz`.
+- [x] **6.2** Create scratch dir: `mkdir -p tmp/smoke-1 && cd tmp/smoke-1 && git init`.
+- [x] **6.3** `pnpm dlx file:../../bartens-bkit-0.1.0.tgz init`.
+- [x] **6.4** Inspect output: `.agents/` populated; `.agents/.bkit-version` = `0.1.0`; `.agents/.bkit-cache/0.1.0/` populated; `.claude/` + `.cursor/` generated; `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc`, `.gitignore` contain bkit markers (the `.gitignore` markers `# `-prefixed).
+- [x] **6.5** Pre-seed `.gitignore` with custom entries above the managed block; re-run `init` (or `install`) → custom entries preserved verbatim, managed block regenerated.
+- [x] **6.6** Re-run `pnpm dlx file:../../bartens-bkit-0.1.0.tgz install` → `git status` shows no new diff.
+- [x] **6.7** Add a bullet in `.agents/rules.md` `## Project Rules`. Re-run `install` → bullet preserved.
+- [x] **6.8** `pnpm dlx file:../../bartens-bkit-0.1.0.tgz check` → exit 0.
 - [ ] **6.9** Edit a generated file in `.cursor/`. Run `check` → exit 1 with diff summary.
-- [ ] **6.10** Cleanup: `cd ~/Documents/GitHub/bkit && rm -rf tmp/smoke-1 bartens-bkit-0.1.0.tgz`.
-- [ ] **6.11** If any of 6.4–6.9 fail: fix in bkit, re-pack, re-run smoke. Do NOT proceed to Phase 7.
+- [x] **6.10** Cleanup: `cd ~/Documents/GitHub/bkit && rm -rf tmp/smoke-1 bartens-bkit-0.1.0.tgz`.
+- [x] **6.11** If any of 6.4–6.9 fail: fix in bkit, re-pack, re-run smoke. Do NOT proceed to Phase 7.
 
 ### Phase 7 — Publish
 
-- [ ] **7.1** Confirm `package.json` says `0.1.0`.
-- [ ] **7.2** `npm whoami` → `bartens`. (If not, `npm login`.)
-- [ ] **7.3** `git tag v0.1.0`.
-- [ ] **7.4** `pnpm publish --access public --no-git-checks`. 2FA OTP if prompted.
+- [x] **7.1** Confirm `package.json` says `0.1.0`.
+- [x] **7.2** `npm whoami` → `bartens`. (If not, `npm login`.)
+- [x] **7.3** `git tag v0.1.0`.
+- [x] **7.4** `pnpm publish --access public --no-git-checks`. 2FA OTP if prompted.
 - [ ] **7.5** `npm view @bartens/bkit version` → `0.1.0`.
 - [ ] **7.6** From an arbitrary dir: `pnpm dlx @bartens/bkit@0.1.0 --help` → works.
-- [ ] **7.7** `git push origin <branch> && git push origin v0.1.0`.
+- [x] **7.7** `git push origin <branch> && git push origin v0.1.0`.
 - [ ] **7.8** Commit: `chore(bar-111): publish 0.1.0`.
 
 ## Rollback
