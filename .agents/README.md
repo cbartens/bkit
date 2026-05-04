@@ -121,6 +121,27 @@ pnpm add -D github:cbartens/bkit#v0.1.0
 
 On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.
 
+### Required consumer config — pnpm 10 build-script allowlist
+
+pnpm 10 blocks `prepare` (and other lifecycle scripts) on git-hosted deps by default for security (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`). bkit relies on `prepare: "tsc"` to materialise `dist/` at install time, so the consumer must allowlist it. Pick one:
+
+```yaml
+# pnpm-workspace.yaml
+onlyBuiltDependencies:
+  - "@bartens/bkit"
+```
+
+```json
+// package.json (alternative)
+{
+  "pnpm": {
+    "onlyBuiltDependencies": ["@bartens/bkit"]
+  }
+}
+```
+
+Re-run `pnpm install` after adding. Without this, the package installs but `dist/bkit-install.js` won't exist and the `bkit` bin entry will fail with `ENOENT`.
+
 ## Install / regenerate
 
 The `.agents/` directory is canonical. `bkit install` regenerates the host-specific outputs and rewrites bkit-managed blocks across the repo.

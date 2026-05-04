@@ -14,10 +14,33 @@ pnpm add -D github:cbartens/bkit#v0.1.0
 pnpm add -D github:cbartens/bkit
 ```
 
-On install, pnpm clones the repo, runs the `prepare` script (`tsc` → `dist/`), and exposes the `bkit` bin. Then in the consumer repo:
+### ⚠️ One-time consumer config (pnpm 10+)
+
+pnpm 10 sandboxes build scripts of git-hosted dependencies by default for security (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`). bkit needs its `prepare` script to run (it compiles TypeScript → `dist/`), so the consumer repo must allowlist it once:
+
+**Option A — `pnpm-workspace.yaml`** (recommended for monorepos):
+
+```yaml
+onlyBuiltDependencies:
+  - "@bartens/bkit"
+```
+
+**Option B — `package.json`** (single-package repos):
+
+```json
+{
+  "pnpm": {
+    "onlyBuiltDependencies": ["@bartens/bkit"]
+  }
+}
+```
+
+Re-run `pnpm install` after adding this. Without it, bkit's `dist/` won't be built and the `bkit` bin won't resolve.
+
+### Then in the consumer repo
 
 ```bash
-pnpm exec bkit init       # first-time bootstrap (run once)
+pnpm exec bkit init       # first-time bootstrap (also runs first install)
 pnpm exec bkit install    # ongoing sync (run after `pnpm update @bartens/bkit`)
 pnpm exec bkit check      # drift detection (CI gate; exit non-zero on drift)
 ```
