@@ -1,7 +1,6 @@
 {
   "name": "@bartens/bkit",
   "version": "0.1.0-pre.1",
-  "private": true,
   "description": "Agent-stack consolidation CLI — install/upgrade .agents/ payload across Claude and Cursor hosts",
   "type": "module",
   "bin": { "bkit": "./dist/bkit-install.js" },
@@ -11,6 +10,11 @@
     "README.md"
   ],
   "engines": { "node": ">=20" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cbartens/bkit.git"
+  },
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
