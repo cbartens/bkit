@@ -53,6 +53,19 @@
         "artifacts": [
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 9,
+        "at": "2026-05-04T10:28:49Z",
+        "commitSha": "3ea64b4ccb9b388e823213b5f03101c4cf19a93c",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-scope-check-1.md",
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-scope-check-2.md"
+        ]
       }
     ]
   }
