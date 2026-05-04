@@ -66,6 +66,17 @@
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-scope-check-1.md",
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-scope-check-2.md"
         ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-04T10:34:05Z",
+        "commitSha": "5725ef3d0e56c75f322403c0731725b083106b98",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v3-checked.md"
+        ]
       }
     ]
   }
