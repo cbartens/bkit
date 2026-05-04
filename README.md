@@ -39,10 +39,12 @@ Re-run `pnpm install` after adding this. Without it, bkit's `dist/` won't be bui
 
 ### Then in the consumer repo
 
+`bkit init` is a one-time bootstrap that ends with a full `install` — running it leaves you with a fully synced repo. After that, re-run `install` (not `init`) for ongoing sync, and `check` as a CI gate.
+
 ```bash
-pnpm exec bkit init       # first-time bootstrap (also runs first install)
-pnpm exec bkit install    # ongoing sync (run after `pnpm update @cbartens/bkit`)
-pnpm exec bkit check      # drift detection (CI gate; exit non-zero on drift)
+pnpm exec bkit init       # one-time: copies .agents/ payload, writes .bkit-version, runs first install
+pnpm exec bkit install    # ongoing sync — re-run after `pnpm update @cbartens/bkit`
+pnpm exec bkit check      # drift detection — exits non-zero if `.claude/`, `.cursor/`, etc. drift from `.agents/`
 ```
 
 **Auth:** consumer needs read access to `github.com/cbartens/bkit` — SSH key or HTTPS PAT (`GH_TOKEN`) configured for git.

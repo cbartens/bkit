@@ -148,10 +148,12 @@ The `.agents/` directory is canonical. `bkit install` regenerates the host-speci
 
 In a consumer repo (after `pnpm add -D github:cbartens/bkit`):
 
+`init` is a one-time bootstrap that ends with a full `install` — after one `bkit init`, the repo is fully synced. Re-run `install` (not `init`) for ongoing sync after package updates; `check` is the CI drift gate.
+
 ```bash
-pnpm exec bkit init        # first-time bootstrap — copies bundled .agents/ payload + writes .bkit-version
-pnpm exec bkit install     # ongoing sync — payload pass + host pass + templates pass
-pnpm exec bkit check       # dry-run — exit non-zero on drift (use as CI gate)
+pnpm exec bkit init        # one-time: copies bundled .agents/ payload, writes .bkit-version, then runs install
+pnpm exec bkit install     # ongoing sync — payload pass + host pass + templates pass; idempotent
+pnpm exec bkit check       # dry-run install — exits non-zero on drift (CI gate)
 ```
 
 In **this repo** (bkit's own dogfood — runs the script directly via bun, not the bin):
