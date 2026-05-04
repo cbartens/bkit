@@ -100,7 +100,7 @@ A consumer adds `@cbartens/bkit@v0.1.2` to their repo, runs `bkit install --full
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed.**
+- [x] **Acceptance Scenario confirmed.**
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until checked.
@@ -127,7 +127,7 @@ None — bkit is a CLI tool.
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed.**
+- [x] **Breaking Changes confirmed.**
 
 ---
 
@@ -188,8 +188,8 @@ _All other rows: N/A — no DB, no routes, no auth, no webhook, no notifications
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Acceptance Scenario confirmed.**
-- [ ] **Breaking Changes confirmed.**
+- [x] **Acceptance Scenario confirmed.**
+- [x] **Breaking Changes confirmed.**
 - [ ] **Gate 1 - Verified:** All Core checked; applicable Conditional checked; v4-1 prerequisite confirmed.
 
 ## Data Schema Integration
