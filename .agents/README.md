@@ -111,19 +111,34 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 
 ---
 
+## Distribution
+
+bkit is **not** published to the npm registry. It's installed as a git dependency from `github.com/cbartens/bkit` (private repo). Consumers add it via:
+
+```bash
+pnpm add -D github:cbartens/bkit#v0.1.0-pre.1
+```
+
+On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.
+
 ## Install / regenerate
 
 The `.agents/` directory is canonical. `bkit install` regenerates the host-specific outputs and rewrites bkit-managed blocks across the repo.
 
-```bash
-# Regenerate both Claude and Cursor outputs from .agents/
-bun .agents/scripts/bkit-install.ts install
+In a consumer repo (after `pnpm add -D github:cbartens/bkit`):
 
-# One host only
+```bash
+pnpm exec bkit init        # first-time bootstrap — copies bundled .agents/ payload + writes .bkit-version
+pnpm exec bkit install     # ongoing sync — payload pass + host pass + templates pass
+pnpm exec bkit check       # dry-run — exit non-zero on drift (use as CI gate)
+```
+
+In **this repo** (bkit's own dogfood — runs the script directly via bun, not the bin):
+
+```bash
+bun .agents/scripts/bkit-install.ts install
 bun .agents/scripts/bkit-install.ts install --host=claude
 bun .agents/scripts/bkit-install.ts install --host=cursor
-
-# Dry-run (shows what would change, writes nothing)
 bun .agents/scripts/bkit-install.ts check
 ```
 

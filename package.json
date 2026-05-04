@@ -1,7 +1,8 @@
 {
   "name": "@bartens/bkit",
   "version": "0.1.0-pre.1",
-  "description": "Agent-stack consolidation CLI — install/upgrade .agents/ payload across Claude and Cursor hosts",
+  "private": true,
+  "description": "Agent-stack consolidation CLI — installed as a git dependency from a private GitHub repo (no npm registry).",
   "type": "module",
   "bin": { "bkit": "./dist/bkit-install.js" },
   "files": [
@@ -20,12 +21,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "prepare": "tsc"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "typescript": "^5.4.0",
     "vitest": "^2.1.0"
-  },
-  "publishConfig": { "access": "public" }
+  }
 }
