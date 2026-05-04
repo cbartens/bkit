@@ -147,6 +147,16 @@
         "at": "2026-05-04T12:04:24Z",
         "commitSha": "1d674b1510b0d61d93779b8948d739b043eaeb20",
         "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-04T12:07:29Z",
+        "commitSha": "071eeefee3004e2e129a771fb4b75f6aa9df7fe6",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-install-skills.md"
+        ]
       }
     ]
   }
