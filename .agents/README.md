@@ -116,7 +116,7 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 bkit is **not** published to the npm registry. It's installed as a git dependency from `github.com/cbartens/bkit` (private repo). Consumers add it via:
 
 ```bash
-pnpm add -D github:cbartens/bkit#v0.1.0
+pnpm add -D github:cbartens/bkit#v0.1.1
 ```
 
 On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.

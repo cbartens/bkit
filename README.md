@@ -8,7 +8,7 @@ bkit is distributed as a **git dependency** from this private GitHub repo (no np
 
 ```bash
 # pinned to a release tag (recommended)
-pnpm add -D github:cbartens/bkit#v0.1.0
+pnpm add -D github:cbartens/bkit#v0.1.1
 
 # or floating on `main`
 pnpm add -D github:cbartens/bkit
