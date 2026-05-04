@@ -10,6 +10,15 @@
         "at": "2026-05-04T10:00:17Z",
         "commitSha": "241dd4f67b0b1f2476b611150aede339473a42c7",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-04T10:03:19Z",
+        "commitSha": "563b0758a66386628afbe6e8f94974473b069410",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-input.md"
+        ]
       }
     ]
   }
