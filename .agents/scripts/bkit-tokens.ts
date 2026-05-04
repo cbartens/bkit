@@ -11,8 +11,20 @@ export interface TokenMap {
 
 // Extract the major version from a node version string.
 // Accepts: "22", "22.1.0", "v22", "v22.1.0", ">=20", "^18.0.0", "~16"
+// For .nvmrc content, pass the full file contents — blank/comment lines are skipped.
 function extractNodeMajor(raw: string): string | null {
-  const stripped = raw.trim().replace(/^[v=^~<>!]+/, "");
+  // Scan line-by-line: skip blank lines and lines starting with '#'.
+  // Take the first non-empty/non-comment line as the version source.
+  const lines = raw.split("\n");
+  let versionLine: string | undefined;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) continue;
+    versionLine = trimmed;
+    break;
+  }
+  if (!versionLine) return null;
+  const stripped = versionLine.replace(/^[v=^~<>!]+/, "");
   const m = stripped.match(/^(\d+)/);
   return m ? (m[1] ?? null) : null;
 }
@@ -47,6 +59,10 @@ function resolvePnpmVersion(pkg: Record<string, unknown>): string {
   if (typeof pm === "string") {
     const major = extractPnpmMajor(pm);
     if (major) return major;
+    // packageManager is set but does not match pnpm — warn and fall back
+    process.stderr.write(
+      `[bkit] WARN: package.json packageManager is not pnpm (${pm}); PNPM_VERSION defaulting to 10\n`,
+    );
   }
   return "10";
 }
@@ -99,10 +115,16 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
 
 // Substitute {{TOKEN}} placeholders in content string.
 // Substitution happens at write-time (caller's responsibility), not at template-read time.
+// Uses function-form replacers to prevent $& / $1 / $$ substitution patterns from leaking
+// through when token values contain dollar signs.
 export function applyTokens(content: string, tokens: TokenMap): string {
+  const nodeVersion = tokens.NODE_VERSION;
+  const pnpmVersion = tokens.PNPM_VERSION;
+  const defaultBranch = tokens.DEFAULT_BRANCH;
+  const projectName = tokens.PROJECT_NAME;
   return content
-    .replace(/\{\{NODE_VERSION\}\}/g, tokens.NODE_VERSION)
-    .replace(/\{\{PNPM_VERSION\}\}/g, tokens.PNPM_VERSION)
-    .replace(/\{\{DEFAULT_BRANCH\}\}/g, tokens.DEFAULT_BRANCH)
-    .replace(/\{\{PROJECT_NAME\}\}/g, tokens.PROJECT_NAME);
+    .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
+    .replace(/\{\{PNPM_VERSION\}\}/g, () => pnpmVersion)
+    .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
+    .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName);
 }

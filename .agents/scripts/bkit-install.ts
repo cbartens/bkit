@@ -655,6 +655,7 @@ async function main() {
 
   const printSink: string[] = [];
   const ws: WriteSet = { writes: [] };
+  const postDispatch: Array<() => void> = [];
 
   const ctx: ModuleContext = {
     dryRun,
@@ -663,6 +664,7 @@ async function main() {
     printSink,
     ws,
     logPrefix: LOG_PREFIX,
+    postDispatch,
   };
 
   // Dispatch modules in canonical order

@@ -40,8 +40,16 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
     printSink: [],
     ws: makeWriteSet(),
     logPrefix: "[bkit-install]",
+    postDispatch: [],
     ...overrides,
   };
+}
+
+/** Flush postDispatch callbacks — call after runCoreModule (or other module fn) when testing directly. */
+function flushPostDispatch(ctx: ModuleContext): void {
+  for (const cb of ctx.postDispatch) {
+    cb();
+  }
 }
 
 beforeEach(() => {
@@ -289,17 +297,17 @@ describe("module dispatch: --full ≡ no flags (writeset equality)", () => {
 });
 
 describe("module dispatch: --core is implicit before any other module", () => {
-  it("core module writes occur before other module writes (.bkit-version before consumer ci.yml)", () => {
+  it("core module writes occur before other module writes (.bkit-version is LAST — after all modules)", () => {
     const realWs = makeWriteSet();
     const ctx = makeCtx({ ws: realWs });
 
     // Dispatch core + ci (core must run first per MODULE_DISPATCH_ORDER)
     dispatchModules(new Set(["core", "ci"]), ctx);
 
-    // .bkit-version is the LAST write in core module
+    // .bkit-version is written in postDispatch — AFTER all module writes
     const bkitVersionIdx = realWs.writes.findIndex((e) => e.path.endsWith(".bkit-version"));
 
-    // Consumer-facing ci.yml is written by ci module (AFTER core)
+    // Consumer-facing ci.yml is written by ci module (before postDispatch)
     // It's at a path like .github/workflows/ci.yml (NOT inside .agents/templates/)
     const consumerCiIdx = realWs.writes.findIndex(
       (e) =>
@@ -308,10 +316,10 @@ describe("module dispatch: --core is implicit before any other module", () => {
     );
 
     if (bkitVersionIdx !== -1 && consumerCiIdx !== -1) {
-      // .bkit-version (last of core) comes before consumer ci.yml (from ci module)
-      expect(bkitVersionIdx).toBeLessThan(consumerCiIdx);
+      // .bkit-version (postDispatch) comes AFTER consumer ci.yml (from ci module)
+      expect(consumerCiIdx).toBeLessThan(bkitVersionIdx);
     } else {
-      // At minimum verify .bkit-version was written (core module ran)
+      // At minimum verify .bkit-version was written (core module ran + postDispatch flushed)
       expect(bkitVersionIdx).toBeGreaterThanOrEqual(0);
     }
   });
@@ -338,12 +346,13 @@ describe("module dispatch: idempotence — second install --full produces zero w
   });
 });
 
-describe(".bkit-version write-order regression (Reviewer 1 #7)", () => {
-  it(".bkit-version is written LAST in runCoreModule (after other core writes)", () => {
+describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
+  it(".bkit-version is written LAST — after all modules complete (postDispatch)", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
 
-    runCoreModule(ctx);
+    // dispatchModules runs all modules then flushes postDispatch (where .bkit-version is written)
+    dispatchModules(new Set(["core"]), ctx);
 
     const writeOrder = ws.writes.map((e) => e.path);
     const bkitVersionIdx = writeOrder.findIndex((p) => p.includes(".bkit-version"));
@@ -351,23 +360,26 @@ describe(".bkit-version write-order regression (Reviewer 1 #7)", () => {
     // .bkit-version should be present
     expect(bkitVersionIdx).toBeGreaterThanOrEqual(0);
 
-    // .bkit-version should be the LAST write from runCoreModule
-    // (or at minimum, not the first)
+    // .bkit-version should be the LAST write (postDispatch runs after all module writes)
     if (writeOrder.length > 1) {
       expect(bkitVersionIdx).toBe(writeOrder.length - 1);
     }
   });
 
-  it("if core fails before .bkit-version write, .bkit-version is absent", () => {
-    // Simulate a core failure by checking that .bkit-version is absent before runCoreModule
+  it(".bkit-version is absent if postDispatch is NOT flushed (mid-install crash simulation)", () => {
+    // If a crash prevents postDispatch from running, .bkit-version must NOT be on disk.
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
-    // After runCoreModule completes successfully, it should be present
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
+    // Simulate: core module ran, but postDispatch was never flushed (crash in another module)
     runCoreModule(ctx);
+    // Do NOT call flushPostDispatch — .bkit-version must still be absent
+    expect(fs.existsSync(versionFile)).toBe(false);
 
+    // After flushing, it appears
+    flushPostDispatch(ctx);
     expect(fs.existsSync(versionFile)).toBe(true);
   });
 });
@@ -382,7 +394,8 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
-    runCoreModule(ctx);
+    // dispatchModules flushes postDispatch (where .bkit-version is written)
+    dispatchModules(new Set(["core"]), ctx);
 
     // print-sink should contain BKIT_READ_TOKEN setup
     const combined = printSink.join("\n");
@@ -395,7 +408,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const ws1 = makeWriteSet();
     const sink1: string[] = [];
     const ctx1 = makeCtx({ ws: ws1, printSink: sink1 });
-    runCoreModule(ctx1);
+    dispatchModules(new Set(["core"]), ctx1);
 
     // Verify .bkit-version was written
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
@@ -405,7 +418,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const ws2 = makeWriteSet();
     const sink2: string[] = [];
     const ctx2 = makeCtx({ ws: ws2, printSink: sink2 });
-    runCoreModule(ctx2);
+    dispatchModules(new Set(["core"]), ctx2);
 
     const combined2 = sink2.join("\n");
     expect(combined2).not.toContain("BKIT_READ_TOKEN");

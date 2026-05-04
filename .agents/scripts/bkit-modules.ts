@@ -3,7 +3,7 @@
 // and emits writes into the shared WriteSet.
 //
 // Dispatch order: core → claude → cursor → ci → lint → git-hooks
-// .bkit-version is written LAST in runCoreModule (after all other core writes).
+// .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -94,6 +94,12 @@ export interface ModuleContext {
   printSink: string[];
   ws: WriteSet;
   logPrefix: string;
+  /**
+   * Deferred callbacks executed by dispatchModules AFTER all modules complete.
+   * Use for finalisation work that must run only when the full dispatch succeeds
+   * (e.g. writing .bkit-version after all modules return cleanly).
+   */
+  postDispatch: Array<() => void>;
 }
 
 export type ModuleFn = (ctx: ModuleContext) => void;
@@ -232,7 +238,7 @@ function copyAdditive(
 }
 
 export function runCoreModule(ctx: ModuleContext): void {
-  const { dryRun, ws, printSink, logPrefix } = ctx;
+  const { dryRun, ws, printSink, logPrefix, postDispatch } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const cwd = process.cwd();
   const PKG_ROOT = getPkgRoot();
@@ -251,7 +257,10 @@ export function runCoreModule(ctx: ModuleContext): void {
   const pkgVersion = JSON.parse(fs.readFileSync(PKG_PACKAGE_JSON, "utf-8")).version as string;
   const target = path.join(cwd, ".agents");
 
-  // Check if this is a first install (no .bkit-version yet)
+  // Capture first-install signal NOW (before any writes) — used for the post-install banner.
+  // The actual .bkit-version write is deferred to postDispatch so that a mid-install crash
+  // in a subsequent module does NOT leave .bkit-version on disk (which would suppress the
+  // first-install banner on retry).
   const versionFile = path.join(target, ".bkit-version");
   const isFirstInstall = !fs.existsSync(versionFile);
 
@@ -286,25 +295,46 @@ export function runCoreModule(ctx: ModuleContext): void {
   console.log(`${logPrefix} ${tag}Running core templates pass`);
   runCoreTemplates(dryRun, PKG_ROOT, ctx.tokens, ws, logPrefix);
 
-  // 4. .bkit-version write — LAST (after all other core writes, per Reviewer 1 #7)
-  let needsVersionWrite = !fs.existsSync(versionFile);
-  if (!needsVersionWrite) {
-    const existing = fs.readFileSync(versionFile, "utf-8").trim();
-    if (existing !== pkgVersion) needsVersionWrite = true;
-  }
-  if (needsVersionWrite) {
-    if (!dryRun) {
-      fs.mkdirSync(target, { recursive: true });
-      fs.writeFileSync(versionFile, pkgVersion + "\n", "utf-8");
+  // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
+  // This ensures a mid-install crash in a subsequent module does not suppress the first-install
+  // banner on retry (MED-4).
+  postDispatch.push(() => {
+    let needsVersionWrite = !fs.existsSync(versionFile);
+    if (!needsVersionWrite) {
+      const existing = fs.readFileSync(versionFile, "utf-8").trim();
+      if (existing !== pkgVersion) needsVersionWrite = true;
     }
-    console.log(
-      `${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`,
-    );
-    ws.writes.push({ path: versionFile, action: "write" });
-  }
+    if (needsVersionWrite) {
+      if (!dryRun) {
+        fs.mkdirSync(target, { recursive: true });
+        fs.writeFileSync(versionFile, pkgVersion + "\n", "utf-8");
+      }
+      console.log(
+        `${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`,
+      );
+      ws.writes.push({ path: versionFile, action: "write" });
+    }
+  });
 
   // 5. First-run extra logging (only when .bkit-version was absent at start of install)
   if (isFirstInstall) {
+    // Build the script block as a proper JSON object so values are copy-paste safe.
+    const scriptEntries = JSON.stringify(
+      {
+        "lint:prose":
+          'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
+        "lint:slop": "slop-scan scan .",
+        "format:check": "prettier --check .",
+        prepare: "husky install",
+      },
+      null,
+      2,
+    )
+      .split("\n")
+      .slice(1, -1) // strip outer { }
+      .map((l) => `   ${l}`)
+      .join("\n");
+
     printSink.push(
       `
 [bkit] First install detected (.bkit-version was absent). Post-install steps:
@@ -315,11 +345,8 @@ export function runCoreModule(ctx: ModuleContext): void {
    - Name: BKIT_READ_TOKEN
    - See README.md ## Consumer CI auth for full setup.
 
-2. Add these scripts to your package.json:
-   "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale \\$(find . -name \\"*.md\\" -not -path \\"*/node_modules/*\\"); else echo \\"[bkit] vale not in PATH — skipping\\"; fi'",
-   "lint:slop": "slop-scan scan .",
-   "format:check": "prettier --check .",
-   "prepare": "husky install"
+2. Add these scripts to your package.json "scripts" block (copy-paste ready):
+${scriptEntries}
 
 3. Add to pnpm-workspace.yaml or package.json:
    onlyBuiltDependencies: ["@cbartens/bkit"]
@@ -414,7 +441,7 @@ export function runCursorModule(ctx: ModuleContext): void {
 // ---------------------------------------------------------------------------
 
 export function runCiModule(ctx: ModuleContext): void {
-  const { dryRun, tokens, ws, logPrefix } = ctx;
+  const { dryRun, tokens, ws, printSink, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
   const PKG_ROOT = getPkgRoot();
 
@@ -437,6 +464,15 @@ export function runCiModule(ctx: ModuleContext): void {
   if (ws.writes.length > prevLen) {
     console.log(`${logPrefix} ${tag}ci: ${dstPath}`);
   }
+
+  // Always remind the user which package.json scripts the CI workflow expects.
+  // These scripts are seeded by --lint; --ci alone does NOT add them.
+  printSink.push(
+    `[bkit] ci: the generated ci.yml invokes the following package.json scripts — ensure they exist (run bkit install --lint to seed them, or add manually):
+   "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'"
+   "lint:slop": "slop-scan scan ."
+   "format:check": "prettier --check ."`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +602,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
 /**
  * Dispatch modules in canonical order.
  * ctx.ws is populated by each module fn; printSink is flushed by caller.
+ * After all modules complete, ctx.postDispatch callbacks are run in order.
  */
 export function dispatchModules(modules: Set<ModuleFlag>, ctx: ModuleContext): void {
   for (const flag of MODULE_DISPATCH_ORDER) {
@@ -573,5 +610,9 @@ export function dispatchModules(modules: Set<ModuleFlag>, ctx: ModuleContext): v
     const fn = MODULE_REGISTRY[flag];
     if (!fn) continue;
     fn(ctx);
+  }
+  // Run deferred finalisation callbacks (e.g. .bkit-version write) only after all modules succeed.
+  for (const cb of ctx.postDispatch) {
+    cb();
   }
 }

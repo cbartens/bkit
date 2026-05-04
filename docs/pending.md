@@ -91,4 +91,15 @@
 - **Source:** agent
 - **Related:** bar-130-ci-lint-scaffolding, BAR-130, BAR-200
 
+## MED-8: runPayload WriteSet threading (2026-05-05)
+
+- **Type:** issue
+- **Category:** testing
+- **Severity:** normal
+- **Status:** deferred
+- **Description:** `runPayload` (workflows/prompts bkit-prefix sync + templates mirror) increments a local `writes` count but does NOT push path entries into `ws.writes`. Dry-run parity checks compare `ws.writes` paths, so `bkit check --core` and `bkit install --core` can agree on writeset paths while diverging by N actual file copies. Attempting to fix by threading `ws` into `runPayload/mirrorDirAlways` breaks all cross-module parity tests because `copyAdditive` (install-mode only, pre-`runPayload`) writes those same files first — making install see 0 additional writes while check sees N. Requires architectural merge of `copyAdditive` and `runPayload` into a single idempotent pass.
+- **Workaround:** None. The drift is silent but low blast radius (internal payload files, not consumer outputs).
+- **Source:** agent
+- **Related:** bar-130-ci-lint-scaffolding, KN-1, `.agents/scripts/bkit-install.ts` (runPayload), `.agents/scripts/bkit-modules.ts` (runCoreModule)
+
 <!-- bkit:end -->

@@ -181,6 +181,7 @@ function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
     printSink: [],
     ws,
     logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
+    postDispatch: [],
   };
 }
 
