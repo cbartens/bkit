@@ -316,7 +316,7 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 - [x] **4.2** Implement `cli/managed-block.ts` (incl. `commentPrefix` support for `.gitignore`).
 - [x] **4.3** Implement `cli/install.ts` (incl. `.gitignore` regeneration from `templates/.gitignore.tmpl` via `commentPrefix='# '`).
 - [x] **4.4** Implement `cli/init.ts`.
-- [ ] **4.5** Implement `cli/upgrade.ts` (with cold-start fallback; regenerates `.gitignore` managed block too).
+- [x] **4.5** Implement `cli/upgrade.ts` (with cold-start fallback; regenerates `.gitignore` managed block too).
 - [x] **4.6** Implement `cli/check.ts` (with `<cwd>/tmp/` then `<cwd>/.bkit/tmp/` fallback chain — never `os.tmpdir()`).
 - [x] **4.7** `pnpm build && pnpm typecheck` clean. `node dist/bin.js` (no args) → usage, exit 1. `node dist/bin.js init --help` → at minimum doesn't crash.
 - [x] **4.8** Commit: `feat(bar-111): implement init/install/upgrade/check`.
@@ -339,7 +339,7 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 - [x] **6.6** Re-run `pnpm dlx file:../../bartens-bkit-0.1.0.tgz install` → `git status` shows no new diff.
 - [x] **6.7** Add a bullet in `.agents/rules.md` `## Project Rules`. Re-run `install` → bullet preserved.
 - [x] **6.8** `pnpm dlx file:../../bartens-bkit-0.1.0.tgz check` → exit 0.
-- [ ] **6.9** Edit a generated file in `.cursor/`. Run `check` → exit 1 with diff summary.
+- [x] **6.9** Edit a generated file in `.cursor/`. Run `check` → exit 1 with diff summary.
 - [x] **6.10** Cleanup: `cd ~/Documents/GitHub/bkit && rm -rf tmp/smoke-1 bartens-bkit-0.1.0.tgz`.
 - [x] **6.11** If any of 6.4–6.9 fail: fix in bkit, re-pack, re-run smoke. Do NOT proceed to Phase 7.
 
@@ -349,10 +349,10 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 - [x] **7.2** `npm whoami` → `bartens`. (If not, `npm login`.)
 - [x] **7.3** `git tag v0.1.0`.
 - [x] **7.4** `pnpm publish --access public --no-git-checks`. 2FA OTP if prompted.
-- [ ] **7.5** `npm view @bartens/bkit version` → `0.1.0`.
-- [ ] **7.6** From an arbitrary dir: `pnpm dlx @bartens/bkit@0.1.0 --help` → works.
+- [x] **7.5** `npm view @bartens/bkit version` → `0.1.0`.
+- [x] **7.6** From an arbitrary dir: `pnpm dlx @bartens/bkit@0.1.0 --help` → works.
 - [x] **7.7** `git push origin <branch> && git push origin v0.1.0`.
-- [ ] **7.8** Commit: `chore(bar-111): publish 0.1.0`.
+- [x] **7.8** Commit: `chore(bar-111): publish 0.1.0`.
 
 ## Rollback
 

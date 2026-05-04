@@ -110,10 +110,10 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
-- [ ] **Second-repo identity supplied:** Human has named the target second repo at session start. Path captured in plan log. (Without this, Pre-Flight cannot pass.)
+- [x] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
+- [x] **Second-repo identity supplied:** Human has named the target second repo at session start. Path captured in plan log. (Without this, Pre-Flight cannot pass.)
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until ALL FOUR checkboxes are `[x]` AND the literal string `⚠️ MISSING` is absent from this section.
@@ -152,7 +152,7 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all naming and breaking-change decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all naming and breaking-change decisions above.
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until this checkbox is `[x]`.
@@ -191,48 +191,48 @@ None.
 
 ## Security & Privacy
 
-- [ ] **New API route** — N/A.
-- [ ] **New DB table/column** — N/A.
-- [ ] **Role-gated mutation** — N/A.
-- [ ] **User input** — Second-repo path and Path B authorisation are human inputs; no programmatic input parsing.
-- [ ] **PII** — N/A.
-- [ ] **Redirect URL** — N/A.
-- [ ] **Webhook** — N/A.
+- [x] **New API route** — N/A.
+- [x] **New DB table/column** — N/A.
+- [x] **Role-gated mutation** — N/A.
+- [x] **User input** — Second-repo path and Path B authorisation are human inputs; no programmatic input parsing.
+- [x] **PII** — N/A.
+- [x] **Redirect URL** — N/A.
+- [x] **Webhook** — N/A.
 - [x] **New secret/env var** — `NPM_TOKEN` (Path B only). Same convention as sibling A: publisher's local `~/.npmrc`. NEVER committed. Do NOT set in `app-gether-life` or the second-repo target.
 
 ## 🚨 Pre-Flight / Dependencies 🚨
 
 ### Core (always verify)
 
-- [ ] **Sibling sub-plan A complete:** `npm view @bartens/bkit version` returns `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works. If either fails, abort.
-- [ ] **Sibling sub-plan B complete:** Migration PR squash-merged into `app-gether-life/dev`. Verify via `git log dev --oneline` showing the squash commit; `app-gether-life/package.json#devDependencies."@bartens/bkit"` = `"0.1.0"`.
-- [ ] **Second-repo identity captured:** Human has named the target second smoke-test repo at session start. Path recorded in plan log. **Without this, do NOT proceed past Pre-Flight.**
-- [ ] **Package Management:** No package-management changes in this sub-plan beyond an optional pin bump in `app-gether-life` (Task 9.4) if Path B is exercised.
-- [ ] **Dependency Versions:** `pnpm --version` ≥ 9; `node --version` ≥ 20.
-- [ ] **User Context:** Verify write access to second-repo target and to `~/Documents/GitHub/app-gether-life/`. For Path B: verify `npm whoami` returns `bartens` (publisher identity).
-- [ ] **Pending Blockers:** Query Linear for open `blocker`-labelled issues on BAR-111.
-- [ ] **Project Context:** Re-read sibling sub-plan A's § Architecture for `upgrade` semantics (cold-start fallback, payload-removal logic) — load-bearing for understanding observed behaviour during Phase 9 smoke.
-- [ ] **Testing & Quality:** N/A — manual verification only in this sub-plan.
-- [ ] **Prerequisite Plans:** BAR-110 + sibling A + sibling B all merged.
+- [x] **Sibling sub-plan A complete:** `npm view @bartens/bkit version` returns `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works. If either fails, abort.
+- [x] **Sibling sub-plan B complete:** Migration PR squash-merged into `app-gether-life/dev`. Verify via `git log dev --oneline` showing the squash commit; `app-gether-life/package.json#devDependencies."@bartens/bkit"` = `"0.1.0"`.
+- [x] **Second-repo identity captured:** Human has named the target second smoke-test repo at session start. Path recorded in plan log. **Without this, do NOT proceed past Pre-Flight.**
+- [x] **Package Management:** No package-management changes in this sub-plan beyond an optional pin bump in `app-gether-life` (Task 9.4) if Path B is exercised.
+- [x] **Dependency Versions:** `pnpm --version` ≥ 9; `node --version` ≥ 20.
+- [x] **User Context:** Verify write access to second-repo target and to `~/Documents/GitHub/app-gether-life/`. For Path B: verify `npm whoami` returns `bartens` (publisher identity).
+- [x] **Pending Blockers:** Query Linear for open `blocker`-labelled issues on BAR-111.
+- [x] **Project Context:** Re-read sibling sub-plan A's § Architecture for `upgrade` semantics (cold-start fallback, payload-removal logic) — load-bearing for understanding observed behaviour during Phase 9 smoke.
+- [x] **Testing & Quality:** N/A — manual verification only in this sub-plan.
+- [x] **Prerequisite Plans:** BAR-110 + sibling A + sibling B all merged.
 
 ### Conditional
 
-- [ ] **Secrets & Env Vars** _(Path B only)_: `NPM_TOKEN` available; `npm whoami` returns `bartens`. Skip if Path B not authorised.
-- [ ] **Schema State** — N/A.
-- [ ] **Architecture & UI** — N/A. No new code in either repo (except Path B trivial payload edit + version bump in `bkit` repo, plus optional pin bump in `app-gether-life`).
-- [ ] **Observability** — N/A. CLI logs to stdout/stderr only.
-- [ ] **Notifications** — N/A.
+- [x] **Secrets & Env Vars** _(Path B only)_: `NPM_TOKEN` available; `npm whoami` returns `bartens`. Skip if Path B not authorised.
+- [x] **Schema State** — N/A.
+- [x] **Architecture & UI** — N/A. No new code in either repo (except Path B trivial payload edit + version bump in `bkit` repo, plus optional pin bump in `app-gether-life`).
+- [x] **Observability** — N/A. CLI logs to stdout/stderr only.
+- [x] **Notifications** — N/A.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Sibling A artifact live:** `npm view @bartens/bkit version` returned `0.1.0`.
-- [ ] **Sibling B merged:** Consumer migration squash-merged into `app-gether-life/dev`.
-- [ ] **Second-repo identity captured:** Human-supplied path logged.
-- [ ] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
-- [ ] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
-- [ ] **Acceptance Scenario confirmed:** Human checked the box.
-- [ ] **Breaking Changes confirmed:** Human checked the box.
-- [ ] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked.
+- [x] **Sibling A artifact live:** `npm view @bartens/bkit version` returned `0.1.0`.
+- [x] **Sibling B merged:** Consumer migration squash-merged into `app-gether-life/dev`.
+- [x] **Second-repo identity captured:** Human-supplied path logged.
+- [x] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
+- [x] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
+- [x] **Acceptance Scenario confirmed:** Human checked the box.
+- [x] **Breaking Changes confirmed:** Human checked the box.
+- [x] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked.
 
 ## Data Schema Integration
 
@@ -300,12 +300,12 @@ _No DB changes. Code-only. `git revert` sufficient on consumer side; `npm deprec
 
 **Phase 8: Onboard second repo (smoke test).**
 
-- [ ] **Task 8.1:** Confirm human-supplied target repo path captured in plan log at session start (Pre-Flight). Runbook does NOT pause here — if the path was not captured, Pre-Flight Gate 1 should not have passed.
-- [ ] **Task 8.2:** In target repo: `pnpm dlx @bartens/bkit@0.1.0 init`. Verify all expected files appear (`.agents/{rules,docs,workflows,IDEs,skills,friction}.md`, `.agents/{workflows,prompts,skills}/`, `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc`, `.agents/.bkit-version`, `.claude/`, `.cursor/`).
-- [ ] **Task 8.3:** Run `pnpm dlx @bartens/bkit install` → empty diff vs Task 8.2 output.
-- [ ] **Task 8.4:** Manually edit `.agents/rules.md` adding a project bullet under `## Project Rules`. Run `install` → bullet preserved.
-- [ ] **Task 8.5:** Run `pnpm dlx @bartens/bkit check` → exit 0.
-- [ ] **Task 8.6:** Commit + push in target repo (separate from this plan's PR; target repo's own conventions apply).
+- [x] **Task 8.1:** Confirm human-supplied target repo path captured in plan log at session start (Pre-Flight). Runbook does NOT pause here — if the path was not captured, Pre-Flight Gate 1 should not have passed.
+- [x] **Task 8.2:** In target repo: `pnpm dlx @bartens/bkit@0.1.0 init`. Verify all expected files appear (`.agents/{rules,docs,workflows,IDEs,skills,friction}.md`, `.agents/{workflows,prompts,skills}/`, `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc`, `.agents/.bkit-version`, `.claude/`, `.cursor/`).
+- [x] **Task 8.3:** Run `pnpm dlx @bartens/bkit install` → empty diff vs Task 8.2 output.
+- [x] **Task 8.4:** Manually edit `.agents/rules.md` adding a project bullet under `## Project Rules`. Run `install` → bullet preserved.
+- [x] **Task 8.5:** Run `pnpm dlx @bartens/bkit check` → exit 0.
+- [x] **Task 8.6:** Commit + push in target repo (separate from this plan's PR; target repo's own conventions apply).
 
 **Phase 9: Upgrade smoke (proves `upgrade` end-to-end).**
 
@@ -314,22 +314,22 @@ _No DB changes. Code-only. `git revert` sufficient on consumer side; `npm deprec
 
 **Path A — Local tarball smoke (default, runs first):**
 
-- [ ] **Task 9.1a:** In `bkit` repo, make a trivial payload edit (e.g., add a bullet to `agents/skills.md` inside the `<!-- bkit:start -->` … `<!-- bkit:end -->` block). Bump `package.json` to `0.1.1`. `pnpm build && pnpm test && pnpm pack` → produces `bartens-bkit-0.1.1.tgz`.
-- [ ] **Task 9.2a:** In `app-gether-life`, run `pnpm dlx file:/path/to/bartens-bkit-0.1.1.tgz upgrade`. Verify: `.agents/skills.md` contains new bullet; `.agents/.bkit-version` = `0.1.1`; `## Project` content untouched; `.agents/.bkit-cache/0.1.1/` seeded.
-- [ ] **Task 9.3a:** Verify `pnpm dlx file:/path/to/bartens-bkit-0.1.1.tgz check` → exit 0. Verify `cat app-gether-life/.agents/.bkit-version` prints `0.1.1`.
+- [x] **Task 9.1a:** In `bkit` repo, make a trivial payload edit (e.g., add a bullet to `agents/skills.md` inside the `<!-- bkit:start -->` … `<!-- bkit:end -->` block). Bump `package.json` to `0.1.1`. `pnpm build && pnpm test && pnpm pack` → produces `bartens-bkit-0.1.1.tgz`.
+- [x] **Task 9.2a:** In `app-gether-life`, run `pnpm dlx file:/path/to/bartens-bkit-0.1.1.tgz upgrade`. Verify: `.agents/skills.md` contains new bullet; `.agents/.bkit-version` = `0.1.1`; `## Project` content untouched; `.agents/.bkit-cache/0.1.1/` seeded.
+- [x] **Task 9.3a:** Verify `pnpm dlx file:/path/to/bartens-bkit-0.1.1.tgz check` → exit 0. Verify `cat app-gether-life/.agents/.bkit-version` prints `0.1.1`.
 
 **Path B — Real-registry publish (gated; requires human go-ahead):**
 
-- [ ] **Task 9.1b:** Human explicitly authorises the `0.1.1` real-registry publish. _(Skip the rest of Phase 9 if not authorised — record skip reason in plan log.)_ `pnpm publish --access public --no-git-checks` from `bkit` repo. Confirm 2FA OTP if prompted.
-- [ ] **Task 9.2b:** In `app-gether-life`, run `pnpm dlx @bartens/bkit@0.1.1 upgrade`. Verify same assertions as Task 9.2a but against the registry copy.
-- [ ] **Task 9.3b:** Verify `pnpm dlx @bartens/bkit check` → exit 0.
-- [ ] **Task 9.4:** Bump `app-gether-life/package.json` `@bartens/bkit` pin to `0.1.1`, `pnpm install`, commit, PR (squash-merge into `dev`). _(If Path A only, the pin remains `0.1.0` and this task is a no-op — record outcome in plan log.)_
+- [x] **Task 9.1b:** Human explicitly authorises the `0.1.1` real-registry publish. _(Skip the rest of Phase 9 if not authorised — record skip reason in plan log.)_ `pnpm publish --access public --no-git-checks` from `bkit` repo. Confirm 2FA OTP if prompted.
+- [x] **Task 9.2b:** In `app-gether-life`, run `pnpm dlx @bartens/bkit@0.1.1 upgrade`. Verify same assertions as Task 9.2a but against the registry copy.
+- [x] **Task 9.3b:** Verify `pnpm dlx @bartens/bkit check` → exit 0.
+- [x] **Task 9.4:** Bump `app-gether-life/package.json` `@bartens/bkit` pin to `0.1.1`, `pnpm install`, commit, PR (squash-merge into `dev`). _(If Path A only, the pin remains `0.1.0` and this task is a no-op — record outcome in plan log.)_
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **Phase 8 complete before Phase 9:** All Tasks 8.1–8.6 are `[x]` before Phase 9 begins.
-- [ ] **Phase 9 path recorded:** Plan log states which path(s) were exercised (Path A only, or Path A + Path B).
-- [ ] **Gate 2 - Verified:** Every Phase 8–9 task box `[x]` (Path B tasks may be `[N/A]` with skip reason if not authorised).
+- [x] **Phase 8 complete before Phase 9:** All Tasks 8.1–8.6 are `[x]` before Phase 9 begins.
+- [x] **Phase 9 path recorded:** Plan log states which path(s) were exercised (Path A only, or Path A + Path B).
+- [x] **Gate 2 - Verified:** Every Phase 8–9 task box `[x]` (Path B tasks may be `[N/A]` with skip reason if not authorised).
 
 > [!IMPORTANT]
 > **Testing Strategy (this sub-plan):**
@@ -340,44 +340,44 @@ _No DB changes. Code-only. `git revert` sufficient on consumer side; `npm deprec
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** All three manual rows (second-repo onboarding, Path A, Path B) covered above.
-- [ ] **Update existing tests:** N/A.
-- [ ] **Write new tests:** N/A.
-- [ ] **Verify observability:** N/A — CLI logs to stdout/stderr.
-- [ ] **Update documentation:** Append BAR-111 entry to `app-gether-life/docs/completed.md` once Gate 4 + Manual Verification all green.
+- [x] **Verify test coverage against Derived Test Matrix:** All three manual rows (second-repo onboarding, Path A, Path B) covered above.
+- [x] **Update existing tests:** N/A.
+- [x] **Write new tests:** N/A.
+- [x] **Verify observability:** N/A — CLI logs to stdout/stderr.
+- [x] **Update documentation:** Append BAR-111 entry to `app-gether-life/docs/completed.md` once Gate 4 + Manual Verification all green.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** `docs/completed.md` BAR-111 entry appended.
-- [ ] **Gate 3 - Verified:** All boxes above checked.
+- [x] **Docs updated:** `docs/completed.md` BAR-111 entry appended.
+- [x] **Gate 3 - Verified:** All boxes above checked.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Sibling A's test suite still green:** Re-run `pnpm test` in `bkit/` repo on the `0.1.1` payload (Path A) before `pnpm pack`. (Already covered by Task 9.1a's `pnpm test` step.)
+- [x] **Sibling A's test suite still green:** Re-run `pnpm test` in `bkit/` repo on the `0.1.1` payload (Path A) before `pnpm pack`. (Already covered by Task 9.1a's `pnpm test` step.)
 
 > [!IMPORTANT]
 > **No Architectural Downgrades**: If you encounter test or behaviour anomalies during smoke / upgrade verification, NEVER resolve them via hot fixes or anti-patterns. Halt; investigate; treat as a regression in sibling A's published artifact and patch via `0.1.2` (not via post-hoc tweaks in `app-gether-life` or the second repo).
 
 ### 🔒 Gate 4: Automated Verification Confirmed (final, cross-sub-plan)
 
-- [ ] **Sub-plan A Gate 4 was green:** All sibling A automated test suites passed at publish time.
-- [ ] **Sub-plan B Gate 4 was green:** `app-gether-life` migration PR CI green at merge.
-- [ ] **Sub-plan C Gate 4 - Verified:** Path A smoke and (if exercised) Path B smoke produced expected outcomes; CLI outputs / test logs / `npm view` / `git diff` results captured in `docs/plans/logs/bar-111-bkit-npm-package/verification.md`.
+- [x] **Sub-plan A Gate 4 was green:** All sibling A automated test suites passed at publish time.
+- [x] **Sub-plan B Gate 4 was green:** `app-gether-life` migration PR CI green at merge.
+- [x] **Sub-plan C Gate 4 - Verified:** Path A smoke and (if exercised) Path B smoke produced expected outcomes; CLI outputs / test logs / `npm view` / `git diff` results captured in `docs/plans/logs/bar-111-bkit-npm-package/verification.md`.
 
 ### Manual Verification
 
 > Use `gh`, `npm`, `pnpm` CLIs. No dashboards.
 
-- [ ] **Step 1:** `npm view @bartens/bkit version` → `0.1.0` (post-sibling-A publish; reverify).
-- [ ] **Step 2:** `npm view @bartens/bkit dist-tags` → has `latest`.
-- [ ] **Step 3:** Phase 8 second-repo onboarding executed end-to-end with human-selected target. Tasks 8.2–8.6 all green.
-- [ ] **Step 4:** Phase 9 upgrade smoke executed end-to-end:
+- [x] **Step 1:** `npm view @bartens/bkit version` → `0.1.0` (post-sibling-A publish; reverify).
+- [x] **Step 2:** `npm view @bartens/bkit dist-tags` → has `latest`.
+- [x] **Step 3:** Phase 8 second-repo onboarding executed end-to-end with human-selected target. Tasks 8.2–8.6 all green.
+- [x] **Step 4:** Phase 9 upgrade smoke executed end-to-end:
   - Path A (default): Tasks 9.1a–9.3a green.
   - Path B (only if authorised): Tasks 9.1b–9.3b green; Task 9.4 PR squash-merged.
-- [ ] **Step 5:** BAR-111 entered in `app-gether-life/docs/completed.md` (Task in § Documentation Updates).
-- [ ] **Step 6:** Final verification log written to `docs/plans/logs/bar-111-bkit-npm-package/verification.md` summarising: published version(s), paths exercised, second-repo target, all CLI outputs.
+- [x] **Step 5:** BAR-111 entered in `app-gether-life/docs/completed.md` (Task in § Documentation Updates).
+- [x] **Step 6:** Final verification log written to `docs/plans/logs/bar-111-bkit-npm-package/verification.md` summarising: published version(s), paths exercised, second-repo target, all CLI outputs.
 
 ---
 

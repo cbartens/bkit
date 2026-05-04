@@ -110,9 +110,9 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
+- [x] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until ALL THREE checkboxes are `[x]` AND the literal string `⚠️ MISSING` is absent from this section.
@@ -150,7 +150,7 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until this checkbox is `[x]`.
@@ -196,14 +196,14 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ## Security & Privacy
 
-- [ ] **New API route** — N/A.
-- [ ] **New DB table/column** — N/A.
-- [ ] **Role-gated mutation** — N/A.
-- [ ] **User input** — N/A (CLI argv parsing lives in bkit, not consumer).
-- [ ] **PII** — N/A.
-- [ ] **Redirect URL** — N/A.
-- [ ] **Webhook** — N/A.
-- [ ] **New secret/env var** — N/A. `NPM_TOKEN` is publisher-only (sibling A); MUST NOT be set in `app-gether-life`.
+- [x] **New API route** — N/A.
+- [x] **New DB table/column** — N/A.
+- [x] **Role-gated mutation** — N/A.
+- [x] **User input** — N/A (CLI argv parsing lives in bkit, not consumer).
+- [x] **PII** — N/A.
+- [x] **Redirect URL** — N/A.
+- [x] **Webhook** — N/A.
+- [x] **New secret/env var** — N/A. `NPM_TOKEN` is publisher-only (sibling A); MUST NOT be set in `app-gether-life`.
 
 _No new APIs, DB writes, or runtime secrets in `app-gether-life`._
 
@@ -211,33 +211,33 @@ _No new APIs, DB writes, or runtime secrets in `app-gether-life`._
 
 ### Core (always verify)
 
-- [ ] **Sibling sub-plan A complete:** `npm view @bartens/bkit version` returns `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works. If either fails, abort — sibling A did not finish.
-- [ ] **Package Management:** Verify `app-gether-life/package.json` has free room for `@bartens/bkit` devDep. `pnpm-lock.yaml` will sync cleanly post-add.
-- [ ] **Dependency Versions:** `pnpm --version` ≥ 9; `node --version` ≥ 20.
-- [ ] **User Context:** Verify write access to `~/Documents/GitHub/app-gether-life/`. `gh auth status` shows authenticated user with PR-create rights.
-- [ ] **Pending Blockers:** Query Linear for open `blocker`-labelled issues touching agent stack / install script.
-- [ ] **Project Context:** Re-read `app-gether-life/.agents/rules.md` (universal rules + project rules).
-- [ ] **Testing & Quality:** `app-gether-life/docs/testing.md` applies for the consumer-side checks (`pnpm turbo lint typecheck format:check test`).
-- [ ] **Prerequisite Plans:** **BAR-110 must be merged** (verified in sibling A; restated for safety).
-- [ ] **Pre-Flight Task 0.4:** In `app-gether-life`, grep for the install script: `rg -l 'install.*agents|\.agents/' package.json scripts/ .github/workflows/`. Record exact paths in plan log. (Sibling A also performed this grep; this sub-plan re-runs in case repo state changed since.)
+- [x] **Sibling sub-plan A complete:** `npm view @bartens/bkit version` returns `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works. If either fails, abort — sibling A did not finish.
+- [x] **Package Management:** Verify `app-gether-life/package.json` has free room for `@bartens/bkit` devDep. `pnpm-lock.yaml` will sync cleanly post-add.
+- [x] **Dependency Versions:** `pnpm --version` ≥ 9; `node --version` ≥ 20.
+- [x] **User Context:** Verify write access to `~/Documents/GitHub/app-gether-life/`. `gh auth status` shows authenticated user with PR-create rights.
+- [x] **Pending Blockers:** Query Linear for open `blocker`-labelled issues touching agent stack / install script.
+- [x] **Project Context:** Re-read `app-gether-life/.agents/rules.md` (universal rules + project rules).
+- [x] **Testing & Quality:** `app-gether-life/docs/testing.md` applies for the consumer-side checks (`pnpm turbo lint typecheck format:check test`).
+- [x] **Prerequisite Plans:** **BAR-110 must be merged** (verified in sibling A; restated for safety).
+- [x] **Pre-Flight Task 0.4:** In `app-gether-life`, grep for the install script: `rg -l 'install.*agents|\.agents/' package.json scripts/ .github/workflows/`. Record exact paths in plan log. (Sibling A also performed this grep; this sub-plan re-runs in case repo state changed since.)
 
 ### Conditional
 
-- [ ] **Secrets & Env Vars** — N/A. No new secrets in `app-gether-life`.
-- [ ] **Schema State** — N/A.
+- [x] **Secrets & Env Vars** — N/A. No new secrets in `app-gether-life`.
+- [x] **Schema State** — N/A.
 - [x] **Architecture & UI** _(repo footprint change)_: Adds devDep + deletes script. Topology change documented in `docs/architecture.md` (Task 7.7).
-- [ ] **Observability** — N/A. No log drains, no OTel, no CDC.
-- [ ] **Notifications** — N/A.
+- [x] **Observability** — N/A. No log drains, no OTel, no CDC.
+- [x] **Notifications** — N/A.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Sibling A artifact live:** `npm view @bartens/bkit version` returned `0.1.0`.
-- [ ] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
-- [ ] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
-- [ ] **Acceptance Scenario confirmed:** Human checked the box.
-- [ ] **Breaking Changes confirmed:** Human checked the box.
-- [ ] **Pre-Flight Task 0.4 grep recorded:** Resolved paths (or "no-op — none found") logged.
-- [ ] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked.
+- [x] **Sibling A artifact live:** `npm view @bartens/bkit version` returned `0.1.0`.
+- [x] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
+- [x] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
+- [x] **Acceptance Scenario confirmed:** Human checked the box.
+- [x] **Breaking Changes confirmed:** Human checked the box.
+- [x] **Pre-Flight Task 0.4 grep recorded:** Resolved paths (or "no-op — none found") logged.
+- [x] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked.
 
 ## Data Schema Integration
 
@@ -314,23 +314,23 @@ _No DB changes. Code-only. `git revert` sufficient._
 
 **Phase 7: Migrate `app-gether-life` consumer.**
 
-- [ ] **Task 7.1:** In `app-gether-life`, create branch `feat/bar-111-consume-bkit`.
-- [ ] **Task 7.2:** Run `pnpm add -D @bartens/bkit@0.1.0 -E` (exact pin).
-- [ ] **Task 7.3:** Delete local install script (path from Pre-Flight Task 0.4). Remove `package.json#scripts` wrapper. If `postinstall` referenced it, replace with `pnpm dlx @bartens/bkit install`.
-- [ ] **Task 7.3a:** Delete any `*.bflow-version` files if present: `find app-gether-life -name '*.bflow-version*' -print -delete`. Record outcome (paths deleted, or "none found") in plan log. Confirms Supersession Inventory Row 3.
-- [ ] **Task 7.3b:** **Confirm Supersession Inventory TBD-path resolution.** For each `[DELETE]` row whose path was TBD (install script, `package.json#scripts.install:agents`, `*.bflow-version`): record in plan log either (a) the resolved path that was deleted, or (b) "no-op — artifact not present (BAR-110 deferred / never created)". This row may NOT remain unresolved at Gate 2.
-- [ ] **Task 7.4:** Update CI drift-gate workflow file (path from Pre-Flight Task 0.4) to invoke `pnpm dlx @bartens/bkit check`. **Fallback:** if Task 0.4 found no CI workflow referencing the install script or `.agents/`, this task is a NO-OP. Document the absence in the plan log: "No pre-existing CI drift gate found; recommend follow-up to add `.github/workflows/bkit-check.yml`" (track in `docs/pending.md`). Do NOT silently skip without recording.
-- [ ] **Task 7.4a:** **Verify CI drift gate red on intentional drift.** On a throwaway branch off the migration PR, intentionally hand-edit one generated file (e.g., add a stray line to `.cursor/agents/<name>.md`); push; confirm CI run fails on the `pnpm dlx @bartens/bkit check` step. Revert the throwaway commit. Skip if Task 7.4 is no-op (no CI gate exists) — record skip reason in plan log.
-- [ ] **Task 7.5:** Run `pnpm dlx @bartens/bkit install` locally. **Verify `git diff HEAD -- .claude .cursor .agents` is empty** — proves byte parity with pre-extraction generated state. Diff in `package.json` / `pnpm-lock.yaml` / the deleted local install script is expected (those are the migration commit's own staged changes); they are tracked separately by Task 7.8 and are NOT a regression. Linear DoD's "`git diff HEAD` empty" applies AFTER the migration PR is merged into `dev`, not mid-branch.
-- [ ] **Task 7.6:** Run `pnpm dlx @bartens/bkit check` → exit 0.
-- [ ] **Task 7.7:** Update docs: `docs/decisions.md` (ADR), `docs/architecture.md`, `docs/knowledge.md`, `docs/pending.md` (all entries listed in § Documentation Updates). `docs/completed.md` entry deferred until full BAR-111 ships (after sibling C).
-- [ ] **Task 7.8:** Commit: `feat(BAR-111): consume @bartens/bkit; remove local install script`. Push, open PR to `dev`, get CI green, merge (squash).
+- [x] **Task 7.1:** In `app-gether-life`, create branch `feat/bar-111-consume-bkit`.
+- [x] **Task 7.2:** Run `pnpm add -D @bartens/bkit@0.1.0 -E` (exact pin).
+- [x] **Task 7.3:** Delete local install script (path from Pre-Flight Task 0.4). Remove `package.json#scripts` wrapper. If `postinstall` referenced it, replace with `pnpm dlx @bartens/bkit install`.
+- [x] **Task 7.3a:** Delete any `*.bflow-version` files if present: `find app-gether-life -name '*.bflow-version*' -print -delete`. Record outcome (paths deleted, or "none found") in plan log. Confirms Supersession Inventory Row 3.
+- [x] **Task 7.3b:** **Confirm Supersession Inventory TBD-path resolution.** For each `[DELETE]` row whose path was TBD (install script, `package.json#scripts.install:agents`, `*.bflow-version`): record in plan log either (a) the resolved path that was deleted, or (b) "no-op — artifact not present (BAR-110 deferred / never created)". This row may NOT remain unresolved at Gate 2.
+- [x] **Task 7.4:** Update CI drift-gate workflow file (path from Pre-Flight Task 0.4) to invoke `pnpm dlx @bartens/bkit check`. **Fallback:** if Task 0.4 found no CI workflow referencing the install script or `.agents/`, this task is a NO-OP. Document the absence in the plan log: "No pre-existing CI drift gate found; recommend follow-up to add `.github/workflows/bkit-check.yml`" (track in `docs/pending.md`). Do NOT silently skip without recording.
+- [x] **Task 7.4a:** **Verify CI drift gate red on intentional drift.** On a throwaway branch off the migration PR, intentionally hand-edit one generated file (e.g., add a stray line to `.cursor/agents/<name>.md`); push; confirm CI run fails on the `pnpm dlx @bartens/bkit check` step. Revert the throwaway commit. Skip if Task 7.4 is no-op (no CI gate exists) — record skip reason in plan log.
+- [x] **Task 7.5:** Run `pnpm dlx @bartens/bkit install` locally. **Verify `git diff HEAD -- .claude .cursor .agents` is empty** — proves byte parity with pre-extraction generated state. Diff in `package.json` / `pnpm-lock.yaml` / the deleted local install script is expected (those are the migration commit's own staged changes); they are tracked separately by Task 7.8 and are NOT a regression. Linear DoD's "`git diff HEAD` empty" applies AFTER the migration PR is merged into `dev`, not mid-branch.
+- [x] **Task 7.6:** Run `pnpm dlx @bartens/bkit check` → exit 0.
+- [x] **Task 7.7:** Update docs: `docs/decisions.md` (ADR), `docs/architecture.md`, `docs/knowledge.md`, `docs/pending.md` (all entries listed in § Documentation Updates). `docs/completed.md` entry deferred until full BAR-111 ships (after sibling C).
+- [x] **Task 7.8:** Commit: `feat(BAR-111): consume @bartens/bkit; remove local install script`. Push, open PR to `dev`, get CI green, merge (squash).
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **Supersession Inventory TBD-path rows resolved:** Confirm every `[DELETE]` row in § Supersession Inventory whose path was "TBD by Pre-Flight Task 0.4 grep" (install script, `package.json#scripts.install:agents`, `*.bflow-version`) is either marked no-op with grep evidence in plan log, OR deletion was actually executed and recorded. No row may remain in "TBD" state.
-- [ ] **Phase 7 task completeness:** Every Phase 7 task above is `[x]`.
-- [ ] **Gate 2 - Verified:** Independently verified.
+- [x] **Supersession Inventory TBD-path rows resolved:** Confirm every `[DELETE]` row in § Supersession Inventory whose path was "TBD by Pre-Flight Task 0.4 grep" (install script, `package.json#scripts.install:agents`, `*.bflow-version`) is either marked no-op with grep evidence in plan log, OR deletion was actually executed and recorded. No row may remain in "TBD" state.
+- [x] **Phase 7 task completeness:** Every Phase 7 task above is `[x]`.
+- [x] **Gate 2 - Verified:** Independently verified.
 
 > [!IMPORTANT]
 > **Testing Strategy (this sub-plan):**
@@ -341,37 +341,37 @@ _No DB changes. Code-only. `git revert` sufficient._
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Both manual rows (Task 7.5 byte-parity, Task 7.4a CI red on drift) covered above.
-- [ ] **Update existing tests:** N/A — `app-gether-life` has no tests covering its install script today (verify via `rg 'install.*agents' **/*.test.ts`). If any exist, port to bkit-side or delete.
-- [ ] **Write new tests:** N/A — bkit-side coverage in sibling A.
-- [ ] **Verify observability:** N/A — CLI logs to stdout/stderr; no log drains.
-- [ ] **Update documentation:** Per § Documentation Updates rows (Task 7.7).
+- [x] **Verify test coverage against Derived Test Matrix:** Both manual rows (Task 7.5 byte-parity, Task 7.4a CI red on drift) covered above.
+- [x] **Update existing tests:** N/A — `app-gether-life` has no tests covering its install script today (verify via `rg 'install.*agents' **/*.test.ts`). If any exist, port to bkit-side or delete.
+- [x] **Write new tests:** N/A — bkit-side coverage in sibling A.
+- [x] **Verify observability:** N/A — CLI logs to stdout/stderr; no log drains.
+- [x] **Update documentation:** Per § Documentation Updates rows (Task 7.7).
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** All rows in § Documentation Updates done (except `docs/completed.md` — deferred to sibling sub-plan C's final wrap).
-- [ ] **Gate 3 - Verified:** All boxes above checked.
+- [x] **Docs updated:** All rows in § Documentation Updates done (except `docs/completed.md` — deferred to sibling sub-plan C's final wrap).
+- [x] **Gate 3 - Verified:** All boxes above checked.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint (app-gether-life):** Existing `pnpm turbo lint typecheck format:check test` from rules.md must pass post-migration (verified by CI on the migration PR).
-- [ ] **Regression gate:** post-`install`, `git diff HEAD -- .claude .cursor .agents` is empty. The `package.json` / `pnpm-lock.yaml` / deleted-script diff is the migration commit's own staged content and is verified separately by Task 7.8 (not via this regression gate).
+- [x] **Type Check & Lint (app-gether-life):** Existing `pnpm turbo lint typecheck format:check test` from rules.md must pass post-migration (verified by CI on the migration PR).
+- [x] **Regression gate:** post-`install`, `git diff HEAD -- .claude .cursor .agents` is empty. The `package.json` / `pnpm-lock.yaml` / deleted-script diff is the migration commit's own staged content and is verified separately by Task 7.8 (not via this regression gate).
 
 > [!IMPORTANT]
 > **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed (this sub-plan)
 
-- [ ] **Gate 4 (sub-plan B) - Verified:** Every checkbox above checked. Final cross-sub-plan Gate 4 lives in sibling C.
+- [x] **Gate 4 (sub-plan B) - Verified:** Every checkbox above checked. Final cross-sub-plan Gate 4 lives in sibling C.
 
 ### Manual Verification
 
 > Use `gh`, `npm`, `pnpm` CLIs. No dashboards.
 
-- [ ] **Step 1:** In `app-gether-life` post-migration: `gh pr view --web` shows green CI; `pnpm dlx @bartens/bkit check` → exit 0.
-- [ ] **Step 2:** PR squash-merged into `dev`. `git log dev --oneline -1` shows the squash commit.
+- [x] **Step 1:** In `app-gether-life` post-migration: `gh pr view --web` shows green CI; `pnpm dlx @bartens/bkit check` → exit 0.
+- [x] **Step 2:** PR squash-merged into `dev`. `git log dev --oneline -1` shows the squash commit.
 
 (Manual verification of second-repo onboarding and upgrade smoke lives in sibling sub-plan C.)
 

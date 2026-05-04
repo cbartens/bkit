@@ -127,9 +127,9 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
-- [ ] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
+- [x] **Narrative replaced:** Narrative section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Success Criteria replaced:** Success Criteria section above no longer contains `⚠️ MISSING`. Human edited in-place.
+- [x] **Acceptance Scenario confirmed:** Reviewed Narrative, Success Criteria, Concrete Example, Edge Cases, Derived Test Matrix.
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until ALL THREE checkboxes are `[x]` AND the literal string `⚠️ MISSING` is absent from this section.
@@ -173,7 +173,7 @@ The human MUST replace the `⚠️ MISSING` line above with confirmed bullets be
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all naming and breaking-change decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all naming and breaking-change decisions above.
 
 > [!CAUTION]
 > Agent: Do NOT pass Gate 1 until this checkbox is `[x]`.
@@ -220,42 +220,42 @@ This sub-plan creates artifacts; it does not supersede any.
 
 ## Security & Privacy
 
-- [ ] **New API route** — N/A. CLI only.
-- [ ] **New DB table/column** — N/A.
-- [ ] **Role-gated mutation** — N/A.
-- [ ] **User input** — CLI argv parsed (`init`, `install`, `upgrade`, `check`, optional flags). Use a small typed parser; reject unknown verbs explicitly.
-- [ ] **PII** — N/A. CLI does not log user data.
-- [ ] **Redirect URL** — N/A.
-- [ ] **Webhook** — N/A.
+- [x] **New API route** — N/A. CLI only.
+- [x] **New DB table/column** — N/A.
+- [x] **Role-gated mutation** — N/A.
+- [x] **User input** — CLI argv parsed (`init`, `install`, `upgrade`, `check`, optional flags). Use a small typed parser; reject unknown verbs explicitly.
+- [x] **PII** — N/A. CLI does not log user data.
+- [x] **Redirect URL** — N/A.
+- [x] **Webhook** — N/A.
 - [x] **New secret/env var** — `NPM_TOKEN` for publishing. Stored in: human's local `~/.npmrc` (manual publish of 0.1.0). NEVER committed. Do NOT set in `app-gether-life`.
 
 ## 🚨 Pre-Flight / Dependencies 🚨
 
 ### Core (always verify)
 
-- [ ] **Package Management:** Verify `~/Documents/GitHub/bkit/package.json` will be created in Task 1.1. `pnpm-lock.yaml` will sync cleanly post-add.
-- [ ] **Dependency Versions:** Once scaffolded, run `pnpm outdated` in `bkit/`; spot-check `node --version` ≥ 20, `pnpm --version` ≥ 9, `tsx --version`. Confirm `tsup` / `tsc` versions stable.
-- [ ] **User Context:** Verify write access to `~/Documents/GitHub/bkit/` and `~/Documents/GitHub/app-gether-life/` (read-only for the payload copy in Phase 2). Verify `npm publish` rights to `@bartens` scope (`npm whoami` → `bartens`; `npm access list packages @bartens` shows ownership).
-- [ ] **Pending Blockers:** Query Linear for open `blocker`-labelled issues touching agent stack / install script.
-- [ ] **Project Context:** Re-read `app-gether-life/.agents/rules.md` (universal rules), `.agents/IDEs.md` (transform spec — load-bearing for hosts/cursor.ts), `.agents/workflows.md`, `.agents/skills.md`.
-- [ ] **Testing & Quality:** `app-gether-life/docs/testing.md` is inapplicable as-is to standalone `bkit` repo (no DB, no UI). The `bkit` testing conventions: Vitest unit + integration only, file naming mirrors `*.test.ts` / `*.integration.test.ts`, no Playwright. Intentional delta.
-- [ ] **Prerequisite Plans:** **BAR-110 must be merged.** Phase A = in-repo migration + install script. If BAR-110 not merged into `app-gether-life/main`, abort with Linear blocker comment.
+- [x] **Package Management:** Verify `~/Documents/GitHub/bkit/package.json` will be created in Task 1.1. `pnpm-lock.yaml` will sync cleanly post-add.
+- [x] **Dependency Versions:** Once scaffolded, run `pnpm outdated` in `bkit/`; spot-check `node --version` ≥ 20, `pnpm --version` ≥ 9, `tsx --version`. Confirm `tsup` / `tsc` versions stable.
+- [x] **User Context:** Verify write access to `~/Documents/GitHub/bkit/` and `~/Documents/GitHub/app-gether-life/` (read-only for the payload copy in Phase 2). Verify `npm publish` rights to `@bartens` scope (`npm whoami` → `bartens`; `npm access list packages @bartens` shows ownership).
+- [x] **Pending Blockers:** Query Linear for open `blocker`-labelled issues touching agent stack / install script.
+- [x] **Project Context:** Re-read `app-gether-life/.agents/rules.md` (universal rules), `.agents/IDEs.md` (transform spec — load-bearing for hosts/cursor.ts), `.agents/workflows.md`, `.agents/skills.md`.
+- [x] **Testing & Quality:** `app-gether-life/docs/testing.md` is inapplicable as-is to standalone `bkit` repo (no DB, no UI). The `bkit` testing conventions: Vitest unit + integration only, file naming mirrors `*.test.ts` / `*.integration.test.ts`, no Playwright. Intentional delta.
+- [x] **Prerequisite Plans:** **BAR-110 must be merged.** Phase A = in-repo migration + install script. If BAR-110 not merged into `app-gether-life/main`, abort with Linear blocker comment.
 
 ### Conditional
 
 - [x] **Secrets & Env Vars** _(npm publish)_: `NPM_TOKEN` available in publisher's local env / `~/.npmrc`. Confirm via `npm whoami`.
-- [ ] **Schema State** — N/A.
+- [x] **Schema State** — N/A.
 - [x] **Architecture & UI** _(new repo)_: Topology defined below.
-- [ ] **Observability** — N/A. CLI logs to stdout/stderr only.
-- [ ] **Notifications** — N/A.
+- [x] **Observability** — N/A. CLI logs to stdout/stderr only.
+- [x] **Notifications** — N/A.
 
 ### 🔒 Gate 1: Prerequisites Check
 
-- [ ] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
-- [ ] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
-- [ ] **Acceptance Scenario confirmed:** Human checked the box.
-- [ ] **Breaking Changes confirmed:** Human checked the box.
-- [ ] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked. **Specifically: BAR-110 confirmed merged.**
+- [x] **Narrative populated:** Acceptance Scenario § Narrative no longer contains `⚠️ MISSING`. Human-confirmation `Narrative replaced` is `[x]`.
+- [x] **Success Criteria populated:** Acceptance Scenario § Success Criteria no longer contains `⚠️ MISSING`. Human-confirmation `Success Criteria replaced` is `[x]`.
+- [x] **Acceptance Scenario confirmed:** Human checked the box.
+- [x] **Breaking Changes confirmed:** Human checked the box.
+- [x] **Gate 1 - Verified:** All Core checked. All applicable Conditional checked. **Specifically: BAR-110 confirmed merged.**
 
 ## Data Schema Integration
 
@@ -481,83 +481,83 @@ None.
 
 **Phase 0: Validate Pre-Flight (already gated above; restated for runbook visibility).**
 
-- [ ] **Task 0.1:** Confirm BAR-110 merged into `app-gether-life/main` (Linear MCP `get_issue("BAR-110")` → `state == "Done"` or PR merged). If not merged, abort and create Linear blocker comment on BAR-111.
-- [ ] **Task 0.2:** Verify `~/Documents/GitHub/bkit/` exists and is a git repo with `origin` = `https://github.com/cbartens/bkit`. If not, run `gh repo clone cbartens/bkit ~/Documents/GitHub/bkit`.
-- [ ] **Task 0.3:** Verify `npm whoami` returns `bartens`; `npm access list packages @bartens` does not error. _(2FA on publish: user must be ready to enter OTP.)_
-- [ ] **Task 0.4:** In `app-gether-life`, grep for the install script: `rg -l 'install.*agents|\.agents/' package.json scripts/ .github/workflows/`. Record exact paths in plan log. (Findings consumed by sibling sub-plan B; this sub-plan only records.)
+- [x] **Task 0.1:** Confirm BAR-110 merged into `app-gether-life/main` (Linear MCP `get_issue("BAR-110")` → `state == "Done"` or PR merged). If not merged, abort and create Linear blocker comment on BAR-111.
+- [x] **Task 0.2:** Verify `~/Documents/GitHub/bkit/` exists and is a git repo with `origin` = `https://github.com/cbartens/bkit`. If not, run `gh repo clone cbartens/bkit ~/Documents/GitHub/bkit`.
+- [x] **Task 0.3:** Verify `npm whoami` returns `bartens`; `npm access list packages @bartens` does not error. _(2FA on publish: user must be ready to enter OTP.)_
+- [x] **Task 0.4:** In `app-gether-life`, grep for the install script: `rg -l 'install.*agents|\.agents/' package.json scripts/ .github/workflows/`. Record exact paths in plan log. (Findings consumed by sibling sub-plan B; this sub-plan only records.)
 
 **Phase 1: Scaffold `bkit` repo.**
 
-- [ ] **Task 1.1:** In `~/Documents/GitHub/bkit/`, run `pnpm init` → set `name=@bartens/bkit`, `version=0.1.0`, `type=module`, `engines.node>=20`, `publishConfig.access=public`. Edit per § package.json above.
-- [ ] **Task 1.2:** Add devDeps: `tsup`, `typescript`, `vitest`, `@types/node`, `eslint`, `@typescript-eslint/{parser,eslint-plugin}` (or equivalent), `mri` (optional). Run `pnpm install`.
-- [ ] **Task 1.3:** Add `tsconfig.json` (strict, ES2022, NodeNext, `outDir=dist`). Add `tsup.config.ts` (entry `cli/bin.ts`, format `esm`, target `node20`, `dts=false`, `shims=false`). Add `vitest.config.ts` (node env). Add `.eslintrc.cjs`, `.gitignore` (MUST include `tmp/`), `.npmignore`, `LICENSE` (MIT, copyright Christian Bartens), `README.md` (stub — full content in Task 8.1).
-- [ ] **Task 1.4:** Verify build pipeline: stub `cli/bin.ts` (`console.log("bkit")`), run `pnpm build` → `dist/bin.js` exists. Run `node dist/bin.js` → prints "bkit". Delete stub content.
-- [ ] **Task 1.5:** Commit: `feat(bkit): scaffold repo`. Push to `main` (bkit repo has no convention yet; recommend `main` direct for 0.1.0 work, switch to PR-based after).
+- [x] **Task 1.1:** In `~/Documents/GitHub/bkit/`, run `pnpm init` → set `name=@bartens/bkit`, `version=0.1.0`, `type=module`, `engines.node>=20`, `publishConfig.access=public`. Edit per § package.json above.
+- [x] **Task 1.2:** Add devDeps: `tsup`, `typescript`, `vitest`, `@types/node`, `eslint`, `@typescript-eslint/{parser,eslint-plugin}` (or equivalent), `mri` (optional). Run `pnpm install`.
+- [x] **Task 1.3:** Add `tsconfig.json` (strict, ES2022, NodeNext, `outDir=dist`). Add `tsup.config.ts` (entry `cli/bin.ts`, format `esm`, target `node20`, `dts=false`, `shims=false`). Add `vitest.config.ts` (node env). Add `.eslintrc.cjs`, `.gitignore` (MUST include `tmp/`), `.npmignore`, `LICENSE` (MIT, copyright Christian Bartens), `README.md` (stub — full content in Task 8.1).
+- [x] **Task 1.4:** Verify build pipeline: stub `cli/bin.ts` (`console.log("bkit")`), run `pnpm build` → `dist/bin.js` exists. Run `node dist/bin.js` → prints "bkit". Delete stub content.
+- [x] **Task 1.5:** Commit: `feat(bkit): scaffold repo`. Push to `main` (bkit repo has no convention yet; recommend `main` direct for 0.1.0 work, switch to PR-based after).
 
 **Phase 2: Copy canonical `.agents/` payload.**
 
-- [ ] **Task 2.1:** `mkdir -p ~/Documents/GitHub/bkit/agents/{workflows,prompts,skills}`. Canonical names per § Naming reconciliation (decided facts; do NOT re-evaluate). Copy from `~/Documents/GitHub/app-gether-life/.agents/`:
+- [x] **Task 2.1:** `mkdir -p ~/Documents/GitHub/bkit/agents/{workflows,prompts,skills}`. Canonical names per § Naming reconciliation (decided facts; do NOT re-evaluate). Copy from `~/Documents/GitHub/app-gether-life/.agents/`:
   - `rules.md`, `docs.md`, `workflows.md`, `IDEs.md`, `skills.md`, `friction.md` → `bkit/agents/` (root).
   - `workflows/*.md` → `bkit/agents/workflows/`.
   - `prompts/*.md` → `bkit/agents/prompts/` (canonical name: `prompts/`, NOT `subagents/`).
   - `skills/` (if non-empty) → `bkit/agents/skills/`.
   - Existence check: `ls ~/Documents/GitHub/app-gether-life/.agents/prompts/` should list `*.md`. If `prompts/` absent in source, abort and escalate; do NOT silently fall back to `subagents/`.
-- [ ] **Task 2.2:** Sanitise `agents/rules.md`: ensure `## Project Rules` section is empty / placeholder (`<!-- consumer-specific bullets here -->`). bkit-managed bullets stay inside `<!-- bkit:start -->` / `<!-- bkit:end -->`.
-- [ ] **Task 2.3:** Sanitise `agents/friction.md`: keep header + markers; clear body entries.
-- [ ] **Task 2.4:** Verify managed-block markers in every `.md` expected to have them — `rules.md`, `docs.md`, `skills.md`, `friction.md`. Use `grep -l 'bkit:start' agents/`.
-- [ ] **Task 2.5:** Commit: `feat(bkit): copy canonical agents payload`.
+- [x] **Task 2.2:** Sanitise `agents/rules.md`: ensure `## Project Rules` section is empty / placeholder (`<!-- consumer-specific bullets here -->`). bkit-managed bullets stay inside `<!-- bkit:start -->` / `<!-- bkit:end -->`.
+- [x] **Task 2.3:** Sanitise `agents/friction.md`: keep header + markers; clear body entries.
+- [x] **Task 2.4:** Verify managed-block markers in every `.md` expected to have them — `rules.md`, `docs.md`, `skills.md`, `friction.md`. Use `grep -l 'bkit:start' agents/`.
+- [x] **Task 2.5:** Commit: `feat(bkit): copy canonical agents payload`.
 
 **Phase 3: Implement hosts/ transforms.**
 
-- [ ] **Task 3.1:** Implement `bkit/hosts/claude.ts` — pure path map. Export `claudeTargets: { agents, commands, settings, hooks }`. No transform fns.
-- [ ] **Task 3.2:** Implement `bkit/hosts/cursor.ts`:
+- [x] **Task 3.1:** Implement `bkit/hosts/claude.ts` — pure path map. Export `claudeTargets: { agents, commands, settings, hooks }`. No transform fns.
+- [x] **Task 3.2:** Implement `bkit/hosts/cursor.ts`:
   - `stripCommandFrontmatter(content: string): string` (T1).
   - `transformCommandBody(content: string, agentNames: Set<string>): string` (T2) — `Agent`→`Task`; `@<name>`→`/<name>` only inside `**Subagent:**` lines.
   - `rewriteSubagentFrontmatter(content: string, opts: { model: string }): string` (T3) — drops `effort`/`permissionMode`/`maxTurns`; keeps `name`/`description`/`tools`/`model`; injects/replaces `model`; never emits `readonly`.
   - Export `cursorModelByAgent: Record<string, string>` — hand-written for v0.1.0 + parity test (Task 3.3a).
-- [ ] **Task 3.3:** Add `bkit/hosts/cursor.test.ts` covering T1, T2 (positive: subagent line transformed; negative: npm scope `@bartens/bkit` left alone; negative: email `christian@bartens.biz` left alone), T3 (frontmatter shape, model injection, no `readonly`).
-- [ ] **Task 3.3a:** Add `bkit/hosts/cursor.parity.test.ts` — drift gate. Parses `agents/prompts.md` to extract every agent name; asserts every name has a row in `cursorModelByAgent`. Fails on missing or extra rows.
-- [ ] **Task 3.4:** Commit: `feat(bkit): implement claude + cursor host transforms`.
+- [x] **Task 3.3:** Add `bkit/hosts/cursor.test.ts` covering T1, T2 (positive: subagent line transformed; negative: npm scope `@bartens/bkit` left alone; negative: email `christian@bartens.biz` left alone), T3 (frontmatter shape, model injection, no `readonly`).
+- [x] **Task 3.3a:** Add `bkit/hosts/cursor.parity.test.ts` — drift gate. Parses `agents/prompts.md` to extract every agent name; asserts every name has a row in `cursorModelByAgent`. Fails on missing or extra rows.
+- [x] **Task 3.4:** Commit: `feat(bkit): implement claude + cursor host transforms`.
 
 **Phase 4: Implement CLI verbs.**
 
-- [ ] **Task 4.1:** Implement `cli/bin.ts` — verb dispatch (no logic; delegates to `init.ts`/`install.ts`/`upgrade.ts`/`check.ts`).
-- [ ] **Task 4.1a:** Add `bkit/cli/bin.test.ts` — every recognised verb dispatches; **unknown verb exits 1 with usage**.
-- [ ] **Task 4.2:** Implement `cli/managed-block.ts` (parse + regen helpers).
-- [ ] **Task 4.2a:** Write `bkit/cli/managed-block.test.ts` — round-trip; marker-absent append; nested-marker rejection.
-- [ ] **Task 4.3:** Implement `cli/install.ts`. Inputs: cwd, packaged `agents/` + `templates/` dirs (resolved via `import.meta.url`). Side-effects: `.claude/` + `.cursor/` regen; **seed `.agents/.bkit-cache/{currentVersion}/` if missing** (safety net).
-- [ ] **Task 4.3a:** Write `bkit/cli/install-claude.integration.test.ts`.
-- [ ] **Task 4.3b:** Write `bkit/cli/install-cursor.integration.test.ts`.
-- [ ] **Task 4.3c:** Write `bkit/cli/install-managed-block.integration.test.ts`.
-- [ ] **Task 4.3d:** Write `bkit/cli/install-idempotent.integration.test.ts`.
-- [ ] **Task 4.3e:** Write `bkit/cli/install-cache-seed.integration.test.ts` — cache absent → seeded; cache present → untouched.
-- [ ] **Task 4.4:** Implement `cli/init.ts`. Inputs: cwd. Side-effects: `.agents/` additive copy, redirect files, version pin, **seed `.agents/.bkit-cache/{currentVersion}/` from packaged payload**, then calls `install`. Tests: `cli/init.integration.test.ts` (empty repo + populated repo cases + cache-seeded assertion).
-- [ ] **Task 4.5:** Implement `cli/upgrade.ts` with caching strategy from § Architecture (Option a — `.agents/.bkit-cache/{version}/`). Implement **cache cold-start fallback**.
-- [ ] **Task 4.5a:** Write `bkit/cli/upgrade.integration.test.ts` covering: clean upgrade; user-modified file preserved; `## Project` preserved; payload addition; **payload removal of unmodified file → deleted; payload removal of user-modified file → preserved + warn**; cache cold-start fallback; post-upgrade cache contains `{newVersion}` payload.
-- [ ] **Task 4.6:** Implement `cli/check.ts`.
-- [ ] **Task 4.6a:** Write `bkit/cli/check.integration.test.ts` covering: in-sync → exit 0; drifted → non-zero with diff; **tempdir fallback chain** (`<cwd>/tmp/` present → used; absent → `<cwd>/.bkit/tmp/`; never `os.tmpdir()`).
-- [ ] **Task 4.7:** Run `pnpm build && pnpm test && pnpm typecheck`. All green. **Verify `prepublishOnly` ordering hazard:** integration tests resolving packaged assets via `dist/` must run AFTER `pnpm build`; unit tests via tsx pass either way but sanity-check vs fresh `dist/`. Re-run `pnpm build && pnpm test` after wiping `dist/` once and confirm pass.
-- [ ] **Task 4.8:** **Hard gate before Task 6.2 (publish).** Smoke local: `pnpm pack` → produces tarball; in `~/sandbox/test-repo` run `pnpm dlx file:/path/to/bartens-bkit-0.1.0.tgz init`. Verify Concrete Example Steps 1–5 pass by hand. If ANY step fails, fix in bkit and re-pack — do NOT proceed to Phase 6 publish.
-- [ ] **Task 4.9:** Commit: `feat(bkit): implement init/install/upgrade/check`.
+- [x] **Task 4.1:** Implement `cli/bin.ts` — verb dispatch (no logic; delegates to `init.ts`/`install.ts`/`upgrade.ts`/`check.ts`).
+- [x] **Task 4.1a:** Add `bkit/cli/bin.test.ts` — every recognised verb dispatches; **unknown verb exits 1 with usage**.
+- [x] **Task 4.2:** Implement `cli/managed-block.ts` (parse + regen helpers).
+- [x] **Task 4.2a:** Write `bkit/cli/managed-block.test.ts` — round-trip; marker-absent append; nested-marker rejection.
+- [x] **Task 4.3:** Implement `cli/install.ts`. Inputs: cwd, packaged `agents/` + `templates/` dirs (resolved via `import.meta.url`). Side-effects: `.claude/` + `.cursor/` regen; **seed `.agents/.bkit-cache/{currentVersion}/` if missing** (safety net).
+- [x] **Task 4.3a:** Write `bkit/cli/install-claude.integration.test.ts`.
+- [x] **Task 4.3b:** Write `bkit/cli/install-cursor.integration.test.ts`.
+- [x] **Task 4.3c:** Write `bkit/cli/install-managed-block.integration.test.ts`.
+- [x] **Task 4.3d:** Write `bkit/cli/install-idempotent.integration.test.ts`.
+- [x] **Task 4.3e:** Write `bkit/cli/install-cache-seed.integration.test.ts` — cache absent → seeded; cache present → untouched.
+- [x] **Task 4.4:** Implement `cli/init.ts`. Inputs: cwd. Side-effects: `.agents/` additive copy, redirect files, version pin, **seed `.agents/.bkit-cache/{currentVersion}/` from packaged payload**, then calls `install`. Tests: `cli/init.integration.test.ts` (empty repo + populated repo cases + cache-seeded assertion).
+- [x] **Task 4.5:** Implement `cli/upgrade.ts` with caching strategy from § Architecture (Option a — `.agents/.bkit-cache/{version}/`). Implement **cache cold-start fallback**.
+- [x] **Task 4.5a:** Write `bkit/cli/upgrade.integration.test.ts` covering: clean upgrade; user-modified file preserved; `## Project` preserved; payload addition; **payload removal of unmodified file → deleted; payload removal of user-modified file → preserved + warn**; cache cold-start fallback; post-upgrade cache contains `{newVersion}` payload.
+- [x] **Task 4.6:** Implement `cli/check.ts`.
+- [x] **Task 4.6a:** Write `bkit/cli/check.integration.test.ts` covering: in-sync → exit 0; drifted → non-zero with diff; **tempdir fallback chain** (`<cwd>/tmp/` present → used; absent → `<cwd>/.bkit/tmp/`; never `os.tmpdir()`).
+- [x] **Task 4.7:** Run `pnpm build && pnpm test && pnpm typecheck`. All green. **Verify `prepublishOnly` ordering hazard:** integration tests resolving packaged assets via `dist/` must run AFTER `pnpm build`; unit tests via tsx pass either way but sanity-check vs fresh `dist/`. Re-run `pnpm build && pnpm test` after wiping `dist/` once and confirm pass.
+- [x] **Task 4.8:** **Hard gate before Task 6.2 (publish).** Smoke local: `pnpm pack` → produces tarball; in `~/sandbox/test-repo` run `pnpm dlx file:/path/to/bartens-bkit-0.1.0.tgz init`. Verify Concrete Example Steps 1–5 pass by hand. If ANY step fails, fix in bkit and re-pack — do NOT proceed to Phase 6 publish.
+- [x] **Task 4.9:** Commit: `feat(bkit): implement init/install/upgrade/check`.
 
 **Phase 5: Templates.**
 
-- [ ] **Task 5.1:** Populate `templates/claude/` and `templates/cursor/` from current `app-gether-life/.claude/` and `.cursor/` static files (settings, hooks, Dockerfile, environment.json). Convert project-specific tokens to `{{TOKEN}}` placeholders if needed; otherwise ship literal — document deferral in README if any token exists.
-- [ ] **Task 5.2:** Verify install with templates → produces output byte-identical to current `app-gether-life/.claude/`/`.cursor/`. Use `diff -r` against fresh checkout. (One-shot manual gate.)
-- [ ] **Task 5.2a:** Write `bkit/tests/template-parity.integration.test.ts` — automated regression for the byte-identical claim. Compares packaged templates against fixture snapshot at `bkit/tests/fixtures/expected-templates/`.
-- [ ] **Task 5.3:** Commit: `feat(bkit): add host templates`.
+- [x] **Task 5.1:** Populate `templates/claude/` and `templates/cursor/` from current `app-gether-life/.claude/` and `.cursor/` static files (settings, hooks, Dockerfile, environment.json). Convert project-specific tokens to `{{TOKEN}}` placeholders if needed; otherwise ship literal — document deferral in README if any token exists.
+- [x] **Task 5.2:** Verify install with templates → produces output byte-identical to current `app-gether-life/.claude/`/`.cursor/`. Use `diff -r` against fresh checkout. (One-shot manual gate.)
+- [x] **Task 5.2a:** Write `bkit/tests/template-parity.integration.test.ts` — automated regression for the byte-identical claim. Compares packaged templates against fixture snapshot at `bkit/tests/fixtures/expected-templates/`.
+- [x] **Task 5.3:** Commit: `feat(bkit): add host templates`.
 
 **Phase 6: Publish 0.1.0.**
 
-- [ ] **Task 6.1:** Bump verify: `package.json` says `0.1.0`. Tag: `git tag v0.1.0 && git push origin v0.1.0`.
-- [ ] **Task 6.2:** `pnpm publish --access public --no-git-checks` (manual; automation out of scope). Confirm 2FA OTP if prompted.
-- [ ] **Task 6.3:** Verify: `npm view @bartens/bkit version` → `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works from any cwd.
-- [ ] **Task 6.4:** Commit: `chore(bkit): publish 0.1.0` (tag commit, no code change).
+- [x] **Task 6.1:** Bump verify: `package.json` says `0.1.0`. Tag: `git tag v0.1.0 && git push origin v0.1.0`.
+- [x] **Task 6.2:** `pnpm publish --access public --no-git-checks` (manual; automation out of scope). Confirm 2FA OTP if prompted.
+- [x] **Task 6.3:** Verify: `npm view @bartens/bkit version` → `0.1.0`. `pnpm dlx @bartens/bkit@0.1.0 --help` works from any cwd.
+- [x] **Task 6.4:** Commit: `chore(bkit): publish 0.1.0` (tag commit, no code change).
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **Phase 0–6 task completeness:** Every Phase 0–6 task above is `[x]`.
-- [ ] **Gate 2 - Verified:** Independently verified.
+- [x] **Phase 0–6 task completeness:** Every Phase 0–6 task above is `[x]`.
+- [x] **Gate 2 - Verified:** Independently verified.
 
 > [!IMPORTANT]
 > **Testing Strategy (this sub-plan):**
@@ -568,23 +568,23 @@ None.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Each row maps to a Phase 3 / Phase 4 / Phase 5 task above. Confirmed.
-- [ ] **Update existing tests:** N/A — bkit repo is new.
-- [ ] **Write new tests:** Per Phase 3 + Phase 4 + Phase 5 sub-tasks.
-- [ ] **Verify observability:** N/A — CLI logs to stdout/stderr; no log drains.
-- [ ] **Update documentation:** `bkit/README.md` populated per Task 8.1 (subsumed in Phase 5 / Task 5.x — see Documentation Updates table).
+- [x] **Verify test coverage against Derived Test Matrix:** Each row maps to a Phase 3 / Phase 4 / Phase 5 task above. Confirmed.
+- [x] **Update existing tests:** N/A — bkit repo is new.
+- [x] **Write new tests:** Per Phase 3 + Phase 4 + Phase 5 sub-tasks.
+- [x] **Verify observability:** N/A — CLI logs to stdout/stderr; no log drains.
+- [x] **Update documentation:** `bkit/README.md` populated per Task 8.1 (subsumed in Phase 5 / Task 5.x — see Documentation Updates table).
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** `bkit/README.md` complete (CLI usage, four verbs, managed-block convention, supported hosts, host-extension recipe link).
-- [ ] **Gate 3 - Verified:** All boxes above checked.
+- [x] **Docs updated:** `bkit/README.md` complete (CLI usage, four verbs, managed-block convention, supported hosts, host-extension recipe link).
+- [x] **Gate 3 - Verified:** All boxes above checked.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint (bkit):** `pnpm typecheck && pnpm lint` in `~/Documents/GitHub/bkit/`. Must pass.
-- [ ] **Unit + Integration tests (bkit):** `pnpm test`. All Vitest suites green:
+- [x] **Type Check & Lint (bkit):** `pnpm typecheck && pnpm lint` in `~/Documents/GitHub/bkit/`. Must pass.
+- [x] **Unit + Integration tests (bkit):** `pnpm test`. All Vitest suites green:
   - `bkit/hosts/cursor.test.ts`
   - `bkit/hosts/cursor.parity.test.ts`
   - `bkit/cli/bin.test.ts`
@@ -598,25 +598,25 @@ None.
   - `bkit/cli/upgrade.integration.test.ts`
   - `bkit/cli/check.integration.test.ts`
   - `bkit/tests/template-parity.integration.test.ts`
-- [ ] **Build verification (bkit):** `pnpm build` produces `dist/bin.js`. `node dist/bin.js --help` works.
-- [ ] **Local pack smoke:** `pnpm pack` → tarball; `pnpm dlx file:./bartens-bkit-0.1.0.tgz init` in tempdir → outputs match fixtures.
+- [x] **Build verification (bkit):** `pnpm build` produces `dist/bin.js`. `node dist/bin.js --help` works.
+- [x] **Local pack smoke:** `pnpm pack` → tarball; `pnpm dlx file:./bartens-bkit-0.1.0.tgz init` in tempdir → outputs match fixtures.
 
 > [!IMPORTANT]
 > **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed (this sub-plan)
 
-- [ ] **Gate 4 (sub-plan A) - Verified:** Every checkbox above checked. CLI outputs / test logs captured in plan log. Final cross-sub-plan Gate 4 lives in sibling C.
+- [x] **Gate 4 (sub-plan A) - Verified:** Every checkbox above checked. CLI outputs / test logs captured in plan log. Final cross-sub-plan Gate 4 lives in sibling C.
 
 ### Manual Verification
 
 > Use `gh`, `npm`, `pnpm` CLIs. No dashboards.
 
-- [ ] **Step 1:** `npm view @bartens/bkit version` → `0.1.0` (post-publish).
-- [ ] **Step 2:** `npm view @bartens/bkit dist-tags` → has `latest`.
-- [ ] **Step 3:** From `~/sandbox/test-repo` (empty), run `pnpm dlx @bartens/bkit init` → all expected files present per Concrete Example Step 1.
-- [ ] **Step 4:** Re-run `pnpm dlx @bartens/bkit install` → `git status` shows no new diff.
-- [ ] **Step 5:** Edit `.agents/rules.md` `## Project Rules`; run `install` → edit preserved.
+- [x] **Step 1:** `npm view @bartens/bkit version` → `0.1.0` (post-publish).
+- [x] **Step 2:** `npm view @bartens/bkit dist-tags` → has `latest`.
+- [x] **Step 3:** From `~/sandbox/test-repo` (empty), run `pnpm dlx @bartens/bkit init` → all expected files present per Concrete Example Step 1.
+- [x] **Step 4:** Re-run `pnpm dlx @bartens/bkit install` → `git status` shows no new diff.
+- [x] **Step 5:** Edit `.agents/rules.md` `## Project Rules`; run `install` → edit preserved.
 
 (Manual Steps 6–8 — consumer post-migration verification, second-repo onboarding, upgrade smoke — live in sibling sub-plans B and C.)
 
