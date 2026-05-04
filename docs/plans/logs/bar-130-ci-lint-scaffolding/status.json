@@ -88,6 +88,17 @@
         "artifacts": [
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-04T10:51:02Z",
+        "commitSha": "92b94d2bc21968769b5f332db6329b24709d5c79",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v4-split.md"
+        ]
       }
     ]
   }
