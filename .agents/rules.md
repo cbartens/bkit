@@ -90,4 +90,5 @@
 - **Logs:** `console.error("[{Context}] {Message}", {payload})` — `[]` around `{Context}` = load-bearing for log-drain regex.
 
 ## Project Rules
+
 <!-- bkit:end -->
