@@ -1,0 +1,17 @@
+{
+  "name": "@bartens/bkit",
+  "version": "0.1.0-pre.1",
+  "private": true,
+  "description": "Agent-stack consolidation CLI — install/upgrade .agents/ payload across Claude and Cursor hosts",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

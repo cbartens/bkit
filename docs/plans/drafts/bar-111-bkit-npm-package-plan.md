@@ -67,7 +67,7 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 | CLI binary | `bkit` |
 | Version pin file | `.agents/.bkit-version` |
 | Managed-block markers | `<!-- bkit:start -->` / `<!-- bkit:end -->` (inside `.gitignore` etc., prefixed with `# `) |
-| Top-level repo dirs | `agents/`, `hosts/`, `templates/<host>/`, `templates/shared/`, `cli/` |
+| Top-level repo dirs | `agents/`, `hosts/`, `templates/` (project-root tmpls + `templates/<host>/` subdirs), `cli/` |
 | Subagent prompt dir | `agents/prompts/` (NOT `subagents/`) |
 | Workflow dir | `agents/workflows/` (NOT `commands/`) |
 | Initial published version | `0.1.0` |
@@ -110,10 +110,11 @@ bkit/
 │   ├── claude.ts                    # passthrough — path map only
 │   └── cursor.ts                    # T1 + T2 + T3 + cursorModelByAgent
 ├── templates/
-│   ├── shared/
-│   │   └── .gitignore.tmpl          # NEW — managed-block, host-agnostic project root
-│   ├── claude/{CLAUDE.md.tmpl, settings.json.tmpl, hooks/preflight.sh}
-│   └── cursor/{AGENTS.md.tmpl, rules/00-shared-rules.mdc.tmpl, Dockerfile, environment.json.tmpl, settings.json.tmpl, hooks.json.tmpl, hooks/{preflight,postflight}.sh}
+│   ├── .gitignore.tmpl              # project-root → <cwd>/.gitignore (managed-block, host-agnostic)
+│   ├── CLAUDE.md.tmpl               # project-root → <cwd>/CLAUDE.md (Claude redirect)
+│   ├── AGENTS.md.tmpl               # project-root → <cwd>/AGENTS.md (Cursor redirect)
+│   ├── claude/{settings.json.tmpl, hooks/preflight.sh}
+│   └── cursor/{rules/00-shared-rules.mdc.tmpl, Dockerfile, environment.json.tmpl, settings.json.tmpl, hooks.json.tmpl, hooks/{preflight,postflight}.sh}
 ├── cli/
 │   ├── bin.ts                       # verb dispatch
 │   ├── init.ts
@@ -146,14 +147,12 @@ Pure data. Maps canonical `agents/` paths → Claude target paths (`.claude/agen
 
 ### CLI verbs
 
-- **`init`** — additive copy of packaged `agents/` → `<cwd>/.agents/` (skip-if-exists). Writes redirect / project files using managed-block markers:
-  - `<cwd>/CLAUDE.md` (from `templates/claude/CLAUDE.md.tmpl`)
-  - `<cwd>/AGENTS.md` (from `templates/cursor/AGENTS.md.tmpl`)
-  - `<cwd>/.cursor/rules/00-shared-rules.mdc` (from `templates/cursor/rules/00-shared-rules.mdc.tmpl`)
-  - `<cwd>/.gitignore` (from `templates/shared/.gitignore.tmpl`) — markers prefixed with `# ` since `.gitignore` uses `#` comments.
+- **`init`** — additive copy of packaged `agents/` → `<cwd>/.agents/` (skip-if-exists). Writes redirect files using managed-block markers:
+  - `<cwd>/CLAUDE.md` (from `templates/CLAUDE.md.tmpl`)
+  - `<cwd>/AGENTS.md` (from `templates/AGENTS.md.tmpl`)
   - File exists with markers → regen managed block only; preserve outside. File exists without markers → append markers + content at EOF; preserve all prior content. Absent → create with markers.
-  - Writes `<cwd>/.agents/.bkit-version` (= running CLI's `package.json#version`). Seeds `<cwd>/.agents/.bkit-cache/{currentVersion}/` from packaged payload. Calls `install` at end.
-- **`install`** — reads `<cwd>/.agents/`. Generates `.claude/{agents,commands}/<name>.md` (byte-identical) + `.claude/{settings.json, hooks/*}` (template literal). Generates `.cursor/{agents,commands}/<name>.md` (after T3 / T1+T2 respectively) + `.cursor/{rules/00-shared-rules.mdc, settings.json, environment.json, Dockerfile, hooks.json, hooks/*}` (template literal, managed-block-aware for `00-shared-rules.mdc`). Always overwrites generated files; does not touch `.agents/`. Does NOT regenerate `.gitignore` (only `init` writes it; users may add project-specific entries outside the managed block). Cache safety net: seed `.agents/.bkit-cache/{currentVersion}/` if missing. `.agents/` missing → exit 1.
+  - Writes `<cwd>/.agents/.bkit-version` (= running CLI's `package.json#version`). Seeds `<cwd>/.agents/.bkit-cache/{currentVersion}/` from packaged payload. Calls `install` at end (which materialises `.cursor/rules/00-shared-rules.mdc` and `.gitignore`).
+- **`install`** — reads `<cwd>/.agents/`. Generates `.claude/{agents,commands}/<name>.md` (byte-identical) + `.claude/{settings.json, hooks/*}` (template literal). Generates `.cursor/{agents,commands}/<name>.md` (after T3 / T1+T2 respectively) + `.cursor/{rules/00-shared-rules.mdc, settings.json, environment.json, Dockerfile, hooks.json, hooks/*}` (template literal, managed-block-aware for `00-shared-rules.mdc`). **Regenerates `<cwd>/.gitignore` managed block** from `templates/.gitignore.tmpl` (markers `# `-prefixed since `.gitignore` uses `#` comments): file exists with markers → regen between markers; without markers → append managed block at EOF; absent → create with content + markers. Outside-marker content always preserved. Always overwrites generated files inside `.claude/` and `.cursor/`; does not touch `.agents/`. Cache safety net: seed `.agents/.bkit-cache/{currentVersion}/` if missing. `.agents/` missing → exit 1.
 - **`upgrade`** — file-by-file merge using `.agents/.bkit-cache/{previousVersion}/` as baseline. Identical to baseline → overwrite from packaged payload. Differs from baseline → preserve, log `[skip user-modified]`. New file → add. Removed file: delete only if byte-identical to baseline; else preserve + warn. Cold-start (no cache for `{previousVersion}`) → conservative preserve, log `[skip cold-start, no cache for {prev}]`. Also regenerates managed-block content in `.gitignore`, `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc` from the new payload templates (preserve outside markers). After merge: bump `.agents/.bkit-version`, seed `.agents/.bkit-cache/{newVersion}/`. Old caches retained. Calls `install` at end.
 - **`check`** — re-runs install logic into a repo-local tempdir under `<cwd>/tmp/check-{uuid}/` (fallback `<cwd>/.bkit/tmp/check-{uuid}/`); diffs against current `.claude/` + `.cursor/`; empty diff → exit 0 prints `OK`; non-empty → exit 1 with summary. **Never `os.tmpdir()` / `/tmp/` / `/private/tmp/`** (per `agents/rules.md` § Output & Editing). Cleans tempdir on exit.
 
@@ -188,7 +187,7 @@ Helpers: `parseManagedBlock(content, opts?)` → `{ before, inside, after }`; `r
 }
 ```
 
-### `templates/shared/.gitignore.tmpl` (proposed contents)
+### `templates/.gitignore.tmpl` (proposed contents)
 
 Curated from `app-gether-life/.gitignore` with project-specific entries dropped (Next.js, vercel, GCP service-account keys, vale, slop-scan, migration assets) and bkit-specific entries added (`*.tgz`, `.bkit/tmp/`). The bkit-managed block sits at the EOF; consumers add project-specific entries above it.
 
@@ -283,8 +282,8 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 
 - [ ] **4.1** Implement `cli/bin.ts` — `mri`-based verb dispatch. Recognised: `init`, `install`, `upgrade`, `check`. Unknown → exit 1 with usage.
 - [ ] **4.2** Implement `cli/managed-block.ts` (incl. `commentPrefix` support for `.gitignore`).
-- [ ] **4.3** Implement `cli/install.ts`.
-- [ ] **4.4** Implement `cli/init.ts` (incl. `.gitignore` redirect-file handling via `commentPrefix='# '`).
+- [ ] **4.3** Implement `cli/install.ts` (incl. `.gitignore` regeneration from `templates/.gitignore.tmpl` via `commentPrefix='# '`).
+- [ ] **4.4** Implement `cli/init.ts`.
 - [ ] **4.5** Implement `cli/upgrade.ts` (with cold-start fallback; regenerates `.gitignore` managed block too).
 - [ ] **4.6** Implement `cli/check.ts` (with `<cwd>/tmp/` then `<cwd>/.bkit/tmp/` fallback chain — never `os.tmpdir()`).
 - [ ] **4.7** `pnpm build && pnpm typecheck` clean. `node dist/bin.js` (no args) → usage, exit 1. `node dist/bin.js init --help` → at minimum doesn't crash.
@@ -292,7 +291,7 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 
 ### Phase 5 — Templates
 
-- [ ] **5.1** Populate `templates/shared/.gitignore.tmpl` with the proposed contents in § Architecture (or revised after review). Verify markers use `# <!-- bkit:start -->` / `# <!-- bkit:end -->`.
+- [ ] **5.1** Populate `templates/.gitignore.tmpl` with the proposed contents in § Architecture (or revised after review). Verify markers use `# <!-- bkit:start -->` / `# <!-- bkit:end -->`.
 - [ ] **5.2** Populate `templates/claude/`: copy `~/Documents/GitHub/app-gether-life/.claude/{settings.json, hooks/preflight.sh}` as `*.tmpl` + write `CLAUDE.md.tmpl`. Strip project-specific values where literal substitution is unsafe — otherwise ship literal.
 - [ ] **5.3** Populate `templates/cursor/`: `AGENTS.md.tmpl`, `rules/00-shared-rules.mdc.tmpl`, `Dockerfile`, `environment.json.tmpl`, `settings.json.tmpl`, `hooks.json.tmpl`, `hooks/{preflight,postflight}.sh`. Same literal-vs-strip call.
 - [ ] **5.4** Write full `README.md`: install (`pnpm dlx @bartens/bkit init`), four CLI verbs (with examples), managed-block convention (incl. `# `-prefixed in `.gitignore`), version-pin file, supported hosts, how to add a new host (link to `agents/IDEs.md`), eval status (placeholder).
@@ -335,7 +334,7 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 - **Branch strategy.** Per user instruction: create `dev` branch after this plan is reviewed. v0.1.0 implementation lands on `dev`, then merged into `main` for the publish commit. Tag `v0.1.0` on `main`.
 - **Templates literal vs `{{TOKEN}}`.** Default for v0.1.0: ship literal. Revisit in v0.2.x if any token has consumer-specific value baked in.
 - **`.gitignore` template contents.** Curation in § Architecture is a starting point. Confirm before Phase 5.1: should we also include `coverage/`, `.nyc_output/` (vitest/jest convention)? `.idea/`, `.vscode/*.local` (editor)? `*.swo`? Drop or keep `.turbo/` if non-turbo consumers? Default = ship the curated list as-is; trim/extend on review.
-- **`.gitignore` template location.** Currently scoped to `templates/shared/.gitignore.tmpl`. Alternative: `templates/.gitignore.tmpl` (no `shared/` subdir) since it's the only host-agnostic template. Decision: stay with `templates/shared/` to leave room for future host-agnostic templates (e.g., `EDITORCONFIG`, `.nvmrc`).
+- ~~`.gitignore` template location~~ — RESOLVED: `templates/.gitignore.tmpl` flat, alongside `CLAUDE.md.tmpl` and `AGENTS.md.tmpl` (project-root targets at `templates/` root; host-specific files in `templates/<host>/` subdirs).
 
 ---
 
@@ -351,4 +350,4 @@ If you're reviewing this trim relative to `bar-111-bkit-npm-package-plan-1.md`, 
 - BAR-110 prerequisite check (Task 0.1) → assumed merged.
 - Sub-plan B (consumer migration) and sub-plan C (smoke + 0.1.1) → out of scope for this repo; live in their target repos as separate plans.
 - Gate 1 / Gate 2 / Gate 3 / Gate 4 ceremonial markup → dropped (manual run; review at phase commits instead).
-- **Added beyond original sub-plan A:** `templates/shared/.gitignore.tmpl` (new template), `.gitignore` redirect-file handling in `init`/`upgrade`, `commentPrefix` support in `managed-block.ts`.
+- **Added beyond original sub-plan A:** `templates/.gitignore.tmpl` (new template), `.gitignore` redirect-file handling in `init`/`upgrade`, `commentPrefix` support in `managed-block.ts`.

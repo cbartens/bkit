@@ -131,7 +131,14 @@ The CI drift gate (`.github/workflows/bkit.yml`) fails the PR if generated files
 
 ### What install writes
 
-`install` runs two passes. **Host pass** regenerates the host-specific dirs from canonical sources. **Templates pass** walks `.agents/templates/` and applies one of three rules per file: write-if-missing (full template), update-managed-block-only (when dest has `<!-- bkit:start --> … <!-- bkit:end -->` markers), or no-op (dest exists, no markers).
+`install` runs two passes. **Host pass** regenerates the host-specific dirs from canonical sources. **Templates pass** walks `.agents/templates/` and applies one of four rules per file:
+
+1. Dest missing → write template verbatim.
+2. Dest exists, has bkit markers → update only the managed block from template.
+3. Dest exists, no markers, **template has a block** → append the managed block at EOF (preserves all existing content above).
+4. Dest exists, no markers, **template has no block** → no-op (preserve project content).
+
+Rule 3 is what makes `bkit install` idempotently inject a managed block into common pre-existing files (`.gitignore`, `AGENTS.md`, `CLAUDE.md`) without clobbering project content.
 
 <!-- prettier-ignore -->
 | Path | Source | Behaviour |
@@ -142,7 +149,8 @@ The CI drift gate (`.github/workflows/bkit.yml`) fails the PR if generated files
 | `.cursor/{Dockerfile,environment.json}`, `.cursor/hooks/preflight.sh` | `.agents/templates/.cursor/` | Templates pass. Preflight has bkit markers — block updates on every install. |
 | `.cursor/hooks/postflight.sh` | — | Project-managed; not touched by install. |
 | `.cursor/rules/00-shared-rules.mdc` | `.agents/templates/.cursor/rules/` | Bkit block updates; outside content preserved. |
-| `AGENTS.md`, `CLAUDE.md` | `.agents/templates/` | Bkit block updates; outside content preserved. |
+| `AGENTS.md`, `CLAUDE.md` | `.agents/templates/` | Bkit block updates if present; appended at EOF if absent. Outside-block content preserved. |
+| `.gitignore` | `.agents/templates/.gitignore` | Bkit block updates if present; appended at EOF if absent. Project entries above markers preserved. |
 | `.agents/{rules,skills,friction}.md` | `.agents/templates/.agents/` | Bkit block updates; outside-block content preserved. `skills.md` block carries the bkit-canonical "Required" skills list; outside-block "Installed" table is project-specific. |
 | `.agents/docs.md` | `.agents/templates/.agents/docs.md` | **Write-if-missing only** (full file). Bootstrapped from bkit's canonical Workflow Matrix + Full Catalog on first install; project-managed thereafter (subsequent installs never touch it). |
 | `docs/*.md` (indexed in `.agents/docs.md`) | `.agents/templates/docs/` | Bkit block updates; project entries preserved. |

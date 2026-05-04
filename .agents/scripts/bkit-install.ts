@@ -321,6 +321,21 @@ export function extractManagedBlock(content: string): string | null {
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
+// Extract the FULL bkit-managed block INCLUDING marker lines from a file.
+// Used to append a fresh block to a destination that has none. Markers may be
+// bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
+export function extractFullManagedBlock(content: string): string | null {
+  const starts = findLineAnchoredMarkers(content, START_MARKER);
+  const ends = findLineAnchoredMarkers(content, END_MARKER);
+  if (starts.length !== 1 || ends.length !== 1) return null;
+  if (starts[0] >= ends[0]) return null;
+  const startLineStart = lineStartOf(content, starts[0]);
+  const endLineEnd = content.indexOf("\n", ends[0] + END_MARKER.length);
+  return endLineEnd === -1
+    ? content.slice(startLineStart)
+    : content.slice(startLineStart, endLineEnd + 1);
+}
+
 function listFilesRecursive(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const out: string[] = [];
@@ -333,9 +348,10 @@ function listFilesRecursive(dir: string): string[] {
 }
 
 // Templates pass: walk .agents/templates/ and apply per-file rules:
-//   1. Dest missing                       → write template verbatim
-//   2. Dest exists, has bkit markers     → update only the managed block from template
-//   3. Dest exists, no markers            → no-op (preserve project content)
+//   1.  Dest missing                                  → write template verbatim
+//   2.  Dest exists, has bkit markers                 → update only the managed block from template
+//   3a. Dest exists, no markers, template HAS block   → append managed block at EOF (preserve existing content)
+//   3b. Dest exists, no markers, template has no block → no-op (preserve project content)
 export function runTemplates(dryRun: boolean, root = ".agents/templates"): { writes: number } {
   if (!fs.existsSync(root)) return { writes: 0 };
   const repoRoot = path.resolve(".");
@@ -362,9 +378,29 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
     }
 
     const destContent = fs.readFileSync(destPath, "utf-8");
-    if (findLineAnchoredMarkers(destContent, START_MARKER).length === 0) continue;
+    const srcContent = fs.readFileSync(srcPath, "utf-8");
 
-    const blockContent = extractManagedBlock(fs.readFileSync(srcPath, "utf-8"));
+    if (findLineAnchoredMarkers(destContent, START_MARKER).length === 0) {
+      // case 3: dest has no markers
+      const fullBlock = extractFullManagedBlock(srcContent);
+      if (fullBlock === null) continue; // 3b — template also has no block; preserve dest as-is
+      // 3a — append the template's full block at EOF, preserve all existing dest content
+      const sep =
+        destContent.length === 0
+          ? ""
+          : destContent.endsWith("\n\n")
+            ? ""
+            : destContent.endsWith("\n")
+              ? "\n"
+              : "\n\n";
+      const tail = fullBlock.endsWith("\n") ? "" : "\n";
+      if (!dryRun) fs.writeFileSync(destPath, destContent + sep + fullBlock + tail, "utf-8");
+      writes++;
+      console.log(`[bkit-install] ${tag}append block: ${destPath}`);
+      continue;
+    }
+
+    const blockContent = extractManagedBlock(srcContent);
     if (blockContent === null) {
       console.warn(
         `[bkit-install] Template has no usable bkit block but dest does: ${srcPath} — skipping`,

@@ -502,6 +502,11 @@ description: "Plan Feature — Autonomous plan generation"
      N=$(basename "$child" | sed -E 's/plan-v4-([0-9]+)\.md/\1/')
      cp "$child" "docs/plans/drafts/{FID}-plan-${N}.md"
    done
+   for f in docs/plans/drafts/{FID}-plan*.md; do
+     [ -f "$f" ] || continue
+     sed -i.bak -E 's|plan-v[0-9]+-split\.md|{FID}-plan.md|g; s|plan-v[0-9]+-([0-9]+)\.md|{FID}-plan-\1.md|g' "$f"
+     rm -f "$f.bak"
+   done
    ```
 2. Commit drafts in worktree:
    ```bash

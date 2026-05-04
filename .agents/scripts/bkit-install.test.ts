@@ -465,7 +465,7 @@ describe("extractManagedBlock", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runTemplates — three rule branches
+// runTemplates — four rule branches
 // ---------------------------------------------------------------------------
 
 describe("runTemplates", () => {
@@ -508,7 +508,22 @@ describe("runTemplates", () => {
     expect(after).toContain("Project extras.");
   });
 
-  it("rule 3 — dest exists without markers → no-op", () => {
+  it("rule 3a — dest no markers, template has block → appends block at EOF, preserves existing content", () => {
+    fs.writeFileSync(
+      ".agents/templates/.gitignore",
+      "# <!-- bkit:start -->\nnode_modules/\n# <!-- bkit:end -->\n",
+    );
+    fs.writeFileSync(".gitignore", "# Project entries\nlogs/\n");
+    const { writes } = runTemplates(false);
+    expect(writes).toBe(1);
+    const after = fs.readFileSync(".gitignore", "utf-8");
+    expect(after.startsWith("# Project entries\nlogs/\n")).toBe(true);
+    expect(after).toContain("# <!-- bkit:start -->");
+    expect(after).toContain("node_modules/");
+    expect(after).toContain("# <!-- bkit:end -->");
+  });
+
+  it("rule 3b — dest no markers AND template has no block → no-op", () => {
     fs.mkdirSync(".agents/templates/docs", { recursive: true });
     fs.writeFileSync(".agents/templates/docs/setup.md", "# Setup\n");
     fs.mkdirSync("docs", { recursive: true });
