@@ -28,7 +28,7 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 
 > Human gates approved (per chat 2026-05-04): Narrative, Success Criteria, and Breaking Changes treated as confirmed for v0.1.0.
 
-**Narrative.** Maintainer runs `pnpm dlx @bartens/bkit init` in a fresh repo and gets a working `.agents/` + `.claude/` + `.cursor/` setup, plus seeded `.gitignore`, `CLAUDE.md`, `AGENTS.md` redirect files. Re-running `install` yields zero git diff. `upgrade` bumps the pinned version and reruns install with no manual cleanup. `check` exits non-zero when generated output drifts from the pinned payload.
+**Narrative.** Maintainer runs `pnpm dlx @bartens/bkit init` in a fresh repo and gets a working `.agents/` + `.claude/` + `.cursor/` setup, plus seeded `.gitignore`, `CLAUDE.md`, `AGENTS.md` redirect files. Re-running `install` yields zero git diff. After a `pnpm update @bartens/bkit`, re-running `install` refreshes the bkit-canonical content (everything in `.agents/{workflows,prompts}/bkit-*.md` and `.agents/templates/`) while preserving project customisations. `check` exits non-zero when generated output drifts from the pinned payload.
 
 **Concrete Example.**
 
@@ -48,12 +48,13 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 | `init` re-run on a repo that already has `.agents/` | Additive only. No overwrites inside `.agents/`. Logs `[skip]`/`[add]` per file. |
 | `install` when `.agents/` is missing | Exit 1, message `not initialized — run bkit init first`. |
 | `install` when user has files outside generator paths | Untouched. |
-| `upgrade` when `.agents/.bkit-version` missing | Treat as fresh `init`. |
-| `upgrade` when `.agents/.bkit-cache/{prev}/` missing (cold start) | Conservative: every existing file treated as user-modified; managed-block regenerated only; log `[skip cold-start, no cache for {prev}]`. |
-| `upgrade` payload removes a file | Delete only if local copy byte-identical to previous-version cache; else preserve + warn. |
+| New version of `@bartens/bkit` adds a workflow `.agents/workflows/bkit-foo.md` | Install's payload pass overwrites + adds it; mirrored to host dirs. |
+| New version of `@bartens/bkit` removes a workflow | Install's payload pass prunes the orphan from `.agents/{workflows,prompts}/` (only `bkit-*.md` files; non-prefixed files preserved). |
+| Consumer adds `.agents/workflows/my-cmd.md` (no `bkit-` prefix) | Preserved on every install. Not mirrored to `.{claude,cursor}/commands/` either — bkit only manages the `bkit-` namespace. |
+| Consumer edits `.agents/workflows/bkit-build.md` | Overwritten on next install (bkit IP). Customisations belong in `## Project Rules` of `.agents/rules.md` or in non-prefixed sibling files. |
 | `check` drift | Exit non-zero, print path-by-path diff summary, instruct `bkit install`. |
 | `check` when `.agents/.bkit-version` missing | Exit non-zero with `not initialized` message. |
-| `## Project Rules` outside `<!-- bkit:start -->`/`<!-- bkit:end -->` in `rules.md` | Always preserved across `init` / `install` / `upgrade`. |
+| `## Project Rules` outside `<!-- bkit:start -->`/`<!-- bkit:end -->` in `rules.md` | Always preserved across `init` and `install`. |
 | Existing `.gitignore` without bkit markers | Append managed block at EOF; preserve all prior content. |
 | Existing `.gitignore` with bkit markers | Regen content between markers only; preserve outside. |
 | Cursor T3 unknown agent name | Fail-fast with explicit `model lookup miss for {agent}` — do NOT default-substitute. |
@@ -86,7 +87,7 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 - **Consumer migration (`app-gether-life`).** Separate plan, separate repo.
 - **Second-repo smoke + `0.1.1` publish.** Separate plan, separate repo.
 - **`{{TOKEN}}` template substitution.** v0.1.0 ships templates literal.
-- **`.bkit-cache/` pruning policy.** v0.1.0 retains all version caches.
+- **`upgrade` verb.** Folded into `install`. After `pnpm update @bartens/bkit`, run `install` to refresh bkit-canonical content. No three-way merge, no `.bkit-cache/`, no cold-start fallback. Customisations go in `## Project Rules` (preserved by managed-block logic) or in non-`bkit-`-prefixed sibling files (left alone by the prefix-filter rule).
 - **`cursorModelByAgent` parity gate.** Hand-maintained for v0.1.0; manual review on changes.
 - **`bkit install --ci` flag.** Future.
 
@@ -147,18 +148,26 @@ Pure data. Maps canonical `agents/` paths → Claude target paths (`.claude/agen
 
 ### CLI verbs
 
-- **`init`** — additive copy of packaged `agents/` → `<cwd>/.agents/` (skip-if-exists). Writes redirect files using managed-block markers:
-  - `<cwd>/CLAUDE.md` (from `templates/CLAUDE.md.tmpl`)
-  - `<cwd>/AGENTS.md` (from `templates/AGENTS.md.tmpl`)
-  - File exists with markers → regen managed block only; preserve outside. File exists without markers → append markers + content at EOF; preserve all prior content. Absent → create with markers.
-  - Writes `<cwd>/.agents/.bkit-version` (= running CLI's `package.json#version`). Seeds `<cwd>/.agents/.bkit-cache/{currentVersion}/` from packaged payload. Calls `install` at end (which materialises `.cursor/rules/00-shared-rules.mdc` and `.gitignore`).
-- **`install`** — reads `<cwd>/.agents/`. Generates `.claude/{agents,commands}/<name>.md` (byte-identical) + `.claude/{settings.json, hooks/*}` (template literal). Generates `.cursor/{agents,commands}/<name>.md` (after T3 / T1+T2 respectively) + `.cursor/{rules/00-shared-rules.mdc, settings.json, environment.json, Dockerfile, hooks.json, hooks/*}` (template literal, managed-block-aware for `00-shared-rules.mdc`). **Regenerates `<cwd>/.gitignore` managed block** from `templates/.gitignore.tmpl` (markers `# `-prefixed since `.gitignore` uses `#` comments): file exists with markers → regen between markers; without markers → append managed block at EOF; absent → create with content + markers. Outside-marker content always preserved. Always overwrites generated files inside `.claude/` and `.cursor/`; does not touch `.agents/`. Cache safety net: seed `.agents/.bkit-cache/{currentVersion}/` if missing. `.agents/` missing → exit 1.
-- **`upgrade`** — file-by-file merge using `.agents/.bkit-cache/{previousVersion}/` as baseline. Identical to baseline → overwrite from packaged payload. Differs from baseline → preserve, log `[skip user-modified]`. New file → add. Removed file: delete only if byte-identical to baseline; else preserve + warn. Cold-start (no cache for `{previousVersion}`) → conservative preserve, log `[skip cold-start, no cache for {prev}]`. Also regenerates managed-block content in `.gitignore`, `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc` from the new payload templates (preserve outside markers). After merge: bump `.agents/.bkit-version`, seed `.agents/.bkit-cache/{newVersion}/`. Old caches retained. Calls `install` at end.
-- **`check`** — re-runs install logic into a repo-local tempdir under `<cwd>/tmp/check-{uuid}/` (fallback `<cwd>/.bkit/tmp/check-{uuid}/`); diffs against current `.claude/` + `.cursor/`; empty diff → exit 0 prints `OK`; non-empty → exit 1 with summary. **Never `os.tmpdir()` / `/tmp/` / `/private/tmp/`** (per `agents/rules.md` § Output & Editing). Cleans tempdir on exit.
+Three verbs: `init`, `install`, `check`. No `upgrade` — folded into `install`.
 
-### `cli/managed-block.ts`
+- **`init`** — first-time bootstrap. Additive copy of packaged `.agents/` → `<cwd>/.agents/` (skip-if-exists), excluding `skills/`, `scripts/`, `README.md`. Writes `<cwd>/.agents/.bkit-version` (= running CLI's `package.json#version`). Calls `install` at end.
+- **`install`** — universal sync. Three passes:
+  1. **Payload pass** — mirror `<pkg>/.agents/{workflows,prompts}/bkit-*.md` and `<pkg>/.agents/templates/**` into `<cwd>/.agents/`. Overwrite-always for these subtrees. Prune `bkit-*.md` orphans in `.agents/{workflows,prompts}/`. **Filter is bkit-prefix only — non-prefixed `.md` files in `.agents/{workflows,prompts}/` are project-managed and never touched.**
+  2. **Host pass** — regen `.claude/{commands,agents}/bkit-*.md` (byte-identical from `.agents/{workflows,prompts}/`) and `.cursor/{commands,agents}/bkit-*.md` (after T1/T2/T3 transforms). **Same bkit-prefix filter on both write and prune.** Consumer's non-prefixed files in those host dirs preserved.
+  3. **Templates pass** — walk `<cwd>/.agents/templates/` and apply per-file rules (case 1: write verbatim if dest missing; case 2: update managed block if dest has markers; case 3a: append managed block at EOF if dest no markers and template has block; case 3b: no-op).
+- **`check`** — dry-run install. Iterates the same three passes, reports would-be writes/deletes, exits non-zero on any drift. No tempdir.
 
-Helpers: `parseManagedBlock(content, opts?)` → `{ before, inside, after }`; `regenManagedBlock({ before, newInside, after, opts? })` → string. Default markers `<!-- bkit:start -->` / `<!-- bkit:end -->`. **Marker prefix support:** for files where the host syntax uses comments (e.g., `.gitignore`, `.npmrc`), the parser accepts an optional `commentPrefix` (default `''`; for `.gitignore` pass `'# '`) so it matches `# <!-- bkit:start -->`. Marker absent → caller appends new block at EOF. Nested markers → throw.
+The `bkit-` prefix rule cleanly separates ownership: bkit owns `bkit-*` files in the six bkit-managed dirs (`.agents/{workflows,prompts}`, `.{claude,cursor}/{agents,commands}`); consumer owns everything else inside those dirs.
+
+### Managed-block helpers (`.agents/scripts/bkit-install.ts`)
+
+Existing helpers — already shipped, no separate file to author:
+
+- `extractManagedBlock(content)` → inner content between markers (markers stripped).
+- `extractFullManagedBlock(content)` → full block including marker lines (used to append on case 3a).
+- `updateManagedBlock(filePath, newContent, dryRun)` → in-place block update.
+
+Marker prefix is **auto-detected** from the marker line context (`""`, `"# "`, `"// "`). No `commentPrefix` opt needed.
 
 ### `package.json` (target shape)
 
