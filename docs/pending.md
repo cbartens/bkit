@@ -45,7 +45,7 @@
 - **Type:** issue
 - **Category:** agentic
 - **Severity:** low
-- **Status:** open
+- **Status:** resolved (v0.1.1, commit `fec14e0`)
 - **Description:** When running `pnpm exec bkit check`, the script (`.agents/scripts/bkit-install.ts`) emits log lines prefixed `[bkit-install]` even though the verb is `check`. Confusing when scanning CI / smoke output to confirm which verb actually ran. Fix: in `main()`, when `dryRun=true` (i.e. `verb === "check"`), use prefix `[bkit-check]` (or alternatively `[bkit-install] (check)`) for all `console.log` / `console.warn` / `console.error` calls. ~1-line change to a helper plus updates to existing log statements. Land in `v0.1.2`.
 - **Source:** human (smoke feedback)
 - **Related:** BAR-111, comment `ce1800ae`, `.agents/scripts/bkit-install.ts`
@@ -55,7 +55,7 @@
 - **Type:** issue
 - **Category:** agentic
 - **Severity:** normal
-- **Status:** open
+- **Status:** resolved (v0.1.1, commit `fec14e0`)
 - **Description:** `parseArgs()` in `.agents/scripts/bkit-install.ts` defaults `verb` to `"install"` when no verb arg is given. So `pnpm exec bkit` (no args) silently behaves like `bkit install`, which is destructive (writes/regenerates files). For first-time users who haven't run `init` yet, this combines with the next pending item to crash ungracefully. Fix: default verb to `"help"` (new) — print usage and exit 0; require explicit `install` invocation. Land in `v0.1.2`.
 - **Source:** human (smoke feedback)
 - **Related:** BAR-111, comment `280637c9`, `.agents/scripts/bkit-install.ts`
@@ -65,7 +65,7 @@
 - **Type:** issue
 - **Category:** agentic
 - **Severity:** normal
-- **Status:** open
+- **Status:** resolved (v0.1.1, commit `fec14e0`)
 - **Description:** Running `pnpm exec bkit` (or `bkit install` / `bkit check`) in a repo without `.agents/prompts.md` present produces raw stack trace from Node fs: `Error: ENOENT: no such file or directory, open '.agents/prompts.md' at parseModelLookup`. First-time users who run `bkit` before `bkit init` see Node internals instead of guidance. Fix: add a guard at top of `main()` (or before `parseModelLookup`) that checks `fs.existsSync(".agents/prompts.md")` and emits e.g. `[bkit] no .agents/ in cwd — run \`bkit init\` first` with `process.exit(1)`. ~5-line change. Land in `v0.1.2`.
 - **Source:** human (smoke feedback)
 - **Related:** BAR-111, comment `280637c9`, `.agents/scripts/bkit-install.ts`
