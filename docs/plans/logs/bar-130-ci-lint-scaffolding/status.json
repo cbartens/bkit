@@ -42,6 +42,17 @@
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-review-1.md",
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-04T10:22:59Z",
+        "commitSha": "91542280b4ae5b3ffeed207a4c92da964e2717d3",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
