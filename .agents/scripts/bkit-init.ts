@@ -17,7 +17,13 @@ const PKG_PACKAGE_JSON = path.join(PKG_ROOT, "package.json");
 // Skills are project-managed; scripts ship via dist/ + bin entry; package metadata files are private.
 const COPY_EXCLUDE = new Set(["skills", "scripts", "README.md"]);
 
-function copyAdditive(src: string, dst: string, dryRun: boolean, log: (rel: string) => void, relRoot: string): number {
+function copyAdditive(
+  src: string,
+  dst: string,
+  dryRun: boolean,
+  log: (rel: string) => void,
+  relRoot: string,
+): number {
   let writes = 0;
   if (!fs.existsSync(src)) return 0;
   const stats = fs.statSync(src);
@@ -33,7 +39,13 @@ function copyAdditive(src: string, dst: string, dryRun: boolean, log: (rel: stri
   }
   if (!dryRun) fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    writes += copyAdditive(path.join(src, entry.name), path.join(dst, entry.name), dryRun, log, relRoot);
+    writes += copyAdditive(
+      path.join(src, entry.name),
+      path.join(dst, entry.name),
+      dryRun,
+      log,
+      relRoot,
+    );
   }
   return writes;
 }
@@ -59,9 +71,15 @@ export function runInit(opts: { dryRun: boolean }): { writes: number } {
     if (COPY_EXCLUDE.has(entry.name)) continue;
     const srcPath = path.join(PKG_AGENTS, entry.name);
     const dstPath = path.join(target, entry.name);
-    const copied = copyAdditive(srcPath, dstPath, opts.dryRun, (rel) => {
-      console.log(`[bkit-init] ${tag}copy: ${rel}`);
-    }, cwd);
+    const copied = copyAdditive(
+      srcPath,
+      dstPath,
+      opts.dryRun,
+      (rel) => {
+        console.log(`[bkit-init] ${tag}copy: ${rel}`);
+      },
+      cwd,
+    );
     writes += copied;
   }
 
@@ -76,7 +94,9 @@ export function runInit(opts: { dryRun: boolean }): { writes: number } {
       fs.mkdirSync(target, { recursive: true });
       fs.writeFileSync(versionFile, pkgVersion + "\n", "utf-8");
     }
-    console.log(`[bkit-init] ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
+    console.log(
+      `[bkit-init] ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`,
+    );
     writes++;
   }
 

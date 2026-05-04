@@ -471,9 +471,7 @@ function mirrorDirAlways(
     const srcPath = path.join(src, ent.name);
     const dstPath = path.join(dst, ent.name);
     if (ent.isDirectory()) {
-      writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) =>
-        log(path.join(ent.name, sub)),
-      );
+      writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) => log(path.join(ent.name, sub)));
       continue;
     }
     if (!ent.isFile()) continue;

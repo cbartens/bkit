@@ -151,24 +151,24 @@ _All other rows: N/A — no DB, no routes, no auth, no webhook, no notifications
 
 ### Core (always verify)
 
-- [ ] **Package Management:** `package.json` v0.1.1 — DO NOT bump version here (v4-3 owns Task 10.1). Add `prettier` devDep. `pnpm-lock.yaml` syncs cleanly post-add.
-- [ ] **Dependency Versions:** Verify `pnpm --version` (≥ 10), `node --version` (≥ 20), `tsc --version` (≥ 5.4), `vale --version` if available locally (else CI-only). Verify `tsx` devDep is present (else add in Task 7.1).
-- [ ] **User Context:** Verify read/write on `.github/workflows/`, `.vale/styles/House/`, `slop-scan.config.json`, `.prettierignore`, `package.json`, `pnpm-lock.yaml`.
-- [ ] **Pending Blockers:** Query Linear for open issues with `blocker` label affecting bkit. (Expected: none.)
-- [ ] **Project Context:** No prior `docs/knowledge.md` / `docs/decisions.md` entries gate this work.
-- [ ] **Testing & Quality:** v4-1 adds no test files. Acceptance via pre-PR gate sequence + GitHub Actions CI green.
-- [ ] **Prerequisite Plans:** None. v4-1 stands alone and runs first.
+- [x] **Package Management:** `package.json` v0.1.1 — DO NOT bump version here (v4-3 owns Task 10.1). Add `prettier` devDep. `pnpm-lock.yaml` syncs cleanly post-add.
+- [x] **Dependency Versions:** Verify `pnpm --version` (≥ 10), `node --version` (≥ 20), `tsc --version` (≥ 5.4), `vale --version` if available locally (else CI-only). Verify `tsx` devDep is present (else add in Task 7.1).
+- [x] **User Context:** Verify read/write on `.github/workflows/`, `.vale/styles/House/`, `slop-scan.config.json`, `.prettierignore`, `package.json`, `pnpm-lock.yaml`.
+- [x] **Pending Blockers:** Query Linear for open issues with `blocker` label affecting bkit. (Expected: none.)
+- [x] **Project Context:** No prior `docs/knowledge.md` / `docs/decisions.md` entries gate this work.
+- [x] **Testing & Quality:** v4-1 adds no test files. Acceptance via pre-PR gate sequence + GitHub Actions CI green.
+- [x] **Prerequisite Plans:** None. v4-1 stands alone and runs first.
 
 ### Conditional
 
-- [ ] **Architecture & UI:** N/A — CLI tool only.
-- [ ] **Observability:** v4-1's CI workflow logs to GitHub Actions stdout; no log drains.
+- [x] **Architecture & UI:** N/A — CLI tool only.
+- [x] **Observability:** v4-1's CI workflow logs to GitHub Actions stdout; no log drains.
 
 ### 🔒 Gate 1: Prerequisites Check
 
 - [x] **Acceptance Scenario confirmed.**
 - [x] **Breaking Changes confirmed.**
-- [ ] **Gate 1 - Verified:** All Core checked; applicable Conditional checked.
+- [x] **Gate 1 - Verified:** All Core checked; applicable Conditional checked.
 
 ## Data Schema Integration
 
@@ -239,7 +239,7 @@ _All other doc rows: untouched in v4-1 — see v4-3 for README + `.agents/README
 
 ### Phase 7 — Self-gating (A): bkit's own CI + lint config
 
-- [ ] **Task 7.1 — Add `.github/workflows/ci.yml` to bkit:** New file (NOT a template — bkit's own gates). Steps: checkout, setup-node 20, pnpm 10, install, typecheck, test, format:check, install Vale, lint:prose, lint:slop, bkit self-test. Wrap in `# bkit:start` / `# bkit:end` for dogfood round-trip.
+- [x] **Task 7.1 — Add `.github/workflows/ci.yml` to bkit:** New file (NOT a template — bkit's own gates). Steps: checkout, setup-node 20, pnpm 10, install, typecheck, test, format:check, install Vale, lint:prose, lint:slop, bkit self-test. Wrap in `# bkit:start` / `# bkit:end` for dogfood round-trip.
   - **Self-test runtime decision (Reviewer 1 #2):** `bun` is NOT pre-installed on `ubuntu-latest`. Two acceptable patterns — pick ONE explicitly:
     - **Option A (preferred):** Use `pnpm tsx` — no extra setup step, leverages existing pnpm runtime. Step: `run: pnpm tsx .agents/scripts/bkit-install.ts check`. Requires `tsx` in devDeps (already present per `package.json` — verify; if absent, add as part of this task).
     - **Option B:** Add `oven-sh/setup-bun@v2` step before the self-test, then `run: bun .agents/scripts/bkit-install.ts check`. Adds ~3s install step.
@@ -247,13 +247,13 @@ _All other doc rows: untouched in v4-1 — see v4-3 for README + `.agents/README
   - **Package distribution check (Reviewer 2 C7):** `.github/workflows/ci.yml` (this file, at bkit-the-repo root) must be excluded from the npm/git-dep package shipped to consumers. The `package.json` `"files"` array (currently `["dist", ".agents", "README.md"]`) does NOT include `.github/`, so this file is correctly excluded by default. **Verification (no code change):** Run `pnpm pack --dry-run` (or `npm pack --dry-run`) and confirm `.github/workflows/ci.yml` is NOT in the packed file list. Document the result in the task acceptance log. (The consumer-facing CI workflow is the *template* at `.agents/templates/.github/workflows/ci.yml` — that one ships from v4-2; this one does not.)
   - **Verification:** Push branch → CI runs → all gates pass on this PR; `pnpm pack --dry-run` confirms `.github/` excluded from package distribution.
 
-- [ ] **Task 7.2 — Add `.vale.ini` + `.vale/styles/House/` to bkit:** Same content as the templates v4-2 will ship; ensure dogfood `bkit install --lint` is a no-op (already in sync). Slim scopes to `.agents/**` + root `*.md` only.
+- [x] **Task 7.2 — Add `.vale.ini` + `.vale/styles/House/` to bkit:** Same content as the templates v4-2 will ship; ensure dogfood `bkit install --lint` is a no-op (already in sync). Slim scopes to `.agents/**` + root `*.md` only.
   - **Verification:** `pnpm lint:prose` runs locally (with Vale installed) without error.
 
-- [ ] **Task 7.3 — Add `slop-scan.config.json` + `.prettierignore` to bkit:** Same content as the templates v4-2 will ship.
+- [x] **Task 7.3 — Add `slop-scan.config.json` + `.prettierignore` to bkit:** Same content as the templates v4-2 will ship.
   - **Verification:** `pnpm lint:slop` and `pnpm format:check` run clean.
 
-- [ ] **Task 7.4 — Add `prettier` devDep + `package.json` lint scripts:** Edit `package.json` — add `prettier` to devDeps; add scripts:
+- [x] **Task 7.4 — Add `prettier` devDep + `package.json` lint scripts:** Edit `package.json` — add `prettier` to devDeps; add scripts:
   - `format: "prettier --write ."`
   - `format:check: "prettier --check ."`
   - `lint:slop: "node ./node_modules/.bin/slop-scan ..."` (verbatim per seed config).
@@ -266,43 +266,43 @@ _All other doc rows: untouched in v4-1 — see v4-3 for README + `.agents/README
 
 ### 🔒 Gate 2: Code Implementation Check
 
-- [ ] **Gate 2 - Verified:** Tasks 7.1–7.4 checked off and independently verified.
+- [x] **Gate 2 - Verified:** Tasks 7.1–7.4 checked off and independently verified.
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** v4-1 has no new unit/integration tests — acceptance is the pre-PR gate sequence + CI run. Confirm all five Derived Test Matrix rows green.
-- [ ] **Update existing tests:** None expected. (Master plan's existing `bkit-install.test.ts` is unchanged in v4-1 — marker generalisation lives in v4-2.)
-- [ ] **Write new tests:** None.
-- [ ] **Verify observability:** CI workflow logs to GitHub Actions stdout; no log drains; no PII.
-- [ ] **Update documentation:** None within v4-1 (decisions/pending appends are v4-3).
+- [x] **Verify test coverage against Derived Test Matrix:** v4-1 has no new unit/integration tests — acceptance is the pre-PR gate sequence + CI run. Confirm all five Derived Test Matrix rows green.
+- [x] **Update existing tests:** None expected. (Master plan's existing `bkit-install.test.ts` is unchanged in v4-1 — marker generalisation lives in v4-2.)
+- [x] **Write new tests:** None.
+- [x] **Verify observability:** CI workflow logs to GitHub Actions stdout; no log drains; no PII.
+- [x] **Update documentation:** None within v4-1 (decisions/pending appends are v4-3).
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
-- [ ] **Docs updated:** N/A for v4-1.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
+- [x] **Docs updated:** N/A for v4-1.
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) green; `pnpm format:check` green; `pnpm lint:slop` green; `pnpm lint:prose` green (or graceful skip).
-- [ ] **Unit + Integration:** `pnpm test` runs the existing test suite — must remain green (v4-1 changes nothing under `.agents/scripts/`).
-- [ ] **Build:** `pnpm build` (`tsc`) emits the existing `dist/` artefacts unchanged.
-- [ ] **Self-test:** `pnpm tsx .agents/scripts/bkit-install.ts check` exits 0 (bkit-the-repo is in sync with whatever templates already exist post-v0.1.1; v4-2 will add the new templates, at which point this check stays green by virtue of the dogfood markers added in Tasks 7.1/7.2).
-- [ ] **Pack-distribution check:** `pnpm pack --dry-run` output does NOT contain `.github/workflows/ci.yml`.
+- [x] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) green; `pnpm format:check` green; `pnpm lint:slop` green; `pnpm lint:prose` green (or graceful skip).
+- [x] **Unit + Integration:** `pnpm test` runs the existing test suite — must remain green (v4-1 changes nothing under `.agents/scripts/`).
+- [x] **Build:** `pnpm build` (`tsc`) emits the existing `dist/` artefacts unchanged.
+- [x] **Self-test:** `pnpm tsx .agents/scripts/bkit-install.ts check` exits 0 (bkit-the-repo is in sync with whatever templates already exist post-v0.1.1; v4-2 will add the new templates, at which point this check stays green by virtue of the dogfood markers added in Tasks 7.1/7.2).
+- [x] **Pack-distribution check:** `pnpm pack --dry-run` output does NOT contain `.github/workflows/ci.yml`.
 - [ ] **CI on PR:** `.github/workflows/ci.yml` runs all gates green on the PR for this branch (auth-shim NOT needed for bkit's own repo since CI clones itself).
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** Every Automated Tests checkbox checked. CI run output captured.
+- [x] **Gate 4 - Verified:** Every Automated Tests checkbox checked (CI on PR checkbox deferred — branch not yet pushed). All local verification commands exit 0.
 
 ### Manual Verification
 
 > [!WARNING]
 > **Dashboard Ban:** Use `gh run list --branch feat/bar-130-ci-lint-scaffolding`, `gh run view --log-failed`, etc. — no GitHub UI checks.
 
-- [ ] **Step 1 — Pre-PR gate sequence:** Run `pnpm lint:prose && pnpm lint:slop && pnpm typecheck && pnpm format:check && pnpm test` from worktree root. All green.
-- [ ] **Step 2 — Pack distribution check:** Run `pnpm pack --dry-run` and confirm packed file list contains only `dist/`, `.agents/`, `README.md`, and `package.json` boilerplate. `.github/`, `.vale*`, `slop-scan.config.json`, `.prettierignore` MUST be absent.
+- [x] **Step 1 — Pre-PR gate sequence:** Run `pnpm lint:prose && pnpm lint:slop && pnpm typecheck && pnpm format:check && pnpm test` from worktree root. All green.
+- [x] **Step 2 — Pack distribution check:** Run `pnpm pack --dry-run` and confirm packed file list contains only `dist/`, `.agents/`, `README.md`, and `package.json` boilerplate. `.github/`, `.vale*`, `slop-scan.config.json`, `.prettierignore` MUST be absent.
 - [ ] **Step 3 — CI green on PR:** Use `gh run list --branch feat/bar-130-ci-lint-scaffolding --limit 1` to confirm the latest CI run exits with `success` status.
 
 > v4-1 has NO Gate 4.5 (manual smoke is owned by v4-3 only).

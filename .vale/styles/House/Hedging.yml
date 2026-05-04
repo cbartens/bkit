@@ -1,0 +1,10 @@
+extends: existence
+message: "Hedging: '%s' — remove or commit to a position."
+level: warning
+tokens:
+  - it seems like
+  - perhaps
+  - might be
+  - arguably
+  - it's worth noting
+  - it could be argued

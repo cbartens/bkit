@@ -1,0 +1,8 @@
+# bkit:start
+node_modules/
+dist/
+.agents/skills/
+*.tsbuildinfo
+docs/
+pnpm-lock.yaml
+# bkit:end
