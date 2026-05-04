@@ -723,6 +723,40 @@ describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
     expect(authShimLine).toBeLessThan(installLine);
   });
 
+  // -------------------------------------------------------------------------
+  // MED-3 regression — auth-shim must be scoped to cbartens/bkit/, not all of github.com
+  // -------------------------------------------------------------------------
+
+  it("MED-3: auth-shim insteadOf is scoped to 'https://github.com/cbartens/bkit/' not bare 'https://github.com/'", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+
+    // Must contain the narrow scope — exact repo path
+    expect(content).toContain("https://github.com/cbartens/bkit/");
+
+    // Must NOT use the broad rewrite that would hijack all GitHub HTTPS traffic
+    // Extract the insteadOf line and assert it is NOT bare "https://github.com/"
+    const lines = content.split("\n");
+    const insteadOfLines = lines.filter((l) => l.includes("insteadOf"));
+    expect(insteadOfLines.length).toBeGreaterThan(0);
+    for (const line of insteadOfLines) {
+      // The insteadOf target must include the repo path, not stop at "github.com/"
+      expect(line).not.toMatch(/insteadOf\s+"https:\/\/github\.com\/"\s*$/);
+      expect(line).toContain("cbartens/bkit/");
+    }
+  });
+
+  it("MED-3: auth-shim url rewrite key also contains cbartens/bkit/ (both sides scoped)", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+
+    // The git config --global url."<key>".insteadOf "<value>" form — both key and value must scope to the repo
+    const gitConfigLine = content.split("\n").find((l) => l.includes("git config --global url."));
+    expect(gitConfigLine).toBeDefined();
+    // Key (the URL being configured) must also name the specific repo
+    expect(gitConfigLine!).toContain("cbartens/bkit/");
+  });
+
   it("ci.yml template after applyTokens has no {{PLACEHOLDER}} tokens remaining", () => {
     const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");

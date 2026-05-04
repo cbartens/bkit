@@ -179,4 +179,150 @@ describe("applyTokens", () => {
     expect(output).toContain("node-version: 22");
     expect(output).not.toContain("{{NODE_VERSION}}");
   });
+
+  // -------------------------------------------------------------------------
+  // MED-7 regression — $& / $$ / $1 substitution patterns must not leak
+  // -------------------------------------------------------------------------
+
+  it("MED-7: token value '$&' substitutes as literal '$&', not as regex back-reference", () => {
+    const dangerTokens = {
+      NODE_VERSION: "$&",
+      PNPM_VERSION: "10",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "my-project",
+    };
+    const content = "node: {{NODE_VERSION}}";
+    const result = applyTokens(content, dangerTokens);
+    // Must be the literal string "$&" — not the matched token "{{NODE_VERSION}}"
+    expect(result).toBe("node: $&");
+  });
+
+  it("MED-7: token value '$$' substitutes as literal '$$', not as escaped dollar", () => {
+    const dangerTokens = {
+      NODE_VERSION: "22",
+      PNPM_VERSION: "10",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "$$evil",
+    };
+    const content = "name: {{PROJECT_NAME}}";
+    const result = applyTokens(content, dangerTokens);
+    expect(result).toBe("name: $$evil");
+  });
+
+  it("MED-7: token value '$1' substitutes as literal '$1', not as capture-group reference", () => {
+    const dangerTokens = {
+      NODE_VERSION: "22",
+      PNPM_VERSION: "10",
+      DEFAULT_BRANCH: "$1-branch",
+      PROJECT_NAME: "proj",
+    };
+    const content = "branches: [{{DEFAULT_BRANCH}}]";
+    const result = applyTokens(content, dangerTokens);
+    expect(result).toBe("branches: [$1-branch]");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MED-2 regression — non-pnpm packageManager warns to stderr
+// ---------------------------------------------------------------------------
+
+describe("resolvePnpmVersion — non-pnpm packageManager warns stderr (MED-2)", () => {
+  it("warns to stderr when packageManager is yarn@4.0.0 and returns '10'", async () => {
+    writeJson("package.json", { name: "proj", packageManager: "yarn@4.0.0" });
+
+    const stderrChunks: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: unknown, ...args: unknown[]) => {
+        stderrChunks.push(String(chunk));
+        return origWrite(
+          chunk as Parameters<typeof origWrite>[0],
+          ...(args as Parameters<typeof origWrite>[1][]),
+        );
+      });
+
+    const tokens = await resolveTokens(tmpDir);
+
+    spy.mockRestore();
+
+    // Return value must still be "10" (default fallback)
+    expect(tokens.PNPM_VERSION).toBe("10");
+
+    // Stderr must contain a warning mentioning the non-pnpm value
+    const stderrOutput = stderrChunks.join("");
+    expect(stderrOutput).toContain("yarn@4.0.0");
+    expect(stderrOutput.toLowerCase()).toMatch(/warn/);
+  });
+
+  it("warns to stderr when packageManager is npm@9.0.0 and returns '10'", async () => {
+    writeJson("package.json", { name: "proj", packageManager: "npm@9.0.0" });
+
+    const stderrChunks: string[] = [];
+    const spy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: unknown, ...args: unknown[]) => {
+        stderrChunks.push(String(chunk));
+        return true;
+      });
+
+    const tokens = await resolveTokens(tmpDir);
+
+    spy.mockRestore();
+
+    expect(tokens.PNPM_VERSION).toBe("10");
+    expect(stderrChunks.join("")).toContain("npm@9.0.0");
+  });
+
+  it("does NOT warn to stderr when packageManager is absent (silent default)", async () => {
+    writeJson("package.json", { name: "proj" });
+
+    const stderrChunks: string[] = [];
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      stderrChunks.push(String(chunk));
+      return true;
+    });
+
+    const tokens = await resolveTokens(tmpDir);
+
+    spy.mockRestore();
+
+    expect(tokens.PNPM_VERSION).toBe("10");
+    // No stderr output — absent packageManager is a silent default
+    expect(stderrChunks.join("")).toBe("");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MED-6 regression — .nvmrc with leading comments / blank lines
+// ---------------------------------------------------------------------------
+
+describe("resolveTokens — .nvmrc comment/blank-line stripping (MED-6)", () => {
+  it("MED-6: .nvmrc with leading comment extracts version from first non-comment line", async () => {
+    writeFile(".nvmrc", "# pinned\n\n22\n");
+    writeJson("package.json", { name: "proj" });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.NODE_VERSION).toBe("22");
+  });
+
+  it("MED-6: .nvmrc with multiple comment lines and blank lines before version", async () => {
+    writeFile(".nvmrc", "# pinned for foo project\n# do not change\n\n\n20\n");
+    writeJson("package.json", { name: "proj" });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.NODE_VERSION).toBe("20");
+  });
+
+  it("MED-6: .nvmrc that is only comments falls through to engines.node fallback", async () => {
+    writeFile(".nvmrc", "# no version here\n# just comments\n");
+    writeJson("package.json", { name: "proj", engines: { node: ">=18" } });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.NODE_VERSION).toBe("18");
+  });
+
+  it("MED-6: .nvmrc version with 'v' prefix after leading comment parses correctly", async () => {
+    writeFile(".nvmrc", "# pinned\nv22.1.0\n");
+    writeJson("package.json", { name: "proj" });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.NODE_VERSION).toBe("22");
+  });
 });

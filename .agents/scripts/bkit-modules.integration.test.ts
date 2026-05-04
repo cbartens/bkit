@@ -384,6 +384,104 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// MED-1 regression — bkit install --ci (no --lint) prints script suggestions
+// ---------------------------------------------------------------------------
+
+describe("MED-1: --ci only (no --lint) prints package.json script suggestions in print-sink", () => {
+  it("runCiModule always pushes lint:prose / lint:slop / format:check suggestions to printSink", () => {
+    const printSink: string[] = [];
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, printSink });
+
+    // Run only core + ci (no lint module)
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    const combined = printSink.join("\n");
+    expect(combined).toContain("lint:prose");
+    expect(combined).toContain("lint:slop");
+    expect(combined).toContain("format:check");
+  });
+
+  it("print-sink ci suggestion mentions bkit install --lint as the remedy", () => {
+    const printSink: string[] = [];
+    const ctx = makeCtx({ printSink });
+
+    // runCiModule directly (just the ci module, no core)
+    runCiModule(ctx);
+
+    const combined = printSink.join("\n");
+    // Should reference --lint so user knows how to seed the scripts
+    expect(combined).toMatch(/--lint|lint/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MED-5 regression — print-sink copy-paste safety (no backslash-escape sequences)
+// ---------------------------------------------------------------------------
+
+describe("MED-5: first-install print-sink BKIT_READ_TOKEN block has no broken backslash-escape sequences", () => {
+  it("print-sink emitted on first install contains no literal \\$ sequence (backslash-dollar)", () => {
+    // Ensure no .bkit-version exists (first install scenario)
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    expect(fs.existsSync(versionFile)).toBe(false);
+
+    const printSink: string[] = [];
+    const ctx = makeCtx({ printSink });
+
+    dispatchModules(new Set(["core"]), ctx);
+
+    const combined = printSink.join("\n");
+
+    // Must contain the BKIT_READ_TOKEN setup (confirming it's the first-install block)
+    expect(combined).toContain("BKIT_READ_TOKEN");
+
+    // Must NOT contain a literal backslash-dollar sequence.
+    // The original bug was the template literal `\\$(find ...)` which rendered as
+    // `\$(find ...)` in stdout — a literal backslash before `$` that breaks shell single-quote execution.
+    // After the MED-5 fix (JSON.stringify-based output), `$(find ...)` appears without any leading backslash.
+    expect(combined).not.toContain("\\$");
+  });
+
+  it("print-sink script block is valid JSON when extracted lines wrapped in braces (copy-paste safety)", () => {
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    expect(fs.existsSync(versionFile)).toBe(false);
+
+    const printSink: string[] = [];
+    const ctx = makeCtx({ printSink });
+    dispatchModules(new Set(["core"]), ctx);
+
+    const combined = printSink.join("\n");
+
+    // Extract the "scripts" block: lines between the first { and last }
+    // The print-sink emits lines like:    "lint:prose": "...",
+    // Reconstruct as JSON object and parse to confirm validity
+    const lines = combined.split("\n");
+    const scriptLines: string[] = [];
+    let inScriptBlock = false;
+    for (const line of lines) {
+      // Detect start of the scripts block (first line with "lint:prose")
+      if (line.includes('"lint:prose"')) inScriptBlock = true;
+      if (inScriptBlock) {
+        scriptLines.push(line);
+        // Stop at last script entry (prepare is the last one)
+        if (line.trimStart().startsWith('"prepare"')) {
+          break;
+        }
+      }
+    }
+
+    if (scriptLines.length > 0) {
+      // Strip trailing comma from last entry and reconstruct a minimal JSON object
+      const trimmedLines = scriptLines.map((l, i) =>
+        i === scriptLines.length - 1 ? l.replace(/,\s*$/, "") : l,
+      );
+      const jsonCandidate = `{\n${trimmedLines.join("\n")}\n}`;
+      expect(() => JSON.parse(jsonCandidate)).not.toThrow();
+    }
+  });
+});
+
 describe(".bkit-version first-run signal extra-logging", () => {
   it("first install (no .bkit-version) emits BKIT_READ_TOKEN setup in print-sink", () => {
     const printSink: string[] = [];

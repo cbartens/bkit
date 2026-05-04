@@ -212,3 +212,11 @@ runParityCheck(new Set(["core", "claude"]), "claude");
 runParityCheck(new Set(["core", "lint"]), "lint");
 runParityCheck(new Set(["core", "git-hooks"]), "git-hooks");
 runParityCheck(new Set(["core"]), "core");
+
+// ---------------------------------------------------------------------------
+// MED-8 — runPayload WriteSet threading (DEFERRED placeholder)
+// ---------------------------------------------------------------------------
+
+it.todo(
+  "MED-8: WriteSet records core/payload writes once copyAdditive+runPayload are merged — see docs/pending.md MED-8",
+);
