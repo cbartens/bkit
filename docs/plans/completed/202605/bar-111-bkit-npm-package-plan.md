@@ -21,7 +21,7 @@
 > | `v0.1.0` | `fb34d28` | canonical post-rename pin |
 > | `v0.1.1` | `da1bdee` | current — UX patch (help default, `.agents/` guard, `[bkit-check]` log prefix, host-pass log parity) |
 >
-> **Smoke verified end-to-end** in `www-visitfrasercoast-com` against `#v0.1.0` (per BAR-111 comment `280637c9`). Re-smoke against `#v0.1.1` deferred to consumer side.
+> **Smoke verified end-to-end** in `www-visitfrasercoast-com` against both `#v0.1.0` and `#v0.1.1` (per BAR-111 comments `280637c9` + post-`v0.1.1` confirm). Consumer-side `bkit init` + idempotent `bkit install` + `bkit check` (exit 0) all green. Sub-plan B (consumer migration) effectively closed by this smoke; the explicit migration runbook in `app-gether-life/docs/plans/drafts/bar-111-bkit-npm-package-plan-2.md` remains as historical record.
 >
 > **Sub-plans B (consumer migration in `app-gether-life`) and C (second-repo smoke + 0.1.x upgrade) remain in `app-gether-life/docs/plans/drafts/` and are owned by their respective repos** — out of scope for this bkit-side plan.
 
