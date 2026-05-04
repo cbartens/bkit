@@ -99,6 +99,17 @@
         "artifacts": [
           "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v4-split.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-04T10:53:27Z",
+        "commitSha": "e2a872a6c5db514e4ae5ba8b0e8f68b0c39b594b",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-summary.md"
+        ]
       }
     ]
   }
