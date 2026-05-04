@@ -670,7 +670,7 @@ function main() {
   const modelLookup = parseModelLookup();
 
   for (const host of hosts) {
-    console.log(`${LOG_PREFIX} Installing for host: ${host}${dryRun ? " (dry-run)" : ""}`);
+    console.log(`${LOG_PREFIX} Running host pass: ${host}${dryRun ? " (dry-run)" : ""}`);
     const { writes, deletes } = runHost(host, modelLookup, dryRun);
     totalWrites += writes;
     totalDeletes += deletes;
