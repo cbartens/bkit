@@ -289,6 +289,17 @@
         "at": "2026-05-04T14:13:59Z",
         "commitSha": "86ef9ff6f84245b26a97a119fa8ac76a13f25ee0",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-04T14:16:04Z",
+        "commitSha": "dcd3837cc5b484bff07748bbd3ec29237527a98f",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-summary.md"
+        ]
       }
     ]
   }
