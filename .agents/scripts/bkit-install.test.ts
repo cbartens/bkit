@@ -510,7 +510,7 @@ describe("runTemplates", () => {
 
   it("rule 3a — dest no markers, template has block → appends block at EOF, preserves existing content", () => {
     fs.writeFileSync(
-      ".agents/templates/.gitignore",
+      ".agents/templates/gitignore",
       "# <!-- bkit:start -->\nnode_modules/\n# <!-- bkit:end -->\n",
     );
     fs.writeFileSync(".gitignore", "# Project entries\nlogs/\n");
@@ -521,6 +521,15 @@ describe("runTemplates", () => {
     expect(after).toContain("# <!-- bkit:start -->");
     expect(after).toContain("node_modules/");
     expect(after).toContain("# <!-- bkit:end -->");
+  });
+
+  it("npm-strip remap — `gitignore` source writes to `.gitignore` dest", () => {
+    fs.writeFileSync(".agents/templates/gitignore", "node_modules/\n");
+    const { writes } = runTemplates(false);
+    expect(writes).toBe(1);
+    expect(fs.existsSync(".gitignore")).toBe(true);
+    expect(fs.existsSync("gitignore")).toBe(false);
+    expect(fs.readFileSync(".gitignore", "utf-8")).toBe("node_modules/\n");
   });
 
   it("rule 3b — dest no markers AND template has no block → no-op", () => {

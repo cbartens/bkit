@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.cache/
+*.tsbuildinfo
+.turbo/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env / secrets (force-allow .env.example)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Tmp / pack artifacts
+tmp/**
+*.tgz
+
+# <!-- bkit:start -->
+
+# bkit workflows
+.worktrees/
+docs/plans/logs/**/raw/
+docs/plans/logs/**/.lock
+
+# <!-- bkit:end -->

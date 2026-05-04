@@ -9,9 +9,12 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "noEmit": true,
+    "outDir": "dist",
+    "rootDir": ".agents/scripts",
+    "declaration": false,
+    "sourceMap": false,
     "types": ["node"]
   },
   "include": [".agents/scripts/**/*.ts"],
-  "exclude": ["node_modules", "tmp", ".worktrees", ".agents/skills"]
+  "exclude": ["node_modules", "dist", "tmp", ".worktrees", ".agents/skills", "**/*.test.ts"]
 }

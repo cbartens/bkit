@@ -1,8 +1,0 @@
-# <!-- bkit:start -->
-
-# bkit workflows
-.worktrees/
-docs/plans/logs/**/raw/
-docs/plans/logs/**/.lock
-
-# <!-- bkit:end -->

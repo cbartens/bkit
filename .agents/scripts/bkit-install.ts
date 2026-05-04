@@ -1,24 +1,34 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { runInit } from "./bkit-init.js";
 
-// Hard allowlist: install ONLY writes to these four directories
+// Hard allowlist: install / payload prune may ONLY remove files from these dirs.
+// `.agents/{workflows,prompts}/` are mirrored from the package payload during the
+// payload pass; the host dirs are mirrored from `.agents/` during the host pass.
 const WRITE_DIRS = [
+  ".agents/workflows",
+  ".agents/prompts",
   ".claude/agents",
   ".claude/commands",
   ".cursor/agents",
   ".cursor/commands",
 ] as const;
 
-type Host = "claude" | "cursor";
-type Verb = "install" | "check";
+// Bkit-prefix filter — files in WRITE_DIRS not starting with this prefix are
+// project-managed and never written to, overwritten, or pruned by install.
+const BKIT_PREFIX = "bkit-";
+
+export type Host = "claude" | "cursor";
+type Verb = "init" | "install" | "check";
 
 function parseArgs(): { verb: Verb; hosts: Host[] } {
   const args = process.argv.slice(2);
   let verb: Verb = "install";
   let hosts: Host[] = ["claude", "cursor"];
 
-  if (args[0] === "install" || args[0] === "check") {
+  if (args[0] === "init" || args[0] === "install" || args[0] === "check") {
     verb = args[0] as Verb;
     args.shift();
   }
@@ -178,9 +188,12 @@ export function applyT3(content: string, modelLookup: Map<string, string>): stri
   return newFm + afterFm;
 }
 
-function listMdFiles(dir: string): string[] {
+function listMdFiles(dir: string, prefix?: string): string[] {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
+  return fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .filter((f) => (prefix ? f.startsWith(prefix) : true));
 }
 
 function ensureDir(dir: string): void {
@@ -213,7 +226,12 @@ function installFile(
   return true;
 }
 
-function removeOrphans(destDir: string, sourceFiles: Set<string>, dryRun: boolean): string[] {
+function removeOrphans(
+  destDir: string,
+  sourceFiles: Set<string>,
+  dryRun: boolean,
+  prefix?: string,
+): string[] {
   const allowed = WRITE_DIRS.map((d) => path.resolve(d));
   const resolved = path.resolve(destDir);
   if (!allowed.includes(resolved)) {
@@ -225,6 +243,7 @@ function removeOrphans(destDir: string, sourceFiles: Set<string>, dryRun: boolea
   const removed: string[] = [];
   for (const f of fs.readdirSync(destDir)) {
     if (!f.endsWith(".md")) continue;
+    if (prefix && !f.startsWith(prefix)) continue;
     if (!sourceFiles.has(f)) {
       if (!dryRun) fs.rmSync(path.join(destDir, f));
       removed.push(f);
@@ -347,6 +366,22 @@ function listFilesRecursive(dir: string): string[] {
   return out;
 }
 
+// npm strips files matching certain dotfile names from packed tarballs.
+// Templates targeting `<dest>/.gitignore` etc. are stored without the leading dot
+// in `.agents/templates/` and remapped at install time.
+const NPM_STRIP_REMAP: Record<string, string> = {
+  gitignore: ".gitignore",
+  npmignore: ".npmignore",
+};
+
+function remapDestPath(rel: string): string {
+  const dir = path.dirname(rel);
+  const base = path.basename(rel);
+  const mapped = NPM_STRIP_REMAP[base];
+  if (mapped === undefined) return rel;
+  return dir === "." ? mapped : path.join(dir, mapped);
+}
+
 // Templates pass: walk .agents/templates/ and apply per-file rules:
 //   1.  Dest missing                                  → write template verbatim
 //   2.  Dest exists, has bkit markers                 → update only the managed block from template
@@ -359,7 +394,7 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
   const tag = dryRun ? "[dry-run] " : "";
 
   for (const srcPath of listFilesRecursive(root)) {
-    const destPath = path.relative(root, srcPath);
+    const destPath = remapDestPath(path.relative(root, srcPath));
     const resolvedDest = path.resolve(destPath);
     if (resolvedDest !== repoRoot && !resolvedDest.startsWith(repoRoot + path.sep)) {
       console.error(`[bkit-install] Refusing to write outside repo root: ${destPath}`);
@@ -417,6 +452,89 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
   return { writes };
 }
 
+function mirrorDirAlways(
+  src: string,
+  dst: string,
+  dryRun: boolean,
+  log: (rel: string) => void,
+): number {
+  let writes = 0;
+  if (!dryRun) fs.mkdirSync(dst, { recursive: true });
+  for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, ent.name);
+    const dstPath = path.join(dst, ent.name);
+    if (ent.isDirectory()) {
+      writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) =>
+        log(path.join(ent.name, sub)),
+      );
+      continue;
+    }
+    if (!ent.isFile()) continue;
+    const srcContent = fs.readFileSync(srcPath);
+    if (fs.existsSync(dstPath)) {
+      const dstContent = fs.readFileSync(dstPath);
+      if (srcContent.equals(dstContent)) continue;
+    }
+    if (!dryRun) {
+      fs.copyFileSync(srcPath, dstPath);
+      fs.chmodSync(dstPath, fs.statSync(srcPath).mode);
+    }
+    writes++;
+    log(ent.name);
+  }
+  return writes;
+}
+
+// Payload pass: refresh bkit-canonical content in <cwd>/.agents/ from the package payload.
+//   - .agents/{workflows,prompts}/bkit-*.md → overwrite + prune (bkit-prefix only)
+//   - .agents/templates/** → full mirror (bkit-owned subtree)
+// In dogfood (running from .agents/scripts/ in the bkit repo itself), src and dst
+// resolve to the same paths, so this pass is a no-op.
+export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const PKG_ROOT = scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)
+    ? path.resolve(scriptDir, "..", "..")
+    : path.resolve(scriptDir, "..");
+  const PKG_AGENTS = path.join(PKG_ROOT, ".agents");
+
+  let writes = 0;
+  let deletes = 0;
+  const tag = dryRun ? "[dry-run] " : "";
+
+  if (!fs.existsSync(PKG_AGENTS)) return { writes, deletes };
+
+  for (const subdir of ["workflows", "prompts"] as const) {
+    const srcDir = path.join(PKG_AGENTS, subdir);
+    const dstDir = path.join(".agents", subdir);
+    if (!fs.existsSync(srcDir)) continue;
+    if (path.resolve(srcDir) === path.resolve(dstDir)) continue;
+
+    ensureDir(dstDir);
+    const srcFiles = listMdFiles(srcDir, BKIT_PREFIX);
+    const sourceSet = new Set(srcFiles);
+    for (const f of srcFiles) {
+      if (installFile(path.join(srcDir, f), path.join(dstDir, f), null, dryRun)) {
+        writes++;
+        console.log(`[bkit-install] ${tag}payload: ${path.join(dstDir, f)}`);
+      }
+    }
+    for (const f of removeOrphans(dstDir, sourceSet, dryRun, BKIT_PREFIX)) {
+      deletes++;
+      console.log(`[bkit-install] ${tag}payload delete: ${path.join(dstDir, f)}`);
+    }
+  }
+
+  const tplSrc = path.join(PKG_AGENTS, "templates");
+  const tplDst = path.join(".agents", "templates");
+  if (fs.existsSync(tplSrc) && path.resolve(tplSrc) !== path.resolve(tplDst)) {
+    writes += mirrorDirAlways(tplSrc, tplDst, dryRun, (rel) => {
+      console.log(`[bkit-install] ${tag}payload: ${path.join(tplDst, rel)}`);
+    });
+  }
+
+  return { writes, deletes };
+}
+
 function runHost(
   host: Host,
   modelLookup: Map<string, string>,
@@ -434,7 +552,7 @@ function runHost(
     ];
     for (const [src, dest] of pairs) {
       ensureDir(dest);
-      const files = listMdFiles(src);
+      const files = listMdFiles(src, BKIT_PREFIX);
       const sourceSet = new Set(files);
       for (const f of files) {
         if (installFile(path.join(src, f), path.join(dest, f), null, dryRun)) {
@@ -442,7 +560,7 @@ function runHost(
           console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
         }
       }
-      for (const f of removeOrphans(dest, sourceSet, dryRun)) {
+      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
         console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
       }
@@ -453,7 +571,7 @@ function runHost(
       const src = ".agents/workflows";
       const dest = ".cursor/commands";
       ensureDir(dest);
-      const files = listMdFiles(src);
+      const files = listMdFiles(src, BKIT_PREFIX);
       const sourceSet = new Set(files);
       for (const f of files) {
         const transform = (c: string) => applyT2(applyT1(c));
@@ -462,7 +580,7 @@ function runHost(
           console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
         }
       }
-      for (const f of removeOrphans(dest, sourceSet, dryRun)) {
+      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
         console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
       }
@@ -471,7 +589,7 @@ function runHost(
       const src = ".agents/prompts";
       const dest = ".cursor/agents";
       ensureDir(dest);
-      const files = listMdFiles(src);
+      const files = listMdFiles(src, BKIT_PREFIX);
       const sourceSet = new Set(files);
       for (const f of files) {
         const transform = (c: string) => applyT3(c, modelLookup);
@@ -480,7 +598,7 @@ function runHost(
           console.log(`[bkit-install] ${tag}write: ${path.join(dest, f)}`);
         }
       }
-      for (const f of removeOrphans(dest, sourceSet, dryRun)) {
+      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
         deletes++;
         console.log(`[bkit-install] ${tag}delete orphan: ${path.join(dest, f)}`);
       }
@@ -496,9 +614,20 @@ function main() {
 
   if (dryRun) console.log("[bkit-install] Running in check (dry-run) mode");
 
-  const modelLookup = parseModelLookup();
   let totalWrites = 0;
   let totalDeletes = 0;
+
+  if (verb === "init") {
+    const { writes } = runInit({ dryRun: false });
+    totalWrites += writes;
+  }
+
+  console.log(`[bkit-install] Running payload pass${dryRun ? " (dry-run)" : ""}`);
+  const payloadResult = runPayload(dryRun);
+  totalWrites += payloadResult.writes;
+  totalDeletes += payloadResult.deletes;
+
+  const modelLookup = parseModelLookup();
 
   for (const host of hosts) {
     console.log(`[bkit-install] Installing for host: ${host}${dryRun ? " (dry-run)" : ""}`);
@@ -520,6 +649,17 @@ function main() {
   console.log(`[bkit-install] Done. ${totalWrites} writes, ${totalDeletes} deletes.`);
 }
 
-if (import.meta.main) {
+function isMainScript(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    const argvReal = fs.realpathSync(process.argv[1]);
+    const metaReal = fs.realpathSync(fileURLToPath(import.meta.url));
+    return argvReal === metaReal;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainScript()) {
   main();
 }

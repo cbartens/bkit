@@ -4,14 +4,24 @@
   "private": true,
   "description": "Agent-stack consolidation CLI — install/upgrade .agents/ payload across Claude and Cursor hosts",
   "type": "module",
+  "bin": { "bkit": "./dist/bkit-install.js" },
+  "files": [
+    "dist",
+    ".agents",
+    "README.md"
+  ],
+  "engines": { "node": ">=20" },
   "scripts": {
+    "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build && pnpm test"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "typescript": "^5.4.0",
     "vitest": "^2.1.0"
-  }
+  },
+  "publishConfig": { "access": "public" }
 }
