@@ -2,7 +2,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { runInit } from "./bkit-init.js";
+import { parseArgs, printDeprecationWarnings, printUsage } from "./bkit-cli.js";
+import { dispatchModules, type ModuleContext } from "./bkit-modules.js";
+import { resolveTokens } from "./bkit-tokens.js";
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -25,33 +27,6 @@ const BKIT_PREFIX = "bkit-";
 let LOG_PREFIX = "[bkit-install]";
 
 export type Host = "claude" | "cursor";
-type Verb = "init" | "install" | "check" | "help";
-
-function parseArgs(): { verb: Verb; hosts: Host[] } {
-  const args = process.argv.slice(2);
-  let verb: Verb = "help";
-  let hosts: Host[] = ["claude", "cursor"];
-
-  if (args[0] === "init" || args[0] === "install" || args[0] === "check") {
-    verb = args[0] as Verb;
-    args.shift();
-  } else if (args[0] === "help" || args[0] === "--help" || args[0] === "-h") {
-    verb = "help";
-    args.shift();
-  }
-
-  const hostFlag = args.find((a) => a.startsWith("--host="));
-  if (hostFlag) {
-    const h = hostFlag.slice("--host=".length) as Host;
-    if (h !== "claude" && h !== "cursor") {
-      console.error(`${LOG_PREFIX} Unknown host: ${h}`);
-      process.exit(1);
-    }
-    hosts = [h];
-  }
-
-  return { verb, hosts };
-}
 
 // Parse .agents/prompts.md § Models table → Map<name, cursorModel>
 export function parseModelLookup(subagentsMdPath = ".agents/prompts.md"): Map<string, string> {
@@ -261,6 +236,29 @@ function removeOrphans(
 
 const START_MARKER = "<!-- bkit:start -->";
 const END_MARKER = "<!-- bkit:end -->";
+const HASH_START_MARKER = "# bkit:start";
+const HASH_END_MARKER = "# bkit:end";
+
+// Marker style selector: html-comment (default, backward-compat) or hash-comment (YAML/INI/shell).
+export type MarkerStyle = "html-comment" | "hash-comment";
+
+// Shared WriteSet accumulator — both check and install paths populate this identically,
+// ensuring parity by construction (eliminates future dry-run divergence).
+export interface WriteEntry {
+  path: string;
+  action: "write" | "update" | "append";
+}
+
+export interface WriteSet {
+  writes: WriteEntry[];
+}
+
+// Select marker pair based on markerStyle.
+function selectMarkers(markerStyle: MarkerStyle): [string, string] {
+  return markerStyle === "hash-comment"
+    ? [HASH_START_MARKER, HASH_END_MARKER]
+    : [START_MARKER, END_MARKER];
+}
 
 // Recognised line-comment prefixes — bare, shell (#), JS/TS (//).
 const ALLOWED_PREFIXES = ["", "# ", "// "];
@@ -269,7 +267,44 @@ const ALLOWED_PREFIXES = ["", "# ", "// "];
 //   - The line before the marker is empty, "# ", or "// " (comment prefixes).
 //   - The character after the marker is end-of-line or end-of-file.
 // Backtick-quoted prose mentions are ignored.
-function findLineAnchoredMarkers(content: string, marker: string): number[] {
+// markerStyle defaults to "html-comment" for backward compat.
+export function findLineAnchoredMarkers(
+  content: string,
+  markerOrStyle: string | MarkerStyle,
+  _markerStyle?: MarkerStyle,
+): number[] {
+  // Support both legacy call-site (content, markerString) and new call-site (content, markerStyle).
+  // If markerOrStyle is a known MarkerStyle literal, treat it as style; otherwise treat as marker string.
+  let marker: string;
+  if (markerOrStyle === "html-comment" || markerOrStyle === "hash-comment") {
+    // Called as findLineAnchoredMarkers(content, markerStyle) — internal helper path
+    // This overload is used only internally; callers pass marker string directly.
+    // Retain backward-compat: interpret as the START marker of the given style.
+    const [start] = selectMarkers(markerOrStyle as MarkerStyle);
+    marker = start;
+  } else {
+    marker = markerOrStyle;
+  }
+
+  const positions: number[] = [];
+  const len = marker.length;
+  let pos = 0;
+  while (true) {
+    const idx = content.indexOf(marker, pos);
+    if (idx === -1) break;
+    let lineStart = idx;
+    while (lineStart > 0 && content[lineStart - 1] !== "\n") lineStart--;
+    const beforeMarker = content.slice(lineStart, idx);
+    const after = idx + len >= content.length ? "\n" : content[idx + len];
+    const isLineEnd = after === "\n" || after === undefined;
+    if (ALLOWED_PREFIXES.includes(beforeMarker) && isLineEnd) positions.push(idx);
+    pos = idx + len;
+  }
+  return positions;
+}
+
+// Internal helper: find anchored positions for a specific marker string (private).
+function findAnchored(content: string, marker: string): number[] {
   const positions: number[] = [];
   const len = marker.length;
   let pos = 0;
@@ -294,14 +329,21 @@ function lineStartOf(content: string, idx: number): number {
   return i;
 }
 
-// Managed-block writer: update content between <!-- bkit:start --> and <!-- bkit:end -->.
+// Managed-block writer: update content between markers.
+// markerStyle defaults to "html-comment" for backward compat.
 // Markers may be bare (markdown) or comment-prefixed (`# ` shell, `// ` JS/TS) — prefixes
 // are preserved on update. No-op (warn + skip) when markers absent, duplicated, or inverted.
-export function updateManagedBlock(filePath: string, newContent: string, dryRun = false): boolean {
+export function updateManagedBlock(
+  filePath: string,
+  newContent: string,
+  dryRun = false,
+  markerStyle: MarkerStyle = "html-comment",
+): boolean {
   if (!fs.existsSync(filePath)) return false;
   const existing = fs.readFileSync(filePath, "utf-8");
-  const starts = findLineAnchoredMarkers(existing, START_MARKER);
-  const ends = findLineAnchoredMarkers(existing, END_MARKER);
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(existing, startMarker);
+  const ends = findAnchored(existing, endMarker);
   if (starts.length === 0 || ends.length === 0) {
     console.warn(`${LOG_PREFIX} Managed block markers absent in ${filePath} — skipping`);
     return false;
@@ -312,8 +354,8 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
     );
     return false;
   }
-  const startIdx = starts[0];
-  const endIdx = ends[0];
+  const startIdx = starts[0]!;
+  const endIdx = ends[0]!;
   if (startIdx >= endIdx) {
     console.warn(
       `${LOG_PREFIX} Inverted managed-block markers in ${filePath} (end before start) — skipping`,
@@ -321,10 +363,10 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
     return false;
   }
   // Slice on line boundaries so any comment prefix on the marker lines is preserved.
-  const startLineEnd = existing.indexOf("\n", startIdx + START_MARKER.length);
+  const startLineEnd = existing.indexOf("\n", startIdx + startMarker.length);
   const beforeBlock =
     startLineEnd === -1
-      ? existing.slice(0, startIdx + START_MARKER.length)
+      ? existing.slice(0, startIdx + startMarker.length)
       : existing.slice(0, startLineEnd);
   const afterBlock = existing.slice(lineStartOf(existing, endIdx));
   const normalisedContent = newContent.replace(/^\n+/, "").replace(/\n+$/, "");
@@ -335,28 +377,38 @@ export function updateManagedBlock(filePath: string, newContent: string, dryRun 
 }
 
 // Extract the bkit-managed block content from a file, stripping surrounding newlines.
+// markerStyle defaults to "html-comment" for backward compat.
 // Markers may be bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractManagedBlock(content: string): string | null {
-  const starts = findLineAnchoredMarkers(content, START_MARKER);
-  const ends = findLineAnchoredMarkers(content, END_MARKER);
+export function extractManagedBlock(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string | null {
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(content, startMarker);
+  const ends = findAnchored(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0] >= ends[0]) return null;
-  const startLineEnd = content.indexOf("\n", starts[0] + START_MARKER.length);
+  if (starts[0]! >= ends[0]!) return null;
+  const startLineEnd = content.indexOf("\n", starts[0]! + startMarker.length);
   const inner =
-    startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]));
+    startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]!));
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
+// markerStyle defaults to "html-comment" for backward compat.
 // Used to append a fresh block to a destination that has none. Markers may be
 // bare or comment-prefixed. Returns null if markers absent, duplicated, or inverted.
-export function extractFullManagedBlock(content: string): string | null {
-  const starts = findLineAnchoredMarkers(content, START_MARKER);
-  const ends = findLineAnchoredMarkers(content, END_MARKER);
+export function extractFullManagedBlock(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string | null {
+  const [startMarker, endMarker] = selectMarkers(markerStyle);
+  const starts = findAnchored(content, startMarker);
+  const ends = findAnchored(content, endMarker);
   if (starts.length !== 1 || ends.length !== 1) return null;
-  if (starts[0] >= ends[0]) return null;
-  const startLineStart = lineStartOf(content, starts[0]);
-  const endLineEnd = content.indexOf("\n", ends[0] + END_MARKER.length);
+  if (starts[0]! >= ends[0]!) return null;
+  const startLineStart = lineStartOf(content, starts[0]!);
+  const endLineEnd = content.indexOf("\n", ends[0]! + endMarker.length);
   return endLineEnd === -1
     ? content.slice(startLineStart)
     : content.slice(startLineStart, endLineEnd + 1);
@@ -394,10 +446,17 @@ function remapDestPath(rel: string): string {
 //   2.  Dest exists, has bkit markers                 → update only the managed block from template
 //   3a. Dest exists, no markers, template HAS block   → append managed block at EOF (preserve existing content)
 //   3b. Dest exists, no markers, template has no block → no-op (preserve project content)
-export function runTemplates(dryRun: boolean, root = ".agents/templates"): { writes: number } {
-  if (!fs.existsSync(root)) return { writes: 0 };
+//
+// Returns both a count (`writes`) and a structured `writeSet` accumulator.
+// Both dry-run and live-run paths populate `writeSet` identically — parity by construction.
+export function runTemplates(
+  dryRun: boolean,
+  root = ".agents/templates",
+): { writes: number; writeSet: WriteEntry[] } {
+  if (!fs.existsSync(root)) return { writes: 0, writeSet: [] };
   const repoRoot = path.resolve(".");
   let writes = 0;
+  const writeSet: WriteEntry[] = [];
   const tag = dryRun ? "[dry-run] " : "";
 
   for (const srcPath of listFilesRecursive(root)) {
@@ -415,6 +474,7 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
         fs.chmodSync(destPath, fs.statSync(srcPath).mode);
       }
       writes++;
+      writeSet.push({ path: destPath, action: "write" });
       console.log(`${LOG_PREFIX} ${tag}write template: ${destPath}`);
       continue;
     }
@@ -422,9 +482,15 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
     const destContent = fs.readFileSync(destPath, "utf-8");
     const srcContent = fs.readFileSync(srcPath, "utf-8");
 
-    if (findLineAnchoredMarkers(destContent, START_MARKER).length === 0) {
-      // case 3: dest has no markers
-      const fullBlock = extractFullManagedBlock(srcContent);
+    // Check for both html-comment and hash-comment markers in dest
+    const hasHtmlMarkers = findAnchored(destContent, START_MARKER).length > 0;
+    const hasHashMarkers = findAnchored(destContent, HASH_START_MARKER).length > 0;
+
+    if (!hasHtmlMarkers && !hasHashMarkers) {
+      // case 3: dest has no markers — try both styles in template
+      const fullBlockHtml = extractFullManagedBlock(srcContent, "html-comment");
+      const fullBlockHash = extractFullManagedBlock(srcContent, "hash-comment");
+      const fullBlock = fullBlockHtml ?? fullBlockHash;
       if (fullBlock === null) continue; // 3b — template also has no block; preserve dest as-is
       // 3a — append the template's full block at EOF, preserve all existing dest content
       const sep =
@@ -438,25 +504,40 @@ export function runTemplates(dryRun: boolean, root = ".agents/templates"): { wri
       const tail = fullBlock.endsWith("\n") ? "" : "\n";
       if (!dryRun) fs.writeFileSync(destPath, destContent + sep + fullBlock + tail, "utf-8");
       writes++;
+      writeSet.push({ path: destPath, action: "append" });
       console.log(`${LOG_PREFIX} ${tag}append block: ${destPath}`);
       continue;
     }
 
-    const blockContent = extractManagedBlock(srcContent);
+    // case 2: dest has markers — determine which style and update
+    const style: MarkerStyle = hasHashMarkers ? "hash-comment" : "html-comment";
+    const blockContent = extractManagedBlock(srcContent, style);
     if (blockContent === null) {
-      console.warn(
-        `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
-      );
+      // Try the other style in case template uses different style than dest
+      const altStyle: MarkerStyle = style === "hash-comment" ? "html-comment" : "hash-comment";
+      const altBlock = extractManagedBlock(srcContent, altStyle);
+      if (altBlock === null) {
+        console.warn(
+          `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
+        );
+        continue;
+      }
+      if (updateManagedBlock(destPath, altBlock, dryRun, style)) {
+        writes++;
+        writeSet.push({ path: destPath, action: "update" });
+        console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
+      }
       continue;
     }
 
-    if (updateManagedBlock(destPath, blockContent, dryRun)) {
+    if (updateManagedBlock(destPath, blockContent, dryRun, style)) {
       writes++;
+      writeSet.push({ path: destPath, action: "update" });
       console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
     }
   }
 
-  return { writes };
+  return { writes, writeSet };
 }
 
 function mirrorDirAlways(
@@ -471,9 +552,7 @@ function mirrorDirAlways(
     const srcPath = path.join(src, ent.name);
     const dstPath = path.join(dst, ent.name);
     if (ent.isDirectory()) {
-      writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) =>
-        log(path.join(ent.name, sub)),
-      );
+      writes += mirrorDirAlways(srcPath, dstPath, dryRun, (sub) => log(path.join(ent.name, sub)));
       continue;
     }
     if (!ent.isFile()) continue;
@@ -542,151 +621,68 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
   return { writes, deletes };
 }
 
-function runHost(
-  host: Host,
-  modelLookup: Map<string, string>,
-  dryRun: boolean,
-): { writes: number; deletes: number } {
-  let writes = 0;
-  let deletes = 0;
-  const tag = dryRun ? "[dry-run] " : "";
-
-  if (host === "claude") {
-    // Byte-identical passthrough: commands and subagents
-    const pairs: Array<[string, string]> = [
-      [".agents/workflows", ".claude/commands"],
-      [".agents/prompts", ".claude/agents"],
-    ];
-    for (const [src, dest] of pairs) {
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        if (installFile(path.join(src, f), path.join(dest, f), null, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-  } else {
-    // Cursor: commands (T1+T2), subagents (T3)
-    {
-      const src = ".agents/workflows";
-      const dest = ".cursor/commands";
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        const transform = (c: string) => applyT2(applyT1(c));
-        if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-    {
-      const src = ".agents/prompts";
-      const dest = ".cursor/agents";
-      ensureDir(dest);
-      const files = listMdFiles(src, BKIT_PREFIX);
-      const sourceSet = new Set(files);
-      for (const f of files) {
-        const transform = (c: string) => applyT3(c, modelLookup);
-        if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-          writes++;
-          console.log(`${LOG_PREFIX} ${tag}write: ${path.join(dest, f)}`);
-        }
-      }
-      for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-        deletes++;
-        console.log(`${LOG_PREFIX} ${tag}delete orphan: ${path.join(dest, f)}`);
-      }
-    }
-  }
-
-  return { writes, deletes };
-}
-
-function printUsage() {
-  console.log(`bkit — agent-stack consolidation CLI
-
-Usage:
-  bkit init              First-time bootstrap — copies bundled .agents/ payload into
-                         <cwd>, writes .agents/.bkit-version, then runs install.
-  bkit install           Sync — payload pass + host pass + templates pass. Idempotent.
-                         Run after \`pnpm update @cbartens/bkit\`.
-  bkit check             Dry-run install — reports drift without writing. Exits 1 on drift.
-
-Flags:
-  --host=claude|cursor   Run only the named host pass (default: both).
-  -h, --help             Print this message.
-
-bkit owns the \`bkit-\` namespace inside .agents/{workflows,prompts}/ and
-.{claude,cursor}/{agents,commands}/. Files without the \`bkit-\` prefix are
-project-managed and never touched.
-
-Docs: https://github.com/cbartens/bkit/blob/main/README.md`);
-}
-
-function main() {
-  const { verb, hosts } = parseArgs();
+async function main() {
+  const { verb, modules, deprecations } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
     return;
   }
 
+  // Emit deprecation warnings before any work
+  printDeprecationWarnings(deprecations);
+
   const dryRun = verb === "check";
   if (dryRun) LOG_PREFIX = "[bkit-check]";
 
-  if (verb !== "init" && !fs.existsSync(".agents/prompts.md")) {
-    console.error(`${LOG_PREFIX} no \`.agents/\` in cwd — run \`bkit init\` first`);
-    process.exit(1);
-  }
-
   if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
-  let totalWrites = 0;
-  let totalDeletes = 0;
+  // Resolve tokens once for the whole install
+  const tokens = await resolveTokens(process.cwd()).catch((err: unknown) => {
+    console.error(`${LOG_PREFIX} Token resolution failed: ${(err as Error).message}`);
+    process.exit(1);
+  });
 
-  if (verb === "init") {
-    const { writes } = runInit({ dryRun: false });
-    totalWrites += writes;
+  // Parse model lookup (needed for cursor transforms; graceful fallback if prompts.md absent)
+  let modelLookup: Map<string, string> = new Map();
+  if (fs.existsSync(".agents/prompts.md")) {
+    try {
+      modelLookup = parseModelLookup();
+    } catch {
+      // Not fatal — cursor module will fail per-file if a model is missing
+    }
   }
 
-  console.log(`${LOG_PREFIX} Running payload pass${dryRun ? " (dry-run)" : ""}`);
-  const payloadResult = runPayload(dryRun);
-  totalWrites += payloadResult.writes;
-  totalDeletes += payloadResult.deletes;
+  const printSink: string[] = [];
+  const ws: WriteSet = { writes: [] };
+  const postDispatch: Array<() => void> = [];
 
-  const modelLookup = parseModelLookup();
+  const ctx: ModuleContext = {
+    dryRun,
+    tokens,
+    modelLookup,
+    printSink,
+    ws,
+    logPrefix: LOG_PREFIX,
+    postDispatch,
+  };
 
-  for (const host of hosts) {
-    console.log(`${LOG_PREFIX} Running host pass: ${host}${dryRun ? " (dry-run)" : ""}`);
-    const { writes, deletes } = runHost(host, modelLookup, dryRun);
-    totalWrites += writes;
-    totalDeletes += deletes;
+  // Dispatch modules in canonical order
+  dispatchModules(modules, ctx);
+
+  // Flush print-sink (Tier 3 suggestions + first-run extra logging)
+  for (const msg of printSink) {
+    console.log(msg);
   }
 
-  console.log(`${LOG_PREFIX} Running templates pass${dryRun ? " (dry-run)" : ""}`);
-  totalWrites += runTemplates(dryRun).writes;
+  const totalWrites = ws.writes.length;
 
-  if (dryRun && (totalWrites > 0 || totalDeletes > 0)) {
-    console.error(
-      `${LOG_PREFIX} check: ${totalWrites} writes and ${totalDeletes} deletes would occur — DRIFT DETECTED`,
-    );
+  if (dryRun && totalWrites > 0) {
+    console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
     process.exit(1);
   }
 
-  console.log(`${LOG_PREFIX} Done. ${totalWrites} writes, ${totalDeletes} deletes.`);
+  console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
 }
 
 function isMainScript(): boolean {
@@ -701,5 +697,8 @@ function isMainScript(): boolean {
 }
 
 if (isMainScript()) {
-  main();
+  main().catch((err: unknown) => {
+    console.error(`${LOG_PREFIX} Unhandled error: ${(err as Error).message}`);
+    process.exit(1);
+  });
 }

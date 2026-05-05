@@ -1,0 +1,31 @@
+{
+  "ignores": ["dist/**", "coverage/**", "node_modules/**", "**/*.generated.ts"],
+  "rules": {
+    "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
+    "structure.over-fragmentation": { "enabled": true },
+    "structure.directory-fanout-hotspot": { "enabled": true },
+    "structure.duplicate-function-signatures": { "enabled": true },
+    "structure.barrel-density": { "enabled": true },
+    "structure.pass-through-wrappers": { "enabled": true },
+    "defensive.empty-catch": { "enabled": true },
+    "defensive.error-swallowing": { "enabled": true },
+    "defensive.error-obscuring": { "enabled": true },
+    "defensive.async-noise": { "enabled": true }
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.test.js",
+        "**/*.spec.ts",
+        "**/*.spec.tsx",
+        "**/*.spec.js"
+      ],
+      "rules": {
+        "structure.duplicate-function-signatures": { "enabled": false },
+        "tests.duplicate-mock-setup": { "enabled": false }
+      }
+    }
+  ]
+}

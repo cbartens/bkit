@@ -1,0 +1,9 @@
+extends: existence
+message: "Filler: '%s' — delete."
+level: warning
+tokens:
+  - basically
+  - essentially
+  - as mentioned
+  - it should be noted
+  - as a matter of fact
