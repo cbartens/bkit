@@ -405,7 +405,7 @@
   {
     "workflow": "debug",
     "startedAt": "2026-05-05T02:46:03Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -416,5 +416,11 @@
       }
     ],
     "debugAttempt": 0
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-05T03:31:03Z",
+    "status": "IN_PROGRESS",
+    "steps": []
   }
 ]

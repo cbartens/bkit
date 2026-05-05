@@ -99,17 +99,25 @@ Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API
 
 ### Per-workflow (orchestrator) model
 
-Model running orchestrator command itself, NOT subagents. Set at workflow launch (Cursor Cloud Agent config / GH Action invocation), NOT in command frontmatter (Cursor commands have no frontmatter):
+Model running orchestrator command itself, NOT subagents. On Cursor: set at workflow launch (Cursor Cloud Agent config / GH Action invocation); command files have no frontmatter. On Claude: inherits the session model — set via `/model` before invoking the slash command (Claude command frontmatter carries only `description:`, no `model:`). Subagent `model:` pins (see `prompts.md` § Frontmatter) are independent of this — Opus-tier subagents stay on Opus regardless of orchestrator model.
 
 <!-- prettier-ignore -->
-| Workflow | Cursor model | Claude model |
-| --- | --- | --- |
-| `/bkit-design` | `claude-4.7-opus-high-thinking` | user default |
-| `/bkit-plan` | `gpt-5.4-high` | user default |
-| `/bkit-build` | `composer-2` | user default |
-| `/bkit-debug` | `claude-4.7-opus-high-thinking` | user default |
-| `/bkit-ship` | `composer-2` | user default |
-| CI automations (`ci-pass`, `ci-fail`) | `composer-2` | n/a |
+| Workflow | Cursor model | Claude model + reasoning | Notes |
+| --- | --- | --- | --- |
+| `/bkit-design` | `claude-4.7-opus-high-thinking` | `sonnet` / `medium` | Procedural orchestration; parallel review pair surfaces drift fast. |
+| `/bkit-plan` | `gpt-5.4-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.json plumbing. |
+| `/bkit-build` | `composer-2` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
+| `/bkit-debug` | `claude-4.7-opus-high-thinking` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
+| `/bkit-ship` | `composer-2` | `sonnet` / `medium` | Short, fully procedural. |
+| CI automations (`ci-pass`, `ci-fail`) | `composer-2` | n/a | |
+
+**Rationale:** orchestrator does sequential step execution, bash/`jq`/`git`, Linear MCP calls, verdict extraction from subagent files, gate verification. Hard reasoning is delegated to subagents (pinned `model:`, no inheritance from session). Sonnet 4.6 handles strict procedural execution.
+
+**Reasoning depth — default `medium`** (both Sonnet and Opus orchestrators). Orchestration is procedural, not deep reasoning; `medium` thinking is sufficient for verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching. Higher thinking budget on Sonnet tends to **worsen** inlining drift — deeper reflection surfaces "I could just do this myself" temptation. Correct escalation on observed drift is `sonnet/medium → opus/medium`, NOT `sonnet/medium → sonnet/high`. Reserve `high` thinking for one-off debugging of an orchestrator step that consistently mis-extracts verdicts or malforms `status.json` — not as a default tier.
+
+**Risk — inlining drift.** Sonnet slightly more prone than Opus to "helping" by doing a subagent's work itself when the work looks tractable (especially review / scope-check steps). `rules.md` § Orchestrators ("Inlining subagent steps or producing output directly is NOT compliance") + per-command CAUTION block mitigate. If observed → bump that command back to Opus (NOT to higher Sonnet reasoning).
+
+**Suggested Claude rollout:** Sonnet first on `/bkit-plan`, `/bkit-design`, `/bkit-ship` — shorter, parallel fan-out, drift visible at verdict gates. Keep `/bkit-build` + `/bkit-debug` on Opus until clean Sonnet runs of others build confidence; downgrade after. All at `medium` reasoning.
 
 Automation sessions (Cursor Cloud) use `composer-2` for metadata/API plumbing; the agent they LAUNCH runs the phase model from this table.
 
