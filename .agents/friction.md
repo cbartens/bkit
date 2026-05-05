@@ -31,13 +31,3 @@
 
 <!-- bkit:end -->
 
-
----
-
-## SHIP-BAR-130-1: Stale debug lock on dev at ship start
-
-**Date:** 2026-05-05
-**Workflow:** ship / Step 1
-**Description:** Lock `docs/plans/logs/bar-130-ci-lint-scaffolding/.lock` existed on `dev` (age ~47m, < 2h threshold) from the debug workflow. Debug workflow DID complete on `fix/bar-130-ci-pnpm` branch (close-workflow removed lock there) but `dev` hadn't received those changes yet via PR merge. Lock was a false positive — no workflow was actually running.
-**Recovery:** Checked debug workflow completion in worktree status.json, confirmed IN_PROGRESS entry had no downstream steps beyond `start-workflow` (pre-PR context), and that fix/bar-130-ci-pnpm branch has full debug close-workflow done. Removed stale lock and re-acquired for ship workflow.
-**Status:** RECOVERED
