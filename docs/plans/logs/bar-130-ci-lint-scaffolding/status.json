@@ -451,6 +451,17 @@
         "at": "2026-05-05T03:17:10Z",
         "commitSha": "6369e2ce155d04f698affb0ac1452cd985236239",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T03:19:19Z",
+        "commitSha": "773fab7d0e00b9ff7ba355abd60f0b1d4d05800a",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-summary.md"
+        ]
       }
     ],
     "debugAttempt": 1
