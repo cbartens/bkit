@@ -158,6 +158,17 @@
           "docs/plans/logs/bar-138/plan-scope-check-1.md",
           "docs/plans/logs/bar-138/plan-scope-check-2.md"
         ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:29:44Z",
+        "commitSha": "b17e6e8c4bba0d556f9d6aa8fb2ad423a0b7661b",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v3-checked.md"
+        ]
       }
     ]
   }
