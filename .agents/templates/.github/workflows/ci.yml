@@ -1,4 +1,3 @@
-# bkit:start
 name: CI
 
 on:
@@ -44,4 +43,3 @@ jobs:
 
       - name: bkit check
         run: pnpm bkit check
-# bkit:end

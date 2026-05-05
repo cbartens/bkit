@@ -701,23 +701,24 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
 // ---------------------------------------------------------------------------
 
 describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
-  it("ci.yml template contains auth-shim line literally between # bkit:start and # bkit:end", () => {
+  it("ci.yml template contains auth-shim line, ordered before `pnpm install --frozen-lockfile`", () => {
+    // Note: in v0.2.1 ci.yml switched from Tier 2 (managed-block) to Tier 3
+    // (seed-or-print), so the template no longer has bkit:start/end markers —
+    // it IS the whole workflow. Assert auth-shim presence and ordering on the
+    // raw template content.
     const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
     expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
 
     const content = fs.readFileSync(templatePath, "utf-8");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block).not.toBeNull();
 
-    // Auth-shim must be literally present inside the block
-    expect(block!).toContain("BKIT_READ_TOKEN");
-    expect(block!).toContain("git config --global url.");
+    // Auth-shim must be literally present
+    expect(content).toContain("BKIT_READ_TOKEN");
+    expect(content).toContain("git config --global url.");
 
     // Auth-shim must appear BEFORE pnpm install --frozen-lockfile
-    const authShimLine = block!.split("\n").findIndex((l) => l.includes("BKIT_READ_TOKEN"));
-    const installLine = block!
-      .split("\n")
-      .findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
+    const lines = content.split("\n");
+    const authShimLine = lines.findIndex((l) => l.includes("BKIT_READ_TOKEN"));
+    const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
     expect(authShimLine).toBeGreaterThan(-1);
     expect(installLine).toBeGreaterThan(-1);
     expect(authShimLine).toBeLessThan(installLine);

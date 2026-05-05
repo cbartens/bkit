@@ -476,25 +476,170 @@ export function runCursorModule(ctx: ModuleContext): void {
   }
 
   // Tier 3 — seed-or-print: settings.json + consumer infra files
-  const tier3Files: Array<[string, string]> = [
-    [path.join(cursorTemplates, "settings.json"), ".cursor/settings.json"],
-    [path.join(cursorTemplates, "Dockerfile"), ".cursor/Dockerfile"],
-    [path.join(cursorTemplates, "environment.json"), ".cursor/environment.json"],
+  const tier3Files: Array<[string, string, string]> = [
+    [
+      path.join(cursorTemplates, "settings.json"),
+      ".cursor/settings.json",
+      CURSOR_SETTINGS_MERGE_INSTRUCTIONS,
+    ],
+    [
+      path.join(cursorTemplates, "Dockerfile"),
+      ".cursor/Dockerfile",
+      CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS,
+    ],
+    [
+      path.join(cursorTemplates, "environment.json"),
+      ".cursor/environment.json",
+      CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS,
+    ],
   ];
-  for (const [src, dst] of tier3Files) {
+  for (const [src, dst, msg] of tier3Files) {
     if (!fs.existsSync(src)) continue;
     const prevLen = ws.writes.length;
-    const result = writeTier3(src, dst, dryRun, printSink, ws);
+    const result = writeTier3(src, dst, dryRun, printSink, ws, msg);
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}cursor: ${dst}`);
     } else if (result.suggested) {
-      console.log(`${logPrefix} ${tag}cursor: ${dst} (exists; suggestion printed)`);
+      console.log(`${logPrefix} ${tag}cursor: ${dst} (exists; AI merge instructions printed)`);
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// runCiModule — .github/workflows/ci.yml (Tier 2 hash-comment)
+// AI-actionable Tier 3 merge instructions
+//
+// Each constant is a self-contained instruction block: any AI agent
+// (Claude/Cursor/Copilot/etc.) reading the install output can paste it as
+// a prompt and apply the required merge without referring back to bkit
+// docs. Use {{TEMPLATE_CONTENT}} as a placeholder — writeTier3 substitutes
+// the live template content at print time.
+// ---------------------------------------------------------------------------
+
+const CI_YML_MERGE_INSTRUCTIONS = `[bkit] .github/workflows/ci.yml exists — bkit cannot safely YAML-merge jobs. Manual merge required.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .github/workflows/ci.yml. Compare it to the bkit reference workflow
+  below (which represents the complete recommended CI gates for any bkit
+  consumer). Your existing workflow likely has additional consumer-specific
+  jobs and triggers — preserve those.
+
+  Required merge actions:
+  1. Ensure a job named 'run-tests' (or equivalent) exists with the steps
+     shown below. If your existing workflow already has a similar job,
+     merge any missing steps in instead of creating a duplicate.
+  2. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
+     pnpm/action-setup@v4 reads this as single source of truth and will
+     fail if it is missing or conflicts with a 'with: version:' block.
+  3. Ensure the GitHub repo has a secret named BKIT_READ_TOKEN
+     (fine-grained PAT, scope: 'cbartens/bkit', permission: Contents:read).
+     Without it the auth-shim step fails on private-repo pnpm install.
+  4. Ensure the package.json scripts referenced by the workflow exist:
+     "format:check", "lint:prose", "lint:slop". Run 'bkit install --lint'
+     to seed them, or add manually.
+
+  Do NOT remove or duplicate top-level 'name:', 'on:', or 'jobs:' keys.
+  YAML allows only one of each per file.
+
+  --- begin bkit reference workflow ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference workflow ---
+
+  After merging, push to a feature branch and verify the workflow runs to
+  green before merging to your default branch.
+`;
+
+const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .vale.ini. Compare it to the bkit reference content below.
+
+  Required merge actions:
+  1. Ensure these three CORE options appear at the TOP of the file (above
+     any [glob] section). If they are already present with different
+     values, prefer the existing value:
+        StylesPath = .vale/styles
+        MinAlertLevel = warning
+        Packages = write-good
+  2. Ensure the SCOPED sections from the reference are present below the
+     core options. If a section header (e.g. '[.agents/**]' or '[*.md]')
+     already exists in the file, merge the rules into it rather than
+     duplicating the header.
+  3. Run 'vale sync' once after merging to install any newly-listed
+     Packages (e.g. 'write-good').
+
+  Vale will reject the file with error E201 if any core option appears
+  AFTER a [glob] section, so ordering matters.
+
+  --- begin bkit reference .vale.ini ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .vale.ini ---
+
+  After merging, run 'vale .agents/' (or your scoped path) to verify the
+  rules apply with no parse errors.
+`;
+
+const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge if useful.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open slop-scan.config.json. Compare against the bkit reference below.
+  Merge any new patterns/exclusions you find useful into the existing
+  file. Keep your existing project-specific entries.
+
+  --- begin bkit reference slop-scan.config.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference slop-scan.config.json ---
+`;
+
+const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .cursor/settings.json. Compare against the bkit reference below.
+  Merge any new keys (e.g. plugin allowlists, MCP entries) you want.
+  Keep your existing project-specific entries.
+
+  --- begin bkit reference .cursor/settings.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .cursor/settings.json ---
+`;
+
+const CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS = `[bkit] .cursor/Dockerfile exists — bkit will not overwrite. Reference shown below for comparison only.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .cursor/Dockerfile. The bkit reference is a minimal Cursor cloud-agent
+  base image. If your file diverges intentionally (custom system deps,
+  alternative base image, project-specific tooling), keep your version.
+  Otherwise consider syncing to the reference.
+
+  --- begin bkit reference .cursor/Dockerfile ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .cursor/Dockerfile ---
+`;
+
+const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. Reference shown below for comparison only.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .cursor/environment.json. Compare against the bkit reference below.
+  Merge any new fields (e.g. terminal/install/start hooks) you want, but
+  keep project-specific overrides.
+
+  --- begin bkit reference .cursor/environment.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .cursor/environment.json ---
+`;
+
+// ---------------------------------------------------------------------------
+// runCiModule — .github/workflows/ci.yml (Tier 3 seed-or-print)
+//
+// Switched from Tier 2 to Tier 3 in v0.2.1 — appending a complete workflow
+// to an existing ci.yml produces duplicate top-level keys (invalid GHA YAML).
+// Bkit can't safely YAML-merge, so we seed when absent and print AI-actionable
+// merge instructions when present.
 // ---------------------------------------------------------------------------
 
 export function runCiModule(ctx: ModuleContext): void {
@@ -517,15 +662,25 @@ export function runCiModule(ctx: ModuleContext): void {
 
   const dstPath = path.join(".github", "workflows", "ci.yml");
   const prevLen = ws.writes.length;
-  writeTier2(templatePath, dstPath, tokens, "hash-comment", dryRun, ws);
+  const result = writeTier3(
+    templatePath,
+    dstPath,
+    dryRun,
+    printSink,
+    ws,
+    CI_YML_MERGE_INSTRUCTIONS,
+    tokens,
+  );
   if (ws.writes.length > prevLen) {
     console.log(`${logPrefix} ${tag}ci: ${dstPath}`);
+  } else if (result.suggested) {
+    console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
 
-  // Always remind the user which package.json scripts the CI workflow expects.
-  // These scripts are seeded by --lint; --ci alone does NOT add them.
+  // Always remind which package.json scripts the workflow expects.
+  // Seeded by --lint (and prepare); --ci alone does NOT add them.
   printSink.push(
-    `[bkit] ci: the generated ci.yml invokes the following package.json scripts — ensure they exist (run bkit install --lint to seed them, or add manually):
+    `[bkit] ci: the generated ci.yml invokes the following package.json scripts — ensure they exist (run \`bkit install --lint\` to seed them, or add manually):
    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'"
    "lint:slop": "slop-scan scan ."
    "format:check": "prettier --check ."`,
@@ -542,14 +697,26 @@ export function runLintModule(ctx: ModuleContext): void {
   const PKG_ROOT = getPkgRoot();
   const templatesBase = path.join(PKG_ROOT, ".agents", "templates");
 
-  // .vale.ini — Tier 2 hash-comment
+  // .vale.ini — Tier 3 (seed-or-print) since v0.2.1
+  // Was Tier 2 but appending a managed-block at EOF puts core options after
+  // [glob] sections, which Vale rejects (E201). Tier 3 seeds the whole file
+  // when absent and prints AI-actionable merge instructions when present.
   const valeIniSrc = path.join(templatesBase, ".vale.ini");
   if (fs.existsSync(valeIniSrc)) {
     const valeDst = ".vale.ini";
     const prevLen = ws.writes.length;
-    writeTier2(valeIniSrc, valeDst, tokens, "hash-comment", dryRun, ws);
+    const valeRes = writeTier3(
+      valeIniSrc,
+      valeDst,
+      dryRun,
+      printSink,
+      ws,
+      VALE_INI_MERGE_INSTRUCTIONS,
+    );
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}lint: ${valeDst}`);
+    } else if (valeRes.suggested) {
+      console.log(`${logPrefix} ${tag}lint: ${valeDst} (exists; AI merge instructions printed)`);
     }
   }
 
@@ -574,9 +741,19 @@ export function runLintModule(ctx: ModuleContext): void {
   const slopSrc = path.join(templatesBase, "slop-scan.config.json");
   if (fs.existsSync(slopSrc)) {
     const slopDst = "slop-scan.config.json";
-    writeTier3(slopSrc, slopDst, dryRun, printSink, ws);
-    if (fs.existsSync(slopDst) || dryRun) {
-      // Already logged by writeTier3 if it wrote
+    const prevLen = ws.writes.length;
+    const slopRes = writeTier3(
+      slopSrc,
+      slopDst,
+      dryRun,
+      printSink,
+      ws,
+      SLOP_SCAN_MERGE_INSTRUCTIONS,
+    );
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}lint: ${slopDst}`);
+    } else if (slopRes.suggested) {
+      console.log(`${logPrefix} ${tag}lint: ${slopDst} (exists; AI merge instructions printed)`);
     }
   }
 

@@ -143,23 +143,44 @@ export interface Tier3Result {
   suggested: boolean;
 }
 
+/**
+ * `aiMessage`: when the destination already exists and content differs,
+ * push this string to printSink instead of the default current-vs-suggested
+ * dump. The message should be a self-contained instruction that any AI
+ * agent (or human) can copy-paste into a coding assistant to apply the
+ * required merge. Use {{TEMPLATE_CONTENT}} as a placeholder for the
+ * suggested template content — it will be substituted automatically.
+ *
+ * `tokens`: optional. When provided, apply token substitution to BOTH the
+ * file written on the absent path AND the {{TEMPLATE_CONTENT}} embedded in
+ * the AI message. Used by callers whose templates contain {{TOKEN}}
+ * placeholders (e.g. ci.yml).
+ */
 export function writeTier3(
   srcPath: string,
   dstPath: string,
   dryRun: boolean,
   printSink: string[],
   ws: WriteSet,
+  aiMessage?: string,
+  tokens?: TokenMap,
 ): Tier3Result {
+  const srcRaw = fs.readFileSync(srcPath, "utf-8");
+  const srcContent = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+
   if (fs.existsSync(dstPath)) {
     // Present → suggest diff, don't write
-    const srcContent = fs.readFileSync(srcPath, "utf-8");
     const dstContent = fs.readFileSync(dstPath, "utf-8");
     if (srcContent !== dstContent) {
-      printSink.push(
-        `[bkit-install] Tier 3 suggestion for ${dstPath}:\n` +
-          `  File already exists. bkit suggests the following content:\n` +
-          `  --- current ---\n${dstContent}\n  --- suggested ---\n${srcContent}`,
-      );
+      if (aiMessage) {
+        printSink.push(aiMessage.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => srcContent.trimEnd()));
+      } else {
+        printSink.push(
+          `[bkit-install] Tier 3 suggestion for ${dstPath}:\n` +
+            `  File already exists. bkit suggests the following content:\n` +
+            `  --- current ---\n${dstContent}\n  --- suggested ---\n${srcContent}`,
+        );
+      }
     }
     return { wrote: false, suggested: srcContent !== dstContent };
   }
@@ -167,7 +188,7 @@ export function writeTier3(
   // Absent → write (or record in dry-run)
   ensureDir(path.dirname(dstPath));
   if (!dryRun) {
-    fs.copyFileSync(srcPath, dstPath);
+    fs.writeFileSync(dstPath, srcContent, "utf-8");
     const srcMode = fs.statSync(srcPath).mode;
     fs.chmodSync(dstPath, srcMode);
   }

@@ -1,5 +1,3 @@
-# bkit:start
-
 name: CI
 
 on:
@@ -45,5 +43,3 @@ jobs:
 
       - name: bkit check (informational — bkit-self has intentional template asymmetries)
         run: pnpm bkit check || true
-
-# bkit:end
