@@ -191,6 +191,17 @@
         "artifacts": [
           "docs/plans/logs/bar-138/plan-v4-split.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:43:27Z",
+        "commitSha": "b804e3f1df107ec320e0dd1e2e97188d6c482141",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-summary.md"
+        ]
       }
     ]
   }
