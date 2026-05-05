@@ -134,6 +134,17 @@
           "docs/plans/logs/bar-138/plan-review-1.md",
           "docs/plans/logs/bar-138/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:24:48Z",
+        "commitSha": "c76eabb35163eba3e3c7e57d4586da3ec37a626a",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
