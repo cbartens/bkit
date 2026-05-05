@@ -378,6 +378,13 @@
         "artifacts": [
           "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary.md"
         ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-05T02:24:52Z",
+        "commitSha": "47277d44b7f6c8055f55d77832a04f17d3d9eee7",
+        "artifacts": []
       }
     ]
   }
