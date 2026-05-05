@@ -1,7 +1,7 @@
 // bkit-cli.test.ts — v4-3 scope (CLI dispatch surface).
 // Stubs created in v4-2 Phase 0; filled by v4-3 Phase 3.
-import { describe, expect, it, vi, afterEach } from "vitest";
-import { parseArgs, printUsage, printDeprecationWarnings, resolveModules } from "./bkit-cli";
+import { describe, expect, it, vi } from "vitest";
+import { parseArgs, printUsage, resolveModules } from "./bkit-cli";
 
 // ---------------------------------------------------------------------------
 // parseArgs — verb parsing
@@ -125,102 +125,7 @@ describe("parseArgs — module flags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — init deprecation
-// ---------------------------------------------------------------------------
-
-describe("parseArgs — init deprecation", () => {
-  it("bkit init deprecation: sets initVerb=true, verb=install, modules=full", () => {
-    const result = parseArgs(["init"]);
-    expect(result.deprecations.initVerb).toBe(true);
-    expect(result.verb).toBe("install");
-    // init with no other flags → full
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("git-hooks")).toBe(true);
-  });
-
-  it("bkit init emits deprecation warn containing DEPRECATED: and removed in v0.2", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const result = parseArgs(["init"]);
-      printDeprecationWarnings(result.deprecations);
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      const msg = warnSpy.mock.calls[0]?.[0] as string;
-      expect(msg).toContain("DEPRECATED:");
-      expect(msg).toContain("removed in v0.2");
-      expect(msg).toContain("init");
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it("deprecation warn is printed exactly once for init", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const result = parseArgs(["init"]);
-      printDeprecationWarnings(result.deprecations);
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseArgs — --host= deprecation
-// ---------------------------------------------------------------------------
-
-describe("parseArgs — --host= deprecation", () => {
-  it("bkit install --host=claude: sets hostFlag='claude', delegates to --claude module", () => {
-    const result = parseArgs(["install", "--host=claude"]);
-    expect(result.deprecations.hostFlag).toBe("claude");
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
-    // Should NOT have cursor/ci/lint/git-hooks
-    expect(result.modules.has("cursor")).toBe(false);
-    expect(result.modules.has("ci")).toBe(false);
-  });
-
-  it("bkit install --host=cursor: sets hostFlag='cursor', delegates to --cursor module", () => {
-    const result = parseArgs(["install", "--host=cursor"]);
-    expect(result.deprecations.hostFlag).toBe("cursor");
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(false);
-  });
-
-  it("--host=claude emits deprecation warn containing DEPRECATED: and removed in v0.2", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const result = parseArgs(["install", "--host=claude"]);
-      printDeprecationWarnings(result.deprecations);
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-      const msg = warnSpy.mock.calls[0]?.[0] as string;
-      expect(msg).toContain("DEPRECATED:");
-      expect(msg).toContain("--host=claude");
-      expect(msg).toContain("removed in v0.2");
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it("deprecation warn is printed exactly once for --host=", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      const result = parseArgs(["install", "--host=cursor"]);
-      printDeprecationWarnings(result.deprecations);
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseArgs — unknown flag rejection
+// parseArgs — unknown flag / verb rejection (covers retired init + --host=)
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — unknown flag rejection", () => {
@@ -245,6 +150,48 @@ describe("parseArgs — unknown flag rejection", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       expect(() => parseArgs(["deploy"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("retired `init` verb is rejected as unknown (use `install --full`)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["init"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("retired `--host=claude` is rejected as unknown flag (use `--claude`)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--host=claude"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("retired `--host=cursor` is rejected as unknown flag (use `--cursor`)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--host=cursor"])).toThrow("process.exit called");
       expect(exitSpy).toHaveBeenCalledWith(1);
     } finally {
       exitSpy.mockRestore();
@@ -283,18 +230,6 @@ describe("printUsage — help output", () => {
       const output = logSpy.mock.calls[0]?.[0] as string;
       expect(output).toContain("--ci --lint");
       expect(output).toContain("--claude");
-    } finally {
-      logSpy.mockRestore();
-    }
-  });
-
-  it("help output documents init deprecation", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("bkit init");
-      expect(output).toContain("Deprecated");
     } finally {
       logSpy.mockRestore();
     }

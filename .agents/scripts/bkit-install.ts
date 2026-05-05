@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs, printDeprecationWarnings, printUsage } from "./bkit-cli.js";
+import { parseArgs, printUsage } from "./bkit-cli.js";
 import { dispatchModules, type ModuleContext } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 
@@ -622,15 +622,12 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
 }
 
 async function main() {
-  const { verb, modules, deprecations } = parseArgs(process.argv.slice(2));
+  const { verb, modules } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
     return;
   }
-
-  // Emit deprecation warnings before any work
-  printDeprecationWarnings(deprecations);
 
   const dryRun = verb === "check";
   if (dryRun) LOG_PREFIX = "[bkit-check]";

@@ -762,13 +762,11 @@ describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
     const content = fs.readFileSync(templatePath, "utf-8");
     const tokens = {
       NODE_VERSION: "22",
-      PNPM_VERSION: "10",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
     };
     const substituted = applyTokens(content, tokens);
     expect(substituted).not.toContain("{{NODE_VERSION}}");
-    expect(substituted).not.toContain("{{PNPM_VERSION}}");
     expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
     expect(substituted).not.toContain("{{PROJECT_NAME}}");
     expect(substituted).toContain("node-version: 22");

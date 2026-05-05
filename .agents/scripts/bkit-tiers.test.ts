@@ -28,7 +28,6 @@ afterEach(() => {
 
 const TOKENS = {
   NODE_VERSION: "22",
-  PNPM_VERSION: "10",
   DEFAULT_BRANCH: "main",
   PROJECT_NAME: "test-project",
 };

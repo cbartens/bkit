@@ -8,13 +8,6 @@ export type Verb = "install" | "check" | "help";
 export interface ParsedArgs {
   verb: Verb;
   modules: Set<ModuleFlag>;
-  /** Deprecation triggers present in the argv. */
-  deprecations: {
-    /** true when `init` verb was used */
-    initVerb: boolean;
-    /** "claude" | "cursor" | null when --host=<x> was used */
-    hostFlag: "claude" | "cursor" | null;
-  };
 }
 
 const MODULE_FLAGS = new Set<ModuleFlag>([
@@ -44,16 +37,11 @@ export function resolveModules(flags: Set<ModuleFlag>): Set<ModuleFlag> {
 
 /**
  * Parse argv (process.argv.slice(2)) into a ParsedArgs object.
- * Rejects unknown flags with process.exit(1).
- * Deprecation stubs: `init` verb → install --full; `--host=claude/cursor` → --claude/--cursor.
+ * Rejects unknown verbs and flags with process.exit(1).
  */
 export function parseArgs(argv: string[]): ParsedArgs {
   const args = [...argv];
   let verb: Verb = "help";
-  const deprecations: ParsedArgs["deprecations"] = {
-    initVerb: false,
-    hostFlag: null,
-  };
 
   // Verb extraction
   const firstArg = args[0];
@@ -63,13 +51,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   } else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
     verb = "help";
     args.shift();
-  } else if (firstArg === "init") {
-    // Deprecation: init → install --full
-    deprecations.initVerb = true;
-    verb = "install";
-    args.shift();
   } else if (firstArg !== undefined && !firstArg.startsWith("-")) {
-    // Unknown verb
+    // Unknown verb (`init` removed in v0.2.0 — use `install --full`)
     console.error(`[bkit] Unknown verb: ${firstArg}. Run \`bkit help\` for usage.`);
     process.exit(1);
   }
@@ -77,20 +60,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const moduleFlags = new Set<ModuleFlag>();
 
   for (const arg of args) {
-    // Deprecation: --host=claude | --host=cursor
-    if (arg.startsWith("--host=")) {
-      const host = arg.slice("--host=".length);
-      if (host === "claude" || host === "cursor") {
-        deprecations.hostFlag = host;
-        moduleFlags.add(host as ModuleFlag);
-        continue;
-      } else {
-        console.error(`[bkit] Unknown --host value: ${host}. Use --claude or --cursor.`);
-        process.exit(1);
-      }
-    }
-
     // Module flags: --<flag>
+    // `--host=` removed in v0.2.0 — use `--claude` / `--cursor` directly.
     if (arg.startsWith("--")) {
       const flag = arg.slice(2) as ModuleFlag;
       if (!MODULE_FLAGS.has(flag)) {
@@ -106,28 +77,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
     process.exit(1);
   }
 
-  // init deprecation → treat as --full
-  if (deprecations.initVerb && moduleFlags.size === 0) {
-    moduleFlags.add("full");
-  }
-
   const modules = resolveModules(moduleFlags);
 
-  return { verb, modules, deprecations };
-}
-
-/** Print deprecation warnings to stderr (called by main() after parseArgs). */
-export function printDeprecationWarnings(deprecations: ParsedArgs["deprecations"]): void {
-  if (deprecations.initVerb) {
-    console.warn(
-      "[bkit] DEPRECATED: 'init' verb is replaced by 'install --full'; will be removed in v0.2",
-    );
-  }
-  if (deprecations.hostFlag) {
-    console.warn(
-      `[bkit] DEPRECATED: --host=${deprecations.hostFlag} is replaced by --${deprecations.hostFlag}; will be removed in v0.2`,
-    );
-  }
+  return { verb, modules };
 }
 
 export function printUsage(): void {
@@ -154,11 +106,6 @@ Examples:
   bkit install --ci --lint      CI + lint stack + core; nothing else.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).
-
-Deprecated (v0.1.x only — removed in v0.2):
-  bkit init                     Use \`bkit install --full\` instead.
-  bkit install --host=claude    Use \`bkit install --claude\` instead.
-  bkit install --host=cursor    Use \`bkit install --cursor\` instead.
 
 Consumer CI auth:
   Set BKIT_READ_TOKEN in GitHub Actions secrets (fine-grained PAT, Contents:read on cbartens/bkit).

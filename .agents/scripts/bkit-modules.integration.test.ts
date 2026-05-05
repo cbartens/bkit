@@ -32,7 +32,6 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
     dryRun: false,
     tokens: {
       NODE_VERSION: "22",
-      PNPM_VERSION: "10",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
     },
@@ -86,7 +85,6 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     // Resolve tokens
     const tokens = await resolveTokens(tmpDir);
     expect(tokens.NODE_VERSION).toBe("22");
-    expect(tokens.PNPM_VERSION).toBe("10");
     expect(tokens.PROJECT_NAME).toBe("x");
     // DEFAULT_BRANCH may be 'main' (fallback) since no git remote
     expect(tokens.DEFAULT_BRANCH).toBe("main");
@@ -117,15 +115,10 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
 
     // Assert token substitution occurred
     expect(onDisk).toContain("node-version: 22");
-    // Note: {{PNPM_VERSION}} was removed from the template in the BAR-130 hotfix
-    // (KN-3: pnpm/action-setup@v4 reads package.json#packageManager directly).
-    // No pnpm version string is emitted into the rendered ci.yml.
     expect(onDisk).toContain("main"); // default branch
 
     // Assert NO raw placeholders remain
     expect(onDisk).not.toContain("{{NODE_VERSION}}");
-    // {{PNPM_VERSION}} is no longer in the template — assert it is also absent from output
-    expect(onDisk).not.toContain("{{PNPM_VERSION}}");
     expect(onDisk).not.toContain("{{DEFAULT_BRANCH}}");
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 

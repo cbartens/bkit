@@ -4,7 +4,6 @@ import { execSync } from "node:child_process";
 
 export interface TokenMap {
   NODE_VERSION: string;
-  PNPM_VERSION: string;
   DEFAULT_BRANCH: string;
   PROJECT_NAME: string;
 }
@@ -29,12 +28,6 @@ function extractNodeMajor(raw: string): string | null {
   return m ? (m[1] ?? null) : null;
 }
 
-// Extract major from packageManager field: "pnpm@10.4.1" → "10"
-function extractPnpmMajor(packageManager: string): string | null {
-  const m = packageManager.match(/^pnpm@(\d+)/);
-  return m ? (m[1] ?? null) : null;
-}
-
 // Resolve NODE_VERSION: .nvmrc → package.json.engines.node → "22"
 function resolveNodeVersion(cwd: string, pkg: Record<string, unknown>): string {
   const nvmrcPath = path.join(cwd, ".nvmrc");
@@ -51,23 +44,6 @@ function resolveNodeVersion(cwd: string, pkg: Record<string, unknown>): string {
   }
 
   return "22";
-}
-
-// NOTE: As of the BAR-130 hotfix, ci.yml templates no longer reference {{PNPM_VERSION}}.
-// pnpm/action-setup@v4 reads package.json#packageManager directly (single SoT).
-// Token kept for stable interface; retire in v0.2 — see docs/pending.md.
-// Resolve PNPM_VERSION: package.json.packageManager (pnpm only) → "10"
-function resolvePnpmVersion(pkg: Record<string, unknown>): string {
-  const pm = pkg["packageManager"];
-  if (typeof pm === "string") {
-    const major = extractPnpmMajor(pm);
-    if (major) return major;
-    // packageManager is set but does not match pnpm — warn and fall back
-    process.stderr.write(
-      `[bkit] WARN: package.json packageManager is not pnpm (${pm}); PNPM_VERSION defaulting to 10\n`,
-    );
-  }
-  return "10";
 }
 
 // Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
@@ -110,7 +86,6 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
 
   return {
     NODE_VERSION: resolveNodeVersion(cwd, pkg),
-    PNPM_VERSION: resolvePnpmVersion(pkg),
     DEFAULT_BRANCH: resolveDefaultBranch(cwd),
     PROJECT_NAME: name.trim(),
   };
@@ -122,12 +97,10 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
 // through when token values contain dollar signs.
 export function applyTokens(content: string, tokens: TokenMap): string {
   const nodeVersion = tokens.NODE_VERSION;
-  const pnpmVersion = tokens.PNPM_VERSION;
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   return content
     .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
-    .replace(/\{\{PNPM_VERSION\}\}/g, () => pnpmVersion)
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName);
 }

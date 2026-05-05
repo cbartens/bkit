@@ -8,11 +8,13 @@ bkit is distributed as a **git dependency** from this private GitHub repo (no np
 
 ```bash
 # pinned to a release tag (recommended)
-pnpm add -D github:cbartens/bkit#v0.1.2
+pnpm add -D github:cbartens/bkit#v0.2.0
 
 # or floating on `main`
 pnpm add -D github:cbartens/bkit
 ```
+
+> **Heads-up — pnpm tag-drop:** `pnpm add` may rewrite the spec in `package.json` as `git+https://github.com/cbartens/bkit.git` (no `#vX.Y.Z` suffix). The lockfile still pins the resolved commit, so `pnpm install --frozen-lockfile` stays deterministic — but `pnpm update` will float to `main`. After `pnpm add`, verify `package.json` shows `"github:cbartens/bkit#vX.Y.Z"`; if it doesn't, rewrite it and re-run `pnpm install`.
 
 ### ⚠️ One-time consumer config (pnpm 10+)
 
@@ -60,12 +62,7 @@ pnpm exec bkit check --full
 
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
 
-**Deprecated (v0.1.x; removed in v0.2):**
-
-```bash
-pnpm exec bkit init               # → use `bkit install` instead
-pnpm exec bkit install --host=claude   # → use `bkit install --claude` instead
-```
+> **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
 **Auth:** consumer needs read access to `github.com/cbartens/bkit` — SSH key or HTTPS PAT (`GH_TOKEN`) configured for git.
 

@@ -116,7 +116,7 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 bkit is **not** published to the npm registry. It's installed as a git dependency from `github.com/cbartens/bkit` (private repo). Consumers add it via:
 
 ```bash
-pnpm add -D github:cbartens/bkit#v0.1.2
+pnpm add -D github:cbartens/bkit#v0.2.0
 ```
 
 On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.
@@ -162,12 +162,7 @@ pnpm exec bkit install --full           # all modules (same as no flags)
 pnpm exec bkit check --full
 ```
 
-**Deprecated (v0.1.x; removed in v0.2):**
-
-```bash
-pnpm exec bkit init                    # → use `bkit install` instead
-pnpm exec bkit install --host=claude   # → use `bkit install --claude` instead
-```
+> **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
 In **this repo** (bkit's own dogfood — runs the script directly via tsx, not the bin):
 
