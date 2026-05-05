@@ -11,6 +11,7 @@
       "mcp__claude_ai_Linear__save_issue",
       "mcp__claude_ai_Linear__list_comments",
       "mcp__claude_ai_Linear__save_comment",
+      "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:linear.app)",
