@@ -712,12 +712,12 @@ describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
     const content = fs.readFileSync(templatePath, "utf-8");
 
     // Auth-shim must be literally present
-    expect(content).toContain("BKIT_READ_TOKEN");
+    expect(content).toContain("GH_BKIT_TOKEN");
     expect(content).toContain("git config --global url.");
 
     // Auth-shim must appear BEFORE pnpm install --frozen-lockfile
     const lines = content.split("\n");
-    const authShimLine = lines.findIndex((l) => l.includes("BKIT_READ_TOKEN"));
+    const authShimLine = lines.findIndex((l) => l.includes("GH_BKIT_TOKEN"));
     const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
     expect(authShimLine).toBeGreaterThan(-1);
     expect(installLine).toBeGreaterThan(-1);

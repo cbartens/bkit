@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { writeTier1, writeTier2, writeTier3, type WriteSet } from "./bkit-tiers.js";
 import type { TokenMap } from "./bkit-tokens.js";
@@ -343,10 +344,10 @@ export function runCoreModule(ctx: ModuleContext): void {
       `
 [bkit] First install detected (.bkit-version was absent). Post-install steps:
 
-1. Add BKIT_READ_TOKEN to your GitHub Actions repository secrets:
+1. Add GH_BKIT_TOKEN to your GitHub Actions repository secrets:
    - Create a fine-grained PAT with Contents: read on cbartens/bkit
    - GitHub Settings → Secrets and variables → Actions → New repository secret
-   - Name: BKIT_READ_TOKEN
+   - Name: GH_BKIT_TOKEN
    - See README.md ## Consumer CI auth for full setup.
 
 2. Add these scripts to your package.json "scripts" block (copy-paste ready):
@@ -506,6 +507,85 @@ export function runCursorModule(ctx: ModuleContext): void {
 }
 
 // ---------------------------------------------------------------------------
+// GH_BKIT_TOKEN secret presence check
+//
+// Detects whether the consumer's GitHub repo has the GH_BKIT_TOKEN secret set
+// (required for the seeded ci.yml's auth-shim step to fetch the private bkit
+// dep during pnpm install in CI). Uses the local `gh` CLI; degrades silently
+// if `gh` is unavailable, unauthenticated, or this directory isn't a GitHub
+// repo (e.g. local-only worktree, brand-new repo not yet pushed).
+//
+// Returns:
+//   "present"       — secret exists; no action needed
+//   "missing"       — gh works and confirmed the secret is absent
+//   "unknown"       — gh unavailable / not authed / not a GitHub repo;
+//                     fall back to a generic instruction in the print sink
+// ---------------------------------------------------------------------------
+
+type SecretCheckResult = "present" | "missing" | "unknown";
+
+function checkBkitTokenSecret(secretName = "GH_BKIT_TOKEN"): SecretCheckResult {
+  try {
+    const out = execSync(`gh secret list --json name -q '.[].name'`, {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5000,
+    });
+    const names = out
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return names.includes(secretName) ? "present" : "missing";
+  } catch {
+    return "unknown";
+  }
+}
+
+const GH_BKIT_TOKEN_MISSING_INSTRUCTIONS = `[bkit] GH_BKIT_TOKEN secret NOT FOUND in this repo's GitHub Actions secrets.
+
+Without it, CI runs that need to install @cbartens/bkit will fail at
+\`pnpm install --frozen-lockfile\` because the GHA runner can't auth into the
+private bkit repo (error: "could not read Username for 'https://github.com/'").
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Set the GH_BKIT_TOKEN secret on this repo. The user has the token value
+  stored locally in the bkit repo's .env file. Ask the user for the value
+  (do not echo it back), then run ONE of these:
+
+      gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+
+      # or, if user prefers piping from a file:
+      gh secret set GH_BKIT_TOKEN < /path/to/file/with/token
+
+  Web alternative: GitHub repo → Settings → Secrets and variables →
+  Actions → New repository secret. Name: GH_BKIT_TOKEN.
+
+  Token requirements: fine-grained PAT, scope 'cbartens/bkit',
+  permission Contents:read. Generate at:
+  https://github.com/settings/tokens?type=beta
+
+  Verify with: gh secret list | grep GH_BKIT_TOKEN
+`;
+
+const GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS = `[bkit] Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).
+
+Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub
+repo. It is required for the seeded ci.yml auth-shim step to fetch the
+private @cbartens/bkit dep in CI.
+
+INSTRUCTIONS FOR AN AI AGENT:
+
+  Once \`gh\` is installed and authenticated (\`gh auth login\`), run:
+
+      gh secret list | grep GH_BKIT_TOKEN
+
+  If absent, ask the user for the token (stored in bkit repo .env) and run:
+
+      gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+`;
+
+// ---------------------------------------------------------------------------
 // AI-actionable Tier 3 merge instructions
 //
 // Each constant is a self-contained instruction block: any AI agent
@@ -531,7 +611,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   2. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
      pnpm/action-setup@v4 reads this as single source of truth and will
      fail if it is missing or conflicts with a 'with: version:' block.
-  3. Ensure the GitHub repo has a secret named BKIT_READ_TOKEN
+  3. Ensure the GitHub repo has a secret named GH_BKIT_TOKEN
      (fine-grained PAT, scope: 'cbartens/bkit', permission: Contents:read).
      Without it the auth-shim step fails on private-repo pnpm install.
   4. Ensure the package.json scripts referenced by the workflow exist:
@@ -685,6 +765,19 @@ export function runCiModule(ctx: ModuleContext): void {
    "lint:slop": "slop-scan scan ."
    "format:check": "prettier --check ."`,
   );
+
+  // Check whether GH_BKIT_TOKEN secret is set on the consumer's GitHub repo.
+  // The seeded ci.yml auth-shim depends on it. Skip the check on dry-run so
+  // bkit check stays read-only and predictable.
+  if (!dryRun) {
+    const secretStatus = checkBkitTokenSecret();
+    if (secretStatus === "missing") {
+      printSink.push(GH_BKIT_TOKEN_MISSING_INSTRUCTIONS);
+    } else if (secretStatus === "unknown") {
+      printSink.push(GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS);
+    }
+    // "present" → silent, no extra noise
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -108,7 +108,7 @@ Examples:
   bkit check --full             Drift detection across full stack (CI gate).
 
 Consumer CI auth:
-  Set BKIT_READ_TOKEN in GitHub Actions secrets (fine-grained PAT, Contents:read on cbartens/bkit).
+  Set GH_BKIT_TOKEN in GitHub Actions secrets (fine-grained PAT, Contents:read on cbartens/bkit).
   See README.md ## Consumer CI auth for setup steps.
 
 Docs: https://github.com/cbartens/bkit/blob/main/README.md`);

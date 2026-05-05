@@ -78,7 +78,7 @@ bkit seeds a CI auth shim in `.github/workflows/ci.yml` that allows private-repo
 
 2. **Add the secret** to your consumer repo:
    - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
-   - Name: `BKIT_READ_TOKEN`
+   - Name: `GH_BKIT_TOKEN`
    - Value: paste the PAT
 
 3. **Add allowlist** to your `pnpm-workspace.yaml` or `package.json` (if not already done):
@@ -101,11 +101,11 @@ bkit seeds a CI auth shim in `.github/workflows/ci.yml` that allows private-repo
    }
    ```
 
-The CI shim in `ci.yml` configures git to use `BKIT_READ_TOKEN` for HTTPS auth:
+The CI shim in `ci.yml` configures git to use `GH_BKIT_TOKEN` for HTTPS auth:
 
 ```yaml
 - name: Configure bkit auth
-  run: git config --global url."https://${{ secrets.BKIT_READ_TOKEN }}@github.com/cbartens/".insteadOf "https://github.com/cbartens/"
+  run: git config --global url."https://x-access-token:${{ secrets.GH_BKIT_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"
 ```
 
 ## Documentation

@@ -133,7 +133,7 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 
     // Assert auth-shim is present
-    expect(onDisk).toContain("BKIT_READ_TOKEN");
+    expect(onDisk).toContain("GH_BKIT_TOKEN");
     expect(onDisk).toContain("git config --global url.");
   });
 
@@ -192,7 +192,7 @@ jobs:
     expect(result.suggested).toBe(true);
     expect(printSink).toHaveLength(1);
     expect(printSink[0]).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(printSink[0]).toContain("BKIT_READ_TOKEN");
+    expect(printSink[0]).toContain("GH_BKIT_TOKEN");
     expect(printSink[0]).not.toContain("{{TEMPLATE_CONTENT}}");
   });
 });
@@ -424,7 +424,7 @@ describe("MED-1: --ci only (no --lint) prints package.json script suggestions in
 // MED-5 regression — print-sink copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
-describe("MED-5: first-install print-sink BKIT_READ_TOKEN block has no broken backslash-escape sequences", () => {
+describe("MED-5: first-install print-sink GH_BKIT_TOKEN block has no broken backslash-escape sequences", () => {
   it("print-sink emitted on first install contains no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
@@ -437,8 +437,8 @@ describe("MED-5: first-install print-sink BKIT_READ_TOKEN block has no broken ba
 
     const combined = printSink.join("\n");
 
-    // Must contain the BKIT_READ_TOKEN setup (confirming it's the first-install block)
-    expect(combined).toContain("BKIT_READ_TOKEN");
+    // Must contain the GH_BKIT_TOKEN setup (confirming it's the first-install block)
+    expect(combined).toContain("GH_BKIT_TOKEN");
 
     // Must NOT contain a literal backslash-dollar sequence.
     // The original bug was the template literal `\\$(find ...)` which rendered as
@@ -487,7 +487,7 @@ describe("MED-5: first-install print-sink BKIT_READ_TOKEN block has no broken ba
 });
 
 describe(".bkit-version first-run signal extra-logging", () => {
-  it("first install (no .bkit-version) emits BKIT_READ_TOKEN setup in print-sink", () => {
+  it("first install (no .bkit-version) emits GH_BKIT_TOKEN setup in print-sink", () => {
     const printSink: string[] = [];
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, printSink });
@@ -499,9 +499,9 @@ describe(".bkit-version first-run signal extra-logging", () => {
     // dispatchModules flushes postDispatch (where .bkit-version is written)
     dispatchModules(new Set(["core"]), ctx);
 
-    // print-sink should contain BKIT_READ_TOKEN setup
+    // print-sink should contain GH_BKIT_TOKEN setup
     const combined = printSink.join("\n");
-    expect(combined).toContain("BKIT_READ_TOKEN");
+    expect(combined).toContain("GH_BKIT_TOKEN");
     expect(combined).toContain("package.json");
   });
 
@@ -523,7 +523,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     dispatchModules(new Set(["core"]), ctx2);
 
     const combined2 = sink2.join("\n");
-    expect(combined2).not.toContain("BKIT_READ_TOKEN");
+    expect(combined2).not.toContain("GH_BKIT_TOKEN");
     expect(combined2).not.toContain("First install detected");
   });
 });
