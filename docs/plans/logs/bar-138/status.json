@@ -40,6 +40,18 @@
         "artifacts": [
           "docs/plans/logs/bar-138/design-v1-draft.md"
         ]
+      },
+      {
+        "step": "design-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T22:34:12Z",
+        "commitSha": "d1a73ab0f6a4872085c7e2f18a97c7b1577ca3a2",
+        "artifacts": [
+          "docs/plans/logs/bar-138/design-review-1.md",
+          "docs/plans/logs/bar-138/design-review-2.md"
+        ]
       }
     ]
   }
