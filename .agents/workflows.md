@@ -309,7 +309,7 @@ Every transformation step writes ONE new versioned file in `docs/plans/logs/{FID
 
 **Build / debug / ship:** doc-producing steps adopt the same `{workflow}-v{N}-{action}.md` naming inside `logs/{FID}/`. NO `drafts/` copy at close — those phases don't have drafts artifacts.
 
-**Close-workflow copy semantics (plan + design only):** find highest `v{N}` matching `logs/{FID}/{workflow}-v*.md`; copy file body (skip everything up to and including `<!-- verdict:end -->`) to `drafts/{FID}-{workflow}.md`. SPLIT case: copy parent + each numbered sibling.
+**Close-workflow copy semantics (plan + design only):** find highest `v{N}` matching `logs/{FID}/{workflow}-v*.md`; copy file verbatim to `drafts/{FID}-{workflow}.md`. SPLIT case: copy parent + each numbered sibling.
 
 ### Verdict Validation
 

@@ -73,7 +73,7 @@ description: "Design Feature — Autonomous design phase"
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Design"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path** with `save_issue returned no id`.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/drafts/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set.
+7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
 8. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -380,23 +380,31 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
    [ -z "$DESIGN_FINAL" ] && { echo "No design version found" >&2; exit 1; }
+   DRAFT="docs/plans/drafts/{FID}-design.md"
    mkdir -p docs/plans/drafts
-   cp "$DESIGN_FINAL" "docs/plans/drafts/{FID}-design.md"
+   cp "$DESIGN_FINAL" "$DRAFT"
+   [ -s "$DRAFT" ] || { echo "Draft empty: $DRAFT" >&2; exit 1; }
    ```
-2. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-3. Sync to dev and prune worktree:
+2. Commit drafts in worktree:
+   ```bash
+   git add docs/plans/drafts/{FID}-design.md
+   git diff --cached --quiet || git commit -m "docs({FID}): close-workflow drafts"
+   ```
+3. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+4. Sync to dev and prune worktree:
    ```bash
    cd "$REPO_ROOT"
    git checkout dev
    git pull origin dev
    git merge "$BRANCH" --no-edit
    git push origin dev
+   git show "dev:docs/plans/drafts/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
    git branch -D "feat/{FID}" 2>/dev/null || true
    git push origin --delete "feat/{FID}" 2>/dev/null || true
    git worktree prune
    ```
-4. Update status and commit:
+5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow work [skip build] [skip ci]"
@@ -408,18 +416,18 @@ description: "Design Feature — Autonomous design phase"
    git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
    rm -f "docs/plans/logs/{FID}/.lock"
    ```
-5. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
+6. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
    ### Step 8 — Close Workflow
    ```
-7. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
+8. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
 
 ### 🔒 Gate 8 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
-- [ ] Canonical design copied (`docs/plans/drafts/{FID}-design.md`, verdict header stripped)
+- [ ] Canonical design copied (`docs/plans/drafts/{FID}-design.md`, verified on `dev` post-merge)
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
