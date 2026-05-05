@@ -39,4 +39,7 @@ tmp/**
 docs/plans/logs/**/raw/
 docs/plans/logs/**/.lock
 
+# bkit runtime artifact (written by installer, never SoT)
+.agents/.bkit-version
+
 # <!-- bkit:end -->

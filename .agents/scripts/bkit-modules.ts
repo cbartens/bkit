@@ -202,7 +202,11 @@ function processCoreTemplateDir(
 // runCoreModule — payload pass + core templates + .bkit-version (LAST)
 // ---------------------------------------------------------------------------
 
-const COPY_EXCLUDE = new Set(["skills", "scripts", "README.md"]);
+// `.bkit-version` excluded: it's a runtime artifact written by postDispatch,
+// never source of truth. Including it would pollute consumer `.agents/` and
+// break the dry-run/install parity check (postDispatch suppresses its own
+// write when the file already matches pkgVersion).
+const COPY_EXCLUDE = new Set(["skills", "scripts", "README.md", ".bkit-version"]);
 
 function copyAdditive(
   src: string,
@@ -362,7 +366,7 @@ ${scriptEntries}
 const BKIT_PREFIX = "bkit-";
 
 export function runClaudeModule(ctx: ModuleContext): void {
-  const { dryRun, logPrefix } = ctx;
+  const { dryRun, tokens, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
   const pairs: Array<[string, string]> = [
@@ -385,6 +389,22 @@ export function runClaudeModule(ctx: ModuleContext): void {
       console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
     }
   }
+
+  // Tier 1 — fully managed: settings.json + preflight hook
+  const PKG_ROOT = getPkgRoot();
+  const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
+  const tier1Files: Array<[string, string]> = [
+    [path.join(claudeTemplates, "settings.json"), ".claude/settings.json"],
+    [path.join(claudeTemplates, "hooks", "preflight.sh"), ".claude/hooks/preflight.sh"],
+  ];
+  for (const [src, dst] of tier1Files) {
+    if (!fs.existsSync(src)) continue;
+    const prevLen = ws.writes.length;
+    writeTier1(src, dst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}claude: ${dst}`);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +412,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
 // ---------------------------------------------------------------------------
 
 export function runCursorModule(ctx: ModuleContext): void {
-  const { dryRun, modelLookup, logPrefix } = ctx;
+  const { dryRun, tokens, modelLookup, printSink, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
   // Commands: T1 + T2
@@ -432,6 +452,43 @@ export function runCursorModule(ctx: ModuleContext): void {
 
     for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
       console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+    }
+  }
+
+  // Tier 1 — fully managed: hooks.json, preflight, shared rules
+  const PKG_ROOT = getPkgRoot();
+  const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
+  const tier1Files: Array<[string, string]> = [
+    [path.join(cursorTemplates, "hooks.json"), ".cursor/hooks.json"],
+    [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
+    [
+      path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
+      ".cursor/rules/00-shared-rules.mdc",
+    ],
+  ];
+  for (const [src, dst] of tier1Files) {
+    if (!fs.existsSync(src)) continue;
+    const prevLen = ws.writes.length;
+    writeTier1(src, dst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+    }
+  }
+
+  // Tier 3 — seed-or-print: settings.json + consumer infra files
+  const tier3Files: Array<[string, string]> = [
+    [path.join(cursorTemplates, "settings.json"), ".cursor/settings.json"],
+    [path.join(cursorTemplates, "Dockerfile"), ".cursor/Dockerfile"],
+    [path.join(cursorTemplates, "environment.json"), ".cursor/environment.json"],
+  ];
+  for (const [src, dst] of tier3Files) {
+    if (!fs.existsSync(src)) continue;
+    const prevLen = ws.writes.length;
+    const result = writeTier3(src, dst, dryRun, printSink, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+    } else if (result.suggested) {
+      console.log(`${logPrefix} ${tag}cursor: ${dst} (exists; suggestion printed)`);
     }
   }
 }
