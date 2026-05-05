@@ -92,3 +92,11 @@
 ## Project Rules
 
 <!-- bkit:end -->
+
+### bkit Repo Authoring
+
+- **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
+- **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
+- **Workflow edits:** See `.agents/workflows.md` § Workflow Authoring Rules.
+- **Prompt edits:** see `.agents/prompts.md` § Prompt Authoring Rules.
+- **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.

@@ -81,7 +81,7 @@ description: "Plan Feature — Autonomous plan generation"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "plan" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"plan", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   git add "$STATUS" && git commit --allow-empty -m "chore({FID}): start-workflow work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
@@ -488,9 +488,6 @@ description: "Plan Feature — Autonomous plan generation"
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-> [!CAUTION]
-> **HARD STOP:** Plan requires human review. Do NOT invoke `/build`.
-
 1. Copy final plan to drafts:
    ```bash
    PLAN_FINAL=$(ls docs/plans/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
@@ -543,6 +540,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```comment
    ### Step 11 — Close Workflow
    ```
+8. **HARD STOP:** Plan requires human review. Do NOT invoke `/build`.
 
 ### 🔒 Gate 11 — Close Workflow
 

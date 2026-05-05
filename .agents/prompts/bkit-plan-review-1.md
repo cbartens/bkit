@@ -44,7 +44,7 @@ maxTurns: 50
 8. Cross-check architecture, knowledge, decisions.
 9. Generate alternatives. Identify risks, edge cases, missing considerations.
 10. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-11. Verdict mapping:
+11. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
 
 - `PASS` = no CRITICAL items.
 - `FAIL` = plan drifts from source or violates template.
@@ -53,7 +53,7 @@ maxTurns: 50
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL
+Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 Failures: <integer ≥ 0>
 
 <!-- verdict:end -->

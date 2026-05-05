@@ -26,48 +26,40 @@ maxTurns: 100
 > - **Tools:** Verify every return; do NOT assume success.
 > - **No commits:** Do NOT run `git commit`/`git add`/`git push` (caller does).
 
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour, incl. `--hard`/`--soft`/`--mixed`), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Mandate:** Apply challenge fixes (edit/create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
+- **Mandate:** Apply challenge fixes (edit/create source files); ONLY identified findings, no new scope. Do NOT just analyse.
+- **Blockers:** Append `BLOCKED` lines to log for any blocked findings. NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour, incl. `--hard`/`--soft`/`--mixed`), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
-1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Apply fixes in priority order: CRITICAL → HIGH → MEDIUM → LOW.
-4. Per fix: Apply suggested fix → verify no regression.
-5. Blocked → record finding and reason in the `Skipped` section → skip and continue.
-6. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` — must pass.
-7. Once fix verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
-8. Verdict mapping:
-   - `PASS` = all findings fixed and tests pass.
-   - `FAIL` = CRITICAL findings unresolved or local tests broken.
-   - `CONCERNS` = some findings skipped (recorded with reason).
-9. Produce **Create** outputs.
+1. Initialise **Create** output stub with `PENDING` placeholders.
+2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
+3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+4. Read challenge findings (priority CRITICAL → HIGH → MEDIUM → LOW) and all log files (`DONE` finding entries = done, `BLOCKED` = blocked). Find first finding NOT `DONE` in log and resume.
+5. Update **Create** output after each finding — append `DONE` / `BLOCKED` log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
+6. Implement sequentially in priority order — apply suggested remediation per finding (edit/create source files) → append log entry → proceed.
+7. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]'; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
+8. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
+9. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+   - `PASS` = every finding has a `DONE` entry across logs AND local tests pass.
+   - `FAIL` = unable to remediate findings; any CRITICAL finding ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR local tests fail.
+   - `CONCERNS` = lower-severity findings end in a `BLOCKED` entry with NO later `DONE` entry across logs.
 
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL
-Strategy: STANDARD | PIVOT | FINAL
+Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 
-# Build Challenge Remediation
+# Build Challenge Remediation Log
 
-[Brief: which challenge findings were addressed and how]
-
-## Strategy
-
-[Brief: which strategy was applied and why]
-
-## Blockers
-
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+[Append-only flat log. Each entry one line: `DONE — Finding {N}: {name/description} — {outcome} ({path or commit ref})` or `BLOCKED — Finding {N}: {name/description} — {reason}`. Order = event order (mixed `DONE` and `BLOCKED` lines expected). Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after applying fixes and producing output. Do NOT add new scope, generate tests.**

@@ -29,7 +29,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append.
 > - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
-> - **Limits:** Reference constant `MAX_MERGE_ATTEMPT=3` in retry checks below.
+> - **Limits:** Reference constant `MAX_MERGE_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -54,7 +54,7 @@ description: "Ship Feature — Autonomous merge and archive"
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**)
+   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**)
    Create: `docs/plans/logs/{FID}/ship-handover.md`
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
@@ -174,7 +174,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
-5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT=1`.
+5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT` = 1.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **if** ANY failures → **Failure Path** with `PR #{PR_NUMBER} CI failures.`
 7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
@@ -198,7 +198,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT=1`)
+- [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 1)
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`)
@@ -208,18 +208,16 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 3 — Merge PR
 
-> **Pre-merge clean-tree guard (run before any other sub-step).** The current cwd is the feature worktree but the merge happens on `dev`. Inspect the `dev` branch state explicitly and auto-commit any dirty paths there so the squash-merge does not clobber uncommitted IDE edits (B10 fix):
->
-> ```bash
-> REPO_ROOT=$(git rev-parse --show-toplevel)
-> if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
->   git -C "$REPO_ROOT" status --short
->   git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
->   git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes [skip build] [skip ci]"
-> fi
-> ```
-
-1. Merge with empty body → avoid `[skip ci]` suppressing CI on `dev`.
+1. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
+   ```bash
+   REPO_ROOT=$(git rev-parse --show-toplevel)
+   if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
+     git -C "$REPO_ROOT" status --short
+     git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
+     git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes [skip build] [skip ci]"
+   fi
+   ```
+2. Merge with empty body → avoid `[skip ci]` suppressing CI on `dev`.
    ```bash
    gh pr merge {PR_NUMBER} --squash --delete-branch \
      --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
@@ -232,9 +230,9 @@ description: "Ship Feature — Autonomous merge and archive"
      --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
    [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
    ```
-2. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-3. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else `FAIL`. Set `MERGE_FAILURES` = 0 if PASS, else 1.
-4. Update status and commit:
+3. `gh pr view {PR_NUMBER} --json state` → extract `state`.
+4. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else `FAIL`. Set `MERGE_FAILURES` = 0 if PASS, else 1.
+5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} work"
@@ -244,15 +242,15 @@ description: "Ship Feature — Autonomous merge and archive"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} status"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
    ### Step 3 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-6. **If** `state` is `MERGED` → Step 6.
-7. **If** `state` is NOT `MERGED`:
+7. **If** `state` is `MERGED` → Step 6.
+8. **If** `state` is NOT `MERGED`:
    - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 4.
    - **Else** → **Failure Path**.
-8. **Else** → **Failure Path**.
+9. **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Merge PR
 
@@ -322,18 +320,19 @@ description: "Ship Feature — Autonomous merge and archive"
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-   Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`Update: source files
-Create:`docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}.md`
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`
+   Update: source files
+   Create: `docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}-log.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-4. Read `ship-failure-remediate-${MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+4. Read `ship-failure-remediate-${MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${MERGE_ATTEMPT} work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$MERGE_ATTEMPT" --arg strat "$STRATEGY" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-failure-remediate-'"${MERGE_ATTEMPT}"'.md"]}]' \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-failure-remediate-'"${MERGE_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT} status"
    ```
@@ -347,7 +346,7 @@ Create:`docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}.md`
 ### 🔒 Gate 5 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Artifact written (`ship-failure-remediate-${MERGE_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`ship-failure-remediate-${MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
 - [ ] `MERGE_ATTEMPT` incremented before re-run

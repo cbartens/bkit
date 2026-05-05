@@ -37,7 +37,7 @@ maxTurns: 25
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Verdict mapping:
+7. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
    - `PASS` = design ready.
    - `FAIL` = CRITICAL scope concerns.
    - `CONCERNS` = revisions needed (Acceptance Scenario violates `docs/plans/template.md` § Acceptance Scenario → Spec).
@@ -45,7 +45,7 @@ maxTurns: 25
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL
+Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 

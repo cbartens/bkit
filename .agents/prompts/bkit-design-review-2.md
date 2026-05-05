@@ -52,7 +52,7 @@ maxTurns: 50
 8. Integration risk — monorepo fit, systems touched.
 9. PoC approach — ≤200 words. If can't be described that briefly → verdict `CONCERNS`.
 10. Unknowns/blockers needing experimentation.
-11. Verdict mapping:
+11. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
 
 - `PASS` = feasible as designed; proceed.
 - `CONCERNS` = feasible with caveats — design proceeds, findings are addressable.
@@ -61,7 +61,7 @@ maxTurns: 50
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL
+Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 

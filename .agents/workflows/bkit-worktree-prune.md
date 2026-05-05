@@ -47,10 +47,10 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 
 ## Step 1 — Single Worktree Path
 
-1. `WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"`.
+1. `WORKTREE_PATH` = `"$REPO_ROOT/.worktrees/{FID}"`.
 2. **If** `$WORKTREE_PATH` does not exist → print `Error: worktree not found at $WORKTREE_PATH` and STOP.
 3. `git -C "$WORKTREE_PATH" branch --show-current` → extract `WORKTREE_BRANCH`.
-4. `git -C "$WORKTREE_PATH" rev-list --count origin/dev..HEAD` → extract `AHEAD`. **If** `AHEAD > 0` → print warning:
+4. `git -C "$WORKTREE_PATH" rev-list --count origin/dev..HEAD` → extract `AHEAD`. **If** `AHEAD` > 0 → print warning:
 
    ```
    Warning: {WORKTREE_BRANCH} has {AHEAD} commits NOT in origin/dev.

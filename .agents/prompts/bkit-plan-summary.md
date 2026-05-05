@@ -38,7 +38,7 @@ maxTurns: 25
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
 7. Any unchecked human-confirmation gates `[ ]` in plan → ALWAYS verdict `CONCERNS`. List unchecked items in Action Items.
-8. Verdict mapping:
+8. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
    - `PASS` = plan ready.
    - `FAIL` = CRITICAL scope or completeness gaps.
    - `CONCERNS` = revisions needed before building (unchecked human-confirmation gates, vague/missing `Acceptance Scenario`).
@@ -46,7 +46,7 @@ maxTurns: 25
 **Output format:**
 
 ```markdown
-Verdict: PASS | CONCERNS | FAIL
+Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 

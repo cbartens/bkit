@@ -376,9 +376,6 @@ description: "Design Feature — Autonomous design phase"
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-> [!CAUTION]
-> **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
-
 1. Copy final design to drafts:
    ```bash
    DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)
@@ -416,6 +413,7 @@ description: "Design Feature — Autonomous design phase"
    ```comment
    ### Step 8 — Close Workflow
    ```
+7. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
 
 ### 🔒 Gate 8 — Close Workflow
 

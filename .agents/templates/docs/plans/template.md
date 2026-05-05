@@ -5,9 +5,9 @@
 > [!CAUTION]
 > **CRITICAL:** Do not hallucinate plan execution state.
 >
-> 1. ALWAYS read this actual `plan.md` file natively via the `read_file` tool _before_ executing any steps.
-> 2. NEVER trust system-generated session summaries or previous conversation history to determine what has been completed.
-> 3. Your source of truth is EXCLUSIVELY the literal `[x]` vs `[ ]` checkboxes in this physical document. If a box is `[ ]`, it is NOT DONE, regardless of what the conversation context implies.
+> 1. Read this `plan.md` natively ONCE at session start. Do NOT re-read on every loop iteration.
+> 2. NEVER trust session memory or previous conversation history.
+> 3. Source of truth = literal `[x]` vs `[ ]` checkboxes in this document. `[ ]` = NOT DONE regardless of conversation context.
 
 ## Context & Goals
 

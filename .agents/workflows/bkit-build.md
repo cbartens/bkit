@@ -29,7 +29,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append.
 > - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
-> - **Limits:** Reference constants `MAX_VERIFY_ATTEMPT=3` and `MAX_TEST_ATTEMPT=3` in retry checks below.
+> - **Limits:** Reference constants `MAX_VERIFY_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When Read line passes `git diff origin/dev..HEAD` to subagents, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -181,7 +181,7 @@ description: "Build Feature — Autonomous implementation"
    SUB_COUNT=$(ls docs/plans/active/{FID}-plan-*.md 2>/dev/null | wc -l)
    [ "$SUB_COUNT" -eq 0 ] && SUB_COUNT=1 && SINGLE_PLAN=true
    ```
-6. Init counters: `VERIFY_ATTEMPT=1`, `TEST_ATTEMPT=1`.
+6. Init counters: `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1.
 7. Create: `docs/plans/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
    ```bash
@@ -204,7 +204,7 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Plan files in `docs/plans/active/`
-- [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT=1`, `TEST_ATTEMPT=1`)
+- [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1)
 - [ ] Artifact written (`build-input.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`)
 - [ ] Issue comment attempted (`Step 2` section)
@@ -277,8 +277,8 @@ description: "Build Feature — Autonomous implementation"
 
 ## Sub-Plan Loop — Steps 5–7
 
-1. **If** `SINGLE_PLAN=true` → execute once using `{FID}-plan.md` with `SUB_PLAN=1`.
-2. **If** `SUB_COUNT >= 2` → loop `SUB_PLAN = 1` to `SUB_COUNT` using `{FID}-plan-${SUB_PLAN}.md`. Reset `VERIFY_ATTEMPT=1` at start of each `SUB_PLAN`.
+1. **If** `SINGLE_PLAN` = true → execute once using `{FID}-plan.md` with `SUB_PLAN` = 1.
+2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-${SUB_PLAN}.md`. Reset `VERIFY_ATTEMPT` = 1 at start of each `SUB_PLAN`.
 
 Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMPT}.md` (e.g. `plan-verify-1-2.md` = sub-plan 1, attempt 2).
 
@@ -288,18 +288,18 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:
    Context: You are a subagent in the Build phase. Execute sub-plan ${SUB_PLAN}/${SUB_COUNT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md` (or `{FID}-plan.md` if SINGLE_PLAN), `docs/plans/logs/{FID}/build-input.md`
-   Update: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, source files
-   Create: `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}.md`
+   Read:  `docs/plans/logs/{FID}/build-input.md`, `docs/plans/active/{FID}-plan.md`, `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
+   Update: source files
+   Create: `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-5. Read `build-plan-execute-${SUB_PLAN}.md` until `<!-- verdict:end -->` → extract `Verdict` as `EXECUTE_VERDICT`.
+5. Read `build-plan-execute-${SUB_PLAN}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `EXECUTE_VERDICT`.
 6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "feat({FID}): plan-execute sub-plan ${SUB_PLAN} work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$EXECUTE_VERDICT" --argjson sp "$SUB_PLAN" \
-     '.[-1].steps += [{step:"plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'.md"]}]' \
+     '.[-1].steps += [{step:"plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): plan-execute sub-plan ${SUB_PLAN} status"
    ```
@@ -311,8 +311,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 5 — Plan Execute
 
 - [ ] Subagent invoked (`@bkit-build-plan-execute`, no inline work)
-- [ ] Artifact written (`build-plan-execute-${SUB_PLAN}.md`, non-empty)
-- [ ] Checkboxes in plan updated
+- [ ] Artifact written (`build-plan-execute-${SUB_PLAN}-log.md`, non-empty)
 - [ ] Source files implemented
 - [ ] `EXECUTE_VERDICT` extracted
 - [ ] Workflow status updated (step `plan-execute` recorded with `commitSha`, `verdict`, `subPlan`)
@@ -323,9 +322,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 6 — Plan Verify
 
 8. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-   Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, glob prior `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-\*.md`and`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope)
-Update:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`   Create:`docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`
+   Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope)
+   Update: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
+   Create: `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`
 9. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 10. Read `build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
 11. Update status and commit:
@@ -388,11 +388,12 @@ PRIOR_STRATEGY=$(jq -r --arg s "plan-gaps-remediate" --argjson sp "$SUB_PLAN" \
 - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 17. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
-    Context: You are a subagent in the Build phase. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, glob prior `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*.md`Update: source files
-Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`
+    Context: You are a subagent in the Build phase. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+    Read: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-*-log.md`
+    Update: source files
+    Create: `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`
 18. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-19. Read `build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+19. Read `build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 20. Update status and commit:
 
 ```bash
@@ -400,7 +401,7 @@ STATUS="docs/plans/logs/{FID}/status.json"
 git add -A && git commit --allow-empty -m "fix({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} work"
 SHA=$(git rev-parse HEAD)
 t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg strat "$STRATEGY" \
-  '.[-1].steps += [{step:"plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}]' \
+  '.[-1].steps += [{step:"plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}]' \
   "$STATUS" > "$t" && mv "$t" "$STATUS"
 git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} status"
 ```
@@ -417,7 +418,7 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 ### 🔒 Gate 7 — Plan Gaps Remediate
 
 - [ ] Subagent invoked (`@bkit-build-plan-gaps-remediate`, no inline work)
-- [ ] Artifact written (`build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
 - [ ] `VERIFY_ATTEMPT` incremented before re-run
@@ -428,11 +429,11 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 
 ## 🧠 Step 8 — Plan Verify Holistic
 
-**Run only if** `SUB_COUNT` >= 2. **Skip if** `SINGLE_PLAN=true`.
+**Run only if** `SUB_COUNT` >= 2. **Skip if** `SINGLE_PLAN` = true.
 
 1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, all `docs/plans/active/{FID}-plan-N.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration)
+   Read: `docs/plans/active/{FID}-plan.md`, all `docs/plans/active/{FID}-plan-N.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration)
    Create: `docs/plans/logs/{FID}/build-plan-verify-holistic.md`
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-plan-verify-holistic.md` until `<!-- verdict:end -->` → extract `Verdict` as `HOLISTIC_VERDICT` and `Failures` as `HOLISTIC_FAILURES`.
@@ -466,7 +467,7 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 
 ---
 
-## 🧠 Step 9 — Challenge
+## 🧠 Step 9 — Build Challenge
 
 1. **Subagent:** Invoke `@bkit-build-challenge` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
@@ -486,14 +487,14 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
-   ### Step 9 — Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES}
+   ### Step 9 — Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES}
    ```
 6. **If** `CHALLENGE_VERDICT` = PASS → Step 12.
 7. **If** `CHALLENGE_VERDICT` = CONCERNS → Step 10 (challenge-remediate).
 8. **If** `CHALLENGE_VERDICT` = FAIL → **Failure Path** (CRITICAL finding, human review required).
 9. **Else** → **Failure Path** with `Unexpected build challenge verdict: {CHALLENGE_VERDICT}`.
 
-### 🔒 Gate 9 — Challenge
+### 🔒 Gate 9 — Build Challenge
 
 - [ ] Subagent invoked (`@bkit-build-challenge`, no inline work)
 - [ ] Artifact written (`build-challenge.md`, non-empty)
@@ -505,7 +506,7 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 
 ---
 
-## 🧠 Step 10 — Challenge Remediate
+## 🧠 Step 10 — Build Challenge Remediate
 
 **Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS.
 
@@ -513,28 +514,28 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-challenge.md`
    Update: source files
-   Create: `docs/plans/logs/{FID}/build-challenge-remediate.md`
+   Create: `docs/plans/logs/{FID}/build-challenge-remediate-log.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `build-challenge-remediate.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
+3. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "fix({FID}): challenge-remediate work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" \
-     '.[-1].steps += [{step:"challenge-remediate", status:"DONE", verdict:$v, attempt:1, strategy:"STANDARD", at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate.md"]}]' \
+     '.[-1].steps += [{step:"challenge-remediate", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): challenge-remediate status"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
-   ### Step 10 — Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT}
+   ### Step 10 — Build Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT}
    ```
 
-### 🔒 Gate 10 — Challenge Remediate
+### 🔒 Gate 10 — Build Challenge Remediate
 
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
-- [ ] Artifact written (`build-challenge-remediate.md`, non-empty)
+- [ ] Artifact written (`build-challenge-remediate-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_CHALLENGE_VERDICT` extracted
 - [ ] Workflow status updated (step `challenge-remediate` recorded with `commitSha`, `verdict`)
@@ -542,13 +543,13 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 
 ---
 
-## 🧠 Step 11 — Challenge Tests
+## 🧠 Step 11 — Build Challenge Tests
 
 **Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS.
 
 1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/logs/{FID}/build-challenge.md`, `docs/plans/logs/{FID}/build-challenge-remediate.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/logs/{FID}/build-challenge.md`, `docs/plans/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`
    Create: `docs/plans/logs/{FID}/build-challenge-tests.md`, test files
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-challenge-tests.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_TESTS_VERDICT`.
@@ -564,10 +565,10 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
-   ### Step 11 — Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
+   ### Step 11 — Build Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
    ```
 
-### 🔒 Gate 11 — Challenge Tests
+### 🔒 Gate 11 — Build Challenge Tests
 
 - [ ] Subagent invoked (`@bkit-build-challenge-tests`, no inline work)
 - [ ] Artifact written (`build-challenge-tests.md`, non-empty)
@@ -581,13 +582,16 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 ## 🤖 Step 12 — Run Tests
 
 1. Run verbatim — do NOT modify quoting, filter, or glob:
-
    ```bash
-   pnpm turbo lint typecheck test --filter='...[origin/dev]'
+   if [ -f turbo.json ]; then
+     pnpm turbo lint typecheck test --filter='...[origin/dev]'
+   else
+     set -e
+     for s in typecheck test format:check lint:slop lint:prose; do
+       if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
+     done
+   fi
    ```
-
-   > Pre-PR: lint, typecheck, unit only — no integration/E2E. Debug workflow handles post-PR CI failures.
-
 2. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
 3. Update status and commit:
    ```bash
@@ -611,7 +615,7 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 
 ### 🔒 Gate 12 — Run Tests
 
-- [ ] Tests executed (`pnpm turbo lint typecheck test --filter='...[origin/dev]'`)
+- [ ] Tests executed (turbo path if `turbo.json`, else single-package script fallback)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
 - [ ] Workflow status updated (step `run-tests` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 12` section)
@@ -636,8 +640,9 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
-   Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`Create:`docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`
+   Create: `docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `build-failure-diagnose-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 5. Update status and commit:
@@ -677,16 +682,16 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`
    Update: source and test files
-   Create: `docs/plans/logs/{FID}/build-failure-remediate-${TEST_ATTEMPT}.md`
+   Create: `docs/plans/logs/{FID}/build-failure-remediate-${TEST_ATTEMPT}-log.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `build-failure-remediate-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
+3. Read `build-failure-remediate-${TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${TEST_ATTEMPT} work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'.md"]}]' \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT} status"
    ```
@@ -700,7 +705,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 ### 🔒 Gate 14 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Artifact written (`build-failure-remediate-${TEST_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`build-failure-remediate-${TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
 - [ ] `TEST_ATTEMPT` incremented before re-run
@@ -714,7 +719,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 **Run only if** all Step 12 tests PASS.
 
 1. **Subagent:** Invoke `@bkit-build-summary` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Folds challenge and holistic findings per Decision 8. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`, glob `docs/plans/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only)
    Create: `docs/plans/logs/{FID}/build-summary.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.

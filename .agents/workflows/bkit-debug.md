@@ -29,7 +29,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append.
 > - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
-> - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT=3` and `MAX_TEST_ATTEMPT=3` in retry checks below.
+> - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
 ---
@@ -183,8 +183,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
-4. **If** `DEBUG_MODE` = pr → `RUN_ID=$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')` → `gh run view "$RUN_ID" --log-failed` → extract `CI_LOGS`. **Else** → `RUN_ID=""`, `CI_LOGS="N/A"`.
-5. Init `TEST_ATTEMPT=1`.
+4. **If** `DEBUG_MODE` = pr → `RUN_ID` = `$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')` → `gh run view "$RUN_ID" --log-failed` → extract `CI_LOGS`. **Else** → `RUN_ID` = "", `CI_LOGS` = "N/A".
+5. Init `TEST_ATTEMPT` = 1.
 6. Create: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md` + `CI_LOGS`.
 7. Update status and commit:
    ```bash
@@ -207,7 +207,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`TEST_ATTEMPT=1`)
+- [ ] Counters initialised (`TEST_ATTEMPT` = 1)
 - [ ] Artifact written (`debug-input-${DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`, `debugMode`, `observeMode`)
 - [ ] Issue comment attempted (`Step 2` section)
@@ -232,8 +232,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
-   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-_.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-_.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-\*.md`Create:`docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`
+   Create: `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Add `Debug: PR` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
 5. Read `debug-failure-diagnose-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -270,18 +271,19 @@ Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-inpu
 **Run only if** `OBSERVE_MODE` = off.
 
 1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-   Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`Update: source files
-Create:`docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
+   Update: source files
+   Create: `docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}-log.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `debug-failure-remediate-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
+3. Read `debug-failure-remediate-${TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${TEST_ATTEMPT} work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'.md"]}]' \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT} status"
    ```
@@ -293,7 +295,7 @@ Create:`docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}.md`
 ### 🔒 Gate 4 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Artifact written (`debug-failure-remediate-${TEST_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`debug-failure-remediate-${TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`)
@@ -305,13 +307,25 @@ Create:`docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}.md`
 
 **Run only if** `OBSERVE_MODE` = off.
 
-1. **If** PR debug mode → run verbatim:
+1. Run verbatim:
    ```bash
-   pnpm turbo lint typecheck test --filter='...[origin/dev]'
-   ```
-   **Else** → run verbatim:
-   ```bash
-   pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'
+   if [ -f turbo.json ]; then
+     if [ "$PR_DEBUG_MODE" = "1" ]; then
+       pnpm turbo lint typecheck test --filter='...[origin/dev]'
+     else
+       pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'
+     fi
+   else
+     set -e
+     for s in typecheck test format:check lint:slop lint:prose; do
+       if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
+     done
+     if [ "$PR_DEBUG_MODE" != "1" ]; then
+       for s in test:integration test:e2e; do
+         if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
+       done
+     fi
+   fi
    ```
 2. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
 3. Update status and commit:
@@ -352,7 +366,7 @@ Create:`docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}.md`
 2. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${MAX_DEBUG_ATTEMPT} work"
+   git add -A && git commit --allow-empty -m "fix({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`} work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
      '.[-1].steps += [{step:"push-remediation", status:"DONE", attempt:$da, at:$t, commitSha:$sha, artifacts:[]}]
@@ -423,15 +437,24 @@ Create:`docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}.md`
 
 **Run only if** `OBSERVE_MODE` = instrument.
 
-PR debug only — observe is single-shot, terminal, and does NOT increment `DEBUG_ATTEMPT`. The push at the end seeds CI with `[DEBUG-OBSERVE]` logging so the next CI-triggered debug run (with `OBSERVE="pending"`) reaches Step 9.
-
 1. **Subagent:** Invoke `@bkit-debug-observe-instrument` using `Agent` tool:
-   Context: You are a subagent in the Debug phase. Observe Instrument mode — `DEBUG_ATTEMPT` exhausted at `${DEBUG_ATTEMPT}/${MAX_DEBUG_ATTEMPT}`; this is the single observation pass before terminal handover. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*.md`
+   Context: You are a subagent in the Debug phase. Observe Instrument mode — `DEBUG_ATTEMPT` exhausted at `${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`; this is the single observation pass before terminal handover. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`
    Update: source files (instrumentation only)
    Create: `docs/plans/logs/{FID}/debug-observe-instrument-${DEBUG_ATTEMPT}.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Derive `OBSERVE_INSTRUMENT_VERDICT`: `pnpm turbo lint typecheck test --filter='...[origin/dev]'`→ **If** pass → `OBSERVE_INSTRUMENT_VERDICT` = PASS. **Else** `OBSERVE_INSTRUMENT_VERDICT` = FAIL → **Failure Path** with `Observe instrumentation failed`.
+3. Derive `OBSERVE_INSTRUMENT_VERDICT`:
+   ```bash
+   if [ -f turbo.json ]; then
+     pnpm turbo lint typecheck test --filter='...[origin/dev]'
+   else
+     set -e
+     for s in typecheck test; do
+       if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
+     done
+   fi
+   ```
+   **If** pass → `OBSERVE_INSTRUMENT_VERDICT` = PASS. **Else** `OBSERVE_INSTRUMENT_VERDICT` = FAIL → **Failure Path** with `Observe instrumentation failed`.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -468,11 +491,9 @@ PR debug only — observe is single-shot, terminal, and does NOT increment `DEBU
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-CI logs from the prior instrumented push contain `[DEBUG-OBSERVE]` evidence. This step extracts the evidence into a per-step summary; Step 10 strips the logging; Failure Path's `debug-abort-handover` writer composes the canonical handover doc.
-
 1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`
+   Read: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-${DEBUG_ATTEMPT}.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-observe-analyse-${DEBUG_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `OBSERVE_ANALYSE_VERDICT`.
@@ -508,8 +529,6 @@ CI logs from the prior instrumented push contain `[DEBUG-OBSERVE]` evidence. Thi
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-Strips `[DEBUG-OBSERVE]` logging so the branch ends in a clean state alongside the handover doc. Terminates via Failure Path; the handover doc is composed by `debug-abort-handover`.
-
 1. **Subagent:** Invoke `@bkit-debug-observe-revert` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Revert mode — strip every `[DEBUG-OBSERVE]` line; lint/typecheck/test gate must pass. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`
@@ -519,7 +538,11 @@ Strips `[DEBUG-OBSERVE]` logging so the branch ends in a clean state alongside t
 3. Derive `OBSERVE_REVERT_VERDICT` verdict:
    ```bash
    GREP_HITS=$(git grep -c '\[DEBUG-OBSERVE\]' | awk -F: '{s+=$NF} END {print s+0}')
-   pnpm turbo lint typecheck test --filter='...[origin/dev]' && TEST_OK=1 || TEST_OK=0
+   if [ -f turbo.json ]; then
+     pnpm turbo lint typecheck test --filter='...[origin/dev]' && TEST_OK=1 || TEST_OK=0
+   else
+     ( set -e; for s in typecheck test; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done ) && TEST_OK=1 || TEST_OK=0
+   fi
    [ "$GREP_HITS" = "0" ] && [ "$TEST_OK" = "1" ] && OBSERVE_REVERT_VERDICT=PASS || OBSERVE_REVERT_VERDICT=FAIL
    ```
    `FAIL` → **Failure Path** with `Observe revert incomplete, $GREP_HITS grep hits`.
@@ -553,7 +576,7 @@ Strips `[DEBUG-OBSERVE]` logging so the branch ends in a clean state alongside t
 
 ## 🤖 Step 11 — Close Workflow
 
-**Run only if** `OBSERVE_MODE` = off (after Step 7) OR `OBSERVE_MODE` = instrument (after Step 8). For `OBSERVE_MODE` = analyse, terminate via Failure Path instead — close-workflow does NOT run.
+**Run only if** `OBSERVE_MODE` = off (after Step 7) OR `OBSERVE_MODE` = instrument (after Step 8). **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Update status and commit:
