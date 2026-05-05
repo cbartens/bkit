@@ -23,6 +23,7 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc",
+    "bkit": "node dist/bkit-install.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
