@@ -443,7 +443,16 @@
         "at": "2026-05-05T03:16:23Z",
         "commitSha": "35de45c8a43b6bb7d8148ea906eddd3cf49e53dc",
         "artifacts": []
+      },
+      {
+        "step": "push-remediation",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-05T03:17:10Z",
+        "commitSha": "6369e2ce155d04f698affb0ac1452cd985236239",
+        "artifacts": []
       }
-    ]
+    ],
+    "debugAttempt": 1
   }
 ]
