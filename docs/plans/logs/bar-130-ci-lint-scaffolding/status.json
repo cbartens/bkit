@@ -356,6 +356,28 @@
         "at": "2026-05-05T02:19:23Z",
         "commitSha": "eaf1c55f6884a20d20f802ec4ca8fa3d2a24af76",
         "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T02:23:41Z",
+        "commitSha": "22697f613a0dedf39735261d6ba75ebd756d9ed3",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T02:23:41Z",
+        "commitSha": "22697f613a0dedf39735261d6ba75ebd756d9ed3",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary.md"
+        ]
       }
     ]
   }
