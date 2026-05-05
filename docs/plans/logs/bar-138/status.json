@@ -52,6 +52,17 @@
           "docs/plans/logs/bar-138/design-review-1.md",
           "docs/plans/logs/bar-138/design-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T22:37:15Z",
+        "commitSha": "28890390e7ff49c8330732a5811d595fff750da7",
+        "artifacts": [
+          "docs/plans/logs/bar-138/design-v2-reviewed.md"
+        ]
       }
     ]
   }
