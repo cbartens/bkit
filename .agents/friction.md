@@ -102,3 +102,15 @@
 - **Related:** bar-130-ci-lint-scaffolding, BAR-130
 - **Recovery:** Both `@bkit-ship-update-docs` and `@bkit-ship-summary` invoked with explicit dev-tree path and rationale in the prompt. Both produced correct artifacts (`ship-update-docs.md`, `ship-summary.md`) on dev.
 - **Status:** RECOVERED
+
+## `pnpm turbo` step-5 command failed — turbo not installed in bkit (recurrence) (2026-05-05)
+
+- **Category:** tool-failure
+- **Workflow:** debug
+- **Step:** 5 — Run Tests
+- **Source:** orchestrator
+- **Description:** Same defect as the build-workflow Step 12 entry above. Debug workflow Step 5's prescribed `pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'` exits with `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "turbo" not found` because bkit is a single-package repo, not a Turbo monorepo. The build-workflow entry's `Suggested fix` (detection-based branching on `turbo.json`) has not been applied to `.claude/commands/bkit-debug.md` yet.
+- **Suggested fix:** Apply the same detection-based fallback to debug Step 5: `if [ -f turbo.json ]; then pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'; else pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:slop && pnpm lint:prose; fi`. (Note: `test:integration` and `test:e2e` are also absent from bkit; fallback should match `package.json#scripts` rather than the verbatim list.)
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, prior build-workflow entry (commit 86ef9ff)
+- **Recovery:** Direct script invocations executed as fallback: `pnpm typecheck`, `pnpm test`, `pnpm format:check`, `pnpm lint:slop`, `pnpm lint:prose`. Result captured in `run-tests` step.
+- **Status:** RECOVERED
