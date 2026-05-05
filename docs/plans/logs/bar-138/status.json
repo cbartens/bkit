@@ -121,6 +121,19 @@
         "artifacts": [
           "docs/plans/logs/bar-138/plan-v1-draft.md"
         ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-05T23:21:06Z",
+        "commitSha": "a70d94d4ce5f7a2caedd391af8564dd1eeaecdf2",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-review-1.md",
+          "docs/plans/logs/bar-138/plan-review-2.md"
+        ]
       }
     ]
   }
