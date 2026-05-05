@@ -401,5 +401,11 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "debug",
+    "startedAt": "2026-05-05T02:46:03Z",
+    "status": "IN_PROGRESS",
+    "steps": []
   }
 ]
