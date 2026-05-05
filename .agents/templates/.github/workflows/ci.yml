@@ -15,9 +15,9 @@ jobs:
         with:
           node-version: {{NODE_VERSION}}
 
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
-        with:
-          version: {{PNPM_VERSION}}
 
       - name: Configure private-repo auth
         run: git config --global url."https://x-access-token:${{ secrets.BKIT_READ_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"

@@ -27,9 +27,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup pnpm
+        # Pnpm version is resolved from package.json#packageManager (single SoT).
+        # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
         uses: pnpm/action-setup@v4
-        with:
-          version: 10
 
       - name: Setup Node
         uses: actions/setup-node@v4

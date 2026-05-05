@@ -102,3 +102,27 @@
 - **Related:** bar-130-ci-lint-scaffolding, BAR-130
 - **Recovery:** Both `@bkit-ship-update-docs` and `@bkit-ship-summary` invoked with explicit dev-tree path and rationale in the prompt. Both produced correct artifacts (`ship-update-docs.md`, `ship-summary.md`) on dev.
 - **Status:** RECOVERED
+
+## `pnpm turbo` step-5 command failed — turbo not installed in bkit (recurrence) (2026-05-05)
+
+- **Category:** tool-failure
+- **Workflow:** debug
+- **Step:** 5 — Run Tests
+- **Source:** orchestrator
+- **Description:** Same defect as the build-workflow Step 12 entry above. Debug workflow Step 5's prescribed `pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'` exits with `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "turbo" not found` because bkit is a single-package repo, not a Turbo monorepo. The build-workflow entry's `Suggested fix` (detection-based branching on `turbo.json`) has not been applied to `.claude/commands/bkit-debug.md` yet.
+- **Suggested fix:** Apply the same detection-based fallback to debug Step 5: `if [ -f turbo.json ]; then pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'; else pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:slop && pnpm lint:prose; fi`. (Note: `test:integration` and `test:e2e` are also absent from bkit; fallback should match `package.json#scripts` rather than the verbatim list.)
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, prior build-workflow entry (commit 86ef9ff)
+- **Recovery:** Direct script invocations executed as fallback: `pnpm typecheck`, `pnpm test`, `pnpm format:check`, `pnpm lint:slop`, `pnpm lint:prose`. Result captured in `run-tests` step.
+- **Status:** RECOVERED
+
+## `vale` `write-good` style missing after worktree seed (2026-05-05)
+
+- **Category:** tool-failure
+- **Workflow:** debug
+- **Step:** 5 — Run Tests
+- **Source:** orchestrator
+- **Description:** `pnpm lint:prose` (vale) failed with `E100 [loadStyles] Runtime error: style 'write-good' does not exist on StylesPath`. Step 2 worktree-setup attempts to seed `.vale/styles/write-good/` from the parent worktree, but the parent worktree itself never had the package vendored on disk (`.vale/styles/` only contained `House/`). `.vale.ini` declares `Packages = write-good`, which is normally fetched on demand via `vale sync` — a step the workflow does not run.
+- **Suggested fix:** Step 2 worktree-setup should run `command -v vale >/dev/null && (cd "$WORKTREE_PATH" && vale sync)` after the seed-from-parent attempt (idempotent, ~1s when already vendored). Alternatively, document `vale sync` as a one-time consumer setup step in README and have `lint:prose` itself fail more loudly on missing styles.
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, `.vale.ini`, `package.json#scripts.lint:prose`
+- **Recovery:** Ran `vale sync` from the worktree root (1 package, ~1s). Re-ran `pnpm lint:prose` — exit 0, 0 errors, 4 pre-existing warnings on `.agents/prompts/bkit-utility-compress-markdown.md` (unrelated to this debug fix).
+- **Status:** RECOVERED

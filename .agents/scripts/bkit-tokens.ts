@@ -53,6 +53,9 @@ function resolveNodeVersion(cwd: string, pkg: Record<string, unknown>): string {
   return "22";
 }
 
+// NOTE: As of the BAR-130 hotfix, ci.yml templates no longer reference {{PNPM_VERSION}}.
+// pnpm/action-setup@v4 reads package.json#packageManager directly (single SoT).
+// Token kept for stable interface; retire in v0.2 — see docs/pending.md.
 // Resolve PNPM_VERSION: package.json.packageManager (pnpm only) → "10"
 function resolvePnpmVersion(pkg: Record<string, unknown>): string {
   const pm = pkg["packageManager"];
