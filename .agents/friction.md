@@ -41,4 +41,16 @@
 - **Recovery:** Manual recreate by re-copying `docs/plans/logs/bar-138/design-v2-reviewed.md` → `docs/plans/drafts/bar-138-design.md` on `dev`, then stripped verdict header per checklist requirement.
 - **Status:** RECOVERED
 
+## Drafts filename lacks descriptive slug (2026-05-06)
+
+- **Category:** other
+- **Workflow:** design
+- **Step:** 8 — Close Workflow
+- **Source:** orchestrator
+- **Description:** Step 8 instructs `cp "$DESIGN_FINAL" "docs/plans/drafts/{FID}-design.md"` — produces filenames like `bar-138-design.md` with no topic slug. Inconsistent with `bar-120-managed-agents-runtime-plan.md` precedent in `docs/plans/drafts/`. Forces readers to open every file to know what it is. User had to ask for a manual rename post-merge.
+- **Suggested fix:** Update Step 8 cp target to include a topic slug: `docs/plans/drafts/{FID}-{slug}-design.md`, where `{slug}` is the same kebab token already derived in Step 2 from Linear title (≤3 tokens, no stopwords). The `FID` derivation in Step 2 already produces `{issue-id}-{slug}` (e.g. `bar-138-gh-packages-distribution`); reusing that gives `{FID}-design.md` = `bar-138-gh-packages-distribution-design.md` for free IF Step 2 actually carries the slug into FID. Audit: in this run, `FID` resolved to bare `bar-138` (slug dropped), so Step 2's FID derivation is also part of the gap.
+- **Related:** bar-138, commits `9d939ba` (initial generic name), `d237a9d` (manual rename to descriptive slug)
+- **Recovery:** Manual `git mv docs/plans/drafts/bar-138-design.md → bar-138-gh-packages-distribution-design.md`.
+- **Status:** RECOVERED
+
 <!-- bkit:end -->
