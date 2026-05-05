@@ -117,11 +117,14 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
 
     // Assert token substitution occurred
     expect(onDisk).toContain("node-version: 22");
-    expect(onDisk).toContain("10"); // pnpm major version somewhere
+    // Note: {{PNPM_VERSION}} was removed from the template in the BAR-130 hotfix
+    // (KN-3: pnpm/action-setup@v4 reads package.json#packageManager directly).
+    // No pnpm version string is emitted into the rendered ci.yml.
     expect(onDisk).toContain("main"); // default branch
 
     // Assert NO raw placeholders remain
     expect(onDisk).not.toContain("{{NODE_VERSION}}");
+    // {{PNPM_VERSION}} is no longer in the template — assert it is also absent from output
     expect(onDisk).not.toContain("{{PNPM_VERSION}}");
     expect(onDisk).not.toContain("{{DEFAULT_BRANCH}}");
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
@@ -521,5 +524,34 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const combined2 = sink2.join("\n");
     expect(combined2).not.toContain("BKIT_READ_TOKEN");
     expect(combined2).not.toContain("First install detected");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KN-3 regression guards — pnpm/action-setup@v4 single-SoT enforcement
+// ---------------------------------------------------------------------------
+
+describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm action", () => {
+  const SCRIPTS_DIR = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  // scripts/ is at <PKG_ROOT>/.agents/scripts — two levels up to PKG_ROOT
+  const PKG_ROOT = path.resolve(SCRIPTS_DIR, "..", "..");
+
+  it("ci.yml template does NOT set both `with.version:` and rely on packageManager (KN-3)", () => {
+    const tplPath = path.join(PKG_ROOT, ".agents/templates/.github/workflows/ci.yml");
+    const tpl = fs.readFileSync(tplPath, "utf-8");
+    // pnpm/action-setup@v4 errors if `with.version:` is set when consumer
+    // also has package.json#packageManager. Template MUST NOT set `version:`
+    // in a `with:` block directly under the pnpm/action-setup step.
+    // The regex stops at the next YAML step boundary (`      - `) to avoid
+    // false-positive matches from adjacent steps (e.g. setup-node's with.node-version).
+    expect(tpl).not.toMatch(/pnpm\/action-setup@v4[^-]*?with:[^-]*?version:/s);
+  });
+
+  it("bkit's own .github/workflows/ci.yml does NOT set `with.version:` for pnpm action (KN-3)", () => {
+    const ciPath = path.join(PKG_ROOT, ".github/workflows/ci.yml");
+    const ci = fs.readFileSync(ciPath, "utf-8");
+    // Same guard — stops at next step boundary so setup-node's `with: node-version:`
+    // does not produce a false positive.
+    expect(ci).not.toMatch(/pnpm\/action-setup@v4[^-]*?with:[^-]*?version:/s);
   });
 });
