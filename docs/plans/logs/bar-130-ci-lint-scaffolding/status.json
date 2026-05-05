@@ -503,6 +503,13 @@
         "at": "2026-05-05T03:33:30Z",
         "commitSha": "666de7e9cf74a795188936f94870715bd1a31c03",
         "artifacts": []
+      },
+      {
+        "step": "switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-05T03:36:38Z",
+        "commitSha": "378be390fb99088cffab01fb60f0d4cea5db0768",
+        "artifacts": []
       }
     ]
   }
