@@ -19,6 +19,17 @@
         "artifacts": [
           "docs/plans/logs/bar-138/design-input.md"
         ]
+      },
+      {
+        "step": "brainstorm-ideate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-05T22:26:21Z",
+        "commitSha": "d8c4f0fbfcb9c14e7933a7dbc2ec2502015089f7",
+        "artifacts": [
+          "docs/plans/logs/bar-138/design-brainstorm-ideate-1.md",
+          "docs/plans/logs/bar-138/design-brainstorm-ideate-2.md"
+        ]
       }
     ]
   }
