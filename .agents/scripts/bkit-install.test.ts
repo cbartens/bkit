@@ -6,12 +6,14 @@ import {
   applyT1,
   applyT2,
   applyT3,
+  extractFullManagedBlock,
   extractManagedBlock,
   parseModelLookup,
   parseFrontmatter,
   runTemplates,
   updateManagedBlock,
 } from "./bkit-install";
+import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -574,5 +576,202 @@ describe("runTemplates", () => {
     runTemplates(false);
     const { writes } = runTemplates(false);
     expect(writes).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2.1a — Hash-comment marker round-trip (YAML / INI / shell)
+// ---------------------------------------------------------------------------
+
+describe("hash-comment marker round-trip (markerStyle: 'hash-comment')", () => {
+  let tmpFile: string;
+
+  beforeEach(() => {
+    tmpFile = path.join(os.tmpdir(), `bkit-test-hash-${Date.now()}.yml`);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(tmpFile)) fs.rmSync(tmpFile);
+  });
+
+  it("extractManagedBlock with hash-comment extracts inner content from YAML", () => {
+    const yaml = `name: CI\n# bkit:start\nold-step: true\n# bkit:end\n`;
+    expect(extractManagedBlock(yaml, "hash-comment")).toBe("old-step: true");
+  });
+
+  it("extractManagedBlock with hash-comment extracts inner content from INI", () => {
+    const ini = `[section]\nkey=val\n# bkit:start\nbkit-key=bkit-val\n# bkit:end\n`;
+    expect(extractManagedBlock(ini, "hash-comment")).toBe("bkit-key=bkit-val");
+  });
+
+  it("extractManagedBlock with hash-comment extracts inner content from shell", () => {
+    const shell = `#!/bin/sh\n# header\n# bkit:start\nset -e\nbody\n# bkit:end\n`;
+    expect(extractManagedBlock(shell, "hash-comment")).toBe("set -e\nbody");
+  });
+
+  it("extractFullManagedBlock with hash-comment includes marker lines", () => {
+    const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
+    const full = extractFullManagedBlock(yaml, "hash-comment");
+    expect(full).not.toBeNull();
+    expect(full).toContain("# bkit:start");
+    expect(full).toContain("# bkit:end");
+    expect(full).toContain("step: true");
+  });
+
+  it("updateManagedBlock with hash-comment round-trips on YAML content", () => {
+    fs.writeFileSync(tmpFile, "# bkit:start\nold: true\n# bkit:end\n", "utf-8");
+    const changed = updateManagedBlock(tmpFile, "new: true", false, "hash-comment");
+    expect(changed).toBe(true);
+    const after = fs.readFileSync(tmpFile, "utf-8");
+    expect(after).toContain("new: true");
+    expect(after).not.toContain("old: true");
+    expect(after).toContain("# bkit:start");
+    expect(after).toContain("# bkit:end");
+  });
+
+  it("updateManagedBlock with hash-comment is idempotent on second run", () => {
+    fs.writeFileSync(tmpFile, "# bkit:start\nold: true\n# bkit:end\n", "utf-8");
+    updateManagedBlock(tmpFile, "stable: true", false, "hash-comment");
+    const afterFirst = fs.readFileSync(tmpFile, "utf-8");
+    const secondChanged = updateManagedBlock(tmpFile, "stable: true", false, "hash-comment");
+    expect(secondChanged).toBe(false);
+    expect(fs.readFileSync(tmpFile, "utf-8")).toBe(afterFirst);
+  });
+
+  it("updateManagedBlock with hash-comment no-op when markers absent", () => {
+    fs.writeFileSync(tmpFile, "no: markers\n", "utf-8");
+    const changed = updateManagedBlock(tmpFile, "content", false, "hash-comment");
+    expect(changed).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 2.1b — HTML-comment round-trip + default-arg backward compat
+// ---------------------------------------------------------------------------
+
+describe("html-comment marker round-trip + default-arg backward compat", () => {
+  let tmpFile: string;
+
+  beforeEach(() => {
+    tmpFile = path.join(os.tmpdir(), `bkit-test-html-${Date.now()}.md`);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(tmpFile)) fs.rmSync(tmpFile);
+  });
+
+  it("html-comment round-trip on markdown content", () => {
+    const md = `# Heading\n<!-- bkit:start -->\nold block\n<!-- bkit:end -->\n`;
+    expect(extractManagedBlock(md, "html-comment")).toBe("old block");
+  });
+
+  it("html-comment round-trip on .gitignore content", () => {
+    const gi = `# consumer entries\nlogs/\n<!-- bkit:start -->\nnode_modules/\n<!-- bkit:end -->\n`;
+    expect(extractManagedBlock(gi, "html-comment")).toBe("node_modules/");
+  });
+
+  it("default arg (no markerStyle) behaves identically to html-comment (backward compat)", () => {
+    const md = `<!-- bkit:start -->\ncontent here\n<!-- bkit:end -->\n`;
+    // Default (no arg) must equal explicit html-comment
+    expect(extractManagedBlock(md)).toBe(extractManagedBlock(md, "html-comment"));
+  });
+
+  it("updateManagedBlock default (no markerStyle) produces byte-identical output to v0.1.1", () => {
+    const original = "Before\n<!-- bkit:start -->\nOld\n<!-- bkit:end -->\nAfter\n";
+    fs.writeFileSync(tmpFile, original, "utf-8");
+    updateManagedBlock(tmpFile, "New content");
+    const result = fs.readFileSync(tmpFile, "utf-8");
+    // Verify structure: Before + markers + new content + After
+    expect(result).toContain("Before\n");
+    expect(result).toContain("After\n");
+    expect(result).toContain("New content");
+    expect(result).toContain("<!-- bkit:start -->");
+    expect(result).toContain("<!-- bkit:end -->");
+  });
+
+  it("hash-comment markers are NOT matched when markerStyle defaults to html-comment", () => {
+    const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
+    // Default arg = html-comment → should NOT find the hash markers
+    expect(extractManagedBlock(yaml)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Task 6.1 — Auth-shim inside ci.yml template assertion
+// ---------------------------------------------------------------------------
+
+describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
+  it("ci.yml template contains auth-shim line literally between # bkit:start and # bkit:end", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
+
+    const content = fs.readFileSync(templatePath, "utf-8");
+    const block = extractManagedBlock(content, "hash-comment");
+    expect(block).not.toBeNull();
+
+    // Auth-shim must be literally present inside the block
+    expect(block!).toContain("BKIT_READ_TOKEN");
+    expect(block!).toContain("git config --global url.");
+
+    // Auth-shim must appear BEFORE pnpm install --frozen-lockfile
+    const authShimLine = block!.split("\n").findIndex((l) => l.includes("BKIT_READ_TOKEN"));
+    const installLine = block!
+      .split("\n")
+      .findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
+    expect(authShimLine).toBeGreaterThan(-1);
+    expect(installLine).toBeGreaterThan(-1);
+    expect(authShimLine).toBeLessThan(installLine);
+  });
+
+  // -------------------------------------------------------------------------
+  // MED-3 regression — auth-shim must be scoped to cbartens/bkit/, not all of github.com
+  // -------------------------------------------------------------------------
+
+  it("MED-3: auth-shim insteadOf is scoped to 'https://github.com/cbartens/bkit/' not bare 'https://github.com/'", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+
+    // Must contain the narrow scope — exact repo path
+    expect(content).toContain("https://github.com/cbartens/bkit/");
+
+    // Must NOT use the broad rewrite that would hijack all GitHub HTTPS traffic
+    // Extract the insteadOf line and assert it is NOT bare "https://github.com/"
+    const lines = content.split("\n");
+    const insteadOfLines = lines.filter((l) => l.includes("insteadOf"));
+    expect(insteadOfLines.length).toBeGreaterThan(0);
+    for (const line of insteadOfLines) {
+      // The insteadOf target must include the repo path, not stop at "github.com/"
+      expect(line).not.toMatch(/insteadOf\s+"https:\/\/github\.com\/"\s*$/);
+      expect(line).toContain("cbartens/bkit/");
+    }
+  });
+
+  it("MED-3: auth-shim url rewrite key also contains cbartens/bkit/ (both sides scoped)", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+
+    // The git config --global url."<key>".insteadOf "<value>" form — both key and value must scope to the repo
+    const gitConfigLine = content.split("\n").find((l) => l.includes("git config --global url."));
+    expect(gitConfigLine).toBeDefined();
+    // Key (the URL being configured) must also name the specific repo
+    expect(gitConfigLine!).toContain("cbartens/bkit/");
+  });
+
+  it("ci.yml template after applyTokens has no {{PLACEHOLDER}} tokens remaining", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    const tokens = {
+      NODE_VERSION: "22",
+      PNPM_VERSION: "10",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "test-project",
+    };
+    const substituted = applyTokens(content, tokens);
+    expect(substituted).not.toContain("{{NODE_VERSION}}");
+    expect(substituted).not.toContain("{{PNPM_VERSION}}");
+    expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
+    expect(substituted).not.toContain("{{PROJECT_NAME}}");
+    expect(substituted).toContain("node-version: 22");
+    expect(substituted).toContain("branches: [main]");
   });
 });

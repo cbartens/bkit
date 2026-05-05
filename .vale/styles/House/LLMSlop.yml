@@ -1,0 +1,11 @@
+extends: existence
+message: "LLM slop: '%s' — rewrite in direct voice."
+level: error
+tokens:
+  - I'd be happy to
+  - great question
+  - I hope this helps
+  - feel free to
+  - don't hesitate to
+  - let me know if
+  - let me explain
