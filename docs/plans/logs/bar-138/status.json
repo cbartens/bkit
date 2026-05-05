@@ -63,6 +63,17 @@
         "artifacts": [
           "docs/plans/logs/bar-138/design-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T22:39:05Z",
+        "commitSha": "8f6d9647fce476ac0943961e936054bb0625bce0",
+        "artifacts": [
+          "docs/plans/logs/bar-138/design-summary.md"
+        ]
       }
     ]
   }
