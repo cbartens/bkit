@@ -1,0 +1,10 @@
+extends: substitution
+message: "Verbose: use '%s' instead of '%s'."
+level: warning
+swap:
+  in the event that: if
+  at this point in time: now
+  in order to: to
+  due to the fact that: because
+  for the purpose of: to
+  on a daily basis: daily
