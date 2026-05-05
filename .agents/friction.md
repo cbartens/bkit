@@ -53,4 +53,16 @@
 - **Recovery:** Manual `git mv docs/plans/drafts/bar-138-design.md → bar-138-gh-packages-distribution-design.md`.
 - **Status:** RECOVERED
 
+## Plan-workflow drafts filename also lacks descriptive slug (2026-05-06)
+
+- **Category:** other
+- **Workflow:** plan
+- **Step:** 11 — Close Workflow
+- **Source:** orchestrator
+- **Description:** Step 11 cp target `docs/plans/drafts/{FID}-plan.md` mirrors the design-side bug — produces `bar-138-plan.md` (and `bar-138-plan-1.md`, `bar-138-plan-2.md` for splits) with no topic slug, while the precedent in `docs/plans/drafts/` is `bar-120-managed-agents-runtime-plan.md`. Same FID-derivation root cause as the design-side entry above.
+- **Suggested fix:** Same as design-side fix — Step 1 FID derivation should produce `{issue-id}-{slug}` (e.g. `bar-138-gh-packages-distribution`); then `docs/plans/drafts/{FID}-plan.md` resolves to `bar-138-gh-packages-distribution-plan.md` for free. Apply the fix once at the FID-derivation step in `.agents/workflows/*` and BOTH design and plan close-workflow steps benefit.
+- **Related:** bar-138, plan workflow drafts: `docs/plans/drafts/bar-138-plan.md`, `bar-138-plan-1.md`, `bar-138-plan-2.md`.
+- **Recovery:** Pending — drafts left as `bar-138-plan*.md`; manual rename can follow design-side precedent post-merge.
+- **Status:** OPEN
+
 <!-- bkit:end -->
