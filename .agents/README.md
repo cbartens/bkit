@@ -116,7 +116,7 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 bkit is **not** published to the npm registry. It's installed as a git dependency from `github.com/cbartens/bkit` (private repo). Consumers add it via:
 
 ```bash
-pnpm add -D github:cbartens/bkit#v0.1.1
+pnpm add -D github:cbartens/bkit#v0.1.2
 ```
 
 On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.
@@ -148,54 +148,77 @@ The `.agents/` directory is canonical. `bkit install` regenerates the host-speci
 
 In a consumer repo (after `pnpm add -D github:cbartens/bkit`):
 
-`init` is a one-time bootstrap that ends with a full `install` — after one `bkit init`, the repo is fully synced. Re-run `install` (not `init`) for ongoing sync after package updates; `check` is the CI drift gate.
-
 ```bash
-pnpm exec bkit init        # one-time: copies bundled .agents/ payload, writes .bkit-version, then runs install
-pnpm exec bkit install     # ongoing sync — payload pass + host pass + templates pass; idempotent
-pnpm exec bkit check       # dry-run install — exits non-zero on drift (CI gate)
+# Full install — all modules (core + claude + cursor + ci + lint + git-hooks)
+pnpm exec bkit install
+
+# Selective install — only specified modules + core (implicit)
+pnpm exec bkit install --claude         # .claude/** + core
+pnpm exec bkit install --ci --lint      # CI + lint stack + core
+pnpm exec bkit install --cursor         # .cursor/** + core
+pnpm exec bkit install --full           # all modules (same as no flags)
+
+# Drift detection — exits non-zero on drift (CI gate)
+pnpm exec bkit check --full
 ```
 
-In **this repo** (bkit's own dogfood — runs the script directly via bun, not the bin):
+**Deprecated (v0.1.x; removed in v0.2):**
 
 ```bash
-bun .agents/scripts/bkit-install.ts install
-bun .agents/scripts/bkit-install.ts install --host=claude
-bun .agents/scripts/bkit-install.ts install --host=cursor
-bun .agents/scripts/bkit-install.ts check
+pnpm exec bkit init                    # → use `bkit install` instead
+pnpm exec bkit install --host=claude   # → use `bkit install --claude` instead
 ```
 
-The CI drift gate (`.github/workflows/bkit.yml`) fails the PR if generated files diverge from what `install` would produce.
+In **this repo** (bkit's own dogfood — runs the script directly via tsx, not the bin):
+
+```bash
+pnpm tsx .agents/scripts/bkit-install.ts install
+pnpm tsx .agents/scripts/bkit-install.ts check
+```
+
+The CI drift gate (`.github/workflows/ci.yml`) fails the PR if generated files diverge from what `install` would produce.
+
+## Three-tier file ownership
+
+bkit uses a three-tier model to handle different file ownership scenarios without clobbering consumer customizations.
+
+<!-- prettier-ignore -->
+| Tier | Semantics | Files |
+| --- | --- | --- |
+| **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
+| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.github/workflows/ci.yml`, `.vale.ini`, `.gitignore`, `.husky/pre-commit`, `.husky/pre-push`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
+| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `package.json` script entries |
+
+**Marker syntax** is format-specific:
+
+- Markdown / `.gitignore`: `<!-- bkit:start -->` / `<!-- bkit:end -->`
+- YAML / INI / shell: `# bkit:start` / `# bkit:end`
+
+Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 
 ### What install writes
 
-`install` runs two passes. **Host pass** regenerates the host-specific dirs from canonical sources. **Templates pass** walks `.agents/templates/` and applies one of four rules per file:
-
-1. Dest missing → write template verbatim.
-2. Dest exists, has bkit markers → update only the managed block from template.
-3. Dest exists, no markers, **template has a block** → append the managed block at EOF (preserves all existing content above).
-4. Dest exists, no markers, **template has no block** → no-op (preserve project content).
-
-Rule 3 is what makes `bkit install` idempotently inject a managed block into common pre-existing files (`.gitignore`, `AGENTS.md`, `CLAUDE.md`) without clobbering project content.
-
 <!-- prettier-ignore -->
-| Path | Source | Behaviour |
-| --- | --- | --- |
-| `.claude/{commands,agents}/` | `.agents/{workflows,prompts}/` (byte-identical) | Host pass — always overwrite. Never edit directly. |
-| `.cursor/{commands,agents}/` | `.agents/{workflows,prompts}/` (T1/T2/T3 transforms) | Host pass — always overwrite. Never edit directly. |
-| `.claude/settings.json`, `.claude/hooks/preflight.sh` | `.agents/templates/.claude/` | Templates pass. Preflight has bkit markers — block updates on every install. |
-| `.cursor/{Dockerfile,environment.json}`, `.cursor/hooks/preflight.sh` | `.agents/templates/.cursor/` | Templates pass. Preflight has bkit markers — block updates on every install. |
-| `.cursor/hooks/postflight.sh` | — | Project-managed; not touched by install. |
-| `.cursor/rules/00-shared-rules.mdc` | `.agents/templates/.cursor/rules/` | Bkit block updates; outside content preserved. |
-| `AGENTS.md`, `CLAUDE.md` | `.agents/templates/` | Bkit block updates if present; appended at EOF if absent. Outside-block content preserved. |
-| `.gitignore` | `.agents/templates/.gitignore` | Bkit block updates if present; appended at EOF if absent. Project entries above markers preserved. |
-| `.agents/{rules,skills,friction}.md` | `.agents/templates/.agents/` | Bkit block updates; outside-block content preserved. `skills.md` block carries the bkit-canonical "Required" skills list; outside-block "Installed" table is project-specific. |
-| `.agents/docs.md` | `.agents/templates/.agents/docs.md` | **Write-if-missing only** (full file). Bootstrapped from bkit's canonical Workflow Matrix + Full Catalog on first install; project-managed thereafter (subsequent installs never touch it). |
-| `docs/*.md` (indexed in `.agents/docs.md`) | `.agents/templates/docs/` | Bkit block updates; project entries preserved. |
-| `docs/audits/*.md` | — | **Project-managed** — written/updated by audit agents at runtime; not in templates. |
-| `docs/plans/template.md` | `.agents/templates/docs/plans/` | Write-if-missing — bkit's canonical plan template. |
-
-Markers can be bare (`<!-- bkit:start -->` for markdown) or comment-prefixed (`# <!-- bkit:start -->` for shell, `// <!-- bkit:start -->` for TS/JS); the comment prefix is preserved on update.
+| Path | Module | Source | Tier |
+| --- | --- | --- | --- |
+| `.agents/` (additive copy) | core | `PKG_AGENTS` (package's `.agents/`) | Additive copy — write-if-missing |
+| `.bkit-version` | core | package.json version | Written LAST (so partial installs are detectable) |
+| `.gitignore` | core | `.agents/templates/gitignore` | Tier 2 html-comment |
+| `AGENTS.md`, `CLAUDE.md` | core | `.agents/templates/` | Tier 2 html-comment |
+| `docs/**` | core | `.agents/templates/docs/` | Tier 2 html-comment |
+| `.claude/commands/bkit-*.md` | claude | `.agents/workflows/` (byte-identical) | Host pass — always overwrite |
+| `.claude/agents/bkit-*.md` | claude | `.agents/prompts/` (byte-identical) | Host pass — always overwrite |
+| `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
+| `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
+| `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 2 hash-comment; tokens substituted |
+| `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
+| `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
+| `slop-scan.config.json` | lint | `.agents/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
+| `.prettierignore` | lint | `.agents/templates/.prettierignore` | Tier 2 hash-comment |
+| `.husky/pre-commit` | git-hooks | `.agents/templates/.husky/pre-commit` | Tier 2 hash-comment |
+| `.husky/pre-push` | git-hooks | `.agents/templates/.husky/pre-push` | Tier 2 hash-comment |
+| `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
+| `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
 ---
 

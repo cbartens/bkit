@@ -32,6 +32,9 @@ Thumbs.db
 tmp/**
 *.tgz
 
+# Vale downloaded packages (write-good, etc.) — not checked in; CI runs vale sync
+.vale/styles/write-good
+
 # <!-- bkit:start -->
 
 # bkit workflows
