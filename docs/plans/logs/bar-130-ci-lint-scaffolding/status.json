@@ -399,23 +399,79 @@
         "at": "2026-05-05T02:27:14Z",
         "commitSha": "f2dd10a04d62a02bd001382db094bdc1f034ee39",
         "artifacts": []
-      }
-    ]
-  },
-  {
-    "workflow": "debug",
-    "startedAt": "2026-05-05T02:46:03Z",
-    "status": "DONE",
-    "steps": [
+      },
       {
-        "step": "start-workflow",
+        "step": "worktree-setup",
         "status": "DONE",
-        "at": "2026-05-05T02:46:03Z",
-        "commitSha": "e33aef6ec6ecd966363acfedcd6074f2cc4a1aee",
+        "at": "2026-05-05T02:49:39Z",
+        "commitSha": "9db0b4ddd1535a8dd58d1dd404ce8780c46e9c2e",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-input-0.md"
+        ],
+        "debugMode": "local",
+        "observeMode": "off"
+      },
+      {
+        "step": "failure-diagnose",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "strategy": "STANDARD",
+        "at": "2026-05-05T02:55:01Z",
+        "commitSha": "22bb1ccbefa48f58c290f5357a33d4bba2915507",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-diagnose-1.md"
+        ]
+      },
+      {
+        "step": "failure-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T03:14:25Z",
+        "commitSha": "da592d6f8f70bc984178c9c459daae9a4e3b4ce7",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-remediate-1.md"
+        ]
+      },
+      {
+        "step": "run-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-05T03:16:23Z",
+        "commitSha": "35de45c8a43b6bb7d8148ea906eddd3cf49e53dc",
+        "artifacts": []
+      },
+      {
+        "step": "push-remediation",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-05T03:17:10Z",
+        "commitSha": "6369e2ce155d04f698affb0ac1452cd985236239",
+        "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T03:19:19Z",
+        "commitSha": "773fab7d0e00b9ff7ba355abd60f0b1d4d05800a",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-summary.md"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-05T03:20:20Z",
+        "commitSha": "0f246a4f4d1ed75d6693377b94bfdb00062016f0",
         "artifacts": []
       }
     ],
-    "debugAttempt": 0
+    "debugAttempt": 1
   },
   {
     "workflow": "ship",
@@ -427,6 +483,25 @@
         "status": "DONE",
         "at": "2026-05-05T03:31:03Z",
         "commitSha": "4428677718f748da3f414d2fd8271a6c6250d340",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-05T03:32:12Z",
+        "commitSha": "c3f7b0e453ee1fffdec5fe1f9f5cec44b21e142e",
+        "artifacts": [
+          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-input.md"
+        ]
+      },
+      {
+        "step": "merge-pr",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-05T03:33:30Z",
+        "commitSha": "666de7e9cf74a795188936f94870715bd1a31c03",
         "artifacts": []
       }
     ]

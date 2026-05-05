@@ -50,4 +50,14 @@
 - **Source:** agent
 - **Related:** bar-130-ci-lint-scaffolding, KN-1, `.agents/scripts/bkit-install.ts` (runPayload), `.agents/scripts/bkit-modules.ts` (runCoreModule)
 
+## v0.2: Retire `{{PNPM_VERSION}}` token (2026-05-05)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** low
+- **Status:** open
+- **Description:** After the BAR-130 ci hotfix, `{{PNPM_VERSION}}` is no longer substituted into any template (ci.yml templates removed `with.version:` in favour of `package.json#packageManager` as single SoT). `resolvePnpmVersion`, the field on `TokenMap`, and 4 tests in `bkit-tokens.test.ts` (+3 MED-2 warn tests) are dead code. Retire in v0.2 alongside the `init`/`--host=` deprecation removals.
+- **Source:** agent
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, BAR-200, KN-3, `.agents/scripts/bkit-tokens.ts`, `.agents/scripts/bkit-tokens.test.ts`
+
 <!-- bkit:end -->

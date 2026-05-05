@@ -46,4 +46,16 @@
 - **Fix:** Added `postDispatch: Array<() => void>` to `ModuleContext`. `runCoreModule` pushes the `.bkit-version` write as a deferred callback. `dispatchModules` flushes all `postDispatch` callbacks AFTER all modules complete. Tests that called `runCoreModule` directly must call `flushPostDispatch(ctx)` (or use `dispatchModules`) to observe `.bkit-version` on disk.
 - **Related:** bar-130-ci-lint-scaffolding, MED-4
 
+## KN-3: pnpm/action-setup@v4 errors when `with.version:` AND `package.json#packageManager` both set (2026-05-05)
+
+- **Category:** infra
+- **Symptom:** GitHub Actions step fails immediately with `Error: Multiple versions of pnpm specified: - version X in the GitHub Action config with the key "version" - version pnpm@X.Y.Z in the package.json with the key "packageManager"`. No pnpm install runs; all downstream steps in the job become unreachable.
+- **Root cause:** pnpm/action-setup@v4 enforces single-SoT for pnpm version. If both `with.version:` (workflow YAML) and `package.json#packageManager` are present, it aborts unless they are byte-identical. Loose major (`10`) vs. strict pin (`pnpm@10.33.0`) is not identical.
+- **Fix or rule:** Pick ONE source. Recommended: drop `with.version:` from the workflow and let `packageManager` be the single SoT — Corepack-aware, exact pin, already required by pnpm install on the developer machine.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, `.github/workflows/ci.yml`, `.agents/templates/.github/workflows/ci.yml`, run 25354307730
+
 <!-- bkit:end -->
