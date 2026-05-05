@@ -82,6 +82,13 @@
         "commitSha": "dcc10ada603ea5ee3f1942222b92da6c6c3893f0",
         "artifacts": []
       }
-    ]
+    ],
+    "humanGates": {
+      "designReview": {
+        "approved": true,
+        "at": "2026-05-05T22:57:02Z",
+        "by": "christian@bartens.biz"
+      }
+    }
   }
 ]
