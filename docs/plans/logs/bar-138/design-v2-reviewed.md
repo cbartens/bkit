@@ -1,6 +1,10 @@
 Verdict: CONCERNS
 <!-- verdict:end -->
 
+## Human Gates
+
+- [x] **Design Review** — approved by christian@bartens.biz on 2026-05-06. All review concerns resolved in v2; no blockers; cleared to enter planning.
+
 # Design: bkit v0.4.0 — GitHub Packages npm Registry Distribution
 
 ## Acceptance Scenario
