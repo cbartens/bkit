@@ -102,6 +102,106 @@
         "at": "2026-05-05T23:08:57Z",
         "commitSha": "825325a474a2e333fcaa849f31b6825175c0d7b9",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-05T23:10:37Z",
+        "commitSha": "ef64989c1584e3b2fe384976cedf97a753b6bd82",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-input.md"
+        ]
+      },
+      {
+        "step": "generate-plan",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-05T23:18:10Z",
+        "commitSha": "34dd9948a6a58337caa4f75c55fdf1b553ba9f26",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v1-draft.md"
+        ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-05T23:21:06Z",
+        "commitSha": "a70d94d4ce5f7a2caedd391af8564dd1eeaecdf2",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-review-1.md",
+          "docs/plans/logs/bar-138/plan-review-2.md"
+        ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:24:48Z",
+        "commitSha": "c76eabb35163eba3e3c7e57d4586da3ec37a626a",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v2-reviewed.md"
+        ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-05T23:26:51Z",
+        "commitSha": "50b3681299443a9755bc406da7480b7c32b3e8e3",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-scope-check-1.md",
+          "docs/plans/logs/bar-138/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:29:44Z",
+        "commitSha": "b17e6e8c4bba0d556f9d6aa8fb2ad423a0b7661b",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v3-checked.md"
+        ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-05T23:31:08Z",
+        "commitSha": "6cd4d9b77adc1eadf84ba93813e7b79aa2c85adc",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-complexity-check.md"
+        ]
+      },
+      {
+        "step": "complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T23:42:02Z",
+        "commitSha": "f3639e7065bffb78adabd18a222f90cc38cd1335",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v4-split.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-05T23:43:27Z",
+        "commitSha": "b804e3f1df107ec320e0dd1e2e97188d6c482141",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-summary.md"
+        ]
       }
     ]
   }
