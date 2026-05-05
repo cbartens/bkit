@@ -90,5 +90,11 @@
         "by": "christian@bartens.biz"
       }
     }
+  },
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-05T23:08:57Z",
+    "status": "IN_PROGRESS",
+    "steps": []
   }
 ]
