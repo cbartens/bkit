@@ -180,6 +180,17 @@
         "artifacts": [
           "docs/plans/logs/bar-138/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-05T23:42:02Z",
+        "commitSha": "f3639e7065bffb78adabd18a222f90cc38cd1335",
+        "artifacts": [
+          "docs/plans/logs/bar-138/plan-v4-split.md"
+        ]
       }
     ]
   }
