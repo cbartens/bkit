@@ -288,7 +288,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:
    Context: You are a subagent in the Build phase. Execute sub-plan ${SUB_PLAN}/${SUB_COUNT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:  `docs/plans/logs/{FID}/build-input.md`, `docs/plans/active/{FID}-plan.md`, `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
+   Read: `docs/plans/logs/{FID}/build-input.md`, `docs/plans/active/{FID}-plan.md`, `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
    Update: source files
    Create: `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -322,9 +322,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 6 — Plan Verify
 
 8. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope)
-   Update: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
+   Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope)
+Update:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
    Create: `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`
 9. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 10. Read `build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
@@ -388,10 +388,9 @@ PRIOR_STRATEGY=$(jq -r --arg s "plan-gaps-remediate" --argjson sp "$SUB_PLAN" \
 - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 17. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
-    Context: You are a subagent in the Build phase. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-    Read: `docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-*-log.md`
-    Update: source files
-    Create: `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`
+    Context: You are a subagent in the Build phase. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`Update: source files
+Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`
 18. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 19. Read `build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 20. Update status and commit:
@@ -640,9 +639,8 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
-   Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`
-   Create: `docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`Create:`docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `build-failure-diagnose-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 5. Update status and commit:

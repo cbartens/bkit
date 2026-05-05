@@ -45,7 +45,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
 - **Self-contained:** Each workflow file MUST stand alone. NO cross-references to `.agents/workflows.md` or other meta docs. If the orchestrator needs the rule, inline it; if it doesn't, leave it out.
 - **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.agents/workflows.md`) — NEVER in the per-workflow files.
-- **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc). 
+- **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
 - **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
 
 ## Two-Layer Separation Rules

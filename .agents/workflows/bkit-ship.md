@@ -320,8 +320,8 @@ description: "Ship Feature — Autonomous merge and archive"
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`
    Update: source files
    Create: `docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}-log.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.

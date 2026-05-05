@@ -232,9 +232,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
-   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`
-   Create: `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-_.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-_.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-\*-log.md`Create:`docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Add `Debug: PR` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
 5. Read `debug-failure-diagnose-${TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -271,8 +270,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off.
 
 1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
+   Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
+Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-${TEST_ATTEMPT}.md`
    Update: source files
    Create: `docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}-log.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
