@@ -114,3 +114,15 @@
 - **Related:** bar-130-ci-lint-scaffolding, BAR-130, prior build-workflow entry (commit 86ef9ff)
 - **Recovery:** Direct script invocations executed as fallback: `pnpm typecheck`, `pnpm test`, `pnpm format:check`, `pnpm lint:slop`, `pnpm lint:prose`. Result captured in `run-tests` step.
 - **Status:** RECOVERED
+
+## `vale` `write-good` style missing after worktree seed (2026-05-05)
+
+- **Category:** tool-failure
+- **Workflow:** debug
+- **Step:** 5 — Run Tests
+- **Source:** orchestrator
+- **Description:** `pnpm lint:prose` (vale) failed with `E100 [loadStyles] Runtime error: style 'write-good' does not exist on StylesPath`. Step 2 worktree-setup attempts to seed `.vale/styles/write-good/` from the parent worktree, but the parent worktree itself never had the package vendored on disk (`.vale/styles/` only contained `House/`). `.vale.ini` declares `Packages = write-good`, which is normally fetched on demand via `vale sync` — a step the workflow does not run.
+- **Suggested fix:** Step 2 worktree-setup should run `command -v vale >/dev/null && (cd "$WORKTREE_PATH" && vale sync)` after the seed-from-parent attempt (idempotent, ~1s when already vendored). Alternatively, document `vale sync` as a one-time consumer setup step in README and have `lint:prose` itself fail more loudly on missing styles.
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, `.vale.ini`, `package.json#scripts.lint:prose`
+- **Recovery:** Ran `vale sync` from the worktree root (1 package, ~1s). Re-ran `pnpm lint:prose` — exit 0, 0 errors, 4 pre-existing warnings on `.agents/prompts/bkit-utility-compress-markdown.md` (unrelated to this debug fix).
+- **Status:** RECOVERED
