@@ -78,3 +78,27 @@
 - **Related:** bar-130-ci-lint-scaffolding, BAR-130, run-tests commit 86ef9ff
 - **Recovery:** Direct script invocations executed; all green. TEST_VERDICT=PASS, TEST_FAILURES=0 recorded.
 - **Status:** RECOVERED
+
+## status.json merge conflict on Step 6 — Switch to Dev (2026-05-05)
+
+- **Category:** tool-failure
+- **Workflow:** ship
+- **Step:** 6 — Switch to Dev
+- **Source:** orchestrator
+- **Description:** Step 1 commits `start-workflow work` + `start-workflow status` on local dev (skills payload + ship status entry); subsequent worktree-side ship steps (worktree-setup, merge-pr) update `status.json` on the feat branch. After PR squash-merge to origin/dev, `git pull origin dev` produced a 3-region merge conflict on `docs/plans/logs/{FID}/status.json` because both sides modified the build/ship workflow entries. Auto-merge could not resolve.
+- **Suggested fix:** have Step 1 record start-workflow ONLY in the worktree (cd into worktree first), or skip persisting start-workflow steps on parent dev tree entirely. Alternatively, Step 6 could `git fetch origin dev && git merge -X theirs origin/dev` to take origin's version of status.json by default and then re-append ship steps from the worktree's status.json to the merged file.
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130, conflict resolved in merge commit 6102b3c
+- **Recovery:** Manually reconstructed status.json: took origin/dev's full plan + build entries, appended a synthesized ship entry combining the dev-side `start-workflow` (commitSha 821e573) with the worktree-side `worktree-setup` and `merge-pr` step entries. Committed merge as a normal merge commit on dev.
+- **Status:** RECOVERED
+
+## Worktree stale after squash-merge — Step 7 subagents retargeted to dev tree (2026-05-05)
+
+- **Category:** ambiguous-spec
+- **Workflow:** ship
+- **Step:** 7 — Update Docs & Summary
+- **Source:** orchestrator
+- **Description:** Step 7's subagent contexts prescribe `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` for the working directory. After Step 3's squash-merge + delete-branch, the worktree's local feat branch is orphaned and BEHIND dev (does not contain Step 1 or Step 6 commits, and dev now holds the post-merge state). Following the literal text would have made subagents read pre-merge state and write doc updates onto a dead branch. Orchestrator redirected both subagents to the dev tree at `/Users/christian/Documents/GitHub/bkit` instead, so they read/write the post-merge state.
+- **Suggested fix:** Step 7 (and Step 8/9 by extension) should switch the prescribed cwd to the dev tree once Step 3 sets `state == MERGED`. Update workflow text to: "Switch into working directory `$(git rev-parse --git-common-dir | xargs dirname)` (the dev tree, not the worktree — the worktree is stale post-merge)."
+- **Related:** bar-130-ci-lint-scaffolding, BAR-130
+- **Recovery:** Both `@bkit-ship-update-docs` and `@bkit-ship-summary` invoked with explicit dev-tree path and rationale in the prompt. Both produced correct artifacts (`ship-update-docs.md`, `ship-summary.md`) on dev.
+- **Status:** RECOVERED
