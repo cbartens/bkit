@@ -32,7 +32,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo) — narrower scope than `audit-codebase`.
 4. Backend: Vitest only. No Playwright for APIs. Mock HTTP, assert DB.

@@ -36,7 +36,7 @@ maxTurns: 100
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Apply fix code per diagnosis (edit/create source files) in priority order. No reinterpretation. Diagnosis already encodes strategy framing; apply as written.
 4. Implement missing tests if suggested.

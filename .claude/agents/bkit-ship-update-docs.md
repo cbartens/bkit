@@ -33,7 +33,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Run `git log --oneline --stat origin/dev..HEAD` for changed files.
 4. Read learnings sources: build/debug/ship summary docs + handover docs (`{FID}-*-handover.md`) if any in `docs/plans/logs/{FID}/`.

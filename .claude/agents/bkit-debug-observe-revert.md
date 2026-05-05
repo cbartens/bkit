@@ -32,7 +32,7 @@ maxTurns: 25
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Find: `git grep -n 'DEBUG-OBSERVE'` — every hit must be removed (full log lines, wrappers, or blocks added solely for observation).
 4. Delete only instrumentation tied to `[DEBUG-OBSERVE]` → restore surrounding code to pre-observe state. Do not edit unrelated logic.

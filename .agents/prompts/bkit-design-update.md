@@ -41,7 +41,7 @@ maxTurns: 50
    ```bash
    T=$(mktemp); { printf 'Verdict: PENDING\n<!-- verdict:end -->\n\n'; cat <Create>; } > "$T" && mv "$T" <Create>
    ```
-3. Re-read all supplied inputs, do NOT trust session memory.
+3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 4. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 5. Update **Create** output — apply each CRITICAL + consensus-OPTIONAL item via `Edit` as content becomes available.
 6. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.

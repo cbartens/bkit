@@ -32,7 +32,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Treat any proposed groupings in inputs as ADVISORY only — verify independently.
 4. Estimate total agent tokens required to execute the master plan end-to-end. Target sub-plan count = `ceil(total / 100K)`. Each sub-plan budget = ≤100K tokens.

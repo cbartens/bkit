@@ -34,7 +34,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Identify untested: Error paths, edge cases (empty/null/boundary/concurrent), security paths from challenge, integration points. Fixed bugs → write regression tests that would have caught the original bug.
 4. Write test files: Each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming style as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright) files.

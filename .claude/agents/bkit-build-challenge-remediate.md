@@ -36,7 +36,7 @@ maxTurns: 100
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Apply fixes in priority order: CRITICAL → HIGH → MEDIUM → LOW.
 4. Per fix: Apply suggested fix → verify no regression.

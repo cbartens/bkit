@@ -34,7 +34,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Re-read all supplied inputs, do NOT trust session memory.
+1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Identify failure points, unclear behaviour, data flow gaps.
 4. Instrument with `[DEBUG-OBSERVE]`-prefixed logging at:
