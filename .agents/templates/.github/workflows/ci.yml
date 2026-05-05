@@ -2,6 +2,8 @@
 name: CI
 
 on:
+  push:
+    branches: [{{DEFAULT_BRANCH}}]
   pull_request:
     branches: [{{DEFAULT_BRANCH}}]
 
