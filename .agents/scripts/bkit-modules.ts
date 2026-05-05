@@ -568,6 +568,54 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Verify with: gh secret list | grep GH_BKIT_TOKEN
 `;
 
+// ---------------------------------------------------------------------------
+// Vercel detection + auth instructions
+//
+// Vercel runs its own `pnpm install` in a fresh build container and does NOT
+// inherit the GitHub Actions auth-shim. If the consumer deploys to Vercel,
+// the same private-dep auth issue surfaces a second time. Heuristic: presence
+// of vercel.json at the repo root or under apps/<name>/. If present, push a
+// dedicated AI instruction block alongside the GH-side one.
+// ---------------------------------------------------------------------------
+
+function detectVercelProject(cwd: string): boolean {
+  if (fs.existsSync(path.join(cwd, "vercel.json"))) return true;
+  const appsDir = path.join(cwd, "apps");
+  if (!fs.existsSync(appsDir) || !fs.statSync(appsDir).isDirectory()) return false;
+  for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (fs.existsSync(path.join(appsDir, entry.name, "vercel.json"))) return true;
+  }
+  return false;
+}
+
+const VERCEL_AUTH_INSTRUCTIONS = `[bkit] vercel.json detected — Vercel needs its OWN auth-shim. The GitHub Actions shim does NOT apply to Vercel preview/production builds (separate runner, fresh container, no git auth inherited).
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  1. Open the relevant vercel.json (root or apps/<name>/vercel.json) and
+     ensure 'installCommand' applies the bkit auth-shim before pnpm install:
+
+        "installCommand": "git config --global url.\\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\\".insteadOf \\"https://github.com/cbartens/bkit/\\" && pnpm install"
+
+     If 'installCommand' already exists, prepend the git-config call to it
+     (use '&&' to chain). Do NOT remove existing flags the consumer relies on.
+
+  2. Set GH_BKIT_TOKEN as a Vercel env var for each environment that builds:
+
+        vercel env add GH_BKIT_TOKEN preview
+        vercel env add GH_BKIT_TOKEN production
+
+     Or via web: Vercel project → Settings → Environment Variables.
+     Use the same token value as the GitHub Actions secret
+     (fine-grained PAT, scope cbartens/bkit, permission Contents:read).
+     Token is stored locally in bkit repo's .env — ask the user for it.
+
+  3. Trigger a redeploy (push a commit) and watch the Vercel build log
+     for 'pnpm install' succeeding without 'could not read Username for
+     https://github.com/' errors.
+`;
+
 const GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS = `[bkit] Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).
 
 Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub
@@ -777,6 +825,13 @@ export function runCiModule(ctx: ModuleContext): void {
       printSink.push(GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS);
     }
     // "present" → silent, no extra noise
+  }
+
+  // Vercel surface — separate auth provisioning required if the consumer
+  // deploys via Vercel. Heuristic-only (presence of vercel.json); skip
+  // silently if the consumer doesn't use Vercel.
+  if (detectVercelProject(process.cwd())) {
+    printSink.push(VERCEL_AUTH_INSTRUCTIONS);
   }
 }
 

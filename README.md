@@ -108,6 +108,31 @@ The CI shim in `ci.yml` configures git to use `GH_BKIT_TOKEN` for HTTPS auth:
   run: git config --global url."https://x-access-token:${{ secrets.GH_BKIT_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"
 ```
 
+## Consumer Vercel auth
+
+Vercel runs its own `pnpm install` in a fresh build container and **does not** apply the GitHub Actions auth-shim above. If the consumer also deploys via Vercel, you need a parallel setup on the Vercel side.
+
+1. **Add `GH_BKIT_TOKEN` to Vercel env vars** for each environment that builds (preview + production at minimum):
+
+   ```bash
+   vercel env add GH_BKIT_TOKEN preview
+   vercel env add GH_BKIT_TOKEN production
+   ```
+
+   Or via web: Vercel project → Settings → Environment Variables. Token value is the same fine-grained PAT used for the GitHub Actions secret (scope: `cbartens/bkit`, permission: Contents:read).
+
+2. **Add an `installCommand` to your `vercel.json`** (root, or `apps/<name>/vercel.json` for monorepos) that applies the auth-shim before pnpm install:
+
+   ```json
+   {
+     "installCommand": "git config --global url.\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\".insteadOf \"https://github.com/cbartens/bkit/\" && pnpm install"
+   }
+   ```
+
+3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` succeeding.
+
+Without both pieces, Vercel preview builds fail with `fatal: could not read Username for 'https://github.com'` during `git fetch` of the bkit dep — same root cause as the GitHub Actions shim, separate surface to provision.
+
 ## Documentation
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.

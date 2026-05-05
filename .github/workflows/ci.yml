@@ -41,5 +41,12 @@ jobs:
       - name: Lint slop
         run: pnpm lint:slop
 
+      # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
+      # regenerated and committed whenever .agents/scripts/**.ts changes.
+      # This step rebuilds dist/ in CI and fails if the working tree differs
+      # from the committed version.
+      - name: Verify dist/ is fresh
+        run: pnpm check:dist
+
       - name: bkit check (informational — bkit-self has intentional template asymmetries)
         run: pnpm bkit check || true

@@ -1,0 +1,132 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, } from "./bkit-install.js";
+import { applyTokens } from "./bkit-tokens.js";
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+function ensureDir(dir) {
+    fs.mkdirSync(dir, { recursive: true });
+}
+// ---------------------------------------------------------------------------
+// Tier 1 — Fully managed (idempotent rewrite of whole file after token substitution)
+//
+// Semantics: always writes the src content (with tokens applied) to dst.
+// If dst exists with identical content, no-op (no double-count in WriteSet).
+// ---------------------------------------------------------------------------
+export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
+    const srcRaw = fs.readFileSync(srcPath, "utf-8");
+    const srcContent = applyTokens(srcRaw, tokens);
+    if (fs.existsSync(dstPath)) {
+        const existing = fs.readFileSync(dstPath, "utf-8");
+        if (existing === srcContent)
+            return; // identical — no-op
+    }
+    ensureDir(path.dirname(dstPath));
+    if (!dryRun) {
+        fs.writeFileSync(dstPath, srcContent, "utf-8");
+        // Preserve executable bit from src
+        const srcMode = fs.statSync(srcPath).mode;
+        fs.chmodSync(dstPath, srcMode);
+    }
+    ws.writes.push({ path: dstPath, action: "write" });
+}
+// ---------------------------------------------------------------------------
+// Tier 2 — Managed-block (bkit owns content between markers; consumer owns rest)
+//
+// Semantics:
+//   - dest absent            → write whole file (with token substitution)
+//   - dest has markers       → update only the bkit block (tokens applied to new block content)
+//   - dest present, no marks → append full block at EOF; preserve consumer content above
+//
+// markerStyle: "html-comment" for markdown/.gitignore; "hash-comment" for YAML/INI/shell.
+// ---------------------------------------------------------------------------
+export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
+    const srcRaw = fs.readFileSync(srcPath, "utf-8");
+    if (!fs.existsSync(dstPath)) {
+        // dest missing → write whole template (with tokens applied)
+        const content = applyTokens(srcRaw, tokens);
+        ensureDir(path.dirname(dstPath));
+        if (!dryRun) {
+            fs.writeFileSync(dstPath, content, "utf-8");
+            const srcMode = fs.statSync(srcPath).mode;
+            fs.chmodSync(dstPath, srcMode);
+        }
+        ws.writes.push({ path: dstPath, action: "write" });
+        return;
+    }
+    const destContent = fs.readFileSync(dstPath, "utf-8");
+    const fullBlock = extractFullManagedBlock(srcRaw, markerStyle);
+    if (fullBlock === null) {
+        // Template has no block for this marker style — nothing to manage
+        return;
+    }
+    // Check if dest already has markers
+    const blockContent = extractManagedBlock(destContent, markerStyle);
+    if (blockContent === null) {
+        // dest has no markers → append full block at EOF (with tokens applied)
+        const appliedBlock = applyTokens(fullBlock, tokens);
+        const sep = destContent.length === 0
+            ? ""
+            : destContent.endsWith("\n\n")
+                ? ""
+                : destContent.endsWith("\n")
+                    ? "\n"
+                    : "\n\n";
+        const tail = appliedBlock.endsWith("\n") ? "" : "\n";
+        if (!dryRun) {
+            fs.writeFileSync(dstPath, destContent + sep + appliedBlock + tail, "utf-8");
+        }
+        ws.writes.push({ path: dstPath, action: "append" });
+        return;
+    }
+    // dest has markers → update managed block with new content (tokens applied)
+    const newBlockContent = extractManagedBlock(srcRaw, markerStyle);
+    if (newBlockContent === null)
+        return;
+    const appliedNewContent = applyTokens(newBlockContent, tokens);
+    if (updateManagedBlock(dstPath, appliedNewContent, dryRun, markerStyle)) {
+        ws.writes.push({ path: dstPath, action: "update" });
+    }
+}
+/**
+ * `aiMessage`: when the destination already exists and content differs,
+ * push this string to printSink instead of the default current-vs-suggested
+ * dump. The message should be a self-contained instruction that any AI
+ * agent (or human) can copy-paste into a coding assistant to apply the
+ * required merge. Use {{TEMPLATE_CONTENT}} as a placeholder for the
+ * suggested template content — it will be substituted automatically.
+ *
+ * `tokens`: optional. When provided, apply token substitution to BOTH the
+ * file written on the absent path AND the {{TEMPLATE_CONTENT}} embedded in
+ * the AI message. Used by callers whose templates contain {{TOKEN}}
+ * placeholders (e.g. ci.yml).
+ */
+export function writeTier3(srcPath, dstPath, dryRun, printSink, ws, aiMessage, tokens) {
+    const srcRaw = fs.readFileSync(srcPath, "utf-8");
+    const srcContent = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+    if (fs.existsSync(dstPath)) {
+        // Present → suggest diff, don't write
+        const dstContent = fs.readFileSync(dstPath, "utf-8");
+        if (srcContent !== dstContent) {
+            if (aiMessage) {
+                printSink.push(aiMessage.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => srcContent.trimEnd()));
+            }
+            else {
+                printSink.push(`[bkit-install] Tier 3 suggestion for ${dstPath}:\n` +
+                    `  File already exists. bkit suggests the following content:\n` +
+                    `  --- current ---\n${dstContent}\n  --- suggested ---\n${srcContent}`);
+            }
+        }
+        return { wrote: false, suggested: srcContent !== dstContent };
+    }
+    // Absent → write (or record in dry-run)
+    ensureDir(path.dirname(dstPath));
+    if (!dryRun) {
+        fs.writeFileSync(dstPath, srcContent, "utf-8");
+        const srcMode = fs.statSync(srcPath).mode;
+        fs.chmodSync(dstPath, srcMode);
+    }
+    ws.writes.push({ path: dstPath, action: "write" });
+    return { wrote: !dryRun, suggested: false };
+}

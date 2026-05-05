@@ -3,9 +3,14 @@ node_modules/
 .pnpm-store/
 
 # Build outputs
-dist/
 build/
 .cache/
+
+# Note: dist/ is INTENTIONALLY tracked (since v0.3.0). bkit ships pre-built
+# so consumers installing the git-dep don't need to run `prepare: tsc`,
+# avoiding lifecycle-hook recursion in monorepo workspaces (BAR-130 #5).
+# CI verifies dist/ is fresh on every push. Generated at install/build
+# time only in development worktrees — never gitignored.
 *.tsbuildinfo
 .turbo/
 
