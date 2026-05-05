@@ -1,54 +1,72 @@
-# Ship — Update Docs (bar-130-ci-lint-scaffolding)
+Verdict: PASS
+
+<!-- verdict:end -->
+
+# Ship — Update Docs (bar-130-ci-lint-scaffolding) — Second Ship Cycle
 
 **FID:** bar-130-ci-lint-scaffolding
-**Phase:** Ship (parallel with `@bkit-ship-summary`)
-**Working tree:** `/Users/christian/Documents/GitHub/bkit` on branch `dev` (post-squash-merge)
+**Phase:** Ship (second cycle, parallel with `@bkit-ship-summary`)
+**Working tree:** `/Users/christian/Documents/GitHub/bkit` on branch `dev` (post-squash-merge of hotfix PR #2)
 **Date:** 2026-05-05
+
+## Context
+
+Second ship cycle for BAR-130. PR #1 (main feature, v0.1.2 — three sub-plans A/B/C) merged at commit `8646711`. Post-merge dev CI run [25354307730](https://github.com/cbartens/bkit/actions/runs/25354307730) failed deterministically at `Setup pnpm` (`pnpm/action-setup@v4` aborted on dual-SoT — `with: version: 10` + `package.json#packageManager: pnpm@10.33.0`). Debug cycle (diagnose + remediate) produced KN-3 + 2 regression guards + retire-token pending entry; PR #2 (hotfix on `fix/bar-130-ci-pnpm`) merged. No version bump (still v0.1.2). This artifact records the docs surfacing for the second ship.
 
 ## Files updated
 
-- [x] `docs/completed.md` — Appended one new entry: "bkit CI/lint scaffolding + 3-tier installer + module-flag CLI — BAR-130 (2026-05-05)". Points to archived plan locations at `docs/plans/completed/202605/bar-130-ci-lint-scaffolding-plan{,-1,-2,-3}.md` (orchestrator performs `mv` from `active/` to `completed/202605/` in Step 8). Entry summarises Scope A (self-gating), Scope B (installer engine — tokens, tiers, marker generalisation, WriteSet, templates), Scope C (CLI redesign — bkit-cli, bkit-modules, postDispatch pattern, deprecation stubs). Captures: 173 tests, MED-1..7 fixed, MED-8 deferred, manual smoke gates 4.5a/4.5b deferred to post-merge by design, in-flight CRITICAL fix on bkit's own ci.yml. Cross-refs DE-1, DE-2, KN-1, KN-2, BAR-200, BAR-131.
+- [x] `docs/completed.md` — Appended new entry "bkit CI hotfix — drop dual pnpm SoT (KN-3) — BAR-130 (2026-05-05)". Records the second ship cycle (hotfix scope) per append-only ledger policy. Cross-references debug logs (`debug-summary.md`, `debug-failure-{diagnose,remediate}-1.md`), KN-3, the two regression guards in `bkit-modules.integration.test.ts` lines 534–557, and the v0.2 retire pending entry. Notes both ci.yml files (bkit-self + consumer template) fixed in single hotfix to prevent template-parity drift to consumers.
 
 ## Files reviewed but NOT touched
 
-- [x] `docs/decisions.md` — DE-1 (3-tier file ownership) and DE-2 (composable module-flag CLI) already appended during build phase (Task 9.1). Both reference BAR-130 / paths / kill-date BAR-200. No ship-time additions warranted.
-- [x] `docs/knowledge.md` — KN-1 (`runPayload` WriteSet threading) and KN-2 (`postDispatch` pattern) already captured during build/debug phase. No new gotchas surfaced post-merge that need recording.
-- [x] `docs/pending.md` — Five v0.2 / future entries already appended during build phase (Task 9.2): `init` verb removal, `--host=` flag removal, helper auth action, `--no-X`/`--force` flags, `package.json` automated merging. Plus MED-8 (`runPayload` WriteSet threading) and `bkit-ship` tag-derivation entries. No additional pending items required for ship-doc-update scope itself; HOWEVER see "Surfaced for human/synthesizer review" below — post-merge dev CI failure at `Setup pnpm` step warrants a new pending entry but per sole-writer policy this agent cannot persist to `pending.md`.
-- [x] `docs/deployments.md` — Empty stub (only `bkit:start`/`bkit:end` markers + Purpose header). No deployment topology / secrets sync / branch protection content added by this cycle that warrants writing into this doc — bkit is library tag-and-go; CI auth-shim documentation already lives in README and `.agents/README.md`.
-- [x] `docs/testing.md` — Empty stub. The 173-test breakdown / unit vs integration tier convention is already documented in `.agents/rules.md` § Testing & Debugging and in `bkit-install.test.ts` co-located convention. No durable testing-strategy learnings unique to this cycle that need promoting here.
-- [x] `docs/observability.md` — Out of scope. bkit logs to stdout/stderr with `[bkit-install]` / `[bkit-check]` / `[bkit] DEPRECATED:` prefixes; no log drains, no PII, convention preserved.
-- [x] `docs/security.md` — Reviewed. `BKIT_READ_TOKEN` PAT setup is already documented in `README.md` § Consumer CI auth (Task 8.1) and the auth-shim scope-narrowing (MED-3 fix to `cbartens/bkit/` only) is captured in build-summary + decisions. No additional security-doc entry needed.
-- [x] `docs/data-schema.md` — N/A (bkit is a CLI tool, no DB).
-- [x] `.agents/docs.md` — No new docs introduced in this cycle (only existing docs updated). Workflow Matrix + Full Catalog unchanged.
-- [x] `.agents/README.md` — Already rewritten in build phase (Task 8.2) to document 3-tier ownership + module-flag CLI + new template-write table.
-- [x] `README.md` — Already rewritten in build phase (Task 8.1) — module-flag examples, deprecation stubs, `## Consumer CI auth` PAT setup section.
+- [x] `docs/knowledge.md` — KN-3 (pnpm/action-setup@v4 single-SoT rule) verified present at lines 49–59. Symptom + root cause + fix rule + Severity:critical + Related links to both ci.yml files + run 25354307730. Already correctly added during debug-remediate cycle. Sole-writer policy: docs subagent does NOT re-write existing entries.
+- [x] `docs/pending.md` — `v0.2: Retire {{PNPM_VERSION}} token` entry verified present at lines 53–61. Type:issue, Severity:low, Status:open. Cross-references KN-3, BAR-200 v0.2 sweep, `bkit-tokens.ts` + `bkit-tokens.test.ts`. Already correctly added during debug-remediate cycle. Sole-writer policy: docs subagent cannot write `pending.md`.
+- [x] `docs/decisions.md` — DE-1 (3-tier ownership) and DE-2 (module-flag CLI) verified present at lines 32–50 from first ship. Hotfix did not introduce new ADRs — no second-ship updates required.
+- [x] `docs/architecture.md` / `docs/technology.md` / `docs/deployments.md` / `docs/observability.md` / `docs/security.md` — Reviewed; no stale references to hotfix-changed files (`.github/workflows/ci.yml`, `.agents/templates/.github/workflows/ci.yml`, `.agents/scripts/bkit-tokens.ts`). bkit is a CLI tool repo; consumer-facing docs unchanged. No updates required.
+- [x] `docs/testing.md` — Empty stub. Hotfix did not introduce new testing patterns; regression-guard regex pattern in `bkit-modules.integration.test.ts` is co-located with the test it defends, not a doc concern.
+- [x] `docs/data-schema.md` / `docs/data-pipeline.md` / `docs/data-cron-jobs.md` / `docs/webhooks.md` / `docs/notifications.md` / `docs/styles.md` — N/A (bkit is a CLI tool, no DB / webhooks / UI).
+- [x] `.agents/docs.md` — No new docs introduced; Workflow Matrix + Full Catalog unchanged.
+- [x] `README.md` / `.agents/README.md` — Already rewritten in build phase (Tasks 8.1, 8.2). Hotfix touched workflow YAML only; no doc-prose changes warranted.
 
-## Learnings preserved (already captured pre-ship; no re-write needed)
+## Pending Items Surfaced (FID=bar-130-ci-lint-scaffolding)
 
-| Source | Preserved in | Subject |
+Per sole-writer policy, `pending.md` is owned by remediator/synthesizer agents. `bkit-ship-update-docs` only surfaces existing entries here for human review:
+
+1. **`bkit-ship: auto-derive git tag from package.json version` (2026-05-04)** — open. `bkit-ship.md` does not auto-derive `v${VERSION}` tag from `jq -r .version package.json`. Workaround: human runs `git tag v0.1.2 && git push origin v0.1.2` manually after ship merge. Path: `.agents/workflows/bkit-ship.md`.
+2. **`MED-8: runPayload WriteSet threading` (2026-05-05)** — deferred. Architectural fix (merge `copyAdditive` + `runPayload` into one idempotent pass) tracked for v0.2. Cross-references KN-1.
+3. **`v0.2: Retire {{PNPM_VERSION}} token` (2026-05-05)** — open. Dead-code retirement after KN-3 hotfix removed token's only substitution site. Bundle with `init` / `--host=` deprecation removal sweep at v0.2 (BAR-200).
+
+No new pending items surfaced by the hotfix that aren't already tracked. The diagnose log § "Out of scope" item 1 (audit how PR #1 passed CI despite the defect) remains open as observation but is not a tracked pending entry — recommend the synthesizer/orchestrator decides whether to file a Linear ticket.
+
+## Stale Doc Check
+
+Searched `docs/**` and `.agents/**` for references to hotfix-changed files:
+- `.github/workflows/ci.yml` — referenced only in plan archives (immutable) + KN-3 entry (current).
+- `.agents/templates/.github/workflows/ci.yml` — referenced only in plan archives + KN-3 entry + `.agents/README.md` template-paths table (still accurate — file still exists, just with `with.version:` removed).
+- `.agents/scripts/bkit-tokens.ts` — referenced in plan archives + KN-3-adjacent pending entry. NOTE comment added inside the file is self-documenting; no external doc reference is stale.
+- `.agents/scripts/bkit-modules.integration.test.ts` — referenced in plan archives + new KN-3 entry. No external doc reference is stale.
+
+`.agents/IDEs.md` is modified in working tree (uncommitted). Diff inspected — no content references hotfix-touched files; modification appears unrelated to BAR-130.
+
+No stale docs found.
+
+## Learnings extracted (verification)
+
+| Learning | Persistence path | Verified status |
 | --- | --- | --- |
-| build-summary.md | DE-1 | 3-tier file-ownership model (Tier 1/2/3 semantics) |
-| build-summary.md | DE-2 | Composable module-flag CLI (collapse `init`+`install`+`--host=`) |
-| build-challenge-remediate.md | KN-1 | `runPayload` WriteSet threading breaks dry-run parity (architectural — copyAdditive vs runPayload write-order) |
-| build-challenge-remediate.md (MED-4 fix) | KN-2 | `postDispatch` callback pattern for deferred finalisation (`.bkit-version` write-LAST) |
-| build-summary.md, plan v4-3 § Out of Scope | pending.md | v0.2 deprecation removal (BAR-200), helper auth action (BAR-131), `--no-X`/`--force` flags, `package.json` automated merging, MED-8 architectural fix |
-| build-summary.md | pending.md | `bkit-ship` should auto-derive tag from `jq -r .version package.json` |
-
-## Surfaced for human / synthesizer review (sole-writer policy: cannot persist these here)
-
-1. **Post-merge dev CI failure at `Setup pnpm` step.** The first CI run on `dev` after the squash-merge of `bar-130-ci-lint-scaffolding` failed at the `Setup pnpm` step (per ship-context note from orchestrator). Root cause not yet investigated. Candidate explanation: `pnpm/action-setup@v4` requires `packageManager` field in `package.json` (currently `pnpm@10.33.0`) AND/OR Node setup ordering (Setup pnpm BEFORE Setup Node so the cache works). Worth a `docs/knowledge.md` entry once root-caused, OR a `docs/pending.md` issue for follow-up if the fix is non-trivial. Recommendation: owning agent (debugger / synthesizer) should investigate via `gh run list --branch dev --limit 3` and append to one of:
-   - `docs/knowledge.md` — if cause is a recognised gotcha (e.g. action ordering, `packageManager` field, Node version mismatch).
-   - `docs/pending.md` — if the fix is non-trivial / blocks future ships and needs tracking.
-
-2. **MED-8 architectural follow-up.** Already in `docs/pending.md`, but flagged here for visibility: cross-module dry-run parity gap requires merging `copyAdditive` and `runPayload` into a single idempotent pass. Not yet ticketed in Linear (BAR-200 is the v0.2 catch-all but MED-8 is architectural and may warrant its own ticket).
-
-3. **Cosmetic plan-text deviations** (build-summary § Implementation Quality): `lint:prose` script uses `find`-based enumerator vs plan's literal `vale .agents/ "*.md"` form; `.prettierignore` adds `docs/` and `pnpm-lock.yaml`; `.prettierrc.json` introduced without explicit plan authorisation. All functionally equivalent / pragmatic. No remediation required, but worth noting in case the orchestrator/synthesizer wants to reconcile plan text with shipped artefacts before archive.
+| KN-3: pnpm/action-setup@v4 dual-SoT abort + fix rule (drop `with.version:`, let `packageManager` be SoT) | `docs/knowledge.md` lines 49–59 | Present and correct |
+| `{{PNPM_VERSION}}` is dead code post-hotfix; retire in v0.2 | `docs/pending.md` lines 53–61 | Present and correct |
+| Hotfix scope record (second ship cycle, no version bump) | `docs/completed.md` (appended this run) | Added |
+| Squash-merge rebase friction for hotfix branches | `.agents/friction.md` (debug log noted RECOVERED) | Out of docs subagent scope |
 
 ## Verification
 
-- [x] `docs/completed.md` entry references `docs/plans/completed/202605/bar-130-ci-lint-scaffolding-plan*.md` paths (orchestrator-pending `mv`).
-- [x] No commits made by this agent (orchestrator handles git per protocol).
-- [x] No edits outside doc-update + this log file.
+- [x] `docs/completed.md` hotfix entry references debug log paths and KN-3.
+- [x] No commits made by this agent (orchestrator handles git).
+- [x] No edits outside `docs/completed.md` + this log file.
 - [x] No edits to `status.json`.
+- [x] Sole-writer policy honored: knowledge.md / pending.md not modified by this agent.
 
-<!-- verdict:end -->
+## Blockers
+
+None.
