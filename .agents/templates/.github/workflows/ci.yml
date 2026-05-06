@@ -4,7 +4,7 @@ on:
   push:
     branches: [{{DEFAULT_BRANCH}}, dev]
   pull_request:
-    branches: [{{DEFAULT_BRANCH}}]
+    branches: [{{DEFAULT_BRANCH}}, dev]
 
 jobs:
   run-tests:

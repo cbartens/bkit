@@ -747,6 +747,6 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
     expect(substituted).not.toContain("{{PROJECT_NAME}}");
     expect(substituted).toContain("node-version: 22");
-    expect(substituted).toContain("branches: [main]");
+    expect(substituted).toContain("branches: [main, dev]");
   });
 });
