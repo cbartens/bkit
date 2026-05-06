@@ -544,7 +544,7 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Switch to Dev | — | `git checkout dev && git pull origin dev`. Steps 7+ run on `dev`. |
 | 7 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | `update-docs` writes `ship-update-docs.md` + edits cataloged docs. `summary` writes `ship-summary.md`. Sibling-blind: `summary` MUST NOT read `update-docs.md`. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 8 — Archive | — | Verify squash SHA on `origin/dev`. `mv docs/plans/active/{FID}-*.md docs/plans/completed/{YYYYMM}/`. Update `docs/completed.md`. Prune feature-specific skills not in `.agents/skills.md`. Commit `docs({FID}): archive cleanup [skip build] [skip ci]` → push to `dev`. |
-| 9 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune`. |
+| 9 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. Local + remote branch deletion is explicit because `gh pr merge --delete-branch` aborts both sides when the local one fails (worktree holds the ref). Squash-merged tip is unreachable from `dev`, so `-D` is correct. |
 | 10 — Close Workflow | — | Add `Merged` label, state `Done`. |
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
