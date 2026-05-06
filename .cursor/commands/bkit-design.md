@@ -257,7 +257,7 @@
      Create: `docs/plans/logs/{FID}/design-review-2.md`
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `design-review-1.md` and `design-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`).
-4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → Wait for subagent and re-extract and **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
+4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
 5. **If** `REVIEW_VERDICT` = FAIL → **Failure Path** with `Design review verdict: FAIL`.
 6. Update status and commit:
    ```bash
@@ -294,7 +294,7 @@
    Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-review-1.md`, `docs/plans/logs/{FID}/design-review-2.md`
    Create: `docs/plans/logs/{FID}/design-v2-reviewed.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → Wait for subagent and re-extract and **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
+3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -322,7 +322,43 @@
 
 ---
 
-## 🧠 Step 7 — Summary
+## 🧠 Step 7 — Design Organise
+
+1. **Subagent:** Invoke `@bkit-design-organise` using `Task` tool:
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/logs/{FID}/design-v2-reviewed.md`
+   Create: `docs/plans/logs/{FID}/design-v3-organised.md`
+2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Read `design-v3-organised.md` until `<!-- verdict:end -->` → extract `Verdict` as `ORGANISE_VERDICT`. **If** `ORGANISE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
+4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path** with `Design organise verdict: FAIL — cycles detected, human review required`.
+5. Update status and commit:
+   ```bash
+   STATUS="docs/plans/logs/{FID}/status.json"
+   git add -A && git commit --allow-empty -m "docs({FID}): design-organise work"
+   SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$ORGANISE_VERDICT" \
+     '.[-1].steps += [{step:"design-organise", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/design-v3-organised.md"]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): design-organise status"
+   ```
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
+   ```comment
+   ### Step 7 — Design Organise - Verdict: {ORGANISE_VERDICT}
+   [design-v3-organised.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/design-v3-organised.md)
+   ```
+
+### 🔒 Gate 7 — Design Organise
+
+- [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
+- [ ] Artifact written (`design-v3-organised.md`, non-empty)
+- [ ] `ORGANISE_VERDICT` extracted
+- [ ] Verdict valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Workflow status updated (step `design-organise` recorded with `commitSha`, `verdict`)
+- [ ] Issue comment attempted (`Step 7` section)
+
+---
+
+## 🧠 Step 8 — Summary
 
 1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path** with `No design version found`.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Task` tool:
@@ -347,15 +383,15 @@
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
-   ### Step 7 — Summary - Verdict: {SUMMARY_VERDICT}
+   ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/design-summary.md)
    {design-summary.md content verbatim}
    ```
-8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 8.
+8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
 9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path** with `Design summary verdict: FAIL`.
 10. **Else** → **Failure Path** with `Unexpected design summary verdict: {SUMMARY_VERDICT}`.
 
-### 🔒 Gate 7 — Summary
+### 🔒 Gate 8 — Summary
 
 - [ ] `DESIGN_FINAL` resolved to highest `design-v*.md`
 - [ ] Subagent invoked (`@bkit-design-summary`, no inline work)
@@ -364,11 +400,11 @@
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `summary` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 8` section)
 
 ---
 
-## 🤖 Step 8 — Close Workflow
+## 🤖 Step 9 — Close Workflow
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
@@ -415,11 +451,11 @@
 6. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
-   ### Step 8 — Close Workflow
+   ### Step 9 — Close Workflow
    ```
 8. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
 
-### 🔒 Gate 8 — Close Workflow
+### 🔒 Gate 9 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
@@ -429,4 +465,4 @@
 - [ ] Worktree removed and feature branch deleted
 - [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `commitSha`)
 - [ ] Issue update attempted (state `In Review`, label `Review`)
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 9` section)

@@ -37,7 +37,7 @@ maxTurns: 25
 3. Find: `git grep -n 'DEBUG-OBSERVE'` — every hit must be removed (full log lines, wrappers, or blocks added solely for observation).
 4. Delete only instrumentation tied to `[DEBUG-OBSERVE]` → restore surrounding code to pre-observe state. Do not edit unrelated logic.
 5. Post-delete: Scan for unused imports / dead helpers introduced solely for instrumentation; remove.
-6. Produce **Create** outputs.
+6. Produce **Create** output.
 
 **Output format:**
 

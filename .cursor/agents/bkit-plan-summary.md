@@ -35,7 +35,7 @@ tools:
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
 7. Unchecked human-confirmation gates EXPECTED on new design (human checks AFTER reading). Do NOT downgrade verdict if that is ONLY issue; note under Action Items.
-8. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+8. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
    - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, scope gaps).

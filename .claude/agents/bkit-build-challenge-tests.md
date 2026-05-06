@@ -44,7 +44,7 @@ maxTurns: 50
    - `PASS` = tests added and newly-added pass.
    - `FAIL` = generated tests do not compile or run.
    - `CONCERNS` = bugs discovered while running new tests.
-8. Produce **Create** outputs.
+8. Produce **Create** output.
 
 **Output format:**
 
