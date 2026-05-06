@@ -45,7 +45,7 @@ tools:
 10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
 11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
 12. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`. Check existing entries first to avoid duplicates.
-13. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+13. Update **Create** output - set Verdict via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
     - `FAIL` = unable to diagnose → orchestrator routes to Failure Path → `bkit-debug-abort-handover`.
     - `CONCERNS` = ambiguous root cause but plausible fix path.

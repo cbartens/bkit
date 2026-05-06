@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
 import { extractFullManagedBlock, extractManagedBlock, parseModelLookup } from "./bkit-install";
+import type { PreflightFinding } from "./bkit-preflight";
 import {
   runCoreModule,
   runClaudeModule,
@@ -36,7 +37,7 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
       PROJECT_NAME: "test-project",
     },
     modelLookup: new Map(),
-    printSink: [],
+    advisories: [],
     ws: makeWriteSet(),
     logPrefix: "[bkit-install]",
     postDispatch: [],
@@ -105,7 +106,7 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     fs.mkdirSync(destDir, { recursive: true });
     const dstPath = path.join(destDir, "ci.yml");
     const ws = makeWriteSet();
-    const printSink: string[] = [];
+    const advisories: PreflightFinding[] = [];
 
     // Tier 3 needs the file pre-token-substituted (it copies bytes verbatim).
     // applyTokens then writeTier3 isn't how runCiModule works — it just calls
@@ -116,7 +117,7 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     const stagedTemplate = path.join(tmpDir, "ci-staged.yml");
     fs.writeFileSync(stagedTemplate, substituted, "utf-8");
 
-    writeTier3(stagedTemplate, dstPath, false, printSink, ws);
+    writeTier3(stagedTemplate, dstPath, false, advisories, ws);
 
     expect(ws.writes).toHaveLength(1);
     expect(fs.existsSync(dstPath)).toBe(true);
@@ -177,10 +178,10 @@ jobs:
     fs.writeFileSync(dstPath, consumerContent, "utf-8");
 
     const ws = makeWriteSet();
-    const printSink: string[] = [];
+    const advisories2: PreflightFinding[] = [];
     const aiMessage =
       "INSTRUCTIONS FOR AN AI AGENT: open .github/workflows/ci.yml and merge {{TEMPLATE_CONTENT}}";
-    const result = writeTier3(templatePath, dstPath, false, printSink, ws, aiMessage);
+    const result = writeTier3(templatePath, dstPath, false, advisories2, ws, aiMessage);
 
     // Consumer file untouched
     const onDisk = fs.readFileSync(dstPath, "utf-8");
@@ -189,12 +190,12 @@ jobs:
     // No write recorded
     expect(ws.writes).toHaveLength(0);
 
-    // AI merge instruction printed with template content substituted in
+    // AI merge instruction pushed as structured advisory with template content substituted in
     expect(result.suggested).toBe(true);
-    expect(printSink).toHaveLength(1);
-    expect(printSink[0]).toContain("INSTRUCTIONS FOR AN AI AGENT");
-    expect(printSink[0]).toContain("GH_BKIT_TOKEN");
-    expect(printSink[0]).not.toContain("{{TEMPLATE_CONTENT}}");
+    expect(advisories2).toHaveLength(1);
+    expect(advisories2[0]!.action).toContain("INSTRUCTIONS FOR AN AI AGENT");
+    expect(advisories2[0]!.action).toContain("GH_BKIT_TOKEN");
+    expect(advisories2[0]!.action).not.toContain("{{TEMPLATE_CONTENT}}");
   });
 });
 
@@ -449,88 +450,61 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     expect(scripts.prepare).toBe("husky");
   });
 
-  it("runCiModule warns via print-sink when package.json is missing", () => {
+  it("runCiModule warns via advisories when package.json is missing", () => {
     // beforeEach seeds a package.json — remove it so we hit the missingPkg branch
     fs.rmSync(path.join(tmpDir, "package.json"));
-    const printSink: string[] = [];
-    const ctx = makeCtx({ printSink });
+    const advisories: PreflightFinding[] = [];
+    const ctx = makeCtx({ advisories });
     runCiModule(ctx);
-    const combined = printSink.join("\n");
+    const combined = advisories.map((a) => `${a.detect} ${a.action}`).join("\n");
     expect(combined).toMatch(/package\.json not found/i);
   });
 });
 
 // ---------------------------------------------------------------------------
-// MED-5 regression — print-sink copy-paste safety (no backslash-escape sequences)
+// MED-5 regression — advisories copy-paste safety (no backslash-escape sequences)
 // ---------------------------------------------------------------------------
 
-describe("MED-5: first-install print-sink GH_BKIT_TOKEN block has no broken backslash-escape sequences", () => {
-  it("print-sink emitted on first install contains no literal \\$ sequence (backslash-dollar)", () => {
+describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backslash-escape sequences", () => {
+  it("advisories emitted on first install contain no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
-    const printSink: string[] = [];
-    const ctx = makeCtx({ printSink });
+    const advisories: PreflightFinding[] = [];
+    const ctx = makeCtx({ advisories });
 
     dispatchModules(new Set(["core"]), ctx);
 
-    const combined = printSink.join("\n");
+    const combined = advisories.map((a) => a.action).join("\n");
 
     // Must contain the GH_BKIT_TOKEN setup (confirming it's the first-install block)
     expect(combined).toContain("GH_BKIT_TOKEN");
 
     // Must NOT contain a literal backslash-dollar sequence.
-    // The original bug was the template literal `\\$(find ...)` which rendered as
-    // `\$(find ...)` in stdout — a literal backslash before `$` that breaks shell single-quote execution.
-    // After the MED-5 fix (JSON.stringify-based output), `$(find ...)` appears without any leading backslash.
     expect(combined).not.toContain("\\$");
   });
 
-  it("print-sink script block is valid JSON when extracted lines wrapped in braces (copy-paste safety)", () => {
+  it("advisory action for first-install is plain text (copy-paste safety)", () => {
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
-    const printSink: string[] = [];
-    const ctx = makeCtx({ printSink });
+    const advisories: PreflightFinding[] = [];
+    const ctx = makeCtx({ advisories });
     dispatchModules(new Set(["core"]), ctx);
 
-    const combined = printSink.join("\n");
-
-    // Extract the "scripts" block: lines between the first { and last }
-    // The print-sink emits lines like:    "lint:prose": "...",
-    // Reconstruct as JSON object and parse to confirm validity
-    const lines = combined.split("\n");
-    const scriptLines: string[] = [];
-    let inScriptBlock = false;
-    for (const line of lines) {
-      // Detect start of the scripts block (first line with "lint:prose")
-      if (line.includes('"lint:prose"')) inScriptBlock = true;
-      if (inScriptBlock) {
-        scriptLines.push(line);
-        // Stop at last script entry (prepare is the last one)
-        if (line.trimStart().startsWith('"prepare"')) {
-          break;
-        }
-      }
-    }
-
-    if (scriptLines.length > 0) {
-      // Strip trailing comma from last entry and reconstruct a minimal JSON object
-      const trimmedLines = scriptLines.map((l, i) =>
-        i === scriptLines.length - 1 ? l.replace(/,\s*$/, "") : l,
-      );
-      const jsonCandidate = `{\n${trimmedLines.join("\n")}\n}`;
-      expect(() => JSON.parse(jsonCandidate)).not.toThrow();
-    }
+    // The first-install advisory should have structured action text
+    const firstInstallAdvisory = advisories.find((a) => a.id === "first-install-postinstall-steps");
+    expect(firstInstallAdvisory).toBeDefined();
+    expect(firstInstallAdvisory?.action).toContain("GH_BKIT_TOKEN");
   });
 });
 
 describe(".bkit-version first-run signal extra-logging", () => {
-  it("first install (no .bkit-version) emits GH_BKIT_TOKEN setup in print-sink", () => {
-    const printSink: string[] = [];
+  it("first install (no .bkit-version) emits GH_BKIT_TOKEN setup in advisories", () => {
+    const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, printSink });
+    const ctx = makeCtx({ ws, advisories });
 
     // Ensure no .bkit-version exists
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
@@ -539,8 +513,8 @@ describe(".bkit-version first-run signal extra-logging", () => {
     // dispatchModules flushes postDispatch (where .bkit-version is written)
     dispatchModules(new Set(["core"]), ctx);
 
-    // print-sink should contain GH_BKIT_TOKEN setup
-    const combined = printSink.join("\n");
+    // advisories should contain GH_BKIT_TOKEN setup
+    const combined = advisories.map((a) => a.action).join("\n");
     expect(combined).toContain("GH_BKIT_TOKEN");
     expect(combined).toContain("package.json");
   });
@@ -548,8 +522,8 @@ describe(".bkit-version first-run signal extra-logging", () => {
   it("second install (.bkit-version present at current version) suppresses first-run extra logging", () => {
     // Run first install to create .bkit-version
     const ws1 = makeWriteSet();
-    const sink1: string[] = [];
-    const ctx1 = makeCtx({ ws: ws1, printSink: sink1 });
+    const advisories1: PreflightFinding[] = [];
+    const ctx1 = makeCtx({ ws: ws1, advisories: advisories1 });
     dispatchModules(new Set(["core"]), ctx1);
 
     // Verify .bkit-version was written
@@ -558,11 +532,11 @@ describe(".bkit-version first-run signal extra-logging", () => {
 
     // Second run: .bkit-version exists → no first-run extra logging
     const ws2 = makeWriteSet();
-    const sink2: string[] = [];
-    const ctx2 = makeCtx({ ws: ws2, printSink: sink2 });
+    const advisories2: PreflightFinding[] = [];
+    const ctx2 = makeCtx({ ws: ws2, advisories: advisories2 });
     dispatchModules(new Set(["core"]), ctx2);
 
-    const combined2 = sink2.join("\n");
+    const combined2 = advisories2.map((a) => a.action).join("\n");
     expect(combined2).not.toContain("GH_BKIT_TOKEN");
     expect(combined2).not.toContain("First install detected");
   });

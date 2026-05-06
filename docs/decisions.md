@@ -42,3 +42,13 @@
 - **Note:** The `release.yml` publish job has no `environment:` protection by design (single-maintainer; no secondary approval needed). If a second maintainer is onboarded, gate the publish step behind `environment: production` with required-reviewer protection in GitHub repo settings.
 - **Source:** phase
 - **Related:** BAR-138, BAR-130, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
+
+## DE-4: BAR-141 — Structured PreflightFinding replaces printSink (2026-05-06)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Replace `ModuleContext.printSink: string[]` with `ModuleContext.advisories: PreflightFinding[]` (shape: `{id, severity, detect, action}`). Install is restructured into three phases: Phase 1 preflight (read-only, blockers short-circuit before any writes), Phase 2 dispatch (unchanged), Phase 3 post-install re-detection (token surfaces, ci.yml, vale sync, devDeps). Findings deduplicated by `id` — Phase 3 wins on conflict.
+- **Why:** `printSink: string[]` was unparseable by downstream tooling, emitted advisory strings during module execution (before post-install state was accurate), and had no structured `id` for deduplication. The structured shape enables: (1) stable `id` registry for downstream automation; (2) blocker short-circuit before any writes; (3) accurate post-install re-detection; (4) unified banner formatter reusable by BAR-139 (`bkit uninstall`).
+- **Discarded:** (1) Keep `printSink` + add parallel `findings: PreflightFinding[]` — two sinks → drift risk; downstream tooling has to merge two shapes. (2) `--strict` flag promoting advisories to blockers — out of scope; consumer can use `bkit check` (exit-1-on-drift). (3) Auto-apply advisory fixes — violates consumer-value-wins principle.
+- **Source:** phase
+- **Related:** BAR-141, `docs/plans/active/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4

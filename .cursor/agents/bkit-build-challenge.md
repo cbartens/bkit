@@ -43,7 +43,7 @@ tools:
    - Architecture: Domain violations, circular deps, leaky abstractions, broken API contracts.
 7. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), exploit scenario, suggested fix. Incomplete findings → not counted in `Failures`.
 8. Cross-reference findings against relevant docs in `.agents/docs.md`.
-9. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+9. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = no issues.
    - `FAIL` = CRITICAL findings requiring human escalation.
    - `CONCERNS` = findings addressable by remediate.

@@ -37,7 +37,7 @@ maxTurns: 25
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+7. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = failure resolved (no retries, no fragility).
    - `FAIL` = aborted at attempt N, root cause unresolved, or any remediation input has non-empty `Blockers`.
    - `CONCERNS` = follow-up needed (retries occurred, fragile fix, partial resolution, or most recent remediation input = `CONCERNS`).

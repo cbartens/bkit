@@ -43,7 +43,7 @@ tools:
 8. Any failures → document errors in output, set verdict `FAIL` (no alternatives, no rollbacks, no `--no-verify`).
 9. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
 10. Forced architecture/technology decision (if any) → APPEND `docs/decisions.md`.
-11. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+11. Update **Create** output - set Verdict via `Edit`; mapping:
     - `PASS` = every remediation step has a `DONE` entry across logs AND local tests pass.
     - `FAIL` = unable to remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR local tests still fail.
     - `CONCERNS` = remediation applied, tests pass, but introduced non-blocking flake/warning needing follow-up.

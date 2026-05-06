@@ -177,7 +177,7 @@ function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
       PROJECT_NAME: "test-project",
     },
     modelLookup: new Map(),
-    printSink: [],
+    advisories: [],
     ws,
     logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
     postDispatch: [],

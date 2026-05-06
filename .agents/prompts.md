@@ -69,7 +69,7 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 | --- | --- | --- |
 | `low` | Pure synthesis: read N inputs → write 1 verdict file. No deep reasoning, no codebase scan. | `*-summary`, `bkit-debug-abort-handover` |
 | `medium` | Single-shot writers, scope audits, skill curators, fix executors with clear input. | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-debug-failure-remediate`, `bkit-plan-complexity-check`, `bkit-plan-scope-check-2`, `bkit-plan-review-2`, all `bkit-utility-*` except audits |
-| `high` | Adversarial review, parallel-pair effort-1 slot, broad audits, observability instrumentation, feasibility research. | `bkit-build-plan-verify`, `bkit-design-brainstorm-ideate-1`, `bkit-design-review-1`, `bkit-plan-review-1`, `bkit-plan-scope-check-1`, `bkit-plan-complexity-split`, `bkit-debug-observe-*`, `bkit-ship-update-docs`, `bkit-utility-audit-*` |
+| `high` | Adversarial review, parallel-pair effort-1 slot, broad audits, observability instrumentation, feasibility research. | `bkit-build-plan-verify`, `bkit-design-brainstorm-ideate-1`, `bkit-design-organise`, `bkit-design-review-1`, `bkit-plan-review-1`, `bkit-plan-scope-check-1`, `bkit-plan-complexity-split`, `bkit-debug-observe-*`, `bkit-ship-update-docs`, `bkit-utility-audit-*` |
 | `xhigh` | Top-of-pipeline synthesizers and highest-leverage adversarial / diagnostic agents — depth here compounds downstream. Model-gated (Opus-only on current models); pin `model: opus` if dispatched from a Sonnet orchestrator. | `bkit-design-generate`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-build-challenge`, `bkit-debug-failure-diagnose` |
 | `max` | Reserved — only if `xhigh` proves insufficient on a recurring failure mode. Costliest tier; one-shot orchestrator-level work only. Lazy-escalate from `xhigh` based on observed truncation, never preemptively. | (none currently) |
 
@@ -80,7 +80,7 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 | --- | --- | --- |
 | Pure summarizer | `Read, Write` | `bkit-build-summary`, `bkit-debug-summary`, `bkit-design-summary`, `bkit-plan-summary`, `bkit-ship-summary`, `bkit-debug-abort-handover` |
 | Read-only reviewer | `Read, Grep, Glob, Write` | `bkit-build-challenge`, `bkit-design-brainstorm-ideate-*`, `bkit-plan-review-*`, `bkit-plan-scope-check-*`, `bkit-plan-complexity-check`, `bkit-debug-failure-diagnose`, `bkit-debug-observe-instrument`, `bkit-debug-observe-analyse`, `bkit-debug-observe-revert` |
-| Doc writer | `Read, Grep, Glob, Write, Edit` | `bkit-design-generate`, `bkit-design-update`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`, `bkit-utility-update-references`, `bkit-utility-compress-markdown`, `bkit-utility-audit-codebase`, `bkit-utility-audit-security`, `bkit-utility-audit-tests`, `bkit-build-plan-verify` |
+| Doc writer | `Read, Grep, Glob, Write, Edit` | `bkit-design-generate`, `bkit-design-organise`, `bkit-design-update`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`, `bkit-utility-update-references`, `bkit-utility-compress-markdown`, `bkit-utility-audit-codebase`, `bkit-utility-audit-security`, `bkit-utility-audit-tests`, `bkit-build-plan-verify` |
 | Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-utility-audit-logs`, `bkit-utility-audit-logs-ship` |
 | Skill-installer / Bash-only utility | `Read, [Grep, Glob,] Bash` | `bkit-build-install-skills` |
 | Investigator (web access) | `Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch` | `bkit-design-review-1`, `bkit-design-review-2` |
@@ -95,7 +95,7 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 | Tier | Cap | Typical work | Use for | Examples |
 | --- | --- | --- | --- | --- |
 | **S** | **25** | 3-10 turns | Pure synthesizers, scope checks, single-pass utilities, install/cleanup, summary writers. | `*-summary`, `bkit-debug-abort-handover`, `bkit-plan-complexity-check`, `bkit-plan-scope-check-*`, `bkit-build-install-skills`, `bkit-debug-observe-revert`, `bkit-utility-audit-logs-ship`, `bkit-utility-audit-logs`, `bkit-utility-compress-markdown` |
-| **M** | **50** | 5-25 turns | Reviewers, doc writers, multi-doc, web investigators, audits, surgical-edit appliers, single-pass source modifiers (no test loop). | `bkit-design-brainstorm-ideate-*`, `bkit-design-review-*`, `bkit-design-generate`, `bkit-design-update`, `bkit-plan-review-*`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-build-challenge`, `bkit-build-challenge-tests`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-observe-analyse`, `bkit-debug-observe-instrument`, `bkit-ship-update-docs`, `bkit-utility-audit-*` (codebase / security / tests), `bkit-utility-update-*` |
+| **M** | **50** | 5-25 turns | Reviewers, doc writers, multi-doc, web investigators, audits, surgical-edit appliers, single-pass source modifiers (no test loop). | `bkit-design-brainstorm-ideate-*`, `bkit-design-review-*`, `bkit-design-generate`, `bkit-design-organise`, `bkit-design-update`, `bkit-plan-review-*`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-build-challenge`, `bkit-build-challenge-tests`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-observe-analyse`, `bkit-debug-observe-instrument`, `bkit-ship-update-docs`, `bkit-utility-audit-*` (codebase / security / tests), `bkit-utility-update-*` |
 | **L** | **100** | 30-60 turns | Source modifiers with test loops, plan executor — iterative edit→`pnpm turbo lint typecheck test`→edit cycles. | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-debug-failure-remediate` |
 
 **Tier assignment is canonical** — see per-agent rows in § Models. Hitting the cap at any tier signals the agent is stuck (tight retry loop, infinite re-read, etc.) — orchestrator's verdict-validation retry handles partial state recovery.
@@ -114,6 +114,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
 | `bkit-design-review-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
 | `bkit-design-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
+| `bkit-design-organise` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
 | `bkit-design-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-design-generate` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
 | `bkit-plan-complexity-check` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | complexity check |
@@ -186,6 +187,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-review-1` | Feasibility research with `WebFetch`/`WebSearch`; ecosystem search per capability; writes review log. |
 | `bkit-design-review-2` | Same as `-1`; runs in parallel with cross-tier model diversity. |
 | `bkit-design-update` | Apply CRITICAL + consensus-OPTIONAL items from both reviews; whole-doc rewrite of design. |
+| `bkit-design-organise` | Decompose `design-v2-reviewed.md` into dependency-annotated workstreams (`WS-1`, `WS-2`, …); inline `dependsOn` per workstream + dependency graph table; `FAIL` if cycles detected. |
 | `bkit-design-summary` | Read-only verdict on design doc + spike. |
 
 ## Plan Phase

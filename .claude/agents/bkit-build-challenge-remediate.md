@@ -44,7 +44,7 @@ maxTurns: 100
 6. Implement sequentially in priority order — apply suggested remediation per finding (edit/create source files) → append log entry → proceed.
 7. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]'; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
 8. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
-9. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+9. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = every finding has a `DONE` entry across logs AND local tests pass.
    - `FAIL` = unable to remediate findings; any CRITICAL finding ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR local tests fail.
    - `CONCERNS` = lower-severity findings end in a `BLOCKED` entry with NO later `DONE` entry across logs.

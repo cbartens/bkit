@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, printUsage } from "./bkit-cli.js";
 import { dispatchModules } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
+import { runPreflight } from "./bkit-preflight.js";
+import { runPostInstallCheck, formatChecklist } from "./bkit-postinstall.js";
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
 // payload pass; the host dirs are mirrored from `.agents/` during the host pass.
@@ -558,6 +560,15 @@ async function main() {
         LOG_PREFIX = "[bkit-check]";
     if (dryRun)
         console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
+    // --- Phase 1: Preflight (read-only, before any writes) ---
+    // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
+    const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
+    if (blockers.length > 0) {
+        const blockerBanner = formatChecklist(blockers);
+        if (blockerBanner)
+            console.log(blockerBanner);
+        process.exit(1);
+    }
     // Resolve tokens once for the whole install
     const tokens = await resolveTokens(process.cwd()).catch((err) => {
         console.error(`${LOG_PREFIX} Token resolution failed: ${err.message}`);
@@ -573,44 +584,45 @@ async function main() {
             // Not fatal — cursor module will fail per-file if a model is missing
         }
     }
-    const printSink = [];
+    // Seed preflight advisories into ctx so modules can accumulate into the same list.
+    const advisories = [...preflightAdvisories];
     const ws = { writes: [] };
     const postDispatch = [];
     const ctx = {
         dryRun,
         tokens,
         modelLookup,
-        printSink,
+        advisories,
         ws,
         logPrefix: LOG_PREFIX,
         postDispatch,
     };
-    // Dispatch modules in canonical order
+    // --- Phase 2: Install (current behaviour — dispatch modules) ---
     dispatchModules(modules, ctx);
     const totalWrites = ws.writes.length;
     if (dryRun && totalWrites > 0) {
         console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
-        // In check mode, dump print-sink as plain lines (no checklist banner —
-        // the messages are advisory, drift detection is the actionable signal).
-        for (const msg of printSink)
-            console.log(msg);
+        // Dry-run: skip Phase 3 (check stays read-only). Still emit Phase 1 advisories
+        // accumulated in ctx.advisories to preserve parity with legacy printSink dump.
+        const banner = formatChecklist(ctx.advisories);
+        if (banner)
+            console.log(banner);
         process.exit(1);
     }
     // Done banner first so the line count is easy to find above the checklist.
     console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
-    // Post-install checklist — consolidate scattered printSink messages into a
-    // single numbered block consumers (or AI agents) can paste into a coding
-    // assistant to apply each item. Each entry is self-contained.
-    if (printSink.length > 0) {
-        const banner = "=".repeat(58);
-        console.log(`\n${banner}\n[bkit] Post-install checklist (${printSink.length} item${printSink.length === 1 ? "" : "s"})\n${banner}`);
-        console.log("\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
-            "coding assistant to apply each item. Each ACTION is self-contained.\n");
-        printSink.forEach((msg, i) => {
-            console.log(`\n--- ${i + 1}/${printSink.length} ---\n${msg.trimStart()}`);
-        });
-        console.log(`\n${banner}\n`);
+    if (dryRun) {
+        // Zero-drift dry-run: emit Phase 1 advisories if any.
+        const banner = formatChecklist(ctx.advisories);
+        if (banner)
+            console.log(banner);
+        return;
     }
+    // --- Phase 3: Post-install checks (re-detect + unified output) ---
+    const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
+    const banner = formatChecklist(postFindings);
+    if (banner)
+        console.log(banner);
 }
 function isMainScript() {
     if (!process.argv[1])

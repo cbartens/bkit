@@ -108,6 +108,63 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
 
 > **Removed in v0.4.0 (breaking):** Git-dependency install path (`pnpm add -D github:cbartens/bkit#vX.Y.Z`), GHA `Configure private-repo auth` step, and `installCommand` git-shim are all removed. Consumers upgrading from v0.3.x must add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, and drop the auth-shim from CI and Vercel config.
 
+## Install lifecycle
+
+`bkit install` runs three phases in sequence:
+
+**Phase 1 — Preflight (read-only, before any writes)**
+
+bkit checks preconditions and known advisory patterns before touching any file. If a blocker fires, install exits 1 immediately with a formatted `[blocker]` line and zero writes. Advisories are accumulated for Phase 3.
+
+| Severity | When                                                                              |
+| -------- | --------------------------------------------------------------------------------- |
+| Blocker  | `package.json` absent or unparseable JSON                                         |
+| Blocker  | `--core` requested but `.git/` absent                                             |
+| Advisory | `.husky/pre-commit` or `pre-push` exists without bkit markers                     |
+| Advisory | `.prettierignore` exists without bkit markers                                     |
+| Advisory | `lint:prose` script lacks the write-good guard (`[ -d .vale/styles/write-good ]`) |
+| Advisory | On-disk `.bkit-version` major > installing major (downgrade)                      |
+| Advisory | `node_modules/@cbartens/bkit` version > `.agents/.bkit-version` (stale pin)       |
+
+**Phase 2 — Install (current behaviour)**
+
+Module dispatch writes managed files. Same as before this feature shipped.
+
+**Phase 3 — Post-install (re-detect + unified output)**
+
+After writes, bkit re-runs token-surface and environment checks — some are only accurate post-install (e.g. `.npmrc` content written by the CI module, devDeps added to `package.json`).
+
+| `id`                            | When                                                   |
+| ------------------------------- | ------------------------------------------------------ |
+| `gh-bkit-token-missing-shell`   | `GH_BKIT_TOKEN` not set in shell                       |
+| `npmrc-missing-gh-packages`     | `.npmrc` exists but lacks registry/auth lines          |
+| `gh-bkit-token-secret-missing`  | `gh secret list` confirms secret absent                |
+| `gh-bkit-token-secret-unknown`  | `gh` CLI unavailable/unauthenticated                   |
+| `vercel-env-missing-preview`    | `vercel.json` detected; token absent in preview        |
+| `vercel-env-missing-production` | `vercel.json` detected; token absent in production     |
+| `ci-yml-missing-token-env`      | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
+| `vale-package-not-synced`       | vale on PATH but `.vale/styles/write-good/` absent     |
+| `devdeps-need-fetch`            | bkit added devDeps in this run — `pnpm install` needed |
+
+Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
+
+**`bkit check` (dry-run)** runs Phase 1 and renders any Phase 1 advisories via the same banner formatter. Phase 3 is skipped (check stays read-only). See `docs/knowledge.md` KN-4 for details.
+
+**`PreflightFinding` shape** — the stable contract for downstream tooling:
+
+```typescript
+interface PreflightFinding {
+  id: string; // stable kebab-case identifier
+  severity: "blocker" | "advisory";
+  detect: string; // one-line description of the detected condition
+  action: string; // AI-pasteable fix instruction
+}
+```
+
+Findings are rendered in the format `--- i/N [severity] id ---` with `DETECT:` and `ACTION:` sections — copy-paste the whole banner into a coding assistant to apply fixes in sequence.
+
+For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
+
 ## Documentation
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.

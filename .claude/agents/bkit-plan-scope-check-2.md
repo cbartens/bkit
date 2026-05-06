@@ -45,7 +45,7 @@ maxTurns: 25
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
 10. Any replaced/superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
 11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-12. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+12. Update **Create** output - set Verdict via `Edit`; mapping:
     - `PASS` = scope complete.
     - `FAIL` = template structure broken or matrix↔runbook mapping unrecoverable.
     - `CONCERNS` = CRITICAL gaps present (apply via plan-update).

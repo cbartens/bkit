@@ -38,7 +38,7 @@ tools:
 7. Copy ALL tasks, constraints, 🔒 Gates from master into sub-plans.
 8. Each sub-plan self-contained per `docs/plans/template.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master↔sub-plans. Relative paths.
-10. Self-verify (mandatory before verdict; max 2 fix iterations, else `FAIL`):
+10. Self-verify (mandatory before verdict; max 2 fix iterations → else `FAIL`):
     - Count tasks in original vs sum across sub-plans. Mismatch → fix in place, recount.
     - Confirm every task, constraint, and 🔒 Gate appears in exactly one sub-plan.
     - Confirm each sub-plan's estimated tokens ≤100K.
@@ -48,8 +48,8 @@ tools:
 12. Master retains context/goals/patterns; replace `Agent Execution Runbook` with sub-plan index (relative paths).
 13. Verdict mapping:
     - `PASS` = lossless split (task count + ≤100K cap + template invariants self-verified).
-    - `FAIL` = self-detected agent bug (task count mismatch, sub-plan >100K, or template violation).
-14. Produce **Create** outputs.
+    - `FAIL` = self-detected agent bug (task count mismatch, sub-plan >100K, template violation) or failed self-verify.
+14. Produce **Create** output.
 
 **Output format:**
 

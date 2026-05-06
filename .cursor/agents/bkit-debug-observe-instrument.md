@@ -44,7 +44,7 @@ tools:
 
 5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` to verify instrumentation didn't break behaviour.
 6. Any failures → document errors in output.
-7. Produce **Create** outputs.
+7. Produce **Create** output.
 
 **Output format:**
 

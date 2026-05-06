@@ -41,7 +41,7 @@ maxTurns: 50
 6. **If** `Single` → every checklist item and 🔒 Gate in this sub-plan maps to real codebase changes. Identify missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks against all `DONE` log entries.
 7. **If** `Holistic` → run step 6 across all sub-plans, PLUS integration: Components from different sub-plans work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? **If** `turbo.json` exists → `pnpm turbo test --filter='...[origin/dev]'`. **Else** → `pnpm test`.
 8. For each verified plan task (file exists, tests pass, conditions asserted) ensure task checkbox in plan ticked `[ ]` → `[x]`; ONLY tick on verified codebase evidence.
-9. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+9. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = no gaps.
    - `FAIL` = blocking gaps requiring remediation loop.
    - `CONCERNS` = gaps addressable by gap-remediate.

@@ -9,6 +9,7 @@ import {
   type WriteSet,
 } from "./bkit-install.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
+import type { PreflightFinding } from "./bkit-preflight.js";
 
 export type { WriteSet, WriteEntry };
 
@@ -145,7 +146,7 @@ export interface Tier3Result {
 
 /**
  * `aiMessage`: when the destination already exists and content differs,
- * push this string to printSink instead of the default current-vs-suggested
+ * push a structured advisory to `advisories` instead of the default current-vs-suggested
  * dump. The message should be a self-contained instruction that any AI
  * agent (or human) can copy-paste into a coding assistant to apply the
  * required merge. Use {{TEMPLATE_CONTENT}} as a placeholder for the
@@ -160,26 +161,35 @@ export function writeTier3(
   srcPath: string,
   dstPath: string,
   dryRun: boolean,
-  printSink: string[],
+  advisories: PreflightFinding[],
   ws: WriteSet,
   aiMessage?: string,
   tokens?: TokenMap,
 ): Tier3Result {
   const srcRaw = fs.readFileSync(srcPath, "utf-8");
   const srcContent = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+  const dstBasename = path.basename(dstPath);
 
   if (fs.existsSync(dstPath)) {
     // Present → suggest diff, don't write
     const dstContent = fs.readFileSync(dstPath, "utf-8");
     if (srcContent !== dstContent) {
       if (aiMessage) {
-        printSink.push(aiMessage.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => srcContent.trimEnd()));
+        advisories.push({
+          id: `tier3-merge-suggested-${dstBasename}`,
+          severity: "advisory",
+          detect: `${dstPath} exists and differs from the bkit reference. Manual merge required.`,
+          action: aiMessage.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => srcContent.trimEnd()),
+        });
       } else {
-        printSink.push(
-          `[bkit-install] Tier 3 suggestion for ${dstPath}:\n` +
-            `  File already exists. bkit suggests the following content:\n` +
-            `  --- current ---\n${dstContent}\n  --- suggested ---\n${srcContent}`,
-        );
+        advisories.push({
+          id: `tier3-merge-suggested-${dstBasename}`,
+          severity: "advisory",
+          detect: `${dstPath} exists and differs from the bkit reference.`,
+          action:
+            `File already exists. bkit suggests the following content:\n` +
+            `--- current ---\n${dstContent}\n--- suggested ---\n${srcContent}`,
+        });
       }
     }
     return { wrote: false, suggested: srcContent !== dstContent };
@@ -301,10 +311,7 @@ export function ensurePackageJsonDevDeps(
     // dep instead of devDep — don't double-add).
     const alreadyInDeps =
       pkg.dependencies && Object.prototype.hasOwnProperty.call(pkg.dependencies, name);
-    if (
-      alreadyInDeps ||
-      (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))
-    ) {
+    if (alreadyInDeps || (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))) {
       preserved.push(name);
     } else {
       if (!pkgDevDeps) {
