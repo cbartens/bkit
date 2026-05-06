@@ -2,7 +2,7 @@
   {
     "workflow": "plan",
     "startedAt": "2026-05-06T04:46:48Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -99,6 +99,13 @@
         "artifacts": [
           "docs/plans/logs/bar-141-preflight-checklist/plan-summary.md"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T05:14:06Z",
+        "commitSha": "c26716db601b23ae48441568c185e7156d7fb5e0",
+        "artifacts": []
       }
     ]
   }
