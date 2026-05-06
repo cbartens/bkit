@@ -34,7 +34,7 @@ pnpm exec bkit install --ci --lint      # CI + lint stack + core; nothing else
 pnpm exec bkit install --cursor         # .cursor/** + core only
 pnpm exec bkit install --full           # all modules (explicit; same as no flags)
 
-# Ongoing sync — re-run after `pnpm update @cbartens/bkit`
+# Ongoing sync — MANDATORY after every `@cbartens/bkit` version bump
 pnpm exec bkit install
 
 # Drift detection — exits non-zero if managed files drift from bkit templates (CI gate)
@@ -42,6 +42,8 @@ pnpm exec bkit check --full
 ```
 
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
+
+> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** Plain `pnpm add -D @cbartens/bkit@<new-version>` (or `pnpm update`) only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate ("DRIFT DETECTED" on `.agents/.bkit-version`). Commit the resync changes alongside the version bump in the same PR. This applies to every version change — initial 0.3.x → 0.4.0 cutover **and** routine 0.4.x → 0.4.y upgrades.
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 

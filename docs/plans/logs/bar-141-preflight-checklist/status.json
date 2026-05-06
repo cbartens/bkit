@@ -1,0 +1,112 @@
+[
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-06T04:46:48Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T04:46:49Z",
+        "commitSha": "a15a370665928948126b199524562bfe99ec8ba1",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-06T04:48:46Z",
+        "commitSha": "55405dd9de7eb7ba51cbd169b6735a62fe82de2b",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-input.md"
+        ]
+      },
+      {
+        "step": "generate-plan",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-06T04:55:19Z",
+        "commitSha": "013d85c3d190afbdf83366500bd27fd58179fd44",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-v1-draft.md"
+        ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 6,
+        "at": "2026-05-06T04:58:50Z",
+        "commitSha": "162c444f8df670bfb0ef0faeca741253b747d8a8",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-review-1.md",
+          "docs/plans/logs/bar-141-preflight-checklist/plan-review-2.md"
+        ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T05:02:20Z",
+        "commitSha": "e519c0ca9d5aa9fdfb252a0cada2427e854f38f6",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-v2-reviewed.md"
+        ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 9,
+        "at": "2026-05-06T05:05:15Z",
+        "commitSha": "bef09a67287b04020fc56828ac82739146399c1b",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-1.md",
+          "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-06T05:09:05Z",
+        "commitSha": "a8852fe0056438e1a8de3b056ab4a0b0828e9398",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-v3-checked.md"
+        ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SINGLE",
+        "attempt": 1,
+        "at": "2026-05-06T05:10:17Z",
+        "commitSha": "e3108633e58199a27a1f614e0ea0823bcb14684a",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-complexity-check.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-06T05:12:21Z",
+        "commitSha": "847709d631b3e389edbf0968d2ddc1a197141eef",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-summary.md"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T05:14:06Z",
+        "commitSha": "c26716db601b23ae48441568c185e7156d7fb5e0",
+        "artifacts": []
+      }
+    ]
+  }
+]
