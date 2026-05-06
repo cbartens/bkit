@@ -238,79 +238,79 @@ Always squash. One PR for sub-plan-2 -> v0.7.x release. `gh pr merge --squash --
 
 ### Phase 2 — v0.7.x
 
-- [ ] **P2.T1:** Build per-module install-write manifest. Each module declares the set of files it writes; output is consumed by uninstall + package.json strippers.
+- [x] **P2.T1:** Build per-module install-write manifest. Each module declares the set of files it writes; output is consumed by uninstall + package.json strippers.
   - Files: `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-manifest.test.ts`
   - Depends on: sub-plan-1 P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-manifest.test.ts`
   - Closes: BAR-139 §Suggested order #1
-- [ ] **P2.T2:** `stripManagedBlock` helper in `bkit-tiers.ts` — pure-string transform; reuses BAR-138 line-anchored regex.
+- [x] **P2.T2:** `stripManagedBlock` helper in `bkit-tiers.ts` — pure-string transform; reuses BAR-138 line-anchored regex.
   - Files: `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tiers.test.ts`
   - Depends on: none (pure string transform — no logical dep on P2.T1)
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-tiers.test.ts`
   - Closes: BAR-139 §Surgical Tier 2
-- [ ] **P2.T3:** Tier-3 hash-guard via `.bkit-version` (`bkit-version.ts` is **[NEW]**, verified absent). Schema: `{ pinnedVersion, tier3Hashes: Record<path, sha256> }`. Add fixture: consumer with `.bkit-version` lacking `tier3Hashes` -> preserve-default-on-unknown.
+- [x] **P2.T3:** Tier-3 hash-guard via `.bkit-version` (`bkit-version.ts` is **[NEW]**, verified absent). Schema: `{ pinnedVersion, tier3Hashes: Record<path, sha256> }`. Add fixture: consumer with `.bkit-version` lacking `tier3Hashes` -> preserve-default-on-unknown.
   - Files: `.agents/scripts/bkit-version.ts`, `.agents/scripts/bkit-version.test.ts`
   - Depends on: sub-plan-1 P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-version.test.ts`
   - Closes: BAR-139 §Surgical Tier 3
-- [ ] **P2.T4:** `stripManagedKeys` for managed `package.json` keys; **key list driven by P2.T1 manifest** (NOT hand-listed). Test fixture: matrix row "`package.json` default-only stripping" — assert default `lint:slop` script removed; consumer-customised `lint:slop` preserved.
+- [x] **P2.T4:** `stripManagedKeys` for managed `package.json` keys; **key list driven by P2.T1 manifest** (NOT hand-listed). Test fixture: matrix row "`package.json` default-only stripping" — assert default `lint:slop` script removed; consumer-customised `lint:slop` preserved.
   - Files: `.agents/scripts/bkit-package-json.ts`, `.agents/scripts/bkit-package-json.test.ts`
   - Depends on: P2.T1
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-package-json.test.ts`
   - Closes: BAR-139 §Surgical managed package.json
-- [ ] **P2.T5:** `runUninstallModule` per install module + `WriteSet.deletes`. **Sole owner of `bkit-uninstall.ts`.** Round-trip integration test.
+- [x] **P2.T5:** `runUninstallModule` per install module + `WriteSet.deletes`. **Sole owner of `bkit-uninstall.ts`.** Round-trip integration test.
   - Files: `.agents/scripts/bkit-uninstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-uninstall.test.ts`
   - Depends on: P2.T1, P2.T2, P2.T3, P2.T4
   - Effort: L
   - Verify: `pnpm vitest run .agents/scripts/bkit-uninstall.test.ts`
   - Closes: BAR-139 §Suggested order #2, DoD #1, #4
-- [ ] **P2.T6:** `bkit uninstall` CLI verb + flags. **Flag style: keep boolean module flags `--ci`/`--lint`/`--git-hooks`/`--core`/`--claude`/`--cursor`/`--full` (mirror install). REMOVE `--module <name>` to eliminate parse ambiguity.** Other flags: `--dry-run`, `--force`, `--nuke`, `--package`, `--keep-npmrc`, `--keep-tooling`, `--yes`.
+- [x] **P2.T6:** `bkit uninstall` CLI verb + flags. **Flag style: keep boolean module flags `--ci`/`--lint`/`--git-hooks`/`--core`/`--claude`/`--cursor`/`--full` (mirror install). REMOVE `--module <name>` to eliminate parse ambiguity.** Other flags: `--dry-run`, `--force`, `--nuke`, `--package`, `--keep-npmrc`, `--keep-tooling`, `--yes`.
   - Files: `.agents/scripts/bkit-cli.ts`, `.agents/scripts/bkit-cli.test.ts`
   - Depends on: P2.T5
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-cli.test.ts`
   - Closes: BAR-139 §Scope #1, #5
-- [ ] **P2.T7:** `--dry-run` decision-table (FILE / DECISION / REASON) snapshot.
+- [x] **P2.T7:** `--dry-run` decision-table (FILE / DECISION / REASON) snapshot.
   - Files: `.agents/scripts/bkit-uninstall.ts`, `.agents/scripts/bkit-uninstall.test.ts`
   - Depends on: P2.T5
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-uninstall.test.ts`
   - Closes: BAR-139 DoD dry-run
-- [ ] **P2.T8:** Idempotency + `--nuke` confirm prompt.
+- [x] **P2.T8:** Idempotency + `--nuke` confirm prompt.
   - Files: `.agents/scripts/bkit-uninstall.ts`, `.agents/scripts/bkit-uninstall.test.ts`
   - Depends on: P2.T5
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-uninstall.test.ts`
   - Closes: BAR-139 DoD idempotent
-- [ ] **P2.T8a:** Create `tests/fixtures/heavy-customised-consumer/` committed fixture simulating gether-life-style customisations: Stop hook in `.claude/settings.json`, custom `failClosed`/`loop_limit` in `.cursor/hooks.json`, modified `.vale.ini`, custom husky scripts, project-specific `AGENTS.md` rule outside markers, customised `package.json` scripts. Add `bkit-uninstall.surgical.integration.test.ts` consuming this fixture; snapshot asserts byte-identical post-uninstall.
+- [x] **P2.T8a:** Create `tests/fixtures/heavy-customised-consumer/` committed fixture simulating gether-life-style customisations: Stop hook in `.claude/settings.json`, custom `failClosed`/`loop_limit` in `.cursor/hooks.json`, modified `.vale.ini`, custom husky scripts, project-specific `AGENTS.md` rule outside markers, customised `package.json` scripts. Add `bkit-uninstall.surgical.integration.test.ts` consuming this fixture; snapshot asserts byte-identical post-uninstall.
   - Files: `tests/fixtures/heavy-customised-consumer/...` (committed), `.agents/scripts/bkit-uninstall.surgical.integration.test.ts`
   - Depends on: P2.T5, P2.T6
   - Effort: L
   - Verify: `pnpm vitest run .agents/scripts/bkit-uninstall.surgical.integration.test.ts`
   - Closes: none (backs Phase 2 Gate surgical-uninstall assertion; **fixture re-used by sub-plan-3 P3.T9 and sub-plan-4 P4.T7**)
-- [ ] **P2.T9:** Phase 3 blocker exit-1 wiring + recovery action text. Integration fixture: gap -> exit 1; subsequent uninstall -> clean. _(Note: NOT cross-attributed to BAR-142 §A2 — A2 was moved to BAR-139.)_
+- [x] **P2.T9:** Phase 3 blocker exit-1 wiring + recovery action text. Integration fixture: gap -> exit 1; subsequent uninstall -> clean. _(Note: NOT cross-attributed to BAR-142 §A2 — A2 was moved to BAR-139.)_
   - Files: `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.integration.test.ts`
   - Depends on: P2.T5, P2.T6
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.integration.test.ts`
   - Closes: BAR-139 §6, DoD Phase-3 exit-1
-- [ ] **P2.T10:** `--auto-revert` install flag. Integration test fixture name: **`fixture-phase3-token-gap`** (gap on `gh-bkit-token` blocker).
+- [x] **P2.T10:** `--auto-revert` install flag. Integration test fixture name: **`fixture-phase3-token-gap`** (gap on `gh-bkit-token` blocker).
   - Files: `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.integration.test.ts`
   - Depends on: P2.T9
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.integration.test.ts`
   - Closes: BAR-139 §7, DoD `--auto-revert`
-- [ ] **P2.T11:** `.bkitignore` parser + check/doctor integration. Spec: comment `#`, blank-line ignore, `picomatch` glob, `:dotted.key` syntax (`.` delimiter, `\.` escape), per-key gated by env `BKIT_BKITIGNORE_PER_KEY=1`. Pure parser tested in `.test.ts` (TWO matrix rows: per-file AND per-key with env-var-gated fixture using `afterEach` cleanup); fs matcher tested in `.integration.test.ts`. **Cross-sub-plan dep: requires sub-plan-1 P1.T1 `bkit doctor` verb wiring (cherry-pick without sub-plan-1 NOT supported; if sub-plan-2 ships standalone, scope to `bkit check` only).**
+- [x] **P2.T11:** `.bkitignore` parser + check/doctor integration. Spec: comment `#`, blank-line ignore, `picomatch` glob, `:dotted.key` syntax (`.` delimiter, `\.` escape), per-key gated by env `BKIT_BKITIGNORE_PER_KEY=1`. Pure parser tested in `.test.ts` (TWO matrix rows: per-file AND per-key with env-var-gated fixture using `afterEach` cleanup); fs matcher tested in `.integration.test.ts`. **Cross-sub-plan dep: requires sub-plan-1 P1.T1 `bkit doctor` verb wiring (cherry-pick without sub-plan-1 NOT supported; if sub-plan-2 ships standalone, scope to `bkit check` only).**
   - Files: `.agents/scripts/bkit-bkitignore.ts`, `.agents/scripts/bkit-bkitignore.test.ts`, `.agents/scripts/bkit-bkitignore.integration.test.ts`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`
   - Depends on: sub-plan-1 P1.T1 (cross-sub-plan)
   - Effort: L
   - Verify: `pnpm vitest run .agents/scripts/bkit-bkitignore.test.ts .agents/scripts/bkit-bkitignore.integration.test.ts`
   - Closes: BAR-142 §A6
-- [ ] **P2.T12:** README + recovery docs rollup; CHANGELOG v0.7.x.
+- [x] **P2.T12:** README + recovery docs rollup; CHANGELOG v0.7.x.
   - Files: `README.md`, `CHANGELOG.md`
   - Depends on: P2.T1, P2.T2, P2.T3, P2.T4, P2.T5, P2.T6, P2.T7, P2.T8, P2.T8a, P2.T9, P2.T10, P2.T11
   - Effort: S
