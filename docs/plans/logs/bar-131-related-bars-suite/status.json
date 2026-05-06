@@ -287,6 +287,18 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/build-plan-verify-4-1.md"
         ]
+      },
+      {
+        "step": "plan-verify-holistic",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 1,
+        "at": "2026-05-06T23:35:36Z",
+        "commitSha": "b2c00f4901b4137e16625adb5ebe8521e776d0db",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/build-plan-verify-holistic.md"
+        ]
       }
     ]
   }
