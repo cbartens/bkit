@@ -496,17 +496,16 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
      git worktree prune
    fi
    ```
-2. Verify worktree removed `[ \! -d "$REPO_ROOT/.worktrees/{FID}" ]`. **Else** log warning → continue.
-3. Delete local feat branch:
+2. Delete local feat branch:
    ```bash
    git branch -D "feat/{FID}" 2>/dev/null || true
    ```
-4. Delete remote feat branch and prune tracking ref:
+3. Delete remote feat branch and prune tracking ref:
    ```bash
    git push origin --delete "feat/{FID}" 2>/dev/null || true
    git fetch --prune origin 2>/dev/null || true
    ```
-5. Update status and commit:
+4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-cleanup work [skip build] [skip ci]"
@@ -516,7 +515,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): worktree-cleanup status [skip build] [skip ci]"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
    ```comment
    ### Step 9 — Worktree Cleanup
    ```
