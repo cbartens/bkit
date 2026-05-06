@@ -111,6 +111,8 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | Phase 1 advisories present in `bkit check` (dry-run) | Phase 3 detectors are skipped (preserves read-only semantics) BUT Phase 1 advisories accumulated in `ctx.advisories` are still rendered via `formatChecklist(ctx.advisories)` to preserve parity with the legacy `printSink` dump. Only the post-install re-detection layer is suppressed. |
 | Same finding id appears more than once within a single phase | Deduplicated within phase (defensive — modules may double-report). |
 | `bkit-version` on disk shows a higher major than the installing version | Phase 1 emits `[advisory] bkit-version-major-downgrade`; install proceeds (advisory, not blocker). |
+| Installed `@cbartens/bkit` version (from `node_modules/@cbartens/bkit/package.json`) is NEWER than `.agents/.bkit-version` (consumer ran `pnpm add -D @cbartens/bkit@X` but did not re-run `bkit install`) | Phase 1 emits `[advisory] bkit-version-pin-stale`; install proceeds. ACTION points consumer at `pnpm bkit install --full` to resync. Sibling to `devdeps-need-fetch` — both detect "consumer ran one half of the install workflow". |
+| `node_modules/@cbartens/bkit/package.json` absent (bkit not yet installed as dep, or running from a checkout) OR `.agents/.bkit-version` absent (first-time install) | `bkit-version-pin-stale` does NOT fire (no false positive — there is no pin to be stale against). |
 
 ### Derived Test Matrix
 
@@ -127,6 +129,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | `runPreflight` returns advisory `prettierignore-no-markers` when `.prettierignore` exists without markers | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
 | `runPreflight` returns advisory `lint-prose-f9-vulnerable` when `package.json#scripts.lint:prose` lacks the write-good guard | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
 | `runPreflight` returns advisory `bkit-version-major-downgrade` when on-disk major > installing major | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
+| `runPreflight` returns advisory `bkit-version-pin-stale` when installed `node_modules/@cbartens/bkit/package.json` version differs from `.agents/.bkit-version` AND installed > on-disk; emits NO finding when versions match, when `node_modules/@cbartens/bkit/package.json` is absent, or when `.agents/.bkit-version` is absent | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
 | `runPostInstallCheck` returns `gh-bkit-token-missing-shell` when `process.env.GH_BKIT_TOKEN` unset | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `npmrc-missing-gh-packages` when `.npmrc` lacks both required lines; emits NO finding (silent skip) when `.npmrc` is absent | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
 | `runPostInstallCheck` returns `gh-bkit-token-secret-{missing,present,unknown}` based on `gh secret list` exit | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
@@ -175,6 +178,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 | `prettierignore-no-markers` | advisory | `.prettierignore` exists without bkit markers |
 | `lint-prose-f9-vulnerable` | advisory | `lint:prose` script lacks write-good guard |
 | `bkit-version-major-downgrade` | advisory | `.bkit-version` major > installing major |
+| `bkit-version-pin-stale` | advisory | installed `@cbartens/bkit` version > `.bkit-version` (consumer ran `pnpm add` but not `bkit install`) |
 | `gh-bkit-token-missing-shell` | advisory | `process.env.GH_BKIT_TOKEN` unset |
 | `npmrc-missing-gh-packages` | advisory | `.npmrc` missing registry/auth lines |
 | `gh-bkit-token-secret-missing` | advisory | `gh secret list` confirms absent |
@@ -332,6 +336,7 @@ None.
   - `detectPrettierignoreNoMarkers(cwd)` — same shape on `.prettierignore`.
   - `detectLintProseF9Vulnerable(cwd)` — `package.json#scripts.lint:prose` exists; lacks the literal substring `[ -d .vale/styles/write-good ]`.
   - `detectBkitVersionMajorDowngrade(cwd, installingVersion)` — `.bkit-version` parsed major > installing major.
+  - `detectBkitVersionPinStale(cwd)` — read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. If both exist AND `installed > onDisk` (semver compare), emit `bkit-version-pin-stale`. Returns `null` (no finding) when either file is absent (first-time install or running from checkout). ACTION: `"Run \`pnpm bkit install --full\` to resync the .agents payload + version pin, then commit the result. \`pnpm add\` does not run the bkit installer — bkit's payload must be re-synced after every \`@cbartens/bkit\` version bump."` Sibling to `devdeps-need-fetch` — both detect a half-completed install workflow.
 - **Internal helper:** `hasBkitMarkers(content: string): boolean` — checks both `<!-- bkit:start -->` and `# bkit:start` (uses the same anchored-marker logic as `bkit-install.ts` `findLineAnchoredMarkers`).
 - **No imports from `bkit-modules.ts`** — this file is upstream of dispatch. Imports `ModuleFlag` from `bkit-cli.ts`.
 
@@ -467,7 +472,8 @@ _Code-only — `git revert` sufficient._
 - [ ] **Task D2:** Implement `detectPrettierignoreNoMarkers` + unit test.
 - [ ] **Task D3:** Implement `detectLintProseF9Vulnerable` + unit test (positive: F9-vulnerable string; negative: bkit's current guarded form).
 - [ ] **Task D4:** Implement `detectBkitVersionMajorDowngrade` + unit test (parse `MAJOR.MINOR.PATCH` from `.bkit-version`; compare majors).
-- [ ] **Task D5:** Wire all advisory detectors into `runPreflight`. Seed `ctx.advisories` with `preflightAdvisories` in `bkit-install.ts main()`.
+- [ ] **Task D4b:** Implement `detectBkitVersionPinStale(cwd)` + unit test. Read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. Emit `bkit-version-pin-stale` advisory when both exist and installed semver > on-disk. Return null when either file is absent (first install / running from checkout). Test cases: (a) installed > on-disk → emit; (b) installed == on-disk → no emit; (c) installed < on-disk → no emit (handled by `bkit-version-major-downgrade`); (d) `node_modules/@cbartens/bkit/package.json` absent → no emit; (e) `.agents/.bkit-version` absent → no emit.
+- [ ] **Task D5:** Wire all advisory detectors (D1–D4b) into `runPreflight`. Seed `ctx.advisories` with `preflightAdvisories` in `bkit-install.ts main()`.
 
 ### Phase E — Phase 3 Post-install (token-surface)
 
