@@ -24,9 +24,18 @@ export interface PreflightFinding {
  * Check whether a file's content contains bkit-managed block markers.
  * Recognises both HTML-comment style (`<!-- bkit:start -->`) and hash-comment
  * style (`# bkit:start`).
+ *
+ * Uses line-anchored matching (equivalent to `findLineAnchoredMarkers`): a marker
+ * is only detected when it occupies its own line (possibly with a comment prefix
+ * `# ` or `// `). Backtick-quoted prose mentions like `` `<!-- bkit:start -->` ``
+ * in markdown are NOT detected. (BAR-142 §B1)
  */
 export function hasBkitMarkers(content: string): boolean {
-  return content.includes("<!-- bkit:start -->") || content.includes("# bkit:start");
+  // Line-anchored: marker must be preceded only by start-of-line or a recognised
+  // comment prefix ("# " / "// "), and followed only by end-of-line.
+  const htmlPattern = /^(?:# |\/\/ )?<!-- bkit:start -->$/m;
+  const hashPattern = /^(?:# |\/\/ )?# bkit:start$/m;
+  return htmlPattern.test(content) || hashPattern.test(content);
 }
 
 // Deduplicate an array of findings by `id`, first occurrence wins.

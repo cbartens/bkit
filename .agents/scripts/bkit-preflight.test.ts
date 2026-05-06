@@ -21,6 +21,7 @@ import {
   detectPrettierignoreScopeNarrowing,
   runPreflight,
 } from "./bkit-preflight";
+import { detectShellToken } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,6 +64,34 @@ describe("hasBkitMarkers", () => {
 
   it("returns false for empty string", () => {
     expect(hasBkitMarkers("")).toBe(false);
+  });
+
+  // B1 — line-anchored marker detection (BAR-142 §B1)
+  it("B1: returns false when marker appears only inside backtick-fenced prose (not line-anchored)", () => {
+    // e.g. in a markdown file that documents bkit markers:
+    const prose =
+      "## Usage\n\nBkit uses `<!-- bkit:start -->` and `<!-- bkit:end -->` markers.\n\nNo real marker here.";
+    expect(hasBkitMarkers(prose)).toBe(false);
+  });
+
+  it("B1: returns false for marker embedded mid-line (not at start of line)", () => {
+    const midLine = "some text <!-- bkit:start --> more text\n";
+    expect(hasBkitMarkers(midLine)).toBe(false);
+  });
+
+  it("B1: returns true when marker is on its own line (line-anchored, no prefix)", () => {
+    const realMarker = "above\n<!-- bkit:start -->\nbelow\n";
+    expect(hasBkitMarkers(realMarker)).toBe(true);
+  });
+
+  it("B1: returns true when marker has hash-comment prefix (shell files)", () => {
+    const shellContent = "#!/bin/sh\n# <!-- bkit:start -->\nset -e\n# <!-- bkit:end -->\n";
+    expect(hasBkitMarkers(shellContent)).toBe(true);
+  });
+
+  it("B1: returns true when hash-style marker is on its own line", () => {
+    const hashContent = "# bkit:start\ncontent\n# bkit:end\n";
+    expect(hasBkitMarkers(hashContent)).toBe(true);
   });
 });
 
@@ -657,5 +686,70 @@ describe("detectPrettierignoreScopeNarrowing", () => {
   it("returns null when .prettierignore does not exist", () => {
     const f = detectPrettierignoreScopeNarrowing(tmpDir);
     expect(f).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B4 — detectShellToken: unset vs empty-string (BAR-142 §B4)
+// B6 — .npmrc inline action text + fallback (BAR-142 §B6)
+// (Test matrix specifies bkit-preflight.test.ts as target)
+// ---------------------------------------------------------------------------
+
+let originalEnv: NodeJS.ProcessEnv;
+
+beforeEach(() => {
+  originalEnv = { ...process.env };
+});
+
+afterEach(() => {
+  process.env = originalEnv;
+});
+
+describe("B4 — detectShellToken differentiates unset from empty-string", () => {
+  it("returns 'present' when GH_BKIT_TOKEN is set and non-empty", () => {
+    process.env.GH_BKIT_TOKEN = "ghp_sometoken";
+    expect(detectShellToken()).toBe("present");
+  });
+
+  it("returns 'missing' when GH_BKIT_TOKEN is undefined (unset)", () => {
+    delete process.env.GH_BKIT_TOKEN;
+    expect(detectShellToken()).toBe("missing");
+  });
+
+  it("returns 'empty' when GH_BKIT_TOKEN is set to empty string", () => {
+    process.env.GH_BKIT_TOKEN = "";
+    expect(detectShellToken()).toBe("empty");
+  });
+
+  it("'empty' and 'missing' are distinct values (not equal)", () => {
+    process.env.GH_BKIT_TOKEN = "";
+    expect(detectShellToken()).not.toBe("missing");
+    delete process.env.GH_BKIT_TOKEN;
+    expect(detectShellToken()).not.toBe("empty");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B6 — .npmrc inline action text + ${GH_BKIT_TOKEN:-} fallback (BAR-142 §B6)
+// ---------------------------------------------------------------------------
+
+describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
+  it("gh-bkit-token-secret-unknown action text instructs `export GH_BKIT_TOKEN=$(gh auth token)`", () => {
+    // Source-level check: the GH_BKIT_TOKEN_UNKNOWN_ACTION constant in bkit-postinstall.ts
+    // must contain the exact concrete one-liner for obtaining the token.
+    const src = fs.readFileSync(path.join(__dirname, "bkit-postinstall.ts"), "utf-8");
+    expect(src).toContain("export GH_BKIT_TOKEN=$(gh auth token)");
+  });
+
+  it("bkit-modules.ts .npmrc inline strings use ${GH_BKIT_TOKEN:-} POSIX fallback form", () => {
+    // Source-level check: both .npmrc inline literal locations in bkit-modules.ts
+    // must use the ${GH_BKIT_TOKEN:-} fallback (not bare ${GH_BKIT_TOKEN}).
+    const src = fs.readFileSync(path.join(__dirname, "bkit-modules.ts"), "utf-8");
+    // Count occurrences of the fallback form
+    const fallbackCount = (src.match(/\$\{GH_BKIT_TOKEN:-\}/g) ?? []).length;
+    expect(fallbackCount).toBeGreaterThanOrEqual(2);
+    // Must NOT have bare ${GH_BKIT_TOKEN} in .npmrc inline strings (only in other contexts)
+    // The .npmrc auth token line must use the fallback form
+    expect(src).toContain("_authToken=${GH_BKIT_TOKEN:-}");
   });
 });

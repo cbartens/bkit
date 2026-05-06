@@ -165,6 +165,24 @@ Findings are rendered in the format `--- i/N [severity] id ---` with `DETECT:` a
 
 For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 
+## Doctor
+
+`bkit doctor` is a **read-only diagnostic verb** — it runs Phase 1 preflight + Phase 3 token-surface detectors without writing any files and exits 0.
+
+```bash
+# Diagnose drift without running install
+pnpm exec bkit doctor
+```
+
+Use `bkit doctor` to:
+
+- Check whether `GH_BKIT_TOKEN` is set in the shell and on the GitHub repo.
+- Surface `bkit-version-pin-stale` advisory (installed version ahead of `.agents/.bkit-version`).
+- Preview all advisories that `bkit install` would show post-install, without triggering writes.
+- Verify the environment is ready before running `bkit install` on a new machine.
+
+`bkit doctor` always exits 0. If advisories are found they are printed in the same checklist banner format as `bkit install`. If none are found, it prints `[bkit-doctor] No advisories found.`
+
 ## Documentation
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.

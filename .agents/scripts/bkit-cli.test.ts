@@ -37,6 +37,11 @@ describe("parseArgs — verb parsing", () => {
     const result = parseArgs([]);
     expect(result.verb).toBe("help");
   });
+
+  it("doctor verb is parsed correctly (P1.T1 — BAR-142 §A3)", () => {
+    const result = parseArgs(["doctor"]);
+    expect(result.verb).toBe("doctor");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -230,6 +235,17 @@ describe("printUsage — help output", () => {
       const output = logSpy.mock.calls[0]?.[0] as string;
       expect(output).toContain("--ci --lint");
       expect(output).toContain("--claude");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("help output includes doctor verb description (P1.T1 — BAR-142 §A3)", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("doctor");
     } finally {
       logSpy.mockRestore();
     }

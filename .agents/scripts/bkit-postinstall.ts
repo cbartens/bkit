@@ -13,14 +13,21 @@ export type { PreflightFinding };
 // Token-surface detectors
 // ---------------------------------------------------------------------------
 
-type TokenPresence = "present" | "missing" | "unknown";
+type TokenPresence = "present" | "missing" | "empty" | "unknown";
 
 /**
  * Detect whether GH_BKIT_TOKEN is set in the shell environment.
- * Returns "present" or "missing" — never reads the value.
+ * - "present"  → set and non-empty
+ * - "missing"  → not set at all (undefined)
+ * - "empty"    → set but empty string (`GH_BKIT_TOKEN=""`)
+ *
+ * Distinguishes empty from unset so action text can guide the user precisely.
+ * Never reads the token value beyond truthiness.
  */
 export function detectShellToken(): TokenPresence {
-  return Boolean(process.env.GH_BKIT_TOKEN) ? "present" : "missing";
+  if (process.env.GH_BKIT_TOKEN === undefined) return "missing";
+  if (process.env.GH_BKIT_TOKEN === "") return "empty";
+  return "present";
 }
 
 /**
@@ -219,10 +226,12 @@ const GH_BKIT_TOKEN_UNKNOWN_ACTION =
   "Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
   "Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub repo. It is required for the seeded ci.yml install step to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
   "IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in the runner environment, pnpm silently ignores the entire .npmrc file and falls back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package not found), NOT as a 'token missing' error.\n\n" +
-  "Once `gh` is installed and authenticated (`gh auth login`), verify:\n\n" +
+  "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
+  "    export GH_BKIT_TOKEN=$(gh auth token)\n\n" +
+  "Then verify the secret is set on the repo:\n\n" +
   "    gh secret list | grep GH_BKIT_TOKEN\n\n" +
   "If absent, set it:\n\n" +
-  "    gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'";
+  "    gh secret set GH_BKIT_TOKEN --body=$(gh auth token)";
 
 const VERCEL_MISSING_ACTION =
   "Ensure a .npmrc file exists at the repo root with these two lines:\n\n" +
@@ -279,6 +288,46 @@ export function formatChecklist(findings: PreflightFinding[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Changelog version-delta header (A7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the bkit CHANGELOG.md (from the package root) and extract the section
+ * header for `version`. Returns a formatted version-delta string for display
+ * in post-install output, or null if CHANGELOG.md is absent or version not found.
+ *
+ * Version header format in CHANGELOG.md: `## [X.Y.Z] — YYYY-MM-DD`
+ */
+export function readChangelogVersionDelta(version: string): string | null {
+  try {
+    // Locate CHANGELOG.md relative to this script's location (package root)
+    const scriptDir = new URL(".", import.meta.url).pathname;
+    const candidates = [
+      path.resolve(scriptDir, "..", "..", "CHANGELOG.md"), // consumer: pkg/CHANGELOG.md
+      path.resolve(scriptDir, "..", "CHANGELOG.md"), // dist/ layout
+      path.resolve("CHANGELOG.md"), // CWD fallback (producer / test)
+    ];
+    let changelogPath: string | null = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        changelogPath = p;
+        break;
+      }
+    }
+    if (!changelogPath) return null;
+    const content = fs.readFileSync(changelogPath, "utf-8");
+    // Find the header for this version
+    const versionEscaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headerRe = new RegExp(`^## \\[${versionEscaped}\\][^\n]*`, "m");
+    const match = content.match(headerRe);
+    if (!match) return null;
+    return `[bkit] What's new in v${version}: ${match[0].replace(/^## /, "")}`;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 
@@ -312,9 +361,18 @@ export function runPostInstallCheck(
     phase3.push({
       id: "gh-bkit-token-missing-shell",
       severity: "advisory",
-      detect: "GH_BKIT_TOKEN is not set in the shell environment.",
+      detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
       action:
-        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+    });
+  } else if (shellStatus === "empty") {
+    phase3.push({
+      id: "gh-bkit-token-missing-shell",
+      severity: "advisory",
+      detect:
+        'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
+      action:
+        "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset — pnpm's ${GH_BKIT_TOKEN:-} fallback will substitute empty string, which pnpm may accept or reject depending on version. Safest fix: set a real token.",
     });
   }
 

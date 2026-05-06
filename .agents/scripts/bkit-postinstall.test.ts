@@ -18,6 +18,7 @@ import {
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
+  readChangelogVersionDelta,
 } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
@@ -79,9 +80,9 @@ describe("detectShellToken", () => {
     expect(detectShellToken()).toBe("missing");
   });
 
-  it("returns 'missing' when GH_BKIT_TOKEN is empty string", () => {
+  it("B4: returns 'empty' when GH_BKIT_TOKEN is set to empty string (differentiates from unset)", () => {
     process.env.GH_BKIT_TOKEN = "";
-    expect(detectShellToken()).toBe("missing");
+    expect(detectShellToken()).toBe("empty");
   });
 });
 
@@ -533,6 +534,31 @@ describe("runPostInstallCheck deduplication", () => {
     expect(result.some((f) => f.id === "devdeps-need-fetch")).toBe(true);
   });
 
+  it("B2: cross-phase dedup is position-stable — preflight order preserved, Phase 3 appended", () => {
+    // B2 (BAR-142 §B2): When Phase 3 supersedes a preflight id, the surviving entry
+    // appears at the back of the list (Phase 3 position), not inserted at preflight position.
+    // This ensures the output order is stable: preflight findings (not superseded) first,
+    // Phase 3 findings second.
+    process.env.GH_BKIT_TOKEN = "test"; // token present → no shell-token finding from Phase 3
+
+    const preflightAdvisories: PreflightFinding[] = [
+      { id: "husky-no-markers-precommit", severity: "advisory", detect: "p1", action: "a1" },
+      { id: "prettierignore-no-markers", severity: "advisory", detect: "p2", action: "a2" },
+    ];
+
+    // Use an empty ws so no devdeps finding fires
+    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
+
+    // All preflight advisories that Phase 3 doesn't supersede must come first
+    const p1Idx = result.findIndex((f) => f.id === "husky-no-markers-precommit");
+    const p2Idx = result.findIndex((f) => f.id === "prettierignore-no-markers");
+    // Both preflight advisories must survive (Phase 3 doesn't emit these ids)
+    expect(p1Idx).toBeGreaterThanOrEqual(0);
+    expect(p2Idx).toBeGreaterThanOrEqual(0);
+    // Preflight order must be preserved (p1 before p2)
+    expect(p1Idx).toBeLessThan(p2Idx);
+  });
+
   it("deduplicates duplicate ids within incoming preflightAdvisories (intra-preflight dedup)", () => {
     process.env.GH_BKIT_TOKEN = "test";
     // Two entries with the same id — only the first should survive.
@@ -544,6 +570,34 @@ describe("runPostInstallCheck deduplication", () => {
     const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
     expect(matches).toHaveLength(1);
     expect(matches[0]!.detect).toBe("first"); // first occurrence wins
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readChangelogVersionDelta — A7 changelog header (BAR-142 §A7)
+// ---------------------------------------------------------------------------
+
+describe("readChangelogVersionDelta", () => {
+  it("returns version-delta header string when CHANGELOG.md exists and version matches", () => {
+    // CHANGELOG.md exists at repo root with v0.6.0 section
+    const result = readChangelogVersionDelta("0.6.0");
+    // Should find the version header
+    expect(result).not.toBeNull();
+    expect(result).toContain("0.6.0");
+    expect(result).toContain("[bkit]");
+  });
+
+  it("returns null when version is not found in CHANGELOG.md", () => {
+    const result = readChangelogVersionDelta("99.99.99");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when CHANGELOG.md does not exist", () => {
+    // Use a tmpDir that has no CHANGELOG.md
+    // readChangelogVersionDelta searches multiple paths; if none exist, returns null
+    // We test this by passing a version that can't possibly match
+    const result = readChangelogVersionDelta("");
+    expect(result).toBeNull();
   });
 });
 

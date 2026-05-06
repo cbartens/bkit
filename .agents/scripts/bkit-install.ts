@@ -6,7 +6,7 @@ import { parseArgs, printUsage } from "./bkit-cli.js";
 import { dispatchModules, getPkgRoot, type ModuleContext } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
-import { runPostInstallCheck, formatChecklist } from "./bkit-postinstall.js";
+import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta } from "./bkit-postinstall.js";
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -637,6 +637,26 @@ async function main() {
     return;
   }
 
+  if (verb === "doctor") {
+    LOG_PREFIX = "[bkit-doctor]";
+    console.log(`${LOG_PREFIX} Running read-only advisory scan (no writes)`);
+    const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
+    const allFindings = runPostInstallCheck(
+      [...preflightAdvisories, ...blockers],
+      { writes: [] },
+      modules,
+      process.cwd(),
+      false,
+    );
+    const banner = formatChecklist(allFindings);
+    if (banner) {
+      console.log(banner);
+    } else {
+      console.log(`${LOG_PREFIX} No advisories found.`);
+    }
+    return;
+  }
+
   const dryRun = verb === "check";
   if (dryRun) LOG_PREFIX = "[bkit-check]";
 
@@ -646,6 +666,7 @@ async function main() {
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
   const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
   if (blockers.length > 0) {
+    console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
     const blockerBanner = formatChecklist(blockers);
     if (blockerBanner) console.log(blockerBanner);
     process.exit(1);
@@ -715,6 +736,17 @@ async function main() {
   }
 
   // --- Phase 3: Post-install checks (re-detect + unified output) ---
+  // Changelog version-delta header (A7): surface what changed in the installed version.
+  try {
+    const pkgJsonPath = path.join(getPkgRoot(), "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as { version?: string };
+      const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
+      if (deltaHeader) console.log(deltaHeader);
+    }
+  } catch {
+    // Non-fatal — changelog header is informational
+  }
   const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);

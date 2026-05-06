@@ -3,7 +3,7 @@
 
 export type ModuleFlag = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks" | "full";
 
-export type Verb = "install" | "check" | "help";
+export type Verb = "install" | "check" | "doctor" | "help";
 
 export interface ParsedArgs {
   verb: Verb;
@@ -45,7 +45,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   // Verb extraction
   const firstArg = args[0];
-  if (firstArg === "install" || firstArg === "check") {
+  if (firstArg === "install" || firstArg === "check" || firstArg === "doctor") {
     verb = firstArg as Verb;
     args.shift();
   } else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
@@ -89,6 +89,8 @@ Usage:
   bkit install [module-flags]   Install (or re-sync) agent + CI + lint stack.
                                  No flags = --full (all modules).
   bkit check [module-flags]     Dry-run — report drift without writing. Exits 1 on drift.
+  bkit doctor                   Read-only preflight + post-install advisory replay.
+                                 Diagnose token surfaces and config drift. Exits 0.
   bkit help                     Print this message.
 
 Module flags (composable):

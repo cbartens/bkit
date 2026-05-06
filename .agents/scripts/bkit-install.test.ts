@@ -709,6 +709,25 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
 });
 
 // ---------------------------------------------------------------------------
+// B5 — LOG_PREFIX on dry-run blocker banner (BAR-142 §B5)
+// ---------------------------------------------------------------------------
+
+describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () => {
+  it("bkit-install.ts emits LOG_PREFIX before the blocker banner on preflight exit", () => {
+    // Source-level check: the source must contain the LOG_PREFIX-prefixed log before
+    // the formatChecklist(blockers) call. This guards against regressions where the
+    // banner is printed without a log-prefix prefix line.
+    const src = fs.readFileSync(".agents/scripts/bkit-install.ts", "utf-8");
+    // Must contain LOG_PREFIX annotation before formatChecklist(blockers)
+    expect(src).toContain("LOG_PREFIX} Preflight blockers detected");
+    // LOG_PREFIX line must appear before the formatChecklist(blockers) call
+    const prefixIdx = src.indexOf("LOG_PREFIX} Preflight blockers detected");
+    const checklistIdx = src.indexOf("formatChecklist(blockers)");
+    expect(prefixIdx).toBeLessThan(checklistIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 6.1 — ci.yml template registry-auth assertion (updated for BAR-138)
 // ---------------------------------------------------------------------------
 
