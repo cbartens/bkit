@@ -97,6 +97,6 @@
 
 - **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
 - **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Workflow edits:** ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
-- **Prompt edits:** ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
+- **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
+- **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
 - **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.
