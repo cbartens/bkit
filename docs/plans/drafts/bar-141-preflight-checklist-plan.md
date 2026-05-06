@@ -145,7 +145,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -213,7 +213,7 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -323,10 +323,10 @@ None.
 - **Exports:**
   - `interface PreflightFinding { id: string; severity: "blocker" | "advisory"; detect: string; action: string; }` — single shape for both phases.
   - `runPreflight(modules: Set<ModuleFlag>, cwd?: string): { blockers: PreflightFinding[]; advisories: PreflightFinding[] }` — pure function (cwd defaults to `process.cwd()`); no writes; no env mutation. **Intra-phase dedupe:** `runPreflight` MUST deduplicate by `id` within both the `blockers` and `advisories` arrays before returning (defensive — first occurrence wins). This guards against modules double-reporting the same `id` in a single phase.
-- **Blocker detectors (3):**
-  - `detectNoPackageJson(cwd)` — `!fs.existsSync("package.json")`.
-  - `detectMalformedPackageJson(cwd)` — try/catch around `JSON.parse(fs.readFileSync("package.json", "utf-8"))`.
-  - `detectNotGitRepo(cwd, modules)` — only fires when `modules.has("core")` AND `!fs.existsSync(".git")`.
+- **Blocker detectors (3):** Each blocker finding includes an AI-pasteable `action` string rendered via `formatChecklist` on exit 1.
+  - `detectNoPackageJson(cwd)` — `!fs.existsSync("package.json")`. ACTION: `"Run \`npm init -y\` to create a minimal package.json, or copy one from an existing project, then re-run \`pnpm bkit install\`."`
+  - `detectMalformedPackageJson(cwd)` — try/catch around `JSON.parse(fs.readFileSync("package.json", "utf-8"))`. ACTION: `"Fix the JSON syntax error in package.json (run \`node -e \"JSON.parse(require('fs').readFileSync('package.json','utf8'))\"\` to locate the error), then re-run \`pnpm bkit install\`."`
+  - `detectNotGitRepo(cwd, modules)` — only fires when `modules.has("core")` AND `!fs.existsSync(".git")`. ACTION: `"Run \`git init\` to initialise a git repo, then re-run. Or omit \`--core\` if you don't need bkit's git-hooks module."`
 - **Advisory detectors (4+):**
   - `detectHuskyNoMarkers(cwd, hookName: "pre-commit" | "pre-push")` — file exists; lacks `<!-- bkit:start -->` and `# bkit:start` (both styles).
   - `detectPrettierignoreNoMarkers(cwd)` — same shape on `.prettierignore`.
