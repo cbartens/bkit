@@ -698,3 +698,108 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// C1 end-to-end regression — runClaudeModule triggers migration when .bkit-version
+// is JSON format (BAR-131 build-challenge C1 call-site regression)
+//
+// The C1 bug: bkit-modules.ts read .bkit-version with fs.readFileSync().trim(),
+// yielding the full JSON blob as a string. migrateTier1JsonToTier2 received this
+// blob, semverLte returned false, and migration was silently skipped. Fixed to
+// use readBkitVersion().pinnedVersion.
+//
+// This test exercises the ACTUAL call site in runClaudeModule (not readBkitVersion
+// in isolation) to catch any future regression at the bkit-modules.ts call site.
+// ---------------------------------------------------------------------------
+
+describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON-format .bkit-version", () => {
+  it("runClaudeModule migrates Tier-1 .claude/settings.json when .bkit-version is JSON format", () => {
+    // Arrange: seed a JSON-format .bkit-version with pinnedVersion "0.5.0"
+    // (a version that has Tier-1 defaults registered — migration should trigger)
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "0.5.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+
+    // Verify the file is JSON format (not plain-text)
+    const rawVersion = fs.readFileSync(versionFile, "utf-8");
+    expect(rawVersion.trim()).toMatch(/^\{/);
+
+    // Arrange: seed a Tier-1 .claude/settings.json (no __bkit__ envelope)
+    // with a consumer-added Stop hook that should survive migration.
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    const tier1Settings = {
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "echo 'Consumer Stop hook'" }] }],
+      },
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify(tier1Settings, null, 2) + "\n",
+      "utf-8",
+    );
+
+    // Act: run the claude module (which contains the C1-fixed migration call site)
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runClaudeModule(ctx);
+
+    // Assert: migration ran — __bkit__ envelope now present
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    );
+    expect(onDisk.__bkit__, "__bkit__ envelope absent — migration was skipped (C1 regression)").toBeDefined();
+
+    // Assert: consumer Stop hook survived migration (deep-merge preserved it)
+    // The Stop hook was not a bkit-owned default at v0.5.0 → stays at top level
+    const stopHook = onDisk.hooks?.Stop;
+    expect(stopHook, "Consumer Stop hook was lost during migration").toBeDefined();
+    expect(JSON.stringify(stopHook)).toContain("Consumer Stop hook");
+  });
+
+  it("runClaudeModule does NOT skip migration when .bkit-version pinnedVersion is extracted (not raw JSON blob)", () => {
+    // Regression guard: if the raw JSON blob were passed to migrateTier1JsonToTier2,
+    // lookupTier1Defaults would receive e.g. '{"pinnedVersion":"0.5.0",...}' as the
+    // version string → semverLte comparison would return false → migration skipped.
+    // This test confirms migration proceeds correctly when .bkit-version is JSON.
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "0.7.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    // Tier-1 shape: bkit-owned SessionStart + consumer-owned customKey
+    const tier1Settings = {
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+      },
+      customKey: "consumer-value",
+    };
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify(tier1Settings, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runClaudeModule(ctx);
+
+    const onDisk = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    );
+    // Migration ran: __bkit__ envelope present
+    expect(onDisk.__bkit__, "__bkit__ envelope absent — migration skipped (C1 regression with v0.7.0 JSON)").toBeDefined();
+    // Consumer key survives
+    expect(onDisk.customKey).toBe("consumer-value");
+  });
+});
