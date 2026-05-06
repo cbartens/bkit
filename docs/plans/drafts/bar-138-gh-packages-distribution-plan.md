@@ -122,7 +122,7 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -162,7 +162,7 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
