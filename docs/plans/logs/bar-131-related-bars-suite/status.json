@@ -29,6 +29,19 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/plan-v1-draft.md"
         ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "FAIL",
+        "attempt": 1,
+        "failures": 7,
+        "at": "2026-05-06T14:09:02Z",
+        "commitSha": "e35e940bc0ce703f8c65b2eb70e9dc6a1b505731",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-review-1.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-review-2.md"
+        ]
       }
     ]
   }
