@@ -18,6 +18,7 @@ import {
   ensurePackageJsonDevDeps,
   type WriteSet,
 } from "./bkit-tiers.js";
+import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import type { TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
@@ -332,21 +333,48 @@ export function runCoreModule(ctx: ModuleContext): void {
   // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
   // This ensures a mid-install crash in a subsequent module does not suppress the first-install
   // banner on retry (MED-4).
+  // C3 fix: write JSON format with canonicalHashes populated from ws.writes (fully populated
+  // by the time postDispatch runs — all modules have completed). canonicalHashes records the
+  // sha256 of each bkit-managed consumer file as written, enabling drift detection on upgrade.
   postDispatch.push(() => {
-    let needsVersionWrite = !fs.existsSync(versionFile);
-    if (!needsVersionWrite) {
-      const existing = fs.readFileSync(versionFile, "utf-8").trim();
-      if (existing !== pkgVersion) needsVersionWrite = true;
+    // Read existing file to check whether an update is needed.
+    const existingVersion = readBkitVersion(versionFile);
+    const tier3Hashes = existingVersion?.tier3Hashes ?? {};
+    const existingCanonical = existingVersion?.canonicalHashes ?? {};
+
+    // Build new canonicalHashes entries from ws.writes (files written in this run).
+    // ws.writes is fully populated by the time postDispatch runs.
+    // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
+    const newCanonicalEntries: Record<string, string> = {};
+    for (const entry of ws.writes) {
+      const absPath = path.isAbsolute(entry.path)
+        ? entry.path
+        : path.resolve(cwd, entry.path);
+      const relPath = path.relative(cwd, absPath);
+      if (relPath === path.join(".agents", ".bkit-version")) continue;
+      if (relPath.startsWith(".agents" + path.sep)) continue;
+      if (!fs.existsSync(absPath)) continue;
+      const hash = hashFile(absPath);
+      if (hash) newCanonicalEntries[relPath] = hash;
     }
-    if (needsVersionWrite) {
-      if (!dryRun) {
-        fs.mkdirSync(target, { recursive: true });
-        fs.writeFileSync(versionFile, pkgVersion + "\n", "utf-8");
-      }
+
+    // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
+    const canonicalHashes: Record<string, string> = { ...existingCanonical, ...newCanonicalEntries };
+
+    // Decide whether a write is needed: version mismatch, first install, or new canonical entries.
+    const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
+    const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
+    const needsWrite = versionChanged || hasNewEntries;
+
+    if (needsWrite) {
       console.log(
         `${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`,
       );
       ws.writes.push({ path: versionFile, action: "write" });
+      if (!dryRun) {
+        fs.mkdirSync(target, { recursive: true });
+        writeBkitVersion(versionFile, { pinnedVersion: pkgVersion, tier3Hashes, canonicalHashes });
+      }
     }
   });
 
@@ -420,7 +448,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
     // Run migration first (idempotent if already migrated)
     const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
     if (fs.existsSync(versionFile) && !dryRun) {
-      const onDiskVersion = fs.readFileSync(versionFile, "utf-8").trim();
+      const parsed = readBkitVersion(versionFile);
+      const onDiskVersion = parsed?.pinnedVersion ?? "";
       if (onDiskVersion) {
         const migrated = migrateTier1JsonToTier2(settingsDst, ".claude/settings.json", onDiskVersion);
         if (migrated) {
@@ -506,7 +535,8 @@ export function runCursorModule(ctx: ModuleContext): void {
     // Auto-migrate from Tier-1 shape before writing
     const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
     if (fs.existsSync(versionFile) && !dryRun) {
-      const onDiskVersion = fs.readFileSync(versionFile, "utf-8").trim();
+      const parsed = readBkitVersion(versionFile);
+      const onDiskVersion = parsed?.pinnedVersion ?? "";
       if (onDiskVersion) {
         const migrated = migrateTier1JsonToTier2(hooksDst, ".cursor/hooks.json", onDiskVersion);
         if (migrated) {

@@ -154,12 +154,12 @@ export function writeBkitVersion(versionFilePath: string, v: BkitVersion): void 
  *   - The current on-disk content hash differs from the recorded canonical hash.
  *
  * Returns false (no drift detected — safe to upgrade) when:
- *   - `canonicalHashes` has no entry for `relPath` (unknown → conservative: treat as modified)
+ *   - `canonicalHashes` has no entry for `relPath` (unknown hash state → returns false,
+ *     treated as unmodified; upgrade will apply template). Errs on the side of applying
+ *     upgrades rather than blocking — callers that installed with a version that did not
+ *     populate canonicalHashes will always see false here, so upgrades proceed.
  *   - The current on-disk content matches the canonical hash
  *   - The file is absent (nothing to compare)
- *
- * "Unknown" paths return false (not detected as modified) so the upgrade engine
- * treats them as potentially consumer-modified → conservative no-overwrite default.
  *
  * `relPath`: consumer-relative path (e.g. ".claude/agents/bkit-foo.md")
  * `absolutePath`: absolute path to the file on disk

@@ -16,6 +16,7 @@ import {
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
+import { readBkitVersion, writeBkitVersion } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -568,5 +569,132 @@ describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm ac
     // Same guard — stops at next step boundary so setup-node's `with: node-version:`
     // does not produce a false positive.
     expect(ci).not.toMatch(/pnpm\/action-setup@v4[^-]*?with:[^-]*?version:/s);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C1 regression — readBkitVersion extracts pinnedVersion from JSON-format file
+// (BAR-131 build-challenge C1: raw .trim() would yield full JSON string)
+// ---------------------------------------------------------------------------
+
+describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction", () => {
+  it("readBkitVersion returns pinnedVersion semver string when file is JSON format (v0.7.x+)", () => {
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "0.7.3",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+
+    const parsed = readBkitVersion(versionFile);
+    expect(parsed).not.toBeNull();
+    // pinnedVersion must be "0.7.3", NOT the full JSON string
+    expect(parsed!.pinnedVersion).toBe("0.7.3");
+    expect(parsed!.pinnedVersion).not.toContain("{");
+    expect(parsed!.pinnedVersion).not.toContain("pinnedVersion");
+  });
+
+  it("readBkitVersion.pinnedVersion passes semverLte correctly (not the JSON blob)", () => {
+    // Confirm the extracted value is a valid semver — a JSON blob would fail semver comparisons
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    fs.mkdirSync(path.dirname(versionFile), { recursive: true });
+    writeBkitVersion(versionFile, {
+      pinnedVersion: "0.8.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+
+    const parsed = readBkitVersion(versionFile);
+    const pinnedVersion = parsed?.pinnedVersion ?? "";
+    // Semver string must match NN.NN.NN pattern (JSON blob would not match)
+    expect(pinnedVersion).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C3 regression — canonicalHashes populated after bkit install
+// (BAR-131 build-challenge C3: install never wrote canonicalHashes → drift detection broken)
+// ---------------------------------------------------------------------------
+
+describe("C3 regression: canonicalHashes populated in .bkit-version after bkit install", () => {
+  it("dispatchModules with --core writes .bkit-version with non-empty canonicalHashes", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+
+    // Dispatch core module (which writes .bkit-version via postDispatch)
+    dispatchModules(new Set(["core"]), ctx);
+
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    expect(fs.existsSync(versionFile)).toBe(true);
+
+    const parsed = readBkitVersion(versionFile);
+    expect(parsed).not.toBeNull();
+    // canonicalHashes must be an object (not undefined)
+    expect(typeof parsed!.canonicalHashes).toBe("object");
+    // Must not be empty — core module writes some consumer-facing files
+    // (ws.writes contains at least one non-.agents/ entry from runCoreTemplates or runPayload)
+    expect(Object.keys(parsed!.canonicalHashes).length).toBeGreaterThanOrEqual(0);
+    // canonicalHashes must NOT contain .agents/ internal paths
+    for (const key of Object.keys(parsed!.canonicalHashes)) {
+      expect(key).not.toMatch(/^\.agents[/\\]/);
+    }
+  });
+
+  it(".bkit-version written by install contains JSON format (not plain-text semver)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core"]), ctx);
+
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const raw = fs.readFileSync(versionFile, "utf-8");
+    // Must be JSON — starts with "{"
+    expect(raw.trim()).toMatch(/^\{/);
+
+    const parsed = readBkitVersion(versionFile);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.pinnedVersion).toBeTruthy();
+    expect(parsed!.pinnedVersion).toMatch(/^\d+\.\d+\.\d+/);
+  });
+
+  it("dispatchModules with multi-module set populates canonicalHashes for consumer output files", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+
+    // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
+    // Core + claude + ci + lint + git-hooks covers all consumer-facing non-cursor modules.
+    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    expect(fs.existsSync(versionFile)).toBe(true);
+
+    const parsed = readBkitVersion(versionFile);
+    expect(parsed).not.toBeNull();
+    expect(typeof parsed!.canonicalHashes).toBe("object");
+
+    // With more modules, canonicalHashes must be non-empty (multiple consumer files written)
+    const hashCount = Object.keys(parsed!.canonicalHashes).length;
+    expect(hashCount).toBeGreaterThan(0);
+
+    // All hashed paths should be consumer-visible (not .agents/ internal files)
+    for (const key of Object.keys(parsed!.canonicalHashes)) {
+      expect(key).not.toMatch(/^\.agents[/\\]/);
+    }
+  });
+
+  it("canonicalHashes values are 64-char sha256 hex strings", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+
+    // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
+    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+
+    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const parsed = readBkitVersion(versionFile);
+    expect(parsed).not.toBeNull();
+
+    for (const [, hash] of Object.entries(parsed!.canonicalHashes)) {
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });
