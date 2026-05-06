@@ -38,20 +38,28 @@ describe("package.json manifest invariants (BAR-138)", () => {
     expect(pkg.description).not.toContain("git dependency from a private GitHub repo");
   });
 
-  // Defense-in-depth: files array should not explicitly include *.test.ts patterns
-  // (BAR-138 challenge remediation — Finding 3, defense-in-depth layer).
-  // .npmignore is the primary guard; this ensures the files array doesn't
-  // re-include test patterns that would override .npmignore via explicit allowlisting.
-  it("files array does not include a *.test.ts glob pattern", () => {
+  // Tarball exclusions — `files` is the only mechanism that actually filters
+  // test sources out of the published tarball when an allowlist is set
+  // (npm ignores .npmignore for paths included by `files`). Each negation
+  // pattern below is the load-bearing exclusion rule.
+  it("files array contains a NEGATION (!) for *.test.ts (not a re-inclusion)", () => {
     const filesArray: string[] = pkg.files ?? [];
-    const testPatterns = filesArray.filter((f: string) => f.includes(".test.ts"));
-    expect(testPatterns).toHaveLength(0);
+    const positivePatterns = filesArray.filter(
+      (f: string) => f.includes(".test.ts") && !f.startsWith("!"),
+    );
+    expect(positivePatterns).toHaveLength(0);
+    expect(filesArray.some((f: string) => f.startsWith("!") && f.includes(".test.ts"))).toBe(true);
   });
 
-  it("files array does not include a __snapshots__ pattern", () => {
+  it("files array contains a NEGATION (!) for __snapshots__ (not a re-inclusion)", () => {
     const filesArray: string[] = pkg.files ?? [];
-    const snapshotPatterns = filesArray.filter((f: string) => f.includes("__snapshots__"));
-    expect(snapshotPatterns).toHaveLength(0);
+    const positivePatterns = filesArray.filter(
+      (f: string) => f.includes("__snapshots__") && !f.startsWith("!"),
+    );
+    expect(positivePatterns).toHaveLength(0);
+    expect(filesArray.some((f: string) => f.startsWith("!") && f.includes("__snapshots__"))).toBe(
+      true,
+    );
   });
 });
 

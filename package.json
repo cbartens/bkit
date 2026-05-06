@@ -10,7 +10,10 @@
   "files": [
     "dist",
     ".agents",
-    "README.md"
+    "README.md",
+    "!.agents/scripts/*.test.ts",
+    "!.agents/scripts/*.integration.test.ts",
+    "!.agents/scripts/__snapshots__"
   ],
   "engines": {
     "node": ">=20"

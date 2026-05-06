@@ -7,7 +7,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { beforeAll, describe, expect, it } from "vitest";
 
 const WORKFLOW_PATH = path.resolve(".github/workflows/release.yml");
 
@@ -167,24 +168,58 @@ describe("release.yml structural assertions (BAR-138)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// .npmignore — test-file exclusion from published tarball
-// (BAR-138 challenge remediation — Finding 3)
+// Tarball exclusions — package.json `files` array uses negation patterns
+// (BAR-138 challenge remediation — Finding 3, hardened in pre.3 after the
+// initial .npmignore approach turned out to be a no-op when `files` is set:
+// npm explicitly states `.npmignore` cannot exclude paths that `files`
+// includes, so negation patterns inside `files` are the only mechanism that
+// actually works.)
 // ---------------------------------------------------------------------------
 
-describe(".npmignore tarball exclusions (BAR-138)", () => {
-  const NPMIGNORE_PATH = path.resolve(".npmignore");
+describe("published tarball excludes test sources (BAR-138, real `npm pack` inspection)", () => {
+  // Run a dry-run pack and inspect the actual file manifest. This is the only
+  // test that catches the npm quirk where .npmignore is silently ignored when
+  // a `files` array is set in package.json — i.e., asserting on
+  // package.json#files shape alone is insufficient (the actual tarball might
+  // still ship excluded paths).
+  const repoRoot = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "..",
+  );
 
-  it(".npmignore file exists", () => {
-    expect(fs.existsSync(NPMIGNORE_PATH)).toBe(true);
+  let manifestFiles: string[];
+
+  beforeAll(() => {
+    const out = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const parsed = JSON.parse(out) as Array<{ files: Array<{ path: string }> }>;
+    manifestFiles = parsed[0].files.map((f) => f.path);
   });
 
-  it(".npmignore excludes .agents/scripts/*.ts (test sources + compiled TS)", () => {
-    const content = fs.readFileSync(NPMIGNORE_PATH, "utf-8");
-    expect(content).toContain(".agents/scripts/*.ts");
+  it("tarball ships zero *.test.ts files", () => {
+    const offenders = manifestFiles.filter((p) => p.endsWith(".test.ts"));
+    expect(offenders).toEqual([]);
   });
 
-  it(".npmignore excludes .agents/scripts/__snapshots__/ (vitest snapshot files)", () => {
-    const content = fs.readFileSync(NPMIGNORE_PATH, "utf-8");
-    expect(content).toContain(".agents/scripts/__snapshots__/");
+  it("tarball ships zero *.integration.test.ts files", () => {
+    const offenders = manifestFiles.filter((p) => p.endsWith(".integration.test.ts"));
+    expect(offenders).toEqual([]);
+  });
+
+  it("tarball ships zero files under __snapshots__/", () => {
+    const offenders = manifestFiles.filter((p) => p.includes("__snapshots__/"));
+    expect(offenders).toEqual([]);
+  });
+
+  it("tarball still contains the load-bearing payload (dist/, README.md, .agents/templates/)", () => {
+    expect(manifestFiles.some((p) => p === "dist/bkit-install.js")).toBe(true);
+    expect(manifestFiles.some((p) => p === "README.md")).toBe(true);
+    expect(manifestFiles.some((p) => p === ".agents/templates/.github/workflows/ci.yml")).toBe(
+      true,
+    );
   });
 });
