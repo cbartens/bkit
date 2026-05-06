@@ -101,5 +101,5 @@
 - **Description:** Subagent ran ~8 min / 43 tool uses on 32KB `plan-input.md` covering BAR-131/139/142 and hit `API Error: Stream idle timeout - partial response received`. No output file produced.
 - **Suggested fix:** When unified plan input >25KB or covers >2 Linear issues, orchestrator should split generate-plan into per-phase invocations (one subagent call per phase) and concatenate, OR have the subagent write incrementally with periodic flushes. Consider a `plan-input-size` advisory in workflow Step 3.
 - **Related:** bar-131-related-bars-suite, BAR-131, BAR-139, BAR-142
-- **Recovery:** Retry with narrower per-phase scope.
-- **Status:** OPEN
+- **Recovery:** Retried with focused/incremental-write prompt (skip codebase deep-dive, write skeleton + per-phase tables, save after each section). Retry succeeded.
+- **Status:** RECOVERED
