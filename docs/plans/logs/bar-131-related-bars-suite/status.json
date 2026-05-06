@@ -343,6 +343,17 @@
         "at": "2026-05-06T23:55:27Z",
         "commitSha": "2985532bcdbebd3f2717a07e4e4c0e3422b8b4f9",
         "artifacts": []
+      },
+      {
+        "step": "failure-diagnose",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T23:58:48Z",
+        "commitSha": "3bf2fdd60425630ff159a56f12996075fc382815",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/build-failure-diagnose-1.md"
+        ]
       }
     ]
   }
