@@ -112,7 +112,7 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-06T05:49:37Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -235,6 +235,13 @@
         "artifacts": [
           "https://github.com/cbartens/bkit/pull/5"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T06:41:57Z",
+        "commitSha": "10fb0f723e9bb4fa56723641a04b05cf68d9fb6f",
+        "artifacts": []
       }
     ]
   }
