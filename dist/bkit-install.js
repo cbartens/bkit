@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, printUsage } from "./bkit-cli.js";
-import { dispatchModules } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist } from "./bkit-postinstall.js";
@@ -574,11 +574,19 @@ async function main() {
         console.error(`${LOG_PREFIX} Token resolution failed: ${err.message}`);
         process.exit(1);
     });
-    // Parse model lookup (needed for cursor transforms; graceful fallback if prompts.md absent)
+    // Parse model lookup (needed for cursor transforms).
+    // Source: PACKAGE's .agents/prompts.md, not the consumer's. The consumer's
+    // copy may be stale (e.g. upgrading from a release that predates a newly
+    // added prompt) — reading from the package guarantees the lookup matches the
+    // prompt files about to be installed and avoids a mid-install hard-fail in
+    // applyT3 ("Missing model lookup for <name>"). Falls back to consumer file
+    // when running from a non-package context (e.g. the bkit repo itself).
     let modelLookup = new Map();
-    if (fs.existsSync(".agents/prompts.md")) {
+    const pkgPromptsMd = path.join(getPkgRoot(), ".agents", "prompts.md");
+    const promptsMdPath = fs.existsSync(pkgPromptsMd) ? pkgPromptsMd : ".agents/prompts.md";
+    if (fs.existsSync(promptsMdPath)) {
         try {
-            modelLookup = parseModelLookup();
+            modelLookup = parseModelLookup(promptsMdPath);
         }
         catch {
             // Not fatal — cursor module will fail per-file if a model is missing

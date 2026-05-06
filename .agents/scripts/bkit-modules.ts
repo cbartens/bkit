@@ -84,7 +84,7 @@ function removeOrphans(
 }
 
 // Resolve the package root at runtime (same logic as bkit-init.ts).
-function getPkgRoot(): string {
+export function getPkgRoot(): string {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   return scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)
     ? path.resolve(scriptDir, "..", "..")
@@ -217,6 +217,18 @@ function processCoreTemplateDir(
 // write when the file already matches pkgVersion).
 const COPY_EXCLUDE = new Set(["skills", "scripts", "README.md", ".bkit-version"]);
 
+// Top-level `.agents/` files that bkit owns end-to-end (no managed-block, no
+// consumer edits). copyAdditive's default skip-if-exists semantics are wrong
+// for these — a stale consumer copy left over from a prior version causes
+// downstream lookups (e.g. parseModelLookup) to crash mid-install when the
+// release adds a new prompt. Force-overwrite keeps the on-disk index in sync
+// with the installed package version.
+const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([
+  ".agents/prompts.md",
+  ".agents/workflows.md",
+  ".agents/IDEs.md",
+]);
+
 function copyAdditive(
   src: string,
   dst: string,
@@ -228,13 +240,20 @@ function copyAdditive(
   if (!fs.existsSync(src)) return 0;
   const stats = fs.statSync(src);
   if (stats.isFile()) {
-    if (fs.existsSync(dst)) return 0;
+    const relPath = path.relative(relRoot, dst);
+    const isCanonical = CANONICAL_OVERWRITE_RELPATHS.has(relPath);
+    if (fs.existsSync(dst)) {
+      if (!isCanonical) return 0;
+      const srcBuf = fs.readFileSync(src);
+      const dstBuf = fs.readFileSync(dst);
+      if (srcBuf.equals(dstBuf)) return 0;
+    }
     if (!dryRun) {
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       fs.copyFileSync(src, dst);
       fs.chmodSync(dst, stats.mode);
     }
-    log(path.relative(relRoot, dst));
+    log(relPath);
     return 1;
   }
   if (!dryRun) fs.mkdirSync(dst, { recursive: true });
