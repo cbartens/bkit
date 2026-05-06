@@ -132,9 +132,10 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     expect(onDisk).not.toContain("{{DEFAULT_BRANCH}}");
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 
-    // Assert auth-shim is present
+    // Assert registry-auth env var is present (BAR-138: replaced git auth-shim)
     expect(onDisk).toContain("GH_BKIT_TOKEN");
-    expect(onDisk).toContain("git config --global url.");
+    // BAR-138: the old git auth-shim has been removed from the template
+    expect(onDisk).not.toContain("git config --global url.");
   });
 
   it("existing ci.yml is left untouched and an AI merge instruction is printed (v0.2.1 Tier 3)", async () => {
@@ -389,34 +390,73 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// MED-1 regression — bkit install --ci (no --lint) prints script suggestions
+// Managed package.json scripts (BAR-138 v0.4.0)
+//
+// Replaces the prior MED-1 contract: instead of advising consumers via
+// print-sink to add lint scripts manually, bkit now adds them directly
+// (Tier-2 managed: add-if-missing, preserve consumer values).
 // ---------------------------------------------------------------------------
 
-describe("MED-1: --ci only (no --lint) prints package.json script suggestions in print-sink", () => {
-  it("runCiModule always pushes lint:prose / lint:slop / format:check suggestions to printSink", () => {
-    const printSink: string[] = [];
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, printSink });
+describe("managed package.json scripts: --ci adds typecheck, --lint adds format/prose/slop, --git-hooks adds prepare", () => {
+  function writePkg(scripts?: Record<string, string>): void {
+    const pkg: Record<string, unknown> = { name: "x", version: "1.0.0" };
+    if (scripts) pkg.scripts = scripts;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(pkg, null, 2) + "\n",
+      "utf-8",
+    );
+  }
 
-    // Run only core + ci (no lint module)
-    dispatchModules(new Set(["core", "ci"]), ctx);
+  function readPkgScripts(): Record<string, string> {
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    return pkg.scripts ?? {};
+  }
 
-    const combined = printSink.join("\n");
-    expect(combined).toContain("lint:prose");
-    expect(combined).toContain("lint:slop");
-    expect(combined).toContain("format:check");
+  it("runCiModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit)", () => {
+    writePkg();
+    fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
+    const ctx = makeCtx({});
+    runCiModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts.typecheck).toBe("tsc --noEmit");
   });
 
-  it("print-sink ci suggestion mentions bkit install --lint as the remedy", () => {
+  it("runCiModule preserves an existing `typecheck` value (consumer wins)", () => {
+    writePkg({ typecheck: "custom-runner" });
+    fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
+    const ctx = makeCtx({});
+    runCiModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts.typecheck).toBe("custom-runner");
+  });
+
+  it("runLintModule adds format:check, lint:prose, lint:slop scripts when missing", () => {
+    writePkg();
+    const ctx = makeCtx({});
+    runLintModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts["format:check"]).toBe("prettier --check .");
+    expect(scripts["lint:slop"]).toBe("slop-scan scan .");
+    expect(scripts["lint:prose"]).toContain("vale");
+  });
+
+  it("runGitHooksModule adds modern `prepare: husky` script (husky 9+ form)", () => {
+    writePkg();
+    const ctx = makeCtx({});
+    runGitHooksModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts.prepare).toBe("husky");
+  });
+
+  it("runCiModule warns via print-sink when package.json is missing", () => {
+    // beforeEach seeds a package.json — remove it so we hit the missingPkg branch
+    fs.rmSync(path.join(tmpDir, "package.json"));
     const printSink: string[] = [];
     const ctx = makeCtx({ printSink });
-
-    // runCiModule directly (just the ci module, no core)
     runCiModule(ctx);
-
     const combined = printSink.join("\n");
-    // Should reference --lint so user knows how to seed the scripts
-    expect(combined).toMatch(/--lint|lint/);
+    expect(combined).toMatch(/package\.json not found/i);
   });
 });
 

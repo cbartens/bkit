@@ -1,8 +1,8 @@
 {
   "name": "@cbartens/bkit",
-  "version": "0.3.0",
-  "private": true,
-  "description": "Agent-stack consolidation CLI — installed as a git dependency from a private GitHub repo (no npm registry).",
+  "version": "0.4.0",
+  "private": false,
+  "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
   "bin": {
     "bkit": "./dist/bkit-install.js"
@@ -10,7 +10,10 @@
   "files": [
     "dist",
     ".agents",
-    "README.md"
+    "README.md",
+    "!.agents/scripts/*.test.ts",
+    "!.agents/scripts/*.integration.test.ts",
+    "!.agents/scripts/__snapshots__"
   ],
   "engines": {
     "node": ">=20"
@@ -18,7 +21,11 @@
   "packageManager": "pnpm@10.33.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cbartens/bkit.git"
+    "url": "https://github.com/cbartens/bkit.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
   },
   "license": "MIT",
   "scripts": {
@@ -31,14 +38,16 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale not in PATH — skipping\"; fi'"
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale not in PATH — skipping\"; fi'",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "prettier": "^3.5.3",
-    "slop-scan": "0.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.4.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.0",
+    "prettier": "^3.5.3",
+    "slop-scan": "^0.3.0",
+    "husky": "^9.1.7"
   }
 }

@@ -2,9 +2,9 @@
 
 node_modules/
 dist/
-.agents/skills/
-.agents/templates/
+.agents/
 .github/
+.husky/_/
 *.tsbuildinfo
 docs/
 pnpm-lock.yaml

@@ -2,42 +2,23 @@
 
 Agent workflow system that wires Claude Code (and Cursor) into a five-phase Linear-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
+> [!IMPORTANT]
+> **`GH_BKIT_TOKEN` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
+>
+> 1. **Local shell** — `export GH_BKIT_TOKEN=<classic PAT, read:packages>` in your shell rc
+> 2. **`.npmrc` at repo root** — two lines (registry + auth) — see § Consumer CI auth below
+> 3. **GitHub Actions repo secret** — `gh secret set GH_BKIT_TOKEN --body=<token>` per consumer repo
+> 4. **Vercel env vars** (if applicable) — `vercel env add GH_BKIT_TOKEN preview/production`
+>
+> **Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403 even when `Packages: read` is granted (verified 2026-05). Until GitHub fixes this, classic with `read:packages` scope is the only working option.
+
 ## Install
 
-bkit is distributed as a **git dependency** from this private GitHub repo (no npm registry — `package.json` is `private: true`). Add to a consumer repo:
+bkit is distributed via the **GitHub Packages npm registry** (`https://npm.pkg.github.com`). Add to a consumer repo:
 
 ```bash
-# pinned to a release tag (recommended)
-pnpm add -D github:cbartens/bkit#v0.2.0
-
-# or floating on `main`
-pnpm add -D github:cbartens/bkit
+pnpm add -D @cbartens/bkit@^0.4.0
 ```
-
-> **Heads-up — pnpm tag-drop:** `pnpm add` may rewrite the spec in `package.json` as `git+https://github.com/cbartens/bkit.git` (no `#vX.Y.Z` suffix). The lockfile still pins the resolved commit, so `pnpm install --frozen-lockfile` stays deterministic — but `pnpm update` will float to `main`. After `pnpm add`, verify `package.json` shows `"github:cbartens/bkit#vX.Y.Z"`; if it doesn't, rewrite it and re-run `pnpm install`.
-
-### ⚠️ One-time consumer config (pnpm 10+)
-
-pnpm 10 sandboxes build scripts of git-hosted dependencies by default for security (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`). bkit needs its `prepare` script to run (it compiles TypeScript → `dist/`), so the consumer repo must allowlist it once:
-
-**Option A — `pnpm-workspace.yaml`** (recommended for monorepos):
-
-```yaml
-onlyBuiltDependencies:
-  - "@cbartens/bkit"
-```
-
-**Option B — `package.json`** (single-package repos):
-
-```json
-{
-  "pnpm": {
-    "onlyBuiltDependencies": ["@cbartens/bkit"]
-  }
-}
-```
-
-Re-run `pnpm install` after adding this. Without it, bkit's `dist/` won't be built and the `bkit` bin won't resolve.
 
 ### Then in the consumer repo
 
@@ -64,53 +45,42 @@ pnpm exec bkit check --full
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
-**Auth:** consumer needs read access to `github.com/cbartens/bkit` — SSH key or HTTPS PAT (`GH_TOKEN`) configured for git.
-
 ## Consumer CI auth
 
-bkit seeds a CI auth shim in `.github/workflows/ci.yml` that allows private-repo `pnpm install` to succeed in GitHub Actions. You must add a secret to your repo:
+bkit resolves from the **GitHub Packages npm registry**. Authentication requires:
 
-1. **Create a fine-grained PAT** on GitHub:
-   - Go to GitHub Settings → Developer settings → Personal access tokens → Fine-grained tokens
-   - Repository access: `cbartens/bkit` only
-   - Permissions: **Contents: read** (minimum)
+1. **Create a classic PAT** on GitHub with `read:packages` scope:
+   - GitHub Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Scope: `read:packages`
    - Copy the generated token
+
+   > **⚠️ Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403, even when `Packages: read` is granted. Confirmed against `npm.pkg.github.com` 2026-05-06. If/when GitHub fixes this, fine-grained PATs will become preferred (narrower scope); for now classic is the only working option.
 
 2. **Add the secret** to your consumer repo:
    - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
    - Name: `GH_BKIT_TOKEN`
    - Value: paste the PAT
 
-3. **Add allowlist** to your `pnpm-workspace.yaml` or `package.json` (if not already done):
+3. **Add `.npmrc`** at your repo root (committed, no secrets):
+
+   ```
+   @cbartens:registry=https://npm.pkg.github.com
+   //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
+   ```
+
+4. The seeded `ci.yml` install step already carries the required env block (added by `bkit install`):
 
    ```yaml
-   # pnpm-workspace.yaml
-   onlyBuiltDependencies:
-     - "@cbartens/bkit"
+   - name: Install dependencies
+     run: pnpm install --frozen-lockfile
+     env:
+       GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
    ```
 
-4. **Add CI scripts** to your `package.json` (bkit prints these on first install):
-   ```json
-   {
-     "scripts": {
-       "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'",
-       "lint:slop": "slop-scan scan .",
-       "format:check": "prettier --check .",
-       "prepare": "husky install"
-     }
-   }
-   ```
-
-The CI shim in `ci.yml` configures git to use `GH_BKIT_TOKEN` for HTTPS auth:
-
-```yaml
-- name: Configure bkit auth
-  run: git config --global url."https://x-access-token:${{ secrets.GH_BKIT_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"
-```
+> **⚠️ pnpm silent-ignore footgun:** If `GH_BKIT_TOKEN` is unset (missing shell export, missing GHA secret, missing Vercel env var), pnpm v7.20+ **silently ignores the entire `.npmrc`** and falls back to npmjs.org — which has no `@cbartens/bkit` — producing an opaque 401. The error does NOT say "token missing"; it looks like a generic registry auth failure. Always verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install` if you're troubleshooting.
 
 ## Consumer Vercel auth
 
-Vercel runs its own `pnpm install` in a fresh build container and **does not** apply the GitHub Actions auth-shim above. If the consumer also deploys via Vercel, you need a parallel setup on the Vercel side.
+Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` committed to your repo root, auth is handled via a single Vercel env var — **no `installCommand` shim required**.
 
 1. **Add `GH_BKIT_TOKEN` to Vercel env vars** for each environment that builds (preview + production at minimum):
 
@@ -119,19 +89,22 @@ Vercel runs its own `pnpm install` in a fresh build container and **does not** a
    vercel env add GH_BKIT_TOKEN production
    ```
 
-   Or via web: Vercel project → Settings → Environment Variables. Token value is the same fine-grained PAT used for the GitHub Actions secret (scope: `cbartens/bkit`, permission: Contents:read).
+   Or via web: Vercel project → Settings → Environment Variables. Token value is the same PAT used for the GitHub Actions secret (scope: `read:packages`).
 
-2. **Add an `installCommand` to your `vercel.json`** (root, or `apps/<name>/vercel.json` for monorepos) that applies the auth-shim before pnpm install:
+2. **Remove any pre-existing `installCommand` git-shim** from `vercel.json` if present:
 
    ```json
+   // REMOVE THIS — no longer needed (was only required for git-dep model):
    {
      "installCommand": "git config --global url.\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\".insteadOf \"https://github.com/cbartens/bkit/\" && pnpm install"
    }
    ```
 
-3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` succeeding.
+   With `.npmrc` committed and `GH_BKIT_TOKEN` set as a Vercel env var, a plain `pnpm install` resolves `@cbartens/bkit` from the registry directly.
 
-Without both pieces, Vercel preview builds fail with `fatal: could not read Username for 'https://github.com'` during `git fetch` of the bkit dep — same root cause as the GitHub Actions shim, separate surface to provision.
+3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
+
+> **Removed in v0.4.0 (breaking):** Git-dependency install path (`pnpm add -D github:cbartens/bkit#vX.Y.Z`), GHA `Configure private-repo auth` step, and `installCommand` git-shim are all removed. Consumers upgrading from v0.3.x must add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, and drop the auth-shim from CI and Vercel config.
 
 ## Documentation
 

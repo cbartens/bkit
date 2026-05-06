@@ -4,7 +4,7 @@ on:
   push:
     branches: [{{DEFAULT_BRANCH}}, dev]
   pull_request:
-    branches: [{{DEFAULT_BRANCH}}]
+    branches: [{{DEFAULT_BRANCH}}, dev]
 
 jobs:
   run-tests:
@@ -20,11 +20,10 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
-      - name: Configure private-repo auth
-        run: git config --global url."https://x-access-token:${{ secrets.GH_BKIT_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
 
       - name: Type check
         run: pnpm typecheck
