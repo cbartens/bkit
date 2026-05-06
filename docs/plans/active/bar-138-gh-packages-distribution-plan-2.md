@@ -147,32 +147,32 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
 
 ### Phase B (continued) — Docs + dist rebuild + full local check + pre.2 publish
 
-- [ ] **Task B8: Rewrite `README.md` install + consumer-CI + Vercel sections.**
+- [x] **Task B8: Rewrite `README.md` install + consumer-CI + Vercel sections.**
   - Scope: `## Install` — replace `pnpm add -D github:cbartens/bkit#v0.2.0` with `pnpm add -D @cbartens/bkit@^0.4.0`; remove pnpm tag-drop note. DELETE `### ⚠️ One-time consumer config (pnpm 10+)` section. Rewrite `## Consumer CI auth`: PAT scope = `read:packages`; GHA secret = `GH_BKIT_TOKEN`; `.npmrc` snippet at repo root; install step `env:` block; explicit pnpm silent-ignore warning. Rewrite `## Consumer Vercel auth`: env-var-only; `vercel env add` for preview + production; explicit removal of any pre-existing `installCommand` git-shim.
   - Acceptance: `grep -F 'github:cbartens/bkit' README.md` returns empty. `grep -F '@cbartens/bkit@^0.4.0' README.md` matches. `grep -F 'onlyBuiltDependencies' README.md` returns empty (or only in v0.2.0 historical-removal context; verify). `grep -F 'installCommand' README.md` shows context that explicitly tells consumers to remove it.
   - Verification: Manual prose review for tone consistency; `pnpm format:check` and `pnpm lint:prose` green.
 
-- [ ] **Task B9: Rewrite `.agents/README.md` Distribution + Install sections.**
+- [x] **Task B9: Rewrite `.agents/README.md` Distribution + Install sections.**
   - Scope: `## Distribution` — describe scoped-package distribution via GH Packages; drop "not published to the npm registry" + "git dependency from `github.com/cbartens/bkit`" sentences. DELETE `### Required consumer config — pnpm 10 build-script allowlist` subsection. `## Install / regenerate` opening prose: replace `pnpm add -D github:cbartens/bkit` with `pnpm add -D @cbartens/bkit@^0.4.0`.
   - Acceptance: Same `grep` checks as README — no `github:cbartens/bkit` substrings; new `@cbartens/bkit@^0.4.0` substring present. `onlyBuiltDependencies` removed from this file.
   - Verification: `pnpm format:check` + `pnpm lint:prose` green.
 
-- [ ] **Task B10: Append ADR `DE-3` to `docs/decisions.md`.**
+- [x] **Task B10: Append ADR `DE-3` to `docs/decisions.md`.**
   - Scope: APPEND new entry at EOF (file is append-only; respect `<!-- bkit:end -->` boundary — append BELOW it). Body per design (Decision/Why/Discarded/Source/Related fields populated as enumerated in `Architecture & Component Changes § Documentation`).
   - Acceptance: `grep -F '## DE-3:' docs/decisions.md` matches. ADR follows the file's documented format header.
   - Verification: `pnpm format:check` + `pnpm lint:prose` green. Visual review of the appended block.
 
-- [ ] **Task B11: Append per-consumer migration entries to `docs/pending.md`.**
+- [x] **Task B11: Append per-consumer migration entries to `docs/pending.md`.**
   - Scope: APPEND one entry per known consumer (`app-gether-life`, `www-visitfrasercoast-com`). Each entry per the file's documented format. Reference `BAR-138`, `DE-3`, design doc path.
   - Acceptance: `grep -c '## Consumer migration to @cbartens/bkit' docs/pending.md` returns ≥2.
   - Verification: `pnpm format:check` + `pnpm lint:prose` green.
 
-- [ ] **Task B11.5: Append `KN-N` entry to `docs/knowledge.md` for the pnpm v7.20+ silent-`.npmrc`-ignore footgun.**
+- [x] **Task B11.5: Append `KN-N` entry to `docs/knowledge.md` for the pnpm v7.20+ silent-`.npmrc`-ignore footgun.**
   - Scope: APPEND a new `KN-N` entry at EOF (file is append-only) per the body enumerated in `Architecture & Component Changes § Documentation → docs/knowledge.md`. Symptom / Root cause / Fix / Source / Related fields populated. Use the next free `KN-N` ID per the file's current count.
   - Acceptance: `grep -F 'silently ignores' docs/knowledge.md` matches the new entry. Entry follows the file's documented format header.
   - Verification: `pnpm format:check` + `pnpm lint:prose` green. Visual review of the appended block.
 
-- [ ] **Task B12: Regenerate `dist/`.**
+- [x] **Task B12: Regenerate `dist/`.**
   - Scope: With source edits from sub-plan 1's Tasks B1–B5 (and any test-file edits) staged but NOT yet committed, run the staleness-then-rebuild flow:
     1. Run `pnpm check:dist` — MUST exit non-zero (proves committed `dist/` is stale relative to the just-edited source).
     2. Run `pnpm build` (tsc emit) — regenerates `dist/` on disk to match the new source.
@@ -183,24 +183,24 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
   - Verification: After Task B14's commit, `git diff --stat HEAD~1 dist/` shows only the print-constant deltas. `pnpm bkit check` runs without crashing locally.
   - Note (why this ordering): `pnpm check:dist` compares the on-disk emit against the on-disk committed `dist/`. The rebuild in step 2 writes new bytes to disk; staging them in step 4 means they ARE the on-disk committed `dist/` from `check:dist`'s point of view (working-tree comparison), so step 5 passes. Skipping step 4 (or running step 5 before staging) would either leave step 5 red or make a green result meaningless.
 
-- [ ] **Task B13: Run full local check suite.**
+- [x] **Task B13: Run full local check suite.**
   - Scope: `pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:prose && pnpm lint:slop && pnpm check:dist`. All must pass.
   - Acceptance: Every script exits 0.
   - Verification: Capture run output; if any fails, fix before tagging pre.2.
 
-- [ ] **Task B14: Bump `version` to `0.4.0-pre.2`, commit, tag.**
+- [x] **Task B14: Bump `version` to `0.4.0-pre.2`, commit, tag.**
   - Scope: Edit `package.json#version` → `0.4.0-pre.2`. Commit `feat(bar-138): installer prints + README + ADR DE-3 for GH Packages`. Push branch. Tag `v0.4.0-pre.2` on the same SHA. Push tag.
   - Acceptance: `git describe --tags --exact-match` = `v0.4.0-pre.2`. `gh run list --workflow=release.yml --limit=1` shows the tagged run starting.
   - Verification: `gh run view --log` for that run shows full check suite green and `npm publish` succeeds. `https://github.com/cbartens/bkit/packages` shows `@cbartens/bkit@0.4.0-pre.2`.
 
-- [ ] **Task B15 🔒 GATE — pre.2 publish smoke validates print/doc layer before scratch-consumer test.**
+- [x] **Task B15 🔒 GATE — pre.2 publish smoke validates print/doc layer before scratch-consumer test.**
   - Scope: If pre.2 publish fails, STOP. Diagnose; the failure surface is now print-constant or doc related (since pre.1 already validated the pipeline). Fix on branch; re-tag only after deleting the failed tag.
   - Acceptance: pre.2 visible in GH Packages UI; release.yml run green.
   - Verification: `gh api …/packages/npm/bkit/versions` returns `0.4.0-pre.2`.
 
 ### Phase C (continued) — Scratch consumer smoke + gate
 
-- [ ] **Task C3: Create scratch consumer repo for end-to-end smoke.**
+- [x] **Task C3: Create scratch consumer repo for end-to-end smoke.**
   - Scope: Under `tmp/bar-138-smoke/` (NEVER `/tmp/` per repo rules), `git init`; minimal `package.json` (`name`, `version`, `private: true`, `packageManager: pnpm@10.33.0`); `.npmrc` with the registry+authToken lines; export `GH_BKIT_TOKEN` (PAT with `read:packages`).
   - Acceptance: `tmp/bar-138-smoke/.npmrc` exists with the two required lines. `tmp/bar-138-smoke/package.json` is valid.
   - Verification: `cat tmp/bar-138-smoke/.npmrc` shows registry + authToken. `tmp/` is git-ignored at repo root (verify against `.gitignore`).
@@ -217,7 +217,7 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
 
 ### Phase D — Production cut + ship-phase handoff
 
-- [ ] **Task D1: Open PR `feat/bar-138-gh-packages-distribution → dev`.**
+- [x] **Task D1: Open PR `feat/bar-138-gh-packages-distribution → dev`.**
   - Scope: `gh pr create --base dev --title 'feat(bar-138): GitHub Packages npm registry distribution (v0.4.0)' --body '<bkit-build summary fenced section>'`. Body includes link to design doc, ADR `DE-3`, smoke transcript.
   - Acceptance: PR opened; CI runs trigger.
   - Verification: `gh pr checks {PR_NUMBER}` shows `ci.yml` running.
