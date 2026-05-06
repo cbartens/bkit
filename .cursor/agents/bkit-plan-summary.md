@@ -34,11 +34,11 @@ tools:
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Any unchecked human-confirmation gates `[ ]` in plan → ALWAYS verdict `CONCERNS`. List unchecked items in Action Items.
+7. Unchecked human-confirmation gates EXPECTED on new design (human checks AFTER reading). Do NOT downgrade verdict if that is ONLY issue; note under Action Items.
 8. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
-   - `PASS` = plan ready.
+   - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
-   - `CONCERNS` = revisions needed before building (unchecked human-confirmation gates, vague/missing `Acceptance Scenario`).
+   - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, scope gaps).
 
 **Output format:**
 
@@ -63,7 +63,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` `Acceptance Scenario` spec? Human-confirmation gates checked? — terse verdict; initially set to `PENDING`]
+[Adheres to `docs/plans/template.md` `Acceptance Scenario` spec? — terse verdict. Note unchecked human-confirmation gates as expected pre-review state, NOT a downgrade trigger; initially set to `PENDING`]
 
 ## Design Alignment
 

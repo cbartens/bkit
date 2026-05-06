@@ -34,10 +34,11 @@ tools:
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
-   - `PASS` = design ready.
+7. Unchecked human-confirmation gates EXPECTED on new design (human checks AFTER reading). Do NOT downgrade verdict if that is ONLY issue; note under Action Items.
+8. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+   - `PASS` = design ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope concerns.
-   - `CONCERNS` = revisions needed (Acceptance Scenario violates `docs/plans/template.md` § Acceptance Scenario → Spec).
+   - `CONCERNS` = revisions needed; content-level issues (Acceptance Scenario violates `docs/plans/template.md` § Acceptance Scenario → Spec).
 
 **Output format:**
 
