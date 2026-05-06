@@ -103,6 +103,17 @@
           "docs/plans/logs/bar-131-related-bars-suite/plan-v4-3.md",
           "docs/plans/logs/bar-131-related-bars-suite/plan-v4-4.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T14:53:17Z",
+        "commitSha": "9907f571c6808422ef3d6336fe9cd67dd9a5587d",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-summary.md"
+        ]
       }
     ]
   }
