@@ -10,6 +10,15 @@
         "at": "2026-05-06T13:39:08Z",
         "commitSha": "9c4db1432c4ab493166cbf6447e656575288b7ee",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-06T13:45:02Z",
+        "commitSha": "3845a742c2303e9756da069cf6fac96f1af713b5",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-input.md"
+        ]
       }
     ]
   }
