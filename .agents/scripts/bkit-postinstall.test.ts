@@ -284,6 +284,67 @@ jobs:
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
+
+  it("elevates severity to blocker when .npmrc references ${GH_BKIT_TOKEN}", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      `
+jobs:
+  build:
+    steps:
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+`,
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "utf-8",
+    );
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("blocker");
+    expect(result!.detect).toContain("401");
+  });
+
+  it("stays advisory when .npmrc has no ${GH_BKIT_TOKEN} reference", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      `
+jobs:
+  build:
+    steps:
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+`,
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(tmpDir, ".npmrc"), "save-exact=true\n", "utf-8");
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("advisory");
+  });
+
+  it("stays advisory when .npmrc is absent (no token reference to break)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      `
+jobs:
+  build:
+    steps:
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+`,
+      "utf-8",
+    );
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.severity).toBe("advisory");
+  });
 });
 
 // ---------------------------------------------------------------------------

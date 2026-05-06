@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   hasBkitMarkers,
+  stripBkitBlock,
   detectNoPackageJson,
   detectMalformedPackageJson,
   detectNotGitRepo,
@@ -14,6 +15,10 @@ import {
   detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
+  detectHooksConfigOverwriteRisk,
+  detectHuskyBlockDuplicates,
+  detectGitignoreBlockDuplicates,
+  detectPrettierignoreScopeNarrowing,
   runPreflight,
 } from "./bkit-preflight";
 
@@ -385,5 +390,272 @@ describe("runPreflight", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
     const { blockers } = runPreflight(makeModules("lint"), tmpDir);
     expect(blockers.some((f) => f.id === "not-git-repo")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stripBkitBlock (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+describe("stripBkitBlock", () => {
+  it("removes hash-style bkit block content", () => {
+    const input = "before\n# bkit:start\ninside\n# bkit:end\nafter";
+    expect(stripBkitBlock(input)).toContain("before");
+    expect(stripBkitBlock(input)).toContain("after");
+    expect(stripBkitBlock(input)).not.toContain("inside");
+  });
+
+  it("removes HTML-comment-style bkit block content", () => {
+    const input = "before\n<!-- bkit:start -->\ninside\n<!-- bkit:end -->\nafter";
+    expect(stripBkitBlock(input)).toContain("before");
+    expect(stripBkitBlock(input)).toContain("after");
+    expect(stripBkitBlock(input)).not.toContain("inside");
+  });
+
+  it("returns content unchanged when no markers present", () => {
+    expect(stripBkitBlock("just content")).toBe("just content");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectHooksConfigOverwriteRisk — Detector A (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+describe("detectHooksConfigOverwriteRisk", () => {
+  it("flags .claude/settings.json with extra hook keys (e.g. Stop)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          SessionStart: [{ hooks: [{ type: "command", command: "preflight.sh" }] }],
+          Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
+        },
+      }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
+    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-claude");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("Stop");
+  });
+
+  it("does NOT flag .claude/settings.json with only SessionStart", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify({ hooks: { SessionStart: [{ hooks: [] }] } }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
+    expect(findings.find((x) => x.id === "hooks-config-overwrite-risk-claude")).toBeUndefined();
+  });
+
+  it("does NOT flag .claude/settings.json when --claude module is not selected", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify({ hooks: { SessionStart: [], Stop: [] } }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("lint"));
+    expect(findings).toHaveLength(0);
+  });
+
+  it("flags .cursor/hooks.json with Cursor v1 schema (top-level version key)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "hooks.json"),
+      JSON.stringify({
+        version: 1,
+        hooks: { sessionStart: [{ command: "x" }] },
+      }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
+    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("Cursor v1 schema");
+  });
+
+  it("flags .cursor/hooks.json with advanced fields (failClosed, loop_limit)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "hooks.json"),
+      JSON.stringify({
+        hooks: [{ event: "sessionStart", command: "x", failClosed: true }],
+      }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
+    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor");
+    expect(f).toBeDefined();
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("failClosed");
+  });
+
+  it("does NOT flag bkit's default .cursor/hooks.json (flat array, no advanced fields)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "hooks.json"),
+      JSON.stringify({
+        hooks: [
+          { event: "sessionStart", command: "echo" },
+          { event: "sessionStop", command: "echo" },
+        ],
+      }),
+      "utf-8",
+    );
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
+    expect(findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor")).toBeUndefined();
+  });
+
+  it("returns empty array when neither file exists", () => {
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude", "cursor"));
+    expect(findings).toEqual([]);
+  });
+
+  it("silently skips malformed JSON in either file", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".claude", "settings.json"), "{ broken json", "utf-8");
+    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
+    expect(findings).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectHuskyBlockDuplicates — Detector B (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+describe("detectHuskyBlockDuplicates", () => {
+  it("flags pre-commit when consumer content already runs lint:prose", () => {
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".husky", "pre-commit"),
+      "#!/usr/bin/env sh\npnpm lint:prose && lint-staged\n# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("husky-block-duplicates-precommit");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("lint:prose");
+  });
+
+  it("flags pre-push when consumer content runs typecheck via turbo", () => {
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".husky", "pre-push"),
+      "npx turbo run typecheck test --filter='...[origin/dev]'\n# bkit:start\npnpm typecheck && pnpm test\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectHuskyBlockDuplicates(tmpDir, "pre-push");
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("husky-block-duplicates-prepush");
+    expect(f?.detect).toContain("typecheck");
+  });
+
+  it("does NOT flag when consumer-owned region is empty (only bkit block in file)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".husky", "pre-commit"),
+      "# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when consumer content does not reference bkit's commands", () => {
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".husky", "pre-commit"),
+      "lint-staged\n# bkit:start\npnpm lint:prose\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
+    expect(f).toBeNull();
+  });
+
+  it("returns null when hook file does not exist", () => {
+    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
+    expect(f).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectGitignoreBlockDuplicates — Detector C (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+describe("detectGitignoreBlockDuplicates", () => {
+  it("flags when .worktrees/ appears outside the bkit block", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".gitignore"),
+      ".worktrees/\nnode_modules/\n<!-- bkit:start -->\n.worktrees/\n.husky/_\n<!-- bkit:end -->\n",
+      "utf-8",
+    );
+    const f = detectGitignoreBlockDuplicates(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("gitignore-block-duplicates");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain(".worktrees/");
+  });
+
+  it("does NOT flag when bkit lines appear only inside the block", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".gitignore"),
+      "node_modules/\n# bkit:start\n.worktrees/\n.husky/_\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectGitignoreBlockDuplicates(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("returns null when .gitignore does not exist", () => {
+    const f = detectGitignoreBlockDuplicates(tmpDir);
+    expect(f).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectPrettierignoreScopeNarrowing — Detector D (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+describe("detectPrettierignoreScopeNarrowing", () => {
+  it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".prettierignore"),
+      "# bkit:start\nnode_modules/\n.agents/skills/\n.agents/templates/\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("prettierignore-scope-narrowing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain(".agents/skills/");
+    expect(f?.detect).toContain(".agents/");
+  });
+
+  it("does NOT flag when on-disk block matches new bkit paths exactly", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".prettierignore"),
+      "# bkit:start\nnode_modules/\n.agents/\ndocs/\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("returns null when no bkit block markers present", () => {
+    fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules/\n", "utf-8");
+    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("returns null when .prettierignore does not exist", () => {
+    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    expect(f).toBeNull();
   });
 });

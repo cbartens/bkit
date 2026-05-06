@@ -105,6 +105,11 @@ export function detectVercelEnv(
 /**
  * Detect whether the ci.yml install step is missing GH_BKIT_TOKEN env mapping.
  * Returns null if no ci.yml or if the step structure is unrecognised (no false positives).
+ *
+ * Severity is elevated to "blocker" when `.npmrc` references `${GH_BKIT_TOKEN}` —
+ * in that combination, the next CI run 401s opaquely against the registry. This
+ * makes the finding render at the top of the checklist with the loudest label;
+ * Phase 3 doesn't exit-1 (writes already happened) but visibility matches the risk.
  */
 export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null {
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -121,17 +126,27 @@ export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null
   if (/GH_BKIT_TOKEN\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}["']?/.test(content))
     return null;
 
+  // Elevate to blocker if .npmrc references ${GH_BKIT_TOKEN} — next CI run breaks.
+  const npmrcPath = path.join(cwd, ".npmrc");
+  let npmrcRequiresToken = false;
+  if (fs.existsSync(npmrcPath)) {
+    const npmrcContent = fs.readFileSync(npmrcPath, "utf-8");
+    npmrcRequiresToken = npmrcContent.includes("${GH_BKIT_TOKEN}");
+  }
+
   return {
     id: "ci-yml-missing-token-env",
-    severity: "advisory",
-    detect:
-      ".github/workflows/ci.yml contains a pnpm install step but no GH_BKIT_TOKEN env mapping.",
+    severity: npmrcRequiresToken ? "blocker" : "advisory",
+    detect: npmrcRequiresToken
+      ? ".github/workflows/ci.yml has a pnpm install step with no GH_BKIT_TOKEN env block, and .npmrc references ${GH_BKIT_TOKEN}. The next CI run will 401 against the GitHub Packages registry."
+      : ".github/workflows/ci.yml contains a pnpm install step but no GH_BKIT_TOKEN env mapping.",
     action:
       "Add the following env block to the install step in .github/workflows/ci.yml:\n\n" +
       "    - name: Install dependencies\n" +
       "      run: pnpm install --frozen-lockfile\n" +
       "      env:\n" +
       "        GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}\n\n" +
+      "Also confirm the secret exists: `gh secret list | grep GH_BKIT_TOKEN`. If absent: `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN`.\n\n" +
       "This ensures the GitHub Actions runner can authenticate against the GitHub Packages npm registry.",
   };
 }

@@ -39,6 +39,16 @@ function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
   });
 }
 
+/**
+ * Strip out content inside bkit-managed block markers (both HTML and hash style).
+ * Used by detectors that need to inspect only consumer-owned content.
+ */
+export function stripBkitBlock(content: string): string {
+  return content
+    .replace(/<!--\s*bkit:start\s*-->[\s\S]*?<!--\s*bkit:end\s*-->/g, "")
+    .replace(/#\s*bkit:start[\s\S]*?#\s*bkit:end/g, "");
+}
+
 // ---------------------------------------------------------------------------
 // Blocker detectors
 // ---------------------------------------------------------------------------
@@ -200,6 +210,221 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
 }
 
 // ---------------------------------------------------------------------------
+// Tier-1 hooks-config overwrite blockers (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect customised `.claude/settings.json` and `.cursor/hooks.json`.
+ *
+ * bkit ships these as Tier-1 (full-overwrite). Consumers commonly add Stop
+ * hooks, postflight wiring, `failClosed`, `loop_limit`, etc. — full overwrite
+ * silently destroys those. Surface as blocker so the consumer chooses to skip
+ * the module or back up first; recoverable losses must not be silent.
+ *
+ * Returns up to two findings (one per file).
+ */
+export function detectHooksConfigOverwriteRisk(
+  cwd: string,
+  modules: Set<ModuleFlag>,
+): PreflightFinding[] {
+  const findings: PreflightFinding[] = [];
+
+  // .claude/settings.json — bkit ships hooks.SessionStart only
+  if (modules.has("claude")) {
+    const claudePath = path.join(cwd, ".claude", "settings.json");
+    if (fs.existsSync(claudePath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(claudePath, "utf-8")) as Record<string, unknown>;
+        const hooks = parsed.hooks as Record<string, unknown> | undefined;
+        if (hooks && typeof hooks === "object" && !Array.isArray(hooks)) {
+          const extraKeys = Object.keys(hooks).filter((k) => k !== "SessionStart");
+          if (extraKeys.length > 0) {
+            findings.push({
+              id: "hooks-config-overwrite-risk-claude",
+              severity: "blocker",
+              detect: `.claude/settings.json contains hook event(s) beyond SessionStart: [${extraKeys.join(", ")}]. bkit's --claude module fully overwrites this file (Tier-1) and would silently destroy these.`,
+              action:
+                "Choose one:\n\n" +
+                "  (a) Back up .claude/settings.json now, then re-run with --claude. After install, manually merge your custom hook entries (Stop, PostToolUse, etc.) back into the bkit-installed file.\n\n" +
+                "  (b) Skip --claude on this run. Use `pnpm bkit install` without --claude to leave .claude/settings.json untouched.\n\n" +
+                "Long-term: these hook configs should be Tier-2 (managed-block) so consumer hook entries survive bkit upgrades. Track this need in a separate issue.",
+            });
+          }
+        }
+      } catch {
+        // Malformed JSON — skip; another detector handles syntax errors
+      }
+    }
+  }
+
+  // .cursor/hooks.json — bkit ships flat array form with sessionStart/sessionStop
+  if (modules.has("cursor")) {
+    const cursorPath = path.join(cwd, ".cursor", "hooks.json");
+    if (fs.existsSync(cursorPath)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf-8")) as Record<string, unknown>;
+        // Cursor v1 schema (`{"version": 1, "hooks": {...}}`) is the documented form
+        // but bkit ships the flat-array form. v1 schema → consumer is using docs-form
+        // and bkit's overwrite would destroy it.
+        const isV1Schema = "version" in parsed;
+        // Detect advanced fields bkit's seed never has.
+        const raw = JSON.stringify(parsed);
+        const advancedFields = ["failClosed", "loop_limit", "preflight.sh", "postflight.sh"].filter(
+          (f) => raw.includes(f),
+        );
+        if (isV1Schema || advancedFields.length > 0) {
+          const detected = isV1Schema
+            ? "Cursor v1 schema (top-level `version` key)"
+            : `advanced fields [${advancedFields.join(", ")}]`;
+          findings.push({
+            id: "hooks-config-overwrite-risk-cursor",
+            severity: "blocker",
+            detect: `.cursor/hooks.json contains custom configuration: ${detected}. bkit's --cursor module fully overwrites this file (Tier-1) and would silently destroy these settings.`,
+            action:
+              "Choose one:\n\n" +
+              "  (a) Back up .cursor/hooks.json now, then re-run with --cursor. After install, manually merge your custom hook entries (failClosed, loop_limit, postflight wiring, v1 schema, etc.) back into the bkit-installed file.\n\n" +
+              "  (b) Skip --cursor on this run. Use `pnpm bkit install` without --cursor to leave .cursor/hooks.json untouched.\n\n" +
+              "Long-term: these hook configs should be Tier-2 (managed-block) so consumer hook entries survive bkit upgrades. Track this need in a separate issue.",
+          });
+        }
+      } catch {
+        // Malformed JSON — skip
+      }
+    }
+  }
+
+  return findings;
+}
+
+// ---------------------------------------------------------------------------
+// Husky/managed-file duplication advisories (BAR-141 iter 2)
+// ---------------------------------------------------------------------------
+
+const HUSKY_BKIT_COMMANDS: Record<"pre-commit" | "pre-push", string[]> = {
+  "pre-commit": ["lint:prose", "lint:slop"],
+  "pre-push": ["typecheck", "test"],
+};
+
+/**
+ * Detect when bkit's husky managed block will duplicate commands the consumer's
+ * existing hook content already invokes (often via `turbo run` or `lint-staged`).
+ * Result: every commit/push runs the same checks twice.
+ */
+export function detectHuskyBlockDuplicates(
+  cwd: string,
+  hookName: "pre-commit" | "pre-push",
+): PreflightFinding | null {
+  const hookPath = path.join(cwd, ".husky", hookName);
+  if (!fs.existsSync(hookPath)) return null;
+  const content = fs.readFileSync(hookPath, "utf-8");
+
+  const userContent = stripBkitBlock(content);
+  if (!userContent.trim()) return null; // file only has bkit block — no duplication
+
+  const matched = HUSKY_BKIT_COMMANDS[hookName].filter((cmd) => userContent.includes(cmd));
+  if (matched.length === 0) return null;
+
+  const id =
+    hookName === "pre-commit"
+      ? "husky-block-duplicates-precommit"
+      : "husky-block-duplicates-prepush";
+  const triggerWord = hookName === "pre-commit" ? "commit" : "push";
+  return {
+    id,
+    severity: "advisory",
+    detect: `.husky/${hookName} consumer-owned content already references [${matched.join(", ")}]. bkit's managed block runs them again — double-work on every ${triggerWord}.`,
+    action:
+      `Decide:\n\n  (a) Keep both for safety (e.g. consumer's ${triggerWord} runs them via turbo/lint-staged but you want bkit's bare invocation as a fallback).\n` +
+      `  (b) Delete bkit's managed block (the # bkit:start..# bkit:end region) — your existing hook covers it. Most consumers running ${matched.join("/")} via turbo or another wrapper want option (b).`,
+  };
+}
+
+/**
+ * Detect when a line bkit's .gitignore managed block contributes is already
+ * present elsewhere in the file. Benign (git ignores duplicates) but worth
+ * surfacing — the bkit-managed block should be the single source of truth.
+ */
+const BKIT_GITIGNORE_LINES = [
+  ".worktrees/",
+  "docs/plans/logs/**/raw/",
+  "docs/plans/logs/**/.lock",
+  ".husky/_",
+];
+
+export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | null {
+  const gitignorePath = path.join(cwd, ".gitignore");
+  if (!fs.existsSync(gitignorePath)) return null;
+  const content = fs.readFileSync(gitignorePath, "utf-8");
+
+  const outsideBkit = stripBkitBlock(content);
+  const outsideLines = outsideBkit
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const dupes = BKIT_GITIGNORE_LINES.filter((bl) => outsideLines.includes(bl));
+  if (dupes.length === 0) return null;
+
+  return {
+    id: "gitignore-block-duplicates",
+    severity: "advisory",
+    detect: `.gitignore lists [${dupes.join(", ")}] both inside the bkit-managed block and outside it (consumer-owned region).`,
+    action: `Git ignores duplicates harmlessly, but cleaner to remove the consumer-side line(s) so the bkit-managed block is the single source of truth. Affected lines: ${dupes.join(", ")}.`,
+  };
+}
+
+/**
+ * Detect when bkit's installed `.prettierignore` block has narrower paths than
+ * the bkit version about to be written, i.e. the new block broadens scope.
+ * Example: old shipped `.agents/skills/` + `.agents/templates/`; new ships `.agents/`.
+ * Consequence: consumer-owned files like `.agents/rules.md` newly stop being formatted.
+ */
+const BKIT_PRETTIERIGNORE_PATHS = [
+  "node_modules/",
+  "dist/",
+  ".agents/",
+  ".github/",
+  ".husky/_/",
+  "*.tsbuildinfo",
+  "docs/",
+  "pnpm-lock.yaml",
+];
+
+export function detectPrettierignoreScopeNarrowing(cwd: string): PreflightFinding | null {
+  const filePath = path.join(cwd, ".prettierignore");
+  if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf-8");
+
+  const blockMatch = content.match(/#\s*bkit:start([\s\S]*?)#\s*bkit:end/);
+  if (!blockMatch) return null;
+  const oldPaths = blockMatch[1]!
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+
+  const broadenings: string[] = [];
+  for (const oldPath of oldPaths) {
+    if (BKIT_PRETTIERIGNORE_PATHS.includes(oldPath)) continue;
+    const broaderParent = BKIT_PRETTIERIGNORE_PATHS.find(
+      (np) => np !== oldPath && oldPath.startsWith(np.endsWith("/") ? np : np + "/"),
+    );
+    if (broaderParent) {
+      broadenings.push(`${oldPath} → ${broaderParent}`);
+    }
+  }
+
+  if (broadenings.length === 0) return null;
+
+  return {
+    id: "prettierignore-scope-narrowing",
+    severity: "advisory",
+    detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
+    action:
+      "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/rules.md, .agents/docs.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Internal semver comparison helper
 // ---------------------------------------------------------------------------
 
@@ -265,12 +490,27 @@ export function runPreflight(
   const notGitRepo = detectNotGitRepo(cwd, modules);
   if (notGitRepo) blockers.push(notGitRepo);
 
+  // Tier-1 hooks-config overwrite blockers (per-module gated)
+  for (const f of detectHooksConfigOverwriteRisk(cwd, modules)) blockers.push(f);
+
   // --- Advisory detectors ---
   const huskyPreCommit = detectHuskyNoMarkers(cwd, "pre-commit");
   if (huskyPreCommit) advisories.push(huskyPreCommit);
 
   const huskyPrePush = detectHuskyNoMarkers(cwd, "pre-push");
   if (huskyPrePush) advisories.push(huskyPrePush);
+
+  const huskyDupCommit = detectHuskyBlockDuplicates(cwd, "pre-commit");
+  if (huskyDupCommit) advisories.push(huskyDupCommit);
+
+  const huskyDupPush = detectHuskyBlockDuplicates(cwd, "pre-push");
+  if (huskyDupPush) advisories.push(huskyDupPush);
+
+  const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
+  if (gitignoreDup) advisories.push(gitignoreDup);
+
+  const prettierBroad = detectPrettierignoreScopeNarrowing(cwd);
+  if (prettierBroad) advisories.push(prettierBroad);
 
   const prettierignore = detectPrettierignoreNoMarkers(cwd);
   if (prettierignore) advisories.push(prettierignore);
