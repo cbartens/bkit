@@ -66,6 +66,17 @@
           "docs/plans/logs/bar-131-related-bars-suite/plan-scope-check-1.md",
           "docs/plans/logs/bar-131-related-bars-suite/plan-scope-check-2.md"
         ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T14:34:45Z",
+        "commitSha": "b950a4ebf13c76f893bdcbcfc9e70d71c32a5af4",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v3-checked.md"
+        ]
       }
     ]
   }
