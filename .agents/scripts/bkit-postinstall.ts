@@ -85,7 +85,13 @@ export function detectVercelProject(cwd: string): boolean {
 
 /**
  * Detect whether GH_BKIT_TOKEN is present in a Vercel environment.
- * Short-circuits silently (returns null, no finding) if detectVercelProject is false.
+ *
+ * B3 Vercel CLI hang guard: pre-checks `.vercel/project.json` and SKIPS `vercel env ls`
+ * when the file is absent. Does NOT shell out unless the project file exists — this
+ * avoids the CLI login prompt / TTY hang in non-interactive CI environments.
+ *
+ * Fallback: if detectVercelProject finds vercel.json but .vercel/project.json is absent,
+ * the project is not yet linked to a Vercel deployment — skip CLI call.
  */
 export function detectVercelEnv(
   env: "preview" | "production",
@@ -94,6 +100,11 @@ export function detectVercelEnv(
   if (!detectVercelProject(cwd)) return "unknown";
   // Runtime guard: reject unexpected env values even though TypeScript narrows them.
   if (env !== "preview" && env !== "production") return "unknown";
+  // B3: Guard against `vercel env ls` hanging when the project is not linked.
+  // `.vercel/project.json` is written by `vercel link` — absent means not linked.
+  // Without this guard, `vercel env ls` blocks on a TTY login prompt in CI.
+  const vercelProjectFile = path.join(cwd, ".vercel", "project.json");
+  if (!fs.existsSync(vercelProjectFile)) return "unknown";
   try {
     const out = execFileSync("vercel", ["env", "ls", env], {
       encoding: "utf-8",

@@ -12,6 +12,8 @@ import {
   writeTier1,
   writeTier2,
   writeTier3,
+  writeTier2Json,
+  migrateTier1JsonToTier2,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
   type WriteSet,
@@ -407,11 +409,34 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // Tier 1 — fully managed: settings.json + preflight hook
   const PKG_ROOT = getPkgRoot();
   const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
+
+  // Tier 2 JSON — deep-merge: settings.json (reclassified from Tier-1 in v0.8.0)
+  // Auto-migrate from Tier-1 shape (no __bkit__ envelope) before writing.
+  const settingsSrc = path.join(claudeTemplates, "settings.json");
+  const settingsDst = ".claude/settings.json";
+  if (fs.existsSync(settingsSrc)) {
+    // Run migration first (idempotent if already migrated)
+    const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
+    if (fs.existsSync(versionFile) && !dryRun) {
+      const onDiskVersion = fs.readFileSync(versionFile, "utf-8").trim();
+      if (onDiskVersion) {
+        const migrated = migrateTier1JsonToTier2(settingsDst, ".claude/settings.json", onDiskVersion);
+        if (migrated) {
+          console.log(`${logPrefix} ${tag}claude: ${settingsDst} (migrated Tier-1 → Tier-2)`);
+        }
+      }
+    }
+    const prevLen = ws.writes.length;
+    writeTier2Json(settingsSrc, settingsDst, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
+    }
+  }
+
+  // Tier 1 — fully managed: preflight hook (remains Tier-1)
   const tier1Files: Array<[string, string]> = [
-    [path.join(claudeTemplates, "settings.json"), ".claude/settings.json"],
     [path.join(claudeTemplates, "hooks", "preflight.sh"), ".claude/hooks/preflight.sh"],
   ];
   for (const [src, dst] of tier1Files) {
@@ -472,11 +497,32 @@ export function runCursorModule(ctx: ModuleContext): void {
     }
   }
 
-  // Tier 1 — fully managed: hooks.json, preflight, shared rules
+  // Tier 2 JSON — deep-merge: hooks.json (reclassified from Tier-1 in v0.8.0)
   const PKG_ROOT = getPkgRoot();
   const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
+  const hooksSrc = path.join(cursorTemplates, "hooks.json");
+  const hooksDst = ".cursor/hooks.json";
+  if (fs.existsSync(hooksSrc)) {
+    // Auto-migrate from Tier-1 shape before writing
+    const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
+    if (fs.existsSync(versionFile) && !dryRun) {
+      const onDiskVersion = fs.readFileSync(versionFile, "utf-8").trim();
+      if (onDiskVersion) {
+        const migrated = migrateTier1JsonToTier2(hooksDst, ".cursor/hooks.json", onDiskVersion);
+        if (migrated) {
+          console.log(`${logPrefix} ${tag}cursor: ${hooksDst} (migrated Tier-1 → Tier-2)`);
+        }
+      }
+    }
+    const prevLen = ws.writes.length;
+    writeTier2Json(hooksSrc, hooksDst, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
+    }
+  }
+
+  // Tier 1 — fully managed: preflight, shared rules (remain Tier-1)
   const tier1Files: Array<[string, string]> = [
-    [path.join(cursorTemplates, "hooks.json"), ".cursor/hooks.json"],
     [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
     [
       path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),

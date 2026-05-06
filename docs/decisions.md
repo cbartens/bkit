@@ -72,3 +72,32 @@
 - **Discarded:** (1) Keep `printSink` + add parallel `findings: PreflightFinding[]` — two sinks → drift risk; downstream tooling has to merge two shapes. (2) `--strict` flag promoting advisories to blockers — out of scope; consumer can use `bkit check` (exit-1-on-drift). (3) Auto-apply advisory fixes — violates consumer-value-wins principle.
 - **Source:** phase
 - **Related:** BAR-141, `docs/plans/active/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4
+
+## DE-7: BAR-142 §A1 — Cursor v1 hooks.json schema spike outcome (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** `__bkit__` envelope is safe to use as a top-level key in `.cursor/hooks.json`. Cursor's documented v1 schema uses `{"version": 1, "hooks": {eventName: [...commands]}}`. Cursor does NOT reserve a `__bkit__` key or any `__`-prefixed namespace. bkit's current shipped form (`{"hooks": [{event, command}]}`) is the legacy flat-array format; v1 schema uses an object-keyed form. No conflict exists with `__bkit__`. Spike blesses the `__bkit__` envelope shape for both `.cursor/hooks.json` and `.claude/settings.json`.
+- **Why:** BAR-142 §A1 requires explicit verification that `__bkit__` doesn't clash with any Cursor-reserved key before implementing the Tier-2 deep-merge. Cursor docs (cursor.com/docs/context/rules) and `.cursor/hooks.json` schema at SchemaStore show no reserved `__*` keys. Claude Code's `settings.json` schema (`$schema: https://json.schemastore.org/claude-code-settings.json`) also has no `__bkit__` conflict.
+- **Discarded:** (1) Use `_bkit` (single underscore) — `__bkit__` double-underscore convention is more clearly a reserved-by-tool namespace (Python dunder style); less likely to clash with consumer keys. (2) Use `$bkit` — `$` prefix sometimes special in JSON/YAML tools; `__` prefix safer. (3) Use `bkit` bare key — consumers may legitimately have a top-level `bkit` key in config.
+- **Source:** phase
+- **Related:** BAR-142 §A1, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`, DE-8
+
+## DE-8: BAR-142 §A1 — `__bkit__` envelope contract + `detectHooksConfigOverwriteRisk` DELETE disposition (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** (1) `__bkit__` is a top-level key on `.claude/settings.json` and `.cursor/hooks.json` containing ONLY bkit-owned content as a JSON object. Shape: `{ "__bkit__": { ...bkitOwnedKeys } }`. The envelope is the recoverable record of bkit's shipped shape at install time. (2) Consumer-owned keys live OUTSIDE the `__bkit__` envelope (top-level siblings). (3) `writeTier2Json(template, existing, dryRun, ws)` deep-merges: reads `template.__bkit__` as the new bkit payload, reads `existing` as the consumer document, writes `{ ...consumer, __bkit__: template.__bkit__ }`. THROWS (does not swallow) if `template` lacks `__bkit__`. (4) `detectHooksConfigOverwriteRisk` is DELETED (not repurposed) — it becomes architecturally redundant once `__bkit__` is canonical SoT; the Tier-2 deep-merge guarantees consumer keys survive upgrades without a preflight blocker. (5) `extractBkitNamespace(doc)` returns `doc.__bkit__ ?? null`; `applyBkitNamespace(consumer, bkitPayload)` returns `{ ...consumer, __bkit__: bkitPayload }`. (6) `deepMergeJson(base, override)` is a recursive primitive: arrays in override replace arrays in base (not concat); objects merge recursively; primitives/null override.
+- **Why:** Tier-1 full-overwrite is unsafe for consumer-extensible JSON (KN-8). The `__bkit__` envelope gives bkit a stable, inspectable, rollback-safe ownership record without requiring comment markers (JSON has no comments). DELETE of `detectHooksConfigOverwriteRisk` is correct: the blocker was a stopgap — once Tier-2 deep-merge ships, the risk it blocked no longer exists.
+- **Discarded:** (1) JSON-merge-patch (RFC 7396) — cannot express bkit-owns-these-keys without a namespace. (2) Repurpose `detectHooksConfigOverwriteRisk` as a migration hint — architecturally confusing; the detector's job is done by Tier-2. (3) Separate migration file per consumer — too much ceremony; versioned-defaults SoT (`BKIT_TIER1_DEFAULTS_BY_VERSION`) enables auto-migration inline.
+- **Type signatures:**
+  ```ts
+  type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
+  function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue;
+  function extractBkitNamespace(doc: Record<string, JsonValue>): Record<string, JsonValue> | null;
+  function applyBkitNamespace(consumer: Record<string, JsonValue>, bkitPayload: Record<string, JsonValue>): Record<string, JsonValue>;
+  function writeTier2Json(srcPath: string, dstPath: string, dryRun: boolean, ws: WriteSet): void;
+  function migrateTier1JsonToTier2(filePath: string, fileKey: ".claude/settings.json" | ".cursor/hooks.json"): void;
+  ```
+- **Source:** phase
+- **Related:** BAR-142 §A1, `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.ts`, KN-8, DE-7

@@ -116,17 +116,17 @@
 - **Source:** phase
 - **Related:** BAR-141, PR #5, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`
 
-## KN-8: Tier-1 full-overwrite is unsafe for consumer-extensible config files (2026-05-06)
+## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07)
 
 - **Category:** agentic
-- **Symptom:** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
-- **Root cause:** Both files ship as Tier-1 (full-overwrite) in `bkit-modules.ts`. Consumers legitimately add their own hook events (e.g. `hooks.Stop`) alongside bkit's `hooks.SessionStart` — full-overwrite has no awareness of consumer additions and silently destroys them on every install.
-- **Fix or rule:** Default rule — any file where the schema permits multiple top-level entries AND consumers commonly add their own keys must be Tier-2 (managed-block: bkit owns only the marker-delimited region). Tier-1 is reserved for files bkit fully owns end-to-end (e.g. `vale.ini`, slop-scan config). Mitigated in BAR-141 PR #5 by `detectHooksConfigOverwriteRisk` (preflight blocker — exits 1 if non-default content detected). Long-term Tier-1 → Tier-2 refactor for these two files tracked separately.
+- **Symptom (original):** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
+- **Root cause:** Both files shipped as Tier-1 (full-overwrite) in `bkit-modules.ts`. Consumers legitimately add their own hook events alongside bkit's `hooks.SessionStart` — full-overwrite silently destroys them on every install.
+- **Fix or rule (v0.8.0+):** Any JSON file where the schema permits multiple top-level entries AND consumers commonly add their own keys MUST be Tier-2 JSON deep-merge via `__bkit__` envelope (`writeTier2Json`). Tier-1 is reserved for files bkit fully owns end-to-end (e.g. `vale.ini`, slop-scan config). The `__bkit__` top-level key is the public contract (v0.8.0): bkit's shipped values live there; consumer keys live outside. `writeTier2Json` THROWS when template lacks `__bkit__` (rollback safety). Migration (`migrateTier1JsonToTier2`) auto-lifts pre-v0.8.0 installs; consults `BKIT_TIER1_DEFAULTS_BY_VERSION`. `detectHooksConfigOverwriteRisk` DELETED in v0.8.0 — architecturally redundant once `__bkit__` is canonical SoT. Markers-as-SoT (BAR-138 lesson) applies to text files; `__bkit__` envelope applies to JSON files.
 - **Type:** pattern
 - **Confidence:** high
 - **Severity:** critical
 - **Source:** phase
-- **Related:** BAR-141, PR #5, `.agents/scripts/bkit-modules.ts` (cursor + claude module functions), `.agents/scripts/bkit-preflight.ts` (`detectHooksConfigOverwriteRisk`), Gether install findings comment on Linear BAR-141
+- **Related:** BAR-141, BAR-142 §A1, PR #5, `.agents/scripts/bkit-modules.ts` (cursor + claude module functions), `.agents/scripts/bkit-tiers.ts` (`writeTier2Json`, `migrateTier1JsonToTier2`), `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`, DE-7, DE-8, Gether install findings comment on Linear BAR-141
 
 ## KN-9: .bkit-version migration reads must use readBkitVersion().pinnedVersion (2026-05-07)
 

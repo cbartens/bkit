@@ -47,6 +47,34 @@ pnpm exec bkit check --full
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
+## `__bkit__` envelope — consumer-visible behaviour (v0.8.0+)
+
+Starting v0.8.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **Tier-2 JSON deep-merge** instead of full-overwrite. bkit's managed content lives inside a `__bkit__` top-level key (the "envelope"). Consumer-added keys live **outside** `__bkit__` and survive every `bkit install` upgrade.
+
+```json
+// .claude/settings.json (v0.8.0+)
+{
+  "__bkit__": {
+    "hooks": {
+      "SessionStart": [{ "hooks": [{ "type": "command", "command": "bash .claude/hooks/preflight.sh" }] }]
+    }
+  },
+  "hooks": {
+    "SessionStart": [...],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "postflight.sh" }] }]
+  }
+}
+```
+
+**Rules:**
+- Consumer keys outside `__bkit__` survive every `bkit install` upgrade byte-identically.
+- `bkit install` updates **only** `__bkit__` on subsequent installs; consumer keys are never touched.
+- `__bkit__` is a **public contract** — once shipped (v0.8.0), the key name is stable.
+
+**Upgrading from v0.7.x or earlier:** `bkit install` auto-migrates existing files (no manual steps required). Consumer-added keys are preserved. Re-running is idempotent.
+
+**Rollback safety:** If a template is accidentally reverted to a pre-v0.8.0 shape (missing `__bkit__`), `bkit install` throws an explicit error instead of silently corrupting consumer files. Restore the `__bkit__` key in the template to unblock.
+
 ## Consumer CI auth
 
 bkit resolves from the **GitHub Packages npm registry**. Authentication requires:

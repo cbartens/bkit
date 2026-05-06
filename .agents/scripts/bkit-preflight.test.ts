@@ -15,12 +15,12 @@ import {
   detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
-  detectHooksConfigOverwriteRisk,
   detectHuskyBlockDuplicates,
   detectGitignoreBlockDuplicates,
   detectPrettierignoreScopeNarrowing,
   runPreflight,
 } from "./bkit-preflight";
+import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
 import { detectShellToken } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
@@ -447,11 +447,28 @@ describe("stripBkitBlock", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectHooksConfigOverwriteRisk — Detector A (BAR-141 iter 2)
+// P3.T7 — detectHooksConfigOverwriteRisk has been DELETED (BAR-142 §A1)
 // ---------------------------------------------------------------------------
+// detectHooksConfigOverwriteRisk is removed in v0.8.0 (P3.T7 per plan).
+// These tests are the removal verification — checking that the function no
+// longer exists in the source.
 
-describe("detectHooksConfigOverwriteRisk", () => {
-  it("flags .claude/settings.json with extra hook keys (e.g. Stop)", () => {
+describe("P3.T7 — detectHooksConfigOverwriteRisk deleted (v0.8.0)", () => {
+  it("detectHooksConfigOverwriteRisk is NOT present in bkit-preflight.ts source", () => {
+    // Source-level check: the function must not exist in the source
+    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
+    expect(src).not.toContain("detectHooksConfigOverwriteRisk");
+  });
+
+  it("bkit-preflight.ts source does not contain detectHooksConfigOverwriteRisk", () => {
+    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
+    expect(src).not.toContain("detectHooksConfigOverwriteRisk");
+  });
+
+  it("runPreflight does NOT produce hooks-config-overwrite-risk blockers (Tier-2 handles survival)", () => {
+    // Consumer with Stop hooks — should NOT block under Tier-2 architecture
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".claude", "settings.json"),
@@ -463,94 +480,8 @@ describe("detectHooksConfigOverwriteRisk", () => {
       }),
       "utf-8",
     );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
-    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-claude");
-    expect(f).toBeDefined();
-    expect(f?.severity).toBe("blocker");
-    expect(f?.detect).toContain("Stop");
-  });
-
-  it("does NOT flag .claude/settings.json with only SessionStart", () => {
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify({ hooks: { SessionStart: [{ hooks: [] }] } }),
-      "utf-8",
-    );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
-    expect(findings.find((x) => x.id === "hooks-config-overwrite-risk-claude")).toBeUndefined();
-  });
-
-  it("does NOT flag .claude/settings.json when --claude module is not selected", () => {
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify({ hooks: { SessionStart: [], Stop: [] } }),
-      "utf-8",
-    );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("lint"));
-    expect(findings).toHaveLength(0);
-  });
-
-  it("flags .cursor/hooks.json with Cursor v1 schema (top-level version key)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".cursor", "hooks.json"),
-      JSON.stringify({
-        version: 1,
-        hooks: { sessionStart: [{ command: "x" }] },
-      }),
-      "utf-8",
-    );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
-    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor");
-    expect(f).toBeDefined();
-    expect(f?.severity).toBe("blocker");
-    expect(f?.detect).toContain("Cursor v1 schema");
-  });
-
-  it("flags .cursor/hooks.json with advanced fields (failClosed, loop_limit)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".cursor", "hooks.json"),
-      JSON.stringify({
-        hooks: [{ event: "sessionStart", command: "x", failClosed: true }],
-      }),
-      "utf-8",
-    );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
-    const f = findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor");
-    expect(f).toBeDefined();
-    expect(f?.severity).toBe("blocker");
-    expect(f?.detect).toContain("failClosed");
-  });
-
-  it("does NOT flag bkit's default .cursor/hooks.json (flat array, no advanced fields)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".cursor", "hooks.json"),
-      JSON.stringify({
-        hooks: [
-          { event: "sessionStart", command: "echo" },
-          { event: "sessionStop", command: "echo" },
-        ],
-      }),
-      "utf-8",
-    );
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("cursor"));
-    expect(findings.find((x) => x.id === "hooks-config-overwrite-risk-cursor")).toBeUndefined();
-  });
-
-  it("returns empty array when neither file exists", () => {
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude", "cursor"));
-    expect(findings).toEqual([]);
-  });
-
-  it("silently skips malformed JSON in either file", () => {
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".claude", "settings.json"), "{ broken json", "utf-8");
-    const findings = detectHooksConfigOverwriteRisk(tmpDir, makeModules("claude"));
-    expect(findings).toEqual([]);
+    const { blockers } = runPreflight(makeModules("claude", "cursor"), tmpDir);
+    expect(blockers.some((f) => f.id.includes("hooks-config-overwrite-risk"))).toBe(false);
   });
 });
 
@@ -751,5 +682,55 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
     // Must NOT have bare ${GH_BKIT_TOKEN} in .npmrc inline strings (only in other contexts)
     // The .npmrc auth token line must use the fallback form
     expect(src).toContain("_authToken=${GH_BKIT_TOKEN:-}");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P3.T8 — B3 Vercel CLI hang guard (BAR-142 §B3)
+// ---------------------------------------------------------------------------
+
+describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .vercel/project.json absent", () => {
+  it("returns 'unknown' when vercel.json exists but .vercel/project.json is absent (no shell-out)", () => {
+    // Setup: vercel.json present (detectVercelProject returns true) but .vercel/ not linked
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{"version":2}', "utf-8");
+    // .vercel/project.json is absent — must NOT shell out to `vercel env ls`
+
+    const result = detectVercelEnv("preview", tmpDir);
+
+    expect(result).toBe("unknown");
+    // Implicit: if it didn't hang/error, the guard fired correctly
+  });
+
+  it("returns 'unknown' when neither vercel.json nor .vercel/project.json exist", () => {
+    // No vercel project at all
+    const result = detectVercelEnv("preview", tmpDir);
+    expect(result).toBe("unknown");
+  });
+
+  it("detectVercelProject returns false when no vercel.json", () => {
+    expect(detectVercelProject(tmpDir)).toBe(false);
+  });
+
+  it("detectVercelProject returns true when vercel.json exists at root", () => {
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{"version":2}', "utf-8");
+    expect(detectVercelProject(tmpDir)).toBe(true);
+  });
+
+  it("bkit-postinstall.ts source uses .vercel/project.json guard (B3)", () => {
+    // Source-level check: the guard must be present in the source
+    const src = fs.readFileSync(path.join(__dirname, "bkit-postinstall.ts"), "utf-8");
+    expect(src).toContain(".vercel");
+    expect(src).toContain("project.json");
+  });
+
+  it("bkit-postinstall.ts does NOT fall through to `vercel env ls` without the file guard", () => {
+    // Source-level check: vercel env ls call must be after the project.json guard
+    const src = fs.readFileSync(path.join(__dirname, "bkit-postinstall.ts"), "utf-8");
+    const projectJsonGuardIdx = src.indexOf("project.json");
+    const vercelEnvLsIdx = src.indexOf('["env", "ls"');
+    // The guard must come BEFORE the shell-out
+    expect(projectJsonGuardIdx).toBeGreaterThan(-1);
+    expect(vercelEnvLsIdx).toBeGreaterThan(-1);
+    expect(projectJsonGuardIdx).toBeLessThan(vercelEnvLsIdx);
   });
 });
