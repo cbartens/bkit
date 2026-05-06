@@ -9,7 +9,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { writeTier1, writeTier2, writeTier3, type WriteSet } from "./bkit-tiers.js";
+import {
+  writeTier1,
+  writeTier2,
+  writeTier3,
+  ensurePackageJsonScripts,
+  type WriteSet,
+} from "./bkit-tiers.js";
 import type { TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
@@ -322,39 +328,30 @@ export function runCoreModule(ctx: ModuleContext): void {
   });
 
   // 5. First-run extra logging (only when .bkit-version was absent at start of install)
+  // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, prepare)
+  // are auto-added by their respective modules — no manual copy-paste required.
   if (isFirstInstall) {
-    // Build the script block as a proper JSON object so values are copy-paste safe.
-    const scriptEntries = JSON.stringify(
-      {
-        "lint:prose":
-          'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
-        "lint:slop": "slop-scan scan .",
-        "format:check": "prettier --check .",
-        prepare: "husky install",
-      },
-      null,
-      2,
-    )
-      .split("\n")
-      .slice(1, -1) // strip outer { }
-      .map((l) => `   ${l}`)
-      .join("\n");
-
     printSink.push(
       `
 [bkit] First install detected (.bkit-version was absent). Post-install steps:
 
 1. Add GH_BKIT_TOKEN to your GitHub Actions repository secrets:
-   - Create a fine-grained PAT with Contents: read on cbartens/bkit
+   - Create a classic PAT with \`read:packages\` scope (fine-grained PATs are
+     not currently supported by GitHub Packages npm registry).
    - GitHub Settings → Secrets and variables → Actions → New repository secret
    - Name: GH_BKIT_TOKEN
    - See README.md ## Consumer CI auth for full setup.
 
-2. Add these scripts to your package.json "scripts" block (copy-paste ready):
-${scriptEntries}
+2. Add a \`.npmrc\` at your repo root so pnpm can authenticate to GH Packages:
+     @cbartens:registry=https://npm.pkg.github.com
+     //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
-3. Add to pnpm-workspace.yaml or package.json:
-   onlyBuiltDependencies: ["@cbartens/bkit"]
+3. Run \`pnpm install\` to refresh the lockfile, then commit.
+
+Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,
+prepare) are auto-added by bkit when their parent module installs. Run
+\`pnpm bkit install --full\` to seed them all. Existing scripts are preserved
+(consumer values always win).
 `,
     );
   }
@@ -510,10 +507,11 @@ export function runCursorModule(ctx: ModuleContext): void {
 // GH_BKIT_TOKEN secret presence check
 //
 // Detects whether the consumer's GitHub repo has the GH_BKIT_TOKEN secret set
-// (required for the seeded ci.yml's auth-shim step to fetch the private bkit
-// dep during pnpm install in CI). Uses the local `gh` CLI; degrades silently
-// if `gh` is unavailable, unauthenticated, or this directory isn't a GitHub
-// repo (e.g. local-only worktree, brand-new repo not yet pushed).
+// (required for the seeded ci.yml install step to fetch @cbartens/bkit from
+// the GitHub Packages npm registry during pnpm install in CI). Uses the local
+// `gh` CLI; degrades silently if `gh` is unavailable, unauthenticated, or
+// this directory isn't a GitHub repo (e.g. local-only worktree, brand-new repo
+// not yet pushed).
 //
 // Returns:
 //   "present"       — secret exists; no action needed
@@ -543,29 +541,49 @@ function checkBkitTokenSecret(secretName = "GH_BKIT_TOKEN"): SecretCheckResult {
 
 const GH_BKIT_TOKEN_MISSING_INSTRUCTIONS = `[bkit] GH_BKIT_TOKEN secret NOT FOUND in this repo's GitHub Actions secrets.
 
-Without it, CI runs that need to install @cbartens/bkit will fail at
-\`pnpm install --frozen-lockfile\` because the GHA runner can't auth into the
-private bkit repo (error: "could not read Username for 'https://github.com/'").
+Without it, CI runs that install @cbartens/bkit will fail at
+\`pnpm install --frozen-lockfile\` because the GHA runner cannot authenticate
+against the GitHub Packages npm registry.
+
+IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in
+the runner environment, pnpm silently ignores the entire .npmrc file and falls
+back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package
+not found), NOT as a "token missing" error. If you see a 401 during pnpm
+install, check GH_BKIT_TOKEN first.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  Set the GH_BKIT_TOKEN secret on this repo. The user has the token value
-  stored locally in the bkit repo's .env file. Ask the user for the value
-  (do not echo it back), then run ONE of these:
+  1. Ensure a .npmrc file exists at the repo root with these two lines:
 
-      gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+        @cbartens:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
-      # or, if user prefers piping from a file:
-      gh secret set GH_BKIT_TOKEN < /path/to/file/with/token
+     The \${GH_BKIT_TOKEN} form uses env-variable interpolation — do NOT
+     hardcode the token value. pnpm reads this at install time.
 
-  Web alternative: GitHub repo → Settings → Secrets and variables →
-  Actions → New repository secret. Name: GH_BKIT_TOKEN.
+  2. Set the GH_BKIT_TOKEN secret on this repo. The token must be a GitHub
+     PAT (classic or fine-grained) with read:packages scope (classic) OR
+     Packages: read permission (fine-grained). Generate at:
+     https://github.com/settings/tokens
 
-  Token requirements: fine-grained PAT, scope 'cbartens/bkit',
-  permission Contents:read. Generate at:
-  https://github.com/settings/tokens?type=beta
+     Then run ONE of these to set it:
 
-  Verify with: gh secret list | grep GH_BKIT_TOKEN
+        gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+
+        # or, if user prefers piping from a file:
+        gh secret set GH_BKIT_TOKEN < /path/to/file/with/token
+
+     Web alternative: GitHub repo → Settings → Secrets and variables →
+     Actions → New repository secret. Name: GH_BKIT_TOKEN.
+
+  3. Ensure the install step in .github/workflows/ci.yml passes the env var:
+
+        - name: Install dependencies
+          run: pnpm install --frozen-lockfile
+          env:
+            GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+
+  Verify secret set: gh secret list | grep GH_BKIT_TOKEN
 `;
 
 // ---------------------------------------------------------------------------
@@ -589,48 +607,79 @@ function detectVercelProject(cwd: string): boolean {
   return false;
 }
 
-const VERCEL_AUTH_INSTRUCTIONS = `[bkit] vercel.json detected — Vercel needs its OWN auth-shim. The GitHub Actions shim does NOT apply to Vercel preview/production builds (separate runner, fresh container, no git auth inherited).
+const VERCEL_AUTH_INSTRUCTIONS = `[bkit] vercel.json detected — Vercel needs its own registry auth. Vercel runs pnpm install in a separate build container and does NOT inherit GitHub Actions secrets automatically.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  1. Open the relevant vercel.json (root or apps/<name>/vercel.json) and
-     ensure 'installCommand' applies the bkit auth-shim before pnpm install:
+  1. Ensure a .npmrc file exists at the repo root with these two lines:
 
-        "installCommand": "git config --global url.\\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\\".insteadOf \\"https://github.com/cbartens/bkit/\\" && pnpm install"
+        @cbartens:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
-     If 'installCommand' already exists, prepend the git-config call to it
-     (use '&&' to chain). Do NOT remove existing flags the consumer relies on.
+     Commit this .npmrc to the repo — Vercel reads it during its build.
+     The \${GH_BKIT_TOKEN} form uses env-variable interpolation at install
+     time; do NOT hardcode the token value.
 
-  2. Set GH_BKIT_TOKEN as a Vercel env var for each environment that builds:
+  2. Remove any legacy git-shim installCommand from vercel.json. If vercel.json
+     has an installCommand that injects a git-credential-helper insteadOf rewrite,
+     Remove it. Replace with plain pnpm install (or remove the installCommand key
+     entirely to use Vercel's default):
+
+        "installCommand": "pnpm install"
+
+     Or simply delete the installCommand key if no other flags are needed.
+
+  3. Set GH_BKIT_TOKEN as a Vercel environment variable for each environment:
 
         vercel env add GH_BKIT_TOKEN preview
         vercel env add GH_BKIT_TOKEN production
 
      Or via web: Vercel project → Settings → Environment Variables.
-     Use the same token value as the GitHub Actions secret
-     (fine-grained PAT, scope cbartens/bkit, permission Contents:read).
-     Token is stored locally in bkit repo's .env — ask the user for it.
+     The token must be a GitHub PAT with read:packages scope (classic) or
+     Packages: read permission (fine-grained).
 
-  3. Trigger a redeploy (push a commit) and watch the Vercel build log
-     for 'pnpm install' succeeding without 'could not read Username for
-     https://github.com/' errors.
+  4. Trigger a redeploy (push a commit) and watch the Vercel build log
+     for pnpm install succeeding with the package resolved from
+     https://npm.pkg.github.com/.
 `;
 
 const GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS = `[bkit] Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).
 
 Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub
-repo. It is required for the seeded ci.yml auth-shim step to fetch the
-private @cbartens/bkit dep in CI.
+repo. It is required for the seeded ci.yml install step to authenticate
+against the GitHub Packages npm registry when installing @cbartens/bkit.
+
+IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in
+the runner environment, pnpm silently ignores the entire .npmrc file and falls
+back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package
+not found), NOT as a "token missing" error. If you see a 401 during pnpm
+install, check GH_BKIT_TOKEN first.
 
 INSTRUCTIONS FOR AN AI AGENT:
 
-  Once \`gh\` is installed and authenticated (\`gh auth login\`), run:
+  1. Ensure a .npmrc file exists at the repo root with these two lines:
 
-      gh secret list | grep GH_BKIT_TOKEN
+        @cbartens:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
-  If absent, ask the user for the token (stored in bkit repo .env) and run:
+     The \${GH_BKIT_TOKEN} form uses env-variable interpolation — do NOT
+     hardcode the token value.
 
-      gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+  2. Once \`gh\` is installed and authenticated (\`gh auth login\`), verify:
+
+        gh secret list | grep GH_BKIT_TOKEN
+
+     If absent, the token must be a GitHub PAT with read:packages scope
+     (classic) or Packages: read permission (fine-grained). Set it:
+
+        gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
+
+  3. Ensure the install step in .github/workflows/ci.yml passes the env var:
+
+        - name: Install dependencies
+          run: pnpm install --frozen-lockfile
+          env:
+            GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 `;
 
 // ---------------------------------------------------------------------------
@@ -653,16 +702,32 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   jobs and triggers — preserve those.
 
   Required merge actions:
-  1. Ensure a job named 'run-tests' (or equivalent) exists with the steps
-     shown below. If your existing workflow already has a similar job,
-     merge any missing steps in instead of creating a duplicate.
-  2. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
+  1. Ensure a .npmrc file exists at the repo root with these two lines:
+
+        @cbartens:registry=https://npm.pkg.github.com
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
+
+     Commit this .npmrc file — the CI runner reads it during pnpm install.
+
+  2. Ensure the install step passes GH_BKIT_TOKEN from the repo secret:
+
+        - name: Install dependencies
+          run: pnpm install --frozen-lockfile
+          env:
+            GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+
+  3. Remove any 'Configure private-repo auth' step (git config --global
+     url."...cbartens/bkit...".insteadOf "...") — this git auth-shim is
+     obsolete. The .npmrc + env var approach replaces it entirely.
+
+  4. Ensure the GitHub repo secret GH_BKIT_TOKEN is set with a PAT that has
+     read:packages scope (classic) or Packages: read permission (fine-grained).
+
+  5. Ensure 'package.json' has '"packageManager": "pnpm@<version>"' set.
      pnpm/action-setup@v4 reads this as single source of truth and will
      fail if it is missing or conflicts with a 'with: version:' block.
-  3. Ensure the GitHub repo has a secret named GH_BKIT_TOKEN
-     (fine-grained PAT, scope: 'cbartens/bkit', permission: Contents:read).
-     Without it the auth-shim step fails on private-repo pnpm install.
-  4. Ensure the package.json scripts referenced by the workflow exist:
+
+  6. Ensure the package.json scripts referenced by the workflow exist:
      "format:check", "lint:prose", "lint:slop". Run 'bkit install --lint'
      to seed them, or add manually.
 
@@ -805,14 +870,41 @@ export function runCiModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
 
-  // Always remind which package.json scripts the workflow expects.
-  // Seeded by --lint (and prepare); --ci alone does NOT add them.
-  printSink.push(
-    `[bkit] ci: the generated ci.yml invokes the following package.json scripts — ensure they exist (run \`bkit install --lint\` to seed them, or add manually):
-   "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'"
-   "lint:slop": "slop-scan scan ."
-   "format:check": "prettier --check ."`,
-  );
+  // Ensure the typecheck script the workflow calls exists in package.json.
+  // `test` is deliberately not managed — too opinionated for a default.
+  const typecheckDefault = fs.existsSync("tsconfig.json")
+    ? "tsc --noEmit"
+    : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
+  const ciScripts = ensurePackageJsonScripts({ typecheck: typecheckDefault }, dryRun, ws);
+  if (ciScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}ci: package.json scripts added [${ciScripts.added.join(", ")}]`,
+    );
+  }
+  if (ciScripts.missingPkg) {
+    printSink.push(
+      "[bkit] ci: package.json not found — cannot ensure `typecheck` script. The seeded ci.yml will fail until you add it.",
+    );
+  } else if (ciScripts.malformed) {
+    printSink.push(
+      "[bkit] ci: package.json failed to parse — cannot ensure `typecheck` script. Fix JSON syntax and re-run.",
+    );
+  }
+  // The `test` script is the consumer's responsibility — flag if absent so they know.
+  if (!dryRun && !ciScripts.missingPkg && !ciScripts.malformed) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
+        scripts?: Record<string, string>;
+      };
+      if (!pkg.scripts || !pkg.scripts.test) {
+        printSink.push(
+          '[bkit] ci: package.json has no `test` script. The seeded ci.yml calls `pnpm test` — add a script (e.g. "test": "vitest run") or remove the step from ci.yml.',
+        );
+      }
+    } catch {
+      // Already handled above
+    }
+  }
 
   // Check whether GH_BKIT_TOKEN secret is set on the consumer's GitHub repo.
   // The seeded ci.yml auth-shim depends on it. Skip the check on dry-run so
@@ -915,6 +1007,33 @@ export function runLintModule(ctx: ModuleContext): void {
       console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
     }
   }
+
+  // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
+  // expect actually exist in package.json. Add-if-missing; consumer values win.
+  const lintScripts = ensurePackageJsonScripts(
+    {
+      "format:check": "prettier --check .",
+      "lint:prose":
+        'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
+      "lint:slop": "slop-scan scan .",
+    },
+    dryRun,
+    ws,
+  );
+  if (lintScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`,
+    );
+  }
+  if (lintScripts.missingPkg) {
+    printSink.push(
+      "[bkit] lint: package.json not found — cannot ensure lint scripts. Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`.",
+    );
+  } else if (lintScripts.malformed) {
+    printSink.push(
+      "[bkit] lint: package.json failed to parse — cannot ensure lint scripts. Fix JSON syntax and re-run.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -951,10 +1070,28 @@ export function runGitHooksModule(ctx: ModuleContext): void {
     }
   }
 
-  // Print-sink: suggest prepare script
-  printSink.push(
-    '[bkit] git-hooks: add "prepare": "husky install" to your package.json scripts to activate hooks.',
-  );
+  // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.
+  // Husky 9+ requires this; without it, the .husky/* files exist but never run.
+  const hookScripts = ensurePackageJsonScripts({ prepare: "husky install" }, dryRun, ws);
+  if (hookScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}git-hooks: package.json scripts added [${hookScripts.added.join(", ")}]`,
+    );
+  }
+  if (hookScripts.missingPkg) {
+    printSink.push(
+      '[bkit] git-hooks: package.json not found — cannot ensure `prepare` script. Hooks installed but won\'t activate until you add `"prepare": "husky install"` and run `pnpm install`.',
+    );
+  } else if (hookScripts.malformed) {
+    printSink.push(
+      "[bkit] git-hooks: package.json failed to parse — cannot ensure `prepare` script. Fix JSON syntax and re-run.",
+    );
+  } else if (hookScripts.preserved.includes("prepare")) {
+    // Consumer has a custom `prepare` value — note it but don't override
+    printSink.push(
+      "[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it includes `husky install` for hooks to activate.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

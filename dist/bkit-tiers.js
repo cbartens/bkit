@@ -130,3 +130,56 @@ export function writeTier3(srcPath, dstPath, dryRun, printSink, ws, aiMessage, t
     ws.writes.push({ path: dstPath, action: "write" });
     return { wrote: !dryRun, suggested: false };
 }
+// ---------------------------------------------------------------------------
+// Managed package.json scripts — add-if-missing with consumer ownership
+//
+// Semantics:
+//   - File absent           → no-op, returns missingPkg: true
+//   - File malformed JSON   → no-op, returns malformed: true
+//   - script key absent     → add with default value (recorded as one update)
+//   - script key exists     → preserve consumer value (never overwrite)
+//
+// One WriteSet entry per call when any script was added. Drift (missing keys)
+// surfaces in `bkit check` because `dryRun=true` still pushes to ws.writes.
+// ---------------------------------------------------------------------------
+export function ensurePackageJsonScripts(scripts, dryRun, ws) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath)) {
+        return { added: [], preserved: [], missingPkg: true, malformed: false };
+    }
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    let pkg;
+    try {
+        pkg = JSON.parse(raw);
+    }
+    catch {
+        return { added: [], preserved: [], missingPkg: false, malformed: true };
+    }
+    let pkgScripts = pkg.scripts ?? undefined;
+    const added = [];
+    const preserved = [];
+    for (const [name, value] of Object.entries(scripts)) {
+        if (pkgScripts && Object.prototype.hasOwnProperty.call(pkgScripts, name)) {
+            preserved.push(name);
+        }
+        else {
+            if (!pkgScripts) {
+                pkgScripts = {};
+                pkg.scripts = pkgScripts;
+            }
+            pkgScripts[name] = value;
+            added.push(name);
+        }
+    }
+    if (added.length > 0) {
+        ws.writes.push({ path: pkgPath, action: "update" });
+        if (!dryRun) {
+            // Preserve indent style and trailing newline of the original file.
+            const indentMatch = raw.match(/\n([ \t]+)"/);
+            const indent = indentMatch ? indentMatch[1] : "  ";
+            const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+        }
+    }
+    return { added, preserved, missingPkg: false, malformed: false };
+}

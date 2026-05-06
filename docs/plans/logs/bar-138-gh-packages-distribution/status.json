@@ -211,5 +211,178 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "build",
+    "startedAt": "2026-05-06T00:05:53Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T00:05:53Z",
+        "commitSha": "b2f1f9793f43a1dcd27a0846660324239e7ffafa",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-06T00:07:13Z",
+        "commitSha": "834fcb75e6856f7ed0405158e29cdb29c623da25",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-input.md"
+        ]
+      },
+      {
+        "step": "branch-sync",
+        "status": "DONE",
+        "at": "2026-05-06T00:07:37Z",
+        "commitSha": "0334cd9983e82a7911ebdb9d12f22149e6818b65",
+        "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-06T00:09:14Z",
+        "commitSha": "dad8ee0904e6f9b5b1491ec840383c7e83248c87",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-install-skills.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "at": "2026-05-06T00:20:18Z",
+        "commitSha": "c4dbc0dd37a8c7c477f7740166291074068b3473",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-execute-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-06T00:23:16Z",
+        "commitSha": "10f69d4f028f47151c5734bdf5291d558aeb0320",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-1-1.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 2,
+        "at": "2026-05-06T00:57:46Z",
+        "commitSha": "bbd5b520c3cda02a749133e6167581f42e4c990e",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-execute-2-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "subPlan": 2,
+        "failures": 0,
+        "at": "2026-05-06T01:00:53Z",
+        "commitSha": "6a25b758774a070530665d45da70194b84b39282",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-2-1.md"
+        ]
+      },
+      {
+        "step": "plan-verify-holistic",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-06T01:05:10Z",
+        "commitSha": "66373550c07407cfa6658d79785a2c1d134c6959",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-holistic.md"
+        ]
+      },
+      {
+        "step": "challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-06T01:09:15Z",
+        "commitSha": "9cdcd812dc4fdb34781e910a81a81322c4069678",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-challenge.md"
+        ]
+      },
+      {
+        "step": "challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T01:13:50Z",
+        "commitSha": "1ffc3f505271796157e0fba5288dfb981ca3a293",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-challenge-remediate-log.md"
+        ]
+      },
+      {
+        "step": "challenge-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T01:16:31Z",
+        "commitSha": "90ec98d979b00eb854077b1a7afde9185ad496b5",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-challenge-tests.md"
+        ]
+      },
+      {
+        "step": "run-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-06T01:17:12Z",
+        "commitSha": "7b07efb09eceabc4f51a07616f51d27cd2a62a2a",
+        "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T01:18:50Z",
+        "commitSha": "f08f75a6b5181bc3d90c634d3a264c76117cb6e4",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-summary.md"
+        ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-06T01:19:39Z",
+        "commitSha": "8dcf8b9845bacde434076ddc3eedf3d291f4cd2f",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/3"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T01:20:30Z",
+        "commitSha": "38eaa0296a71ac380bca7347142602825906e35f",
+        "artifacts": []
+      }
+    ]
   }
 ]

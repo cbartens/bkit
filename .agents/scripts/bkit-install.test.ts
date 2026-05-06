@@ -697,65 +697,41 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task 6.1 — Auth-shim inside ci.yml template assertion
+// Task 6.1 — ci.yml template registry-auth assertion (updated for BAR-138)
 // ---------------------------------------------------------------------------
 
-describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
-  it("ci.yml template contains auth-shim line, ordered before `pnpm install --frozen-lockfile`", () => {
-    // Note: in v0.2.1 ci.yml switched from Tier 2 (managed-block) to Tier 3
-    // (seed-or-print), so the template no longer has bkit:start/end markers —
-    // it IS the whole workflow. Assert auth-shim presence and ordering on the
-    // raw template content.
+describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)", () => {
+  // BAR-138: The consumer CI template was updated to use GitHub Packages
+  // registry auth (.npmrc + GH_BKIT_TOKEN env var) instead of the old git
+  // auth-shim (git config --global url.insteadOf). Tests updated accordingly.
+
+  it("ci.yml template exists", () => {
     const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
     expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
+  });
 
+  it("ci.yml template does NOT contain the old git auth-shim (BAR-138 cleanup)", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
+    // The old auth-shim has been removed — these strings must be absent
+    expect(content).not.toContain("git config --global url.");
+    expect(content).not.toContain("insteadOf");
+    expect(content).not.toContain("Configure private-repo auth");
+  });
 
-    // Auth-shim must be literally present
-    expect(content).toContain("GH_BKIT_TOKEN");
-    expect(content).toContain("git config --global url.");
-
-    // Auth-shim must appear BEFORE pnpm install --frozen-lockfile
+  it("ci.yml template install step carries env: GH_BKIT_TOKEN for registry auth (BAR-138)", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    // GH_BKIT_TOKEN must be present as the env var for registry auth
+    expect(content).toContain("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}");
+    // The env block must appear after the pnpm install line
     const lines = content.split("\n");
-    const authShimLine = lines.findIndex((l) => l.includes("GH_BKIT_TOKEN"));
     const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
-    expect(authShimLine).toBeGreaterThan(-1);
+    const envTokenLine = lines.findIndex((l) =>
+      l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
+    );
     expect(installLine).toBeGreaterThan(-1);
-    expect(authShimLine).toBeLessThan(installLine);
-  });
-
-  // -------------------------------------------------------------------------
-  // MED-3 regression — auth-shim must be scoped to cbartens/bkit/, not all of github.com
-  // -------------------------------------------------------------------------
-
-  it("MED-3: auth-shim insteadOf is scoped to 'https://github.com/cbartens/bkit/' not bare 'https://github.com/'", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
-    const content = fs.readFileSync(templatePath, "utf-8");
-
-    // Must contain the narrow scope — exact repo path
-    expect(content).toContain("https://github.com/cbartens/bkit/");
-
-    // Must NOT use the broad rewrite that would hijack all GitHub HTTPS traffic
-    // Extract the insteadOf line and assert it is NOT bare "https://github.com/"
-    const lines = content.split("\n");
-    const insteadOfLines = lines.filter((l) => l.includes("insteadOf"));
-    expect(insteadOfLines.length).toBeGreaterThan(0);
-    for (const line of insteadOfLines) {
-      // The insteadOf target must include the repo path, not stop at "github.com/"
-      expect(line).not.toMatch(/insteadOf\s+"https:\/\/github\.com\/"\s*$/);
-      expect(line).toContain("cbartens/bkit/");
-    }
-  });
-
-  it("MED-3: auth-shim url rewrite key also contains cbartens/bkit/ (both sides scoped)", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
-    const content = fs.readFileSync(templatePath, "utf-8");
-
-    // The git config --global url."<key>".insteadOf "<value>" form — both key and value must scope to the repo
-    const gitConfigLine = content.split("\n").find((l) => l.includes("git config --global url."));
-    expect(gitConfigLine).toBeDefined();
-    // Key (the URL being configured) must also name the specific repo
-    expect(gitConfigLine!).toContain("cbartens/bkit/");
+    expect(envTokenLine).toBeGreaterThan(installLine);
   });
 
   it("ci.yml template after applyTokens has no {{PLACEHOLDER}} tokens remaining", () => {
@@ -771,6 +747,6 @@ describe("ci.yml template auth-shim assertion (Task 6.1)", () => {
     expect(substituted).not.toContain("{{DEFAULT_BRANCH}}");
     expect(substituted).not.toContain("{{PROJECT_NAME}}");
     expect(substituted).toContain("node-version: 22");
-    expect(substituted).toContain("branches: [main]");
+    expect(substituted).toContain("branches: [main, dev]");
   });
 });

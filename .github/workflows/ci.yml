@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   run-tests:
@@ -19,9 +19,6 @@ jobs:
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
-
-      - name: Configure private-repo auth
-        run: git config --global url."https://x-access-token:${{ secrets.GH_BKIT_TOKEN }}@github.com/cbartens/bkit/".insteadOf "https://github.com/cbartens/bkit/"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

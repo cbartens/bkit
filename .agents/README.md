@@ -113,40 +113,26 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 
 ## Distribution
 
-bkit is **not** published to the npm registry. It's installed as a git dependency from `github.com/cbartens/bkit` (private repo). Consumers add it via:
+bkit is distributed as a **scoped package via the GitHub Packages npm registry** (`https://npm.pkg.github.com`). Consumers install via:
 
 ```bash
-pnpm add -D github:cbartens/bkit#v0.2.0
+pnpm add -D @cbartens/bkit@^0.4.0
 ```
 
-On install, pnpm clones the repo, runs the `prepare` lifecycle script (which runs `tsc` to compile `dist/`), and exposes the `bkit` bin. Auth = standard git auth (SSH or HTTPS PAT) — pnpm uses whatever your `git clone` would.
+Auth requires a PAT with `read:packages` scope (classic) or Packages: read (fine-grained) set as `GH_BKIT_TOKEN`, plus `.npmrc` at the repo root:
 
-### Required consumer config — pnpm 10 build-script allowlist
-
-pnpm 10 blocks `prepare` (and other lifecycle scripts) on git-hosted deps by default for security (`ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED`). bkit relies on `prepare: "tsc"` to materialise `dist/` at install time, so the consumer must allowlist it. Pick one:
-
-```yaml
-# pnpm-workspace.yaml
-onlyBuiltDependencies:
-  - "@cbartens/bkit"
+```
+@cbartens:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
 ```
 
-```json
-// package.json (alternative)
-{
-  "pnpm": {
-    "onlyBuiltDependencies": ["@cbartens/bkit"]
-  }
-}
-```
-
-Re-run `pnpm install` after adding. Without this, the package installs but `dist/bkit-install.js` won't exist and the `bkit` bin entry will fail with `ENOENT`.
+No git-clone, no lifecycle hooks, no `prepare` script, no `onlyBuiltDependencies` allowlist needed. See `README.md` § Consumer CI auth and § Consumer Vercel auth for full setup.
 
 ## Install / regenerate
 
 The `.agents/` directory is canonical. `bkit install` regenerates the host-specific outputs and rewrites bkit-managed blocks across the repo.
 
-In a consumer repo (after `pnpm add -D github:cbartens/bkit`):
+In a consumer repo (after `pnpm add -D @cbartens/bkit@^0.4.0`):
 
 ```bash
 # Full install — all modules (core + claude + cursor + ci + lint + git-hooks)
