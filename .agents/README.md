@@ -52,8 +52,7 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 <!-- prettier-ignore -->
 | Tool | Version | Used for |
 | --- | --- | --- |
-| `bun` | latest | Run `bkit-install.ts` |
-| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates |
+| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .agents/scripts/bkit-install.ts` in bkit's own dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` ≥ 2.5 | — | Worktree operations |
 | `jq` | latest | `status.json` mutations in workflow Bash |
@@ -119,14 +118,14 @@ bkit is distributed as a **scoped package via the GitHub Packages npm registry**
 pnpm add -D @cbartens/bkit@^0.4.0
 ```
 
-Auth requires a PAT with `read:packages` scope (classic) or Packages: read (fine-grained) set as `GH_BKIT_TOKEN`, plus `.npmrc` at the repo root:
+Auth requires a **classic PAT with `read:packages` scope** (fine-grained PATs are currently rejected by GHPR npm registry — see README § Consumer CI auth) set as `GH_BKIT_TOKEN`, plus `.npmrc` at the repo root:
 
 ```
 @cbartens:registry=https://npm.pkg.github.com
 //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
 ```
 
-No git-clone, no lifecycle hooks, no `prepare` script, no `onlyBuiltDependencies` allowlist needed. See `README.md` § Consumer CI auth and § Consumer Vercel auth for full setup.
+No git-clone, no `onlyBuiltDependencies` allowlist needed. The seeded `prepare: husky install` script in consumers is a managed bkit addition (see § Three-tier file ownership) — bkit also seeds the `husky` devDep so `pnpm install` resolves the binary on first run. See `README.md` § Consumer CI auth and § Consumer Vercel auth for full setup.
 
 ## Install / regenerate
 
@@ -167,8 +166,9 @@ bkit uses a three-tier model to handle different file ownership scenarios withou
 | Tier | Semantics | Files |
 | --- | --- | --- |
 | **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
-| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.github/workflows/ci.yml`, `.vale.ini`, `.gitignore`, `.husky/pre-commit`, `.husky/pre-push`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
-| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `package.json` script entries |
+| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.husky/pre-commit`, `.husky/pre-push`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
+| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
+| **Managed package.json keys** (BAR-138, v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | `scripts.typecheck` (`--ci`), `scripts.format:check` / `lint:prose` / `lint:slop` (`--lint`), `scripts.prepare` (`--git-hooks`); `devDependencies.prettier` + `slop-scan` (`--lint`), `devDependencies.husky` (`--git-hooks`) |
 
 **Marker syntax** is format-specific:
 
@@ -191,13 +191,18 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.claude/agents/bkit-*.md` | claude | `.agents/prompts/` (byte-identical) | Host pass — always overwrite |
 | `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
-| `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 2 hash-comment; tokens substituted |
+| `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
+| `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
 | `slop-scan.config.json` | lint | `.agents/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
 | `.prettierignore` | lint | `.agents/templates/.prettierignore` | Tier 2 hash-comment |
+| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` | lint | hardcoded defaults | Managed-key (add-if-missing) |
+| `package.json#devDependencies.prettier` / `slop-scan` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`) | Managed-key (add-if-missing) |
 | `.husky/pre-commit` | git-hooks | `.agents/templates/.husky/pre-commit` | Tier 2 hash-comment |
 | `.husky/pre-push` | git-hooks | `.agents/templates/.husky/pre-push` | Tier 2 hash-comment |
+| `package.json#scripts.prepare` | git-hooks | hardcoded default (`husky install`) | Managed-key (add-if-missing) |
+| `package.json#devDependencies.husky` | git-hooks | hardcoded version-spec (`^9.1.7`) | Managed-key (add-if-missing) |
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
@@ -301,8 +306,8 @@ Edit the source in `.agents/workflows/` (slash-command orchestrators) or `.agent
 # Edit source
 vim .agents/workflows/bkit-build.md
 
-# Regenerate
-bun .agents/scripts/bkit-install.ts install
+# Regenerate (run dist binary; faster than tsx and matches what consumers run)
+pnpm build && node dist/bkit-install.js install
 
 # Commit both source and generated output together
 git add .agents/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md

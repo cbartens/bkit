@@ -39,10 +39,11 @@ pnpm exec bkit check --full
 
 bkit resolves from the **GitHub Packages npm registry**. Authentication requires:
 
-1. **Create a PAT** on GitHub with `read:packages` scope:
-   - **Classic PAT:** GitHub Settings → Developer settings → Personal access tokens → Tokens (classic) → Scope: `read:packages`
-   - **Fine-grained PAT:** GitHub Settings → Developer settings → Fine-grained tokens → Permissions: **Packages: read**
+1. **Create a classic PAT** on GitHub with `read:packages` scope:
+   - GitHub Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Scope: `read:packages`
    - Copy the generated token
+
+   > **⚠️ Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403, even when `Packages: read` is granted. Confirmed against `npm.pkg.github.com` 2026-05-06. If/when GitHub fixes this, fine-grained PATs will become preferred (narrower scope); for now classic is the only working option.
 
 2. **Add the secret** to your consumer repo:
    - GitHub repo → Settings → Secrets and variables → Actions → New repository secret
