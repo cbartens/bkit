@@ -147,7 +147,7 @@ export function detectLintProseF9Vulnerable(cwd: string): PreflightFinding | nul
     detect:
       "package.json#scripts.lint:prose exists but lacks the `[ -d .vale/styles/write-good ]` guard (F9 — BAR-138).",
     action:
-      "Update lint:prose to the guarded form: `bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)\"; fi'`",
+      'Update lint:prose to the guarded form: `bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'`',
   };
 }
 
@@ -172,13 +172,7 @@ export function detectBkitVersionMajorDowngrade(
 }
 
 export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null {
-  const installedPkgPath = path.join(
-    cwd,
-    "node_modules",
-    "@cbartens",
-    "bkit",
-    "package.json",
-  );
+  const installedPkgPath = path.join(cwd, "node_modules", "@cbartens", "bkit", "package.json");
   const versionFile = path.join(cwd, ".agents", ".bkit-version");
 
   if (!fs.existsSync(installedPkgPath) || !fs.existsSync(versionFile)) return null;

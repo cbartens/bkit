@@ -687,7 +687,7 @@ export function runLintModule(ctx) {
         // after .vale.ini was rewritten or after a clean checkout). Hard-failing
         // on a missing package would break local commits via the pre-commit
         // hook with no actionable signal.
-        "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)\"; fi'",
+        'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
         "lint:slop": "slop-scan scan .",
     }, dryRun, ws);
     if (lintScripts.added.length > 0) {

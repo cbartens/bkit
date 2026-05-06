@@ -835,7 +835,7 @@ export function runLintModule(ctx: ModuleContext): void {
         // after .vale.ini was rewritten or after a clean checkout). Hard-failing
         // on a missing package would break local commits via the pre-commit
         // hook with no actionable signal.
-        "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)\"; fi'",
+        'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
       "lint:slop": "slop-scan scan .",
     },
     dryRun,
@@ -984,8 +984,7 @@ export function runGitHooksModule(ctx: ModuleContext): void {
       id: "git-hooks-husky-devdep-added",
       severity: "advisory",
       detect: "husky added to package.json devDependencies.",
-      action:
-        "Run `pnpm install` to fetch husky; husky install will then activate the hooks.",
+      action: "Run `pnpm install` to fetch husky; husky install will then activate the hooks.",
     });
     // Thread devDepsAdded through the WriteSet for Phase 3 detection
     const lastWrite = ws.writes[ws.writes.length - 1];

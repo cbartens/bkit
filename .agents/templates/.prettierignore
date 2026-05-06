@@ -2,7 +2,9 @@
 
 node_modules/
 dist/
-.agents/
+.agents/skills/
+.claude/
+.cursor/
 .github/
 .husky/_/
 *.tsbuildinfo

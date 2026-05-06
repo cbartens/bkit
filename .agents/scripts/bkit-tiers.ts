@@ -311,10 +311,7 @@ export function ensurePackageJsonDevDeps(
     // dep instead of devDep — don't double-add).
     const alreadyInDeps =
       pkg.dependencies && Object.prototype.hasOwnProperty.call(pkg.dependencies, name);
-    if (
-      alreadyInDeps ||
-      (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))
-    ) {
+    if (alreadyInDeps || (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))) {
       preserved.push(name);
     } else {
       if (!pkgDevDeps) {

@@ -127,7 +127,7 @@ export function detectLintProseF9Vulnerable(cwd) {
         id: "lint-prose-f9-vulnerable",
         severity: "advisory",
         detect: "package.json#scripts.lint:prose exists but lacks the `[ -d .vale/styles/write-good ]` guard (F9 — BAR-138).",
-        action: "Update lint:prose to the guarded form: `bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)\"; fi'`",
+        action: 'Update lint:prose to the guarded form: `bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'`',
     };
 }
 export function detectBkitVersionMajorDowngrade(cwd, installingVersion) {

@@ -447,11 +447,7 @@ describe("ensurePackageJsonDevDeps", () => {
   it("seeds devDependencies block when absent", () => {
     writePkg({ name: "x", version: "1.0.0" });
     const ws = makeWriteSet();
-    const result = ensurePackageJsonDevDeps(
-      { husky: "^9.1.7", prettier: "^3.5.3" },
-      false,
-      ws,
-    );
+    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7", prettier: "^3.5.3" }, false, ws);
     expect(result.added).toEqual(["husky", "prettier"]);
     expect(ws.writes).toEqual([{ path: "package.json", action: "update" }]);
     expect(readPkg().devDependencies).toEqual({ husky: "^9.1.7", prettier: "^3.5.3" });

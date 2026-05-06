@@ -259,9 +259,7 @@ export function formatChecklist(findings: PreflightFinding[]): string {
   const lines: string[] = [];
 
   lines.push(`\n${banner}`);
-  lines.push(
-    `[bkit] Post-install checklist (${total} item${total === 1 ? "" : "s"})`,
-  );
+  lines.push(`[bkit] Post-install checklist (${total} item${total === 1 ? "" : "s"})`);
   lines.push(banner);
   lines.push(
     "\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
@@ -363,8 +361,7 @@ export function runPostInstallCheck(
       phase3.push({
         id: "vercel-env-missing-preview",
         severity: "advisory",
-        detect:
-          "vercel.json detected but GH_BKIT_TOKEN is absent from Vercel preview environment.",
+        detect: "vercel.json detected but GH_BKIT_TOKEN is absent from Vercel preview environment.",
         action: VERCEL_MISSING_ACTION,
       });
     }

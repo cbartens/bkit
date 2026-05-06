@@ -499,6 +499,11 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
      git worktree remove "$WORKTREE_PATH" --force
      git worktree prune
    fi
+   # Delete orphan local feat branch — `gh pr merge --delete-branch` cannot
+   # remove it while the worktree holds the ref, so it lingers post-merge.
+   # Safe to force-delete: PR was squash-merged, so the branch tip is
+   # unreachable from `dev` and `-D` is the correct verb.
+   git branch -D "feat/{FID}" 2>/dev/null || true
    ```
 2. Verify worktree removed `[ \! -d "$REPO_ROOT/.worktrees/{FID}" ]`. **Else** log warning → continue.
 3. Update status and commit:
@@ -520,6 +525,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent)
 - [ ] `git worktree prune` executed
+- [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `worktree-cleanup` recorded with `commitSha`)
 - [ ] Issue comment attempted (`Step 9` section)
 

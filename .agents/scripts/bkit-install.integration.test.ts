@@ -136,11 +136,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     // .husky/pre-commit without bkit markers — triggers husky-no-markers-precommit
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "#!/bin/sh\npnpm test\n",
-      "utf-8",
-    );
+    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
 
   it("runPreflight returns advisory findings for seeded conditions", () => {
@@ -265,11 +261,7 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "#!/bin/sh\npnpm test\n",
-      "utf-8",
-    );
+    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
 
   it("runPostInstallCheck with dryRun=true returns only preflight advisories (no Phase 3 additions)", () => {

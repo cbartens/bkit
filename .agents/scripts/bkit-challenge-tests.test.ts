@@ -22,11 +22,7 @@ import {
 } from "./bkit-preflight";
 import * as postinstall from "./bkit-postinstall";
 
-const {
-  formatChecklist,
-  runPostInstallCheck,
-  detectShellToken,
-} = postinstall;
+const { formatChecklist, runPostInstallCheck, detectShellToken } = postinstall;
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process (required by bkit-postinstall.ts)
@@ -208,7 +204,9 @@ describe("runPostInstallCheck — intra-phase Phase 3 deduplication", () => {
     // Exactly one — intra-phase dedup dropped the second
     expect(allMatches).toHaveLength(1);
     // First occurrence (detectNpmrcAuth) wins — the spy's text must not appear
-    expect(allMatches[0]!.detect).not.toBe("Second occurrence — must be dropped by intra-phase dedup");
+    expect(allMatches[0]!.detect).not.toBe(
+      "Second occurrence — must be dropped by intra-phase dedup",
+    );
 
     spyVale.mockRestore();
   });
@@ -430,12 +428,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
       throw new Error("gh: command not found");
     });
 
-    const result = runPostInstallCheck(
-      [preflightAdvisory],
-      makeWs(),
-      makeModules("lint"),
-      tmpDir,
-    );
+    const result = runPostInstallCheck([preflightAdvisory], makeWs(), makeModules("lint"), tmpDir);
 
     const matches = result.filter((f) => f.id === "gh-bkit-token-missing-shell");
     // Exactly one occurrence
@@ -479,12 +472,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
     process.env.GH_BKIT_TOKEN = "set";
     execSync.mockReturnValue("GH_BKIT_TOKEN\n"); // no GH secret missing
 
-    const result = runPostInstallCheck(
-      preflightAdvisories,
-      makeWs(),
-      makeModules("lint"),
-      tmpDir,
-    );
+    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
 
     const ids = result.map((f) => f.id);
     const alphaIdx = ids.indexOf("alpha");

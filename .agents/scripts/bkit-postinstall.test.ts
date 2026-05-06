@@ -118,7 +118,11 @@ describe("detectNpmrcAuth", () => {
   });
 
   it("returns 'missing' when .npmrc exists but lacks both lines", () => {
-    fs.writeFileSync(path.join(tmpDir, ".npmrc"), "registry=https://registry.npmjs.org/\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "registry=https://registry.npmjs.org/\n",
+      "utf-8",
+    );
     expect(detectNpmrcAuth(tmpDir)).toBe("missing");
   });
 
@@ -156,13 +160,13 @@ describe("detectGhSecret", () => {
 
 describe("detectVercelProject", () => {
   it("returns true when vercel.json exists at root", () => {
-    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     expect(detectVercelProject(tmpDir)).toBe(true);
   });
 
   it("returns true when vercel.json exists under apps/<name>/", () => {
     fs.mkdirSync(path.join(tmpDir, "apps", "web"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "apps", "web", "vercel.json"), '{}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "apps", "web", "vercel.json"), "{}", "utf-8");
     expect(detectVercelProject(tmpDir)).toBe(true);
   });
 
@@ -183,19 +187,19 @@ describe("detectVercelEnv", () => {
   });
 
   it("returns 'present' when vercel CLI reports GH_BKIT_TOKEN", () => {
-    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     execFileSync.mockReturnValue("GH_BKIT_TOKEN  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("present");
   });
 
   it("returns 'missing' when vercel CLI output lacks GH_BKIT_TOKEN", () => {
-    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     execFileSync.mockReturnValue("OTHER_VAR  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("missing");
   });
 
   it("returns 'unknown' when vercel CLI throws", () => {
-    fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     execFileSync.mockImplementation(() => {
       throw new Error("vercel: command not found");
     });
@@ -482,13 +486,7 @@ describe("runPostInstallCheck deduplication", () => {
     const preflightAdvisories: PreflightFinding[] = [];
     const ws = makeWs();
     // dryRun=true → skip Phase 3
-    const result = runPostInstallCheck(
-      preflightAdvisories,
-      ws,
-      makeModules("lint"),
-      tmpDir,
-      true,
-    );
+    const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir, true);
     // In dry-run, returns preflightAdvisories as-is (empty)
     expect(result).toHaveLength(0);
   });
@@ -498,13 +496,7 @@ describe("runPostInstallCheck deduplication", () => {
       { id: "husky-no-markers-precommit", severity: "advisory", detect: "d", action: "a" },
     ];
     const ws = makeWs();
-    const result = runPostInstallCheck(
-      preflightAdvisories,
-      ws,
-      makeModules("lint"),
-      tmpDir,
-      true,
-    );
+    const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir, true);
     expect(result).toHaveLength(1);
     expect(result[0]!.id).toBe("husky-no-markers-precommit");
   });
@@ -516,7 +508,11 @@ describe("runPostInstallCheck deduplication", () => {
   });
 
   it("npmrc-missing-gh-packages is emitted when .npmrc exists but lacks required lines", () => {
-    fs.writeFileSync(path.join(tmpDir, ".npmrc"), "registry=https://registry.npmjs.org/\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "registry=https://registry.npmjs.org/\n",
+      "utf-8",
+    );
     // Ensure token is set so only npmrc advisory fires
     process.env.GH_BKIT_TOKEN = "test";
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
