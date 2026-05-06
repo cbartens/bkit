@@ -285,27 +285,27 @@ _Single PII-relevant rule: detectors MUST never include the token value in any l
 
 ### Core (always verify)
 
-- [ ] **Package Management:** No new packages required. `pnpm-lock.yaml` should not change.
-- [ ] **Dependency Versions:** Confirm `tsc --version` and `vitest --version` already in repo. No CLI bumps.
-- [ ] **User Context:** Read/write access to `.agents/scripts/`, `.agents/scripts/*.test.ts`, `README.md`.
-- [ ] **Pending Blockers:** Query Linear `label: blocker` — confirm none reference BAR-141 or `bkit-install.ts`.
-- [ ] **Project Context:** Read `docs/knowledge.md` for prior install gotchas (BAR-138 F7/F8/F9 history) and `docs/decisions.md` for the consumer-value-wins decision (referenced multiple times in `bkit-modules.ts`).
-- [ ] **Testing & Quality:** Vitest unit per detector; one Vitest integration scaffolding a tmp consumer dir under `tmp/` (per `.agents/rules.md` — never `/tmp`). Conform to `docs/testing.md` naming.
-- [ ] **Prerequisite Plans:** None. BAR-138 (v0.4.0 down-payment) already shipped; this is the full feature.
+- [x] **Package Management:** No new packages required. `pnpm-lock.yaml` should not change.
+- [x] **Dependency Versions:** Confirm `tsc --version` and `vitest --version` already in repo. No CLI bumps.
+- [x] **User Context:** Read/write access to `.agents/scripts/`, `.agents/scripts/*.test.ts`, `README.md`.
+- [x] **Pending Blockers:** Query Linear `label: blocker` — confirm none reference BAR-141 or `bkit-install.ts`.
+- [x] **Project Context:** Read `docs/knowledge.md` for prior install gotchas (BAR-138 F7/F8/F9 history) and `docs/decisions.md` for the consumer-value-wins decision (referenced multiple times in `bkit-modules.ts`).
+- [x] **Testing & Quality:** Vitest unit per detector; one Vitest integration scaffolding a tmp consumer dir under `tmp/` (per `.agents/rules.md` — never `/tmp`). Conform to `docs/testing.md` naming.
+- [x] **Prerequisite Plans:** None. BAR-138 (v0.4.0 down-payment) already shipped; this is the full feature.
 
 ### Conditional (verify only when applicable)
 
-- [ ] **Secrets & Env Vars:** No new secrets. Detectors READ `process.env.GH_BKIT_TOKEN` only to test presence (boolean) — never log the value.
-- [ ] **Architecture:** New files live alongside existing peers in `.agents/scripts/` — no new package, no new monorepo topology change. Consistent with `bkit-install.ts` / `bkit-modules.ts` / `bkit-tiers.ts` colocation.
-- [ ] **Observability:** Detectors emit structured `console.error("[bkit-install] {Message}", payload)` ONLY on internal errors (e.g. `gh secret list` returning non-zero AND non-empty stderr that isn't `command not found`). Findings themselves are emitted via the checklist formatter, NOT via `console.error`.
+- [x] **Secrets & Env Vars:** No new secrets. Detectors READ `process.env.GH_BKIT_TOKEN` only to test presence (boolean) — never log the value.
+- [x] **Architecture:** New files live alongside existing peers in `.agents/scripts/` — no new package, no new monorepo topology change. Consistent with `bkit-install.ts` / `bkit-modules.ts` / `bkit-tiers.ts` colocation.
+- [x] **Observability:** Detectors emit structured `console.error("[bkit-install] {Message}", payload)` ONLY on internal errors (e.g. `gh secret list` returning non-zero AND non-empty stderr that isn't `command not found`). Findings themselves are emitted via the checklist formatter, NOT via `console.error`.
 
 ### 🔒 Gate 1: Prerequisites Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Data Schema Integration`.
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [x] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
 
 ## Data Schema Integration
 
@@ -448,60 +448,60 @@ _Code-only — `git revert` sufficient._
 
 ### Phase A — Foundation (interface + helpers)
 
-- [ ] **Task A1:** Create `.agents/scripts/bkit-preflight.ts` with `PreflightFinding` interface and a stub `runPreflight` returning `{ blockers: [], advisories: [] }`. Export `hasBkitMarkers(content)` helper. (Verify: `tsc --noEmit` passes.)
-- [ ] **Task A2:** Create `.agents/scripts/bkit-postinstall.ts` with `runPostInstallCheck` stub returning `[]` and `formatChecklist(findings)` renderer. (Verify: `tsc --noEmit` passes.)
+- [x] **Task A1:** Create `.agents/scripts/bkit-preflight.ts` with `PreflightFinding` interface and a stub `runPreflight` returning `{ blockers: [], advisories: [] }`. Export `hasBkitMarkers(content)` helper. (Verify: `tsc --noEmit` passes.)
+- [x] **Task A2:** Create `.agents/scripts/bkit-postinstall.ts` with `runPostInstallCheck` stub returning `[]` and `formatChecklist(findings)` renderer. (Verify: `tsc --noEmit` passes.)
 
 ### Phase B — Migrate `printSink` → `advisories`
 
-- [ ] **Task B1:** In `bkit-modules.ts` `ModuleContext`, replace `printSink: string[]` with `advisories: PreflightFinding[]`. Update `bkit-install.ts` ctx construction.
-- [ ] **Task B2:** Migrate every `printSink.push("[bkit] ...")` in `bkit-modules.ts` to `ctx.advisories.push({ id, severity: "advisory", detect, action })`. Use the id table from § Breaking Changes & Naming Review.
-- [ ] **Task B3:** In `bkit-tiers.ts`, replace `printSink: string[]` parameter on `writeTier3` (and any helper) with `advisories: PreflightFinding[]`. Update callers in `bkit-modules.ts`.
-- [ ] **Task B4:** Replace inline checklist formatter in `bkit-install.ts main()` (lines 686–697) with `console.log(formatChecklist(advisories))`. (Verify: dry-run on bkit dogfood repo prints same banner format.)
+- [x] **Task B1:** In `bkit-modules.ts` `ModuleContext`, replace `printSink: string[]` with `advisories: PreflightFinding[]`. Update `bkit-install.ts` ctx construction.
+- [x] **Task B2:** Migrate every `printSink.push("[bkit] ...")` in `bkit-modules.ts` to `ctx.advisories.push({ id, severity: "advisory", detect, action })`. Use the id table from § Breaking Changes & Naming Review.
+- [x] **Task B3:** In `bkit-tiers.ts`, replace `printSink: string[]` parameter on `writeTier3` (and any helper) with `advisories: PreflightFinding[]`. Update callers in `bkit-modules.ts`.
+- [x] **Task B4:** Replace inline checklist formatter in `bkit-install.ts main()` (lines 686–697) with `console.log(formatChecklist(advisories))`. (Verify: dry-run on bkit dogfood repo prints same banner format.)
 
 ### Phase C — Phase 1 Preflight (blockers)
 
-- [ ] **Task C1:** Implement `detectNoPackageJson` in `bkit-preflight.ts` + unit test (positive + negative).
-- [ ] **Task C2:** Implement `detectMalformedPackageJson` + unit test.
-- [ ] **Task C3:** Implement `detectNotGitRepo` (gated on `--core`) + unit test (3 cases: core+no-git, core+git, no-core+no-git).
-- [ ] **Task C4:** Wire `runPreflight` to call all three blocker detectors and accumulate findings.
-- [ ] **Task C5:** In `bkit-install.ts main()`, after `parseArgs` and BEFORE `resolveTokens`, call `runPreflight(modules)`. If `blockers.length > 0`, print via `formatChecklist(blockers)` and `process.exit(1)`. (Verify: `package.json`-removed scratch dir produces single-line blocker exit.)
+- [x] **Task C1:** Implement `detectNoPackageJson` in `bkit-preflight.ts` + unit test (positive + negative).
+- [x] **Task C2:** Implement `detectMalformedPackageJson` + unit test.
+- [x] **Task C3:** Implement `detectNotGitRepo` (gated on `--core`) + unit test (3 cases: core+no-git, core+git, no-core+no-git).
+- [x] **Task C4:** Wire `runPreflight` to call all three blocker detectors and accumulate findings.
+- [x] **Task C5:** In `bkit-install.ts main()`, after `parseArgs` and BEFORE `resolveTokens`, call `runPreflight(modules)`. If `blockers.length > 0`, print via `formatChecklist(blockers)` and `process.exit(1)`. (Verify: `package.json`-removed scratch dir produces single-line blocker exit.)
 
 ### Phase D — Phase 1 Preflight (advisories)
 
-- [ ] **Task D1:** Implement `detectHuskyNoMarkers("pre-commit")` + unit test. Call also for `pre-push`. (Use `hasBkitMarkers` helper.)
-- [ ] **Task D2:** Implement `detectPrettierignoreNoMarkers` + unit test.
-- [ ] **Task D3:** Implement `detectLintProseF9Vulnerable` + unit test (positive: F9-vulnerable string; negative: bkit's current guarded form).
-- [ ] **Task D4:** Implement `detectBkitVersionMajorDowngrade` + unit test (parse `MAJOR.MINOR.PATCH` from `.bkit-version`; compare majors).
-- [ ] **Task D4b:** Implement `detectBkitVersionPinStale(cwd)` + unit test. Read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. Emit `bkit-version-pin-stale` advisory when both exist and installed semver > on-disk. Return null when either file is absent (first install / running from checkout). Test cases: (a) installed > on-disk → emit; (b) installed == on-disk → no emit; (c) installed < on-disk → no emit (handled by `bkit-version-major-downgrade`); (d) `node_modules/@cbartens/bkit/package.json` absent → no emit; (e) `.agents/.bkit-version` absent → no emit.
-- [ ] **Task D5:** Wire all advisory detectors (D1–D4b) into `runPreflight`. Seed `ctx.advisories` with `preflightAdvisories` in `bkit-install.ts main()`.
+- [x] **Task D1:** Implement `detectHuskyNoMarkers("pre-commit")` + unit test. Call also for `pre-push`. (Use `hasBkitMarkers` helper.)
+- [x] **Task D2:** Implement `detectPrettierignoreNoMarkers` + unit test.
+- [x] **Task D3:** Implement `detectLintProseF9Vulnerable` + unit test (positive: F9-vulnerable string; negative: bkit's current guarded form).
+- [x] **Task D4:** Implement `detectBkitVersionMajorDowngrade` + unit test (parse `MAJOR.MINOR.PATCH` from `.bkit-version`; compare majors).
+- [x] **Task D4b:** Implement `detectBkitVersionPinStale(cwd)` + unit test. Read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. Emit `bkit-version-pin-stale` advisory when both exist and installed semver > on-disk. Return null when either file is absent (first install / running from checkout). Test cases: (a) installed > on-disk → emit; (b) installed == on-disk → no emit; (c) installed < on-disk → no emit (handled by `bkit-version-major-downgrade`); (d) `node_modules/@cbartens/bkit/package.json` absent → no emit; (e) `.agents/.bkit-version` absent → no emit.
+- [x] **Task D5:** Wire all advisory detectors (D1–D4b) into `runPreflight`. Seed `ctx.advisories` with `preflightAdvisories` in `bkit-install.ts main()`.
 
 ### Phase E — Phase 3 Post-install (token-surface)
 
-- [ ] **Task E1:** Move `checkBkitTokenSecret` from `bkit-modules.ts` to `bkit-postinstall.ts`; rename internal contract to `detectGhSecret` returning `"present" | "missing" | "unknown"` + unit test (mock `execSync`, three cases).
-- [ ] **Task E2:** Implement `detectShellToken` (presence-only — never read value) + unit test (set/unset env).
-- [ ] **Task E3:** Implement `detectNpmrcAuth` + unit test (positive, missing-one-line, missing-both-lines, file-absent).
-- [ ] **Task E4:** Move `detectVercelProject` from `bkit-modules.ts` to `bkit-postinstall.ts`. Implement `detectVercelEnv("preview")` + `detectVercelEnv("production")` (skip if no Vercel project) + unit tests (mock `execSync`, three cases each).
+- [x] **Task E1:** Move `checkBkitTokenSecret` from `bkit-modules.ts` to `bkit-postinstall.ts`; rename internal contract to `detectGhSecret` returning `"present" | "missing" | "unknown"` + unit test (mock `execSync`, three cases).
+- [x] **Task E2:** Implement `detectShellToken` (presence-only — never read value) + unit test (set/unset env).
+- [x] **Task E3:** Implement `detectNpmrcAuth` + unit test (positive, missing-one-line, missing-both-lines, file-absent).
+- [x] **Task E4:** Move `detectVercelProject` from `bkit-modules.ts` to `bkit-postinstall.ts`. Implement `detectVercelEnv("preview")` + `detectVercelEnv("production")` (skip if no Vercel project) + unit tests (mock `execSync`, three cases each).
 
 ### Phase F — Phase 3 Post-install (other detectors)
 
-- [ ] **Task F1:** Implement `detectCiYmlMissingTokenEnv` + unit test (positive: ci.yml install step has no `env: GH_BKIT_TOKEN`; negative: env present; null: no ci.yml).
-- [ ] **Task F2:** Implement `detectValePackageNotSynced` + unit test (mock `execSync`, three cases: vale absent, vale present + write-good present, vale present + write-good absent).
-- [ ] **Task F3:** Extend `WriteEntry` with optional `devDepsAdded?: string[]`; update `ensurePackageJsonDevDeps` consumers in `bkit-modules.ts` to pass it through. Implement `detectDevDepsNeedFetch(ws)` + unit test.
-- [ ] **Task F4:** Wire all detectors into `runPostInstallCheck`. Implement intra-phase dedupe-by-id (first occurrence wins) on the Phase 3 finding array BEFORE the cross-phase dedupe. Implement cross-phase dedupe-by-id (Phase 3 wins). Implement skip-on-dry-run guard. Apply the same intra-phase dedupe inside `runPreflight` (both `blockers` and `advisories`). Add unit tests asserting (a) intra-phase dedupe in `runPreflight`, (b) intra-phase dedupe in `runPostInstallCheck`.
-- [ ] **Task F5:** In `bkit-postinstall.test.ts`, write the `formatChecklist` snapshot test against the issue-body example fixture (covers Derived Test Matrix row "Output formatter renders `--- i/N [severity] id ---\nDETECT: ...\nACTION: ...` shape per issue body"). Add a separate unit test asserting `formatChecklist([])` returns `""` (covers the zero-advisories no-banner edge case). Add a unit test asserting `detectVercelEnv` short-circuits silently (returns no findings) when `detectVercelProject(cwd)` is false. Add a unit test asserting `detectNpmrcAuth` emits NO finding when `.npmrc` is absent (silent skip).
+- [x] **Task F1:** Implement `detectCiYmlMissingTokenEnv` + unit test (positive: ci.yml install step has no `env: GH_BKIT_TOKEN`; negative: env present; null: no ci.yml).
+- [x] **Task F2:** Implement `detectValePackageNotSynced` + unit test (mock `execSync`, three cases: vale absent, vale present + write-good present, vale present + write-good absent).
+- [x] **Task F3:** Extend `WriteEntry` with optional `devDepsAdded?: string[]`; update `ensurePackageJsonDevDeps` consumers in `bkit-modules.ts` to pass it through. Implement `detectDevDepsNeedFetch(ws)` + unit test.
+- [x] **Task F4:** Wire all detectors into `runPostInstallCheck`. Implement intra-phase dedupe-by-id (first occurrence wins) on the Phase 3 finding array BEFORE the cross-phase dedupe. Implement cross-phase dedupe-by-id (Phase 3 wins). Implement skip-on-dry-run guard. Apply the same intra-phase dedupe inside `runPreflight` (both `blockers` and `advisories`). Add unit tests asserting (a) intra-phase dedupe in `runPreflight`, (b) intra-phase dedupe in `runPostInstallCheck`.
+- [x] **Task F5:** In `bkit-postinstall.test.ts`, write the `formatChecklist` snapshot test against the issue-body example fixture (covers Derived Test Matrix row "Output formatter renders `--- i/N [severity] id ---\nDETECT: ...\nACTION: ...` shape per issue body"). Add a separate unit test asserting `formatChecklist([])` returns `""` (covers the zero-advisories no-banner edge case). Add a unit test asserting `detectVercelEnv` short-circuits silently (returns no findings) when `detectVercelProject(cwd)` is false. Add a unit test asserting `detectNpmrcAuth` emits NO finding when `.npmrc` is absent (silent skip).
 
 ### Phase G — Wiring + Integration
 
-- [ ] **Task G1:** In `bkit-install.ts main()`, between `dispatchModules` and the checklist flush, call `runPostInstallCheck(ctx.advisories, ws, modules)` for the install path. Replace inline flush with `const banner = formatChecklist(postFindings); if (banner) console.log(banner);` (the `if (banner)` guard is defensive — `formatChecklist([])` returns `""` — and ensures zero-advisory installs print no banner). **Dry-run path:** in `bkit check` mode, SKIP `runPostInstallCheck` but STILL apply the same guarded emit `const banner = formatChecklist(ctx.advisories); if (banner) console.log(banner);` so Phase 1 advisories accumulated in dry-run remain visible (preserves parity with the legacy `printSink` dump) while staying silent on zero-advisory dry-runs. Verify both branches with a dogfood `bkit install` and a dogfood `bkit check`.
-- [ ] **Task G2:** DELETE the now-unused `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` constants from `bkit-modules.ts`. Re-create them as the `action` text on the matching Phase 3 detectors (verbatim text — same instructions). Confirm the install run on a healthy bkit dogfood repo emits zero advisories.
-- [ ] **Task G3:** Write `.agents/scripts/bkit-install.integration.test.ts` — two scenarios per Derived Test Matrix (blocker exit 1; full advisory checklist).
-- [ ] **Task G4:** Add a third integration scenario to `.agents/scripts/bkit-install.integration.test.ts` covering `bkit check` (dry-run) on an advisory-triggering scratch consumer. Assert (a) Phase 1 advisories ARE rendered via `formatChecklist`, and (b) Phase 3 detectors are NOT invoked (no `gh secret list` / `vercel env ls` / `vale --version` calls; e.g., assert via `execSync` mock spy or environment-isolation that no Phase 3 spawn occurs).
+- [x] **Task G1:** In `bkit-install.ts main()`, between `dispatchModules` and the checklist flush, call `runPostInstallCheck(ctx.advisories, ws, modules)` for the install path. Replace inline flush with `const banner = formatChecklist(postFindings); if (banner) console.log(banner);` (the `if (banner)` guard is defensive — `formatChecklist([])` returns `""` — and ensures zero-advisory installs print no banner). **Dry-run path:** in `bkit check` mode, SKIP `runPostInstallCheck` but STILL apply the same guarded emit `const banner = formatChecklist(ctx.advisories); if (banner) console.log(banner);` so Phase 1 advisories accumulated in dry-run remain visible (preserves parity with the legacy `printSink` dump) while staying silent on zero-advisory dry-runs. Verify both branches with a dogfood `bkit install` and a dogfood `bkit check`.
+- [x] **Task G2:** DELETE the now-unused `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`, `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`, `VERCEL_AUTH_INSTRUCTIONS` constants from `bkit-modules.ts`. Re-create them as the `action` text on the matching Phase 3 detectors (verbatim text — same instructions). Confirm the install run on a healthy bkit dogfood repo emits zero advisories.
+- [x] **Task G3:** Write `.agents/scripts/bkit-install.integration.test.ts` — two scenarios per Derived Test Matrix (blocker exit 1; full advisory checklist).
+- [x] **Task G4:** Add a third integration scenario to `.agents/scripts/bkit-install.integration.test.ts` covering `bkit check` (dry-run) on an advisory-triggering scratch consumer. Assert (a) Phase 1 advisories ARE rendered via `formatChecklist`, and (b) Phase 3 detectors are NOT invoked (no `gh secret list` / `vercel env ls` / `vale --version` calls; e.g., assert via `execSync` mock spy or environment-isolation that no Phase 3 spawn occurs).
 
 ### 🔒 Gate 2: Code Implementation Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Testing & Documentation`.
 
-- [ ] **Gate 2 - Verified:** Every task A1–G4 above independently verified and checked off. Every `printSink.push` call site has been migrated. Three deleted constants no longer appear in `bkit-modules.ts` (`grep -n GH_BKIT_TOKEN_MISSING_INSTRUCTIONS .agents/scripts/bkit-modules.ts` returns nothing).
+- [x] **Gate 2 - Verified:** Every task A1–G4 above independently verified and checked off. Every `printSink.push` call site has been migrated. Three deleted constants no longer appear in `bkit-modules.ts` (`grep -n GH_BKIT_TOKEN_MISSING_INSTRUCTIONS .agents/scripts/bkit-modules.ts` returns nothing).
 
 > [!IMPORTANT]
 > **Testing Strategy (See `docs/testing.md`):**
@@ -512,30 +512,30 @@ _Code-only — `git revert` sufficient._
 
 **Mandatory Tasks (Testing & Documentation):**
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Each row matches a Phase C/D/E/F/G subtask above. Re-walk the table; add tasks if any row is uncovered.
-- [ ] **Update existing tests:** Search for tests that import `printSink` from `bkit-install.ts` or assert on its shape — none expected (it's runtime-internal), but verify with `grep -r "printSink" .agents/scripts/`.
-- [ ] **Write new tests:** All listed in Phase C–G above. Run `pnpm test` locally to confirm green.
-- [ ] **Verify observability:** Detectors emit `console.error("[bkit-install] {Message}", payload)` only on internal errors (e.g. `gh secret list` exit > 0 with non-empty stderr that isn't `command not found`). Findings go through `formatChecklist`, never `console.error`.
-- [ ] **Update documentation:** Apply the README + `docs/decisions.md` + `docs/knowledge.md` edits per § Documentation Updates. Rewrite prose; do NOT lazy-bullet-append.
+- [x] **Verify test coverage against Derived Test Matrix:** Each row matches a Phase C/D/E/F/G subtask above. Re-walk the table; add tasks if any row is uncovered.
+- [x] **Update existing tests:** Search for tests that import `printSink` from `bkit-install.ts` or assert on its shape — none expected (it's runtime-internal), but verify with `grep -r "printSink" .agents/scripts/`.
+- [x] **Write new tests:** All listed in Phase C–G above. Run `pnpm test` locally to confirm green.
+- [x] **Verify observability:** Detectors emit `console.error("[bkit-install] {Message}", payload)` only on internal errors (e.g. `gh secret list` exit > 0 with non-empty stderr that isn't `command not found`). Findings go through `formatChecklist`, never `console.error`.
+- [x] **Update documentation:** Apply the README + `docs/decisions.md` + `docs/knowledge.md` edits per § Documentation Updates. Rewrite prose; do NOT lazy-bullet-append.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Verification Plan`.
 
-- [ ] **Docs updated:** Every row in `📚 Documentation Updates` completed. `.agents/docs.md` still accurate (no new doc files added).
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
+- [x] **Docs updated:** Every row in `📚 Documentation Updates` completed. `.agents/docs.md` still accurate (no new doc files added).
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified and checked off.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm turbo lint typecheck format:check` — must pass green.
-- [ ] **Test Synchronization:** No existing tests reference `printSink` directly (verify via `grep`); if any do, migrate them to `advisories`.
-- [ ] **Build Configuration:** New test files (`*.test.ts`, `*.integration.test.ts`) follow Vitest discovery — no `tsconfig.json` `exclude` change needed.
-- [ ] **Unit (`bkit-preflight.test.ts`):** Every blocker + advisory detector — positive + negative cases.
-- [ ] **Unit (`bkit-postinstall.test.ts`):** Every Phase 3 detector + intra-phase dedupe + cross-phase dedupe + `formatChecklist` snapshot + `formatChecklist([])` empty-string assertion + `detectVercelEnv` no-Vercel-project silent skip + `detectNpmrcAuth` `.npmrc`-absent silent skip.
-- [ ] **Integration (`bkit-install.integration.test.ts`):** Scratch consumer scenarios per Derived Test Matrix — install blocker exit, install advisory checklist, AND `bkit check` dry-run Phase 1 advisories rendered with Phase 3 detectors NOT invoked.
-- [ ] **Run all tests:** `pnpm test` — pass green. Integration test should run under default `pnpm test` (no `TEST_REAL_APIS` flag — token detectors mock `execSync`).
+- [x] **Type Check & Lint:** `pnpm turbo lint typecheck format:check` — must pass green.
+- [x] **Test Synchronization:** No existing tests reference `printSink` directly (verify via `grep`); if any do, migrate them to `advisories`.
+- [x] **Build Configuration:** New test files (`*.test.ts`, `*.integration.test.ts`) follow Vitest discovery — no `tsconfig.json` `exclude` change needed.
+- [x] **Unit (`bkit-preflight.test.ts`):** Every blocker + advisory detector — positive + negative cases.
+- [x] **Unit (`bkit-postinstall.test.ts`):** Every Phase 3 detector + intra-phase dedupe + cross-phase dedupe + `formatChecklist` snapshot + `formatChecklist([])` empty-string assertion + `detectVercelEnv` no-Vercel-project silent skip + `detectNpmrcAuth` `.npmrc`-absent silent skip.
+- [x] **Integration (`bkit-install.integration.test.ts`):** Scratch consumer scenarios per Derived Test Matrix — install blocker exit, install advisory checklist, AND `bkit check` dry-run Phase 1 advisories rendered with Phase 3 detectors NOT invoked.
+- [x] **Run all tests:** `pnpm test` — pass green. Integration test should run under default `pnpm test` (no `TEST_REAL_APIS` flag — token detectors mock `execSync`).
 
 > [!IMPORTANT]
 > **No Architectural Downgrades**: If you encounter build, compiler, or test errors during verification, NEVER resolve them via hot fixes or anti-patterns. Strictly follow industry best practices as per `docs/architecture.md` (and its reference repos) and `docs/knowledge.md`. Halt if stuck.
@@ -544,7 +544,7 @@ _Code-only — `git revert` sufficient._
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Manual Verification`.
 
-- [ ] **Gate 4 - Verified:** Every checkbox in Automated Tests independently verified and checked off. Explicit proof (test outputs, CLI results) gathered.
+- [x] **Gate 4 - Verified:** Every checkbox in Automated Tests independently verified and checked off. Explicit proof (test outputs, CLI results) gathered.
 
 ### Manual Verification
 

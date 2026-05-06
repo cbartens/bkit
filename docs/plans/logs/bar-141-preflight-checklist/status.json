@@ -112,13 +112,135 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-06T05:49:37Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
         "status": "DONE",
         "at": "2026-05-06T05:49:44Z",
         "commitSha": "e50f0d358ef11f44858b40b09bd3f9748b26667a",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-06T05:51:00Z",
+        "commitSha": "8ca1b76938be7d4a62493b635037718c7f2eba87",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-input.md"
+        ]
+      },
+      {
+        "step": "branch-sync",
+        "status": "DONE",
+        "at": "2026-05-06T05:51:27Z",
+        "commitSha": "7cf8e59d489c59cfb59351dcf9019cdf62931abe",
+        "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-06T05:53:37Z",
+        "commitSha": "87b261e141d32a0069fb12f2d43082b0ba916f29",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-install-skills.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "at": "2026-05-06T06:19:17Z",
+        "commitSha": "cec4aaa9874d6381b465c7ff42ec77227c6e14a1",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-plan-execute-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-06T06:25:11Z",
+        "commitSha": "b41eda36f1d326c3b2adab6be58f1bc5e0dc7209",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-plan-verify-1-1.md"
+        ]
+      },
+      {
+        "step": "challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 10,
+        "at": "2026-05-06T06:30:44Z",
+        "commitSha": "69b46ab8a4303ee217dd255791436623aaed5149",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-challenge.md"
+        ]
+      },
+      {
+        "step": "challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T06:38:04Z",
+        "commitSha": "7fe15b2962a09c449861813b5392907e949148d8",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-challenge-remediate-log.md"
+        ]
+      },
+      {
+        "step": "challenge-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T06:38:06Z",
+        "commitSha": "e68f2230f88f1c72e5ca36d290bad7b990e57795",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-challenge-tests.md"
+        ]
+      },
+      {
+        "step": "run-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-06T06:38:56Z",
+        "commitSha": "58de53b2c51c209fa1ee4d66de9b151cbbe3d8ba",
+        "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T06:40:50Z",
+        "commitSha": "9db84fb304d43318c58fd08f1bff609135f264f7",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-summary.md"
+        ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-06T06:41:16Z",
+        "commitSha": "8df69d90b8498d8a80cb2605254661db4be7d4a4",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/5"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-06T06:41:57Z",
+        "commitSha": "10fb0f723e9bb4fa56723641a04b05cf68d9fb6f",
         "artifacts": []
       }
     ]

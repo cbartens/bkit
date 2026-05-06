@@ -45,7 +45,7 @@ maxTurns: 50
 4. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 5. Identify logical decomposition boundaries: Domain boundaries, organisational structure, chronological dependencies. Do NOT use token/context-window size as a factor.
 6. Group design work into workstreams at the identified boundaries. No workstream target count; granularity follows logical seams wherever they fall.
-7. For each workstream → assign stable ID `WS-{N}` → identify `Requires` references to other workstream IDs.  `Requires` is mandatory for every workstream — empty list `[]` valid ONLY for root workstream without upstream prerequisites.
+7. For each workstream → assign stable ID `WS-{N}` → identify `Requires` references to other workstream IDs. `Requires` is mandatory for every workstream — empty list `[]` valid ONLY for root workstream without upstream prerequisites.
 8. Append workstream sections to **Create** output via `Edit` at end of file.
 9. Self-verify (mandatory before verdict; max 2 fix iterations → else `FAIL`):
    - Extract all major design elements from the input: Architecture components, data model entities, component/flow items, decisions, open questions.
@@ -73,7 +73,6 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 **Scope:** [what this workstream covers]
 **Requires:** [] | [WS-N, ...]
 **Rationale:** [why this is a logical unit]
-
 ```
 
 > ⛔ **STOP after decomposing design and producing output. Do NOT write plans, code.**

@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { PreflightFinding } from "./bkit-preflight";
 import {
   writeTier1,
   writeTier2,
@@ -241,10 +242,10 @@ describe("writeTier3", () => {
     const src = path.join(tmpDir, "slop-scan.config.json");
     const dst = path.join(tmpDir, "slop-scan-out.json");
     fs.writeFileSync(src, '{"patterns":[]}\n', "utf-8");
-    const printSink: string[] = [];
+    const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
 
-    const result = writeTier3(src, dst, false, printSink, ws);
+    const result = writeTier3(src, dst, false, advisories, ws);
 
     expect(result.wrote).toBe(true);
     expect(result.suggested).toBe(false);
@@ -252,20 +253,20 @@ describe("writeTier3", () => {
     expect(ws.writes).toHaveLength(1);
   });
 
-  it("does NOT write when dest exists; pushes suggested diff to printSink", () => {
+  it("does NOT write when dest exists; pushes suggested diff to advisories", () => {
     const src = path.join(tmpDir, "slop-scan.config.json");
     const dst = path.join(tmpDir, "slop-scan-out.json");
     fs.writeFileSync(src, '{"patterns":["new"]}\n', "utf-8");
     fs.writeFileSync(dst, '{"patterns":["existing"]}\n', "utf-8");
-    const printSink: string[] = [];
+    const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
 
-    const result = writeTier3(src, dst, false, printSink, ws);
+    const result = writeTier3(src, dst, false, advisories, ws);
 
     expect(result.wrote).toBe(false);
     expect(result.suggested).toBe(true);
     expect(fs.readFileSync(dst, "utf-8")).toBe('{"patterns":["existing"]}\n');
-    expect(printSink.length).toBeGreaterThan(0);
+    expect(advisories.length).toBeGreaterThan(0);
     expect(ws.writes).toHaveLength(0);
   });
 
@@ -273,10 +274,10 @@ describe("writeTier3", () => {
     const src = path.join(tmpDir, "cfg.json");
     const dst = path.join(tmpDir, "cfg-out.json");
     fs.writeFileSync(src, '{"a":1}\n', "utf-8");
-    const printSink: string[] = [];
+    const advisories: PreflightFinding[] = [];
     const ws = makeWriteSet();
 
-    const result = writeTier3(src, dst, true, printSink, ws);
+    const result = writeTier3(src, dst, true, advisories, ws);
 
     expect(result.wrote).toBe(false); // dry-run: didn't actually write
     expect(result.suggested).toBe(false);

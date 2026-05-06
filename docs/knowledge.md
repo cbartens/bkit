@@ -67,3 +67,63 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-138, `.github/workflows/release.yml`
+
+## KN-4: Phase 3 runs ONLY in install (not check) — dry-run parity (2026-05-06)
+
+- **Category:** agentic
+- **Symptom:** n/a (design rule — not a bug)
+- **Root cause:** `bkit check` is read-only by design; Phase 3 post-install re-detection (token surfaces, ci.yml, vale sync, devDeps) shells out to `gh secret list`, `vercel env ls`, and `vale --version` — these are not read-only semantics and must not run in check mode.
+- **Fix or rule:** Phase 3 is skipped when `dryRun=true`. HOWEVER, Phase 1 advisories accumulated in `ctx.advisories` ARE still rendered in dry-run via `formatChecklist(ctx.advisories)` to preserve parity with the legacy `printSink` dump — only the post-install re-detection layer is suppressed. `bkit check` exits 1 on drift WITHOUT a Phase 3 banner; Phase 1 advisories (e.g. `lint-prose-f9-vulnerable`, `husky-no-markers-precommit`) are visible. `runPostInstallCheck` accepts a `dryRun` parameter (default `false`); pass `true` to suppress Phase 3. Zero-advisory dry-runs print no banner (`formatChecklist([])` returns `""`).
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-141, DE-4, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`
+
+## KN-5: `parseInt("")` returns NaN — guard version file reads (2026-05-06)
+
+- **Category:** backend
+- **Symptom:** A zero-byte or whitespace-only `.agents/.bkit-version` causes `detectBkitVersionMajorDowngrade` to emit a misleading advisory containing `"NaN"` in the detect text.
+- **Root cause:** `parseInt("", 10) === NaN`; `NaN <= installingMajor` evaluates to `false`, so the `return null` guard is skipped and the advisory is emitted with a `NaN` major.
+- **Fix or rule:** After trimming, guard with `if (!onDisk) return null;` before calling `parseInt`. Follow with `Number.isNaN(onDiskMajor)` check for any further NaN-producing inputs. Apply the same defence to any version-parsing that reads arbitrary on-disk files.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-141, `.agents/scripts/bkit-preflight.ts` (`detectBkitVersionMajorDowngrade`)
+
+## KN-6: Use execFileSync over execSync when the argument comes from a variable (2026-05-06)
+
+- **Category:** security
+- **Symptom:** `execSync(\`vercel env ls ${env}\`)` passes type-checked TypeScript, but at runtime nothing prevents shell metacharacters from a future refactor or JS caller from executing unintended commands.
+- **Root cause:** `execSync` with a template string passes the full command to the shell; shell metacharacter interpretation applies. Even a TypeScript union type (`"preview" | "production"`) is erased at runtime.
+- **Fix or rule:** Use `execFileSync("vercel", ["env", "ls", env])` to bypass shell interpretation entirely. Add a runtime guard (`if (env !== "preview" && env !== "production") return "unknown"`) for defence in depth. Apply to all `execSync` calls that interpolate any variable, even TypeScript-typed ones.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-141, `.agents/scripts/bkit-postinstall.ts` (`detectVercelEnv`)
+
+## KN-7: dist/ staleness — `pnpm build` must run before push for `.agents/scripts/*.ts` changes (2026-05-06)
+
+- **Category:** infra
+- **Symptom:** Local pre-commit/pre-push hooks pass green (`typecheck`, `test`, `format:check`, `lint:slop`, `lint:prose`) but CI's `run-tests` job fails on the very first step "Verify dist/ is fresh" with a giant unified diff showing `dist/*.js` is missing the latest source changes.
+- **Root cause:** Pre-commit/pre-push hooks invoke `tsc --noEmit` (typecheck only) and `vitest run` (no compile). They do NOT run `pnpm build`. CI runs `pnpm build && git diff --exit-code dist/` to ensure shipped artefacts match source. Source-only commits leave `dist/` stale; CI catches it.
+- **Fix or rule:** Any TS edit under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit. Or move `pnpm build` into the pre-push hook to make this automatic. Hit during BAR-141 PR #5: commit `edbd891` failed the dist/ check; commit `7ab6bff` regenerated dist and unblocked CI.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-141, PR #5, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`
+
+## KN-8: Tier-1 full-overwrite is unsafe for consumer-extensible config files (2026-05-06)
+
+- **Category:** agentic
+- **Symptom:** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
+- **Root cause:** Both files ship as Tier-1 (full-overwrite) in `bkit-modules.ts`. Consumers legitimately add their own hook events (e.g. `hooks.Stop`) alongside bkit's `hooks.SessionStart` — full-overwrite has no awareness of consumer additions and silently destroys them on every install.
+- **Fix or rule:** Default rule — any file where the schema permits multiple top-level entries AND consumers commonly add their own keys must be Tier-2 (managed-block: bkit owns only the marker-delimited region). Tier-1 is reserved for files bkit fully owns end-to-end (e.g. `vale.ini`, slop-scan config). Mitigated in BAR-141 PR #5 by `detectHooksConfigOverwriteRisk` (preflight blocker — exits 1 if non-default content detected). Long-term Tier-1 → Tier-2 refactor for these two files tracked separately.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-141, PR #5, `.agents/scripts/bkit-modules.ts` (cursor + claude module functions), `.agents/scripts/bkit-preflight.ts` (`detectHooksConfigOverwriteRisk`), Gether install findings comment on Linear BAR-141
