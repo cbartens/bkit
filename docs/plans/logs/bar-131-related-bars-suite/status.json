@@ -151,6 +151,16 @@
         "at": "2026-05-06T22:17:21Z",
         "commitSha": "e6aa1c62a57223b9ae7d1ca6e52254b714536c6b",
         "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-06T22:19:08Z",
+        "commitSha": "60cc8b8967df2b76912c611cac424eb738f4c826",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/build-install-skills.md"
+        ]
       }
     ]
   }
