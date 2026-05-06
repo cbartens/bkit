@@ -88,6 +88,21 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T14:51:10Z",
+        "commitSha": "f0d001b508c437bdd27ac4932dda6f1bcb535059",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v4-split.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v4-1.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v4-2.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v4-3.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-v4-4.md"
+        ]
       }
     ]
   }
