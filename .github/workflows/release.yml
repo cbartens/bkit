@@ -9,13 +9,24 @@ permissions:
   contents: read
   packages: write
 
+# Prevent two publish runs racing against the same tag. cancel-in-progress: false
+# is deliberate — killing a mid-flight registry publish is unsafe; the duplicate run
+# will simply fail with "cannot publish over existing version" (expected, not a regression).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
+    # No `environment:` protection is intentional for a single-maintainer project.
+    # Anyone with tag-push permission can trigger a publish; GITHUB_TOKEN is scoped to
+    # packages: write above. If a second maintainer is ever onboarded, add
+    # `environment: production` here and enable required-reviewer in repo settings.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           registry-url: https://npm.pkg.github.com
@@ -23,7 +34,7 @@ jobs:
 
       # Pnpm version is resolved from package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

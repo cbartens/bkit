@@ -60,16 +60,18 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("scope: '@cbartens'");
   });
 
-  it("uses actions/setup-node@v4", () => {
-    expect(content).toContain("actions/setup-node@v4");
+  it("uses actions/setup-node pinned to a SHA (supply-chain hardening)", () => {
+    // SHA-pinned ref — matches `actions/setup-node@<40-char-hex>` with version comment.
+    expect(content).toMatch(/actions\/setup-node@[0-9a-f]{40}/);
   });
 
   // ---------------------------------------------------------------------------
   // pnpm setup
   // ---------------------------------------------------------------------------
 
-  it("uses pnpm/action-setup@v4", () => {
-    expect(content).toContain("pnpm/action-setup@v4");
+  it("uses pnpm/action-setup pinned to a SHA (supply-chain hardening)", () => {
+    // SHA-pinned ref — matches `pnpm/action-setup@<40-char-hex>` with version comment.
+    expect(content).toMatch(/pnpm\/action-setup@[0-9a-f]{40}/);
   });
 
   // ---------------------------------------------------------------------------

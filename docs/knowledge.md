@@ -43,3 +43,27 @@
 - **Severity:** critical
 - **Source:** phase
 - **Related:** BAR-138, DE-3, `.agents/scripts/bkit-modules.ts` (installer print copy enumerates this verbatim in `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` and `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`)
+
+## KN-2: `.npmignore` still applies inside `files`-listed directories in `package.json` (2026-05-06)
+
+- **Category:** infra
+- **Symptom:** Publishing a package with `"files": [".agents"]` ships all `.ts` source and `*.test.ts` files inside `.agents/scripts/` to consumers. Consumers have no use for test tooling or TypeScript sources (compiled output lives in `dist/`).
+- **Root cause:** The `files` array in `package.json` is an allowlist of paths/directories to include. npm does NOT auto-exclude sub-files within those directories. A top-level `.npmignore` (or per-subdirectory `.npmignore`) further filters what gets packed. Without `.npmignore`, every file under `.agents/` is shipped.
+- **Fix or rule:** Add a `.npmignore` at repo root to exclude test sources and snapshots: `.agents/scripts/*.ts` and `.agents/scripts/__snapshots__/`. Verify exclusion with `npm publish --dry-run` before tagging. Note: `.npmignore` takes precedence over `.gitignore` for publish filtering — if `.npmignore` exists, `.gitignore` is ignored during pack.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-138, `.npmignore`, `package.json#files`
+
+## KN-3: GitHub Actions `@v4` floating tags on publishing workflows — pin to commit SHAs (2026-05-06)
+
+- **Category:** infra
+- **Symptom:** OpenSSF Scorecard flags floating action major-version refs (e.g. `actions/checkout@v4`) in publishing workflows. A compromised upstream action repo or malicious tag re-point executes attacker code inside a job with `packages: write` on `GITHUB_TOKEN`.
+- **Root cause:** `@v4` resolves to whichever commit the upstream repo's `v4` tag points to at run time. Tag re-pointing is possible for any action maintainer and is the primary supply-chain vector.
+- **Fix or rule:** Pin `uses:` to a full 40-character commit SHA with a `# vX.Y.Z` comment for human readability. Use `git ls-remote https://github.com/<org>/<action>.git 'refs/tags/vX.Y.Z'` to get the tag SHA. Re-pin when Dependabot opens a version bump PR. Apply to ALL jobs that hold elevated permissions (`packages: write`, `id-token: write`, etc.).
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-138, `.github/workflows/release.yml`

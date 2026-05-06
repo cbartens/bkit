@@ -1,0 +1,5 @@
+# Exclude test sources, snapshots, and TypeScript source from published tarball.
+# The package.json `files` array includes `.agents/` for consumer-seeding templates and docs,
+# but consumers do not need the development/test tooling in .agents/scripts/.
+.agents/scripts/*.ts
+.agents/scripts/__snapshots__/
