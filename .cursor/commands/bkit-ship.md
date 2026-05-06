@@ -496,11 +496,11 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
      git worktree prune
    fi
    ```
-2. Delete local feat branch:
+2. Delete local feature branch:
    ```bash
    git branch -D "feat/{FID}" 2>/dev/null || true
    ```
-3. Delete remote feat branch and prune tracking ref:
+3. Delete remote feature branch and prune tracking ref:
    ```bash
    git push origin --delete "feat/{FID}" 2>/dev/null || true
    git fetch --prune origin 2>/dev/null || true
