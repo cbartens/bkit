@@ -263,6 +263,28 @@
         "at": "2026-05-06T10:44:34Z",
         "commitSha": "efa1b666019c6d505303c406710a357b7f136b43",
         "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T10:48:36Z",
+        "commitSha": "5bd5462626e4bc9610bb870b94c28a3048d04058",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T10:48:36Z",
+        "commitSha": "5bd5462626e4bc9610bb870b94c28a3048d04058",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/ship-summary.md"
+        ]
       }
     ]
   }
