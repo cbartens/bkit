@@ -77,6 +77,17 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/plan-v3-checked.md"
         ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-06T14:37:09Z",
+        "commitSha": "f1e4f134e21cbb9e35ce6aa8882759f8b9c7d949",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-complexity-check.md"
+        ]
       }
     ]
   }
