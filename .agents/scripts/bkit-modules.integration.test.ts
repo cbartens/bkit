@@ -441,12 +441,12 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     expect(scripts["lint:prose"]).toContain("vale");
   });
 
-  it("runGitHooksModule adds `prepare: husky install` script", () => {
+  it("runGitHooksModule adds modern `prepare: husky` script (husky 9+ form)", () => {
     writePkg();
     const ctx = makeCtx({});
     runGitHooksModule(ctx);
     const scripts = readPkgScripts();
-    expect(scripts.prepare).toBe("husky install");
+    expect(scripts.prepare).toBe("husky");
   });
 
   it("runCiModule warns via print-sink when package.json is missing", () => {

@@ -901,19 +901,25 @@ export function runGitHooksModule(ctx) {
     }
     // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.
     // Husky 9+ requires this; without it, the .husky/* files exist but never run.
-    const hookScripts = ensurePackageJsonScripts({ prepare: "husky install" }, dryRun, ws);
+    // Husky 9+: `husky install` was renamed to plain `husky` (legacy form prints
+    // "DEPRECATED" warning on every `pnpm install`). Bkit ships the modern form
+    // for new consumers; existing consumers with `husky install` keep theirs
+    // (consumer-value-wins) — they can manually shorten to silence the warning.
+    const hookScripts = ensurePackageJsonScripts({ prepare: "husky" }, dryRun, ws);
     if (hookScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json scripts added [${hookScripts.added.join(", ")}]`);
     }
     if (hookScripts.missingPkg) {
-        printSink.push('[bkit] git-hooks: package.json not found — cannot ensure `prepare` script. Hooks installed but won\'t activate until you add `"prepare": "husky install"` and run `pnpm install`.');
+        printSink.push('[bkit] git-hooks: package.json not found — cannot ensure `prepare` script. Hooks installed but won\'t activate until you add `"prepare": "husky"` and run `pnpm install`.');
     }
     else if (hookScripts.malformed) {
         printSink.push("[bkit] git-hooks: package.json failed to parse — cannot ensure `prepare` script. Fix JSON syntax and re-run.");
     }
     else if (hookScripts.preserved.includes("prepare")) {
-        // Consumer has a custom `prepare` value — note it but don't override
-        printSink.push("[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it includes `husky install` for hooks to activate.");
+        // Consumer has a custom `prepare` value — note it but don't override.
+        // Either `husky` (modern, 9+) or `husky install` (legacy) activates the
+        // hooks; the legacy form just emits a deprecation warning on each install.
+        printSink.push("[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it runs `husky` (or legacy `husky install`) for hooks to activate.");
     }
     // Ensure husky devDep — without it, the `prepare: husky install` script we
     // just added blows up on `pnpm install` with `husky: not found`. This was

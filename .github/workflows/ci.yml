@@ -45,9 +45,5 @@ jobs:
       - name: Verify dist/ is fresh
         run: pnpm check:dist
 
-      # Pre-seed .bkit-version (runtime artifact, gitignored — always shows
-      # drift on fresh checkout). After install --core, drift detection is
-      # purely "do bkit's templates match the consumer files?" which is the
-      # signal we actually want from bkit check.
       - name: bkit check
-        run: pnpm bkit install --core && pnpm bkit check
+        run: pnpm bkit check
