@@ -53,6 +53,19 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/plan-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 8,
+        "at": "2026-05-06T14:24:10Z",
+        "commitSha": "acff188ac75b9c90870dc2dc8b1c710319648106",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/plan-scope-check-1.md",
+          "docs/plans/logs/bar-131-related-bars-suite/plan-scope-check-2.md"
+        ]
       }
     ]
   }
