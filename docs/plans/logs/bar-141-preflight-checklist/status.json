@@ -171,6 +171,18 @@
         "artifacts": [
           "docs/plans/logs/bar-141-preflight-checklist/build-plan-verify-1-1.md"
         ]
+      },
+      {
+        "step": "challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 10,
+        "at": "2026-05-06T06:30:44Z",
+        "commitSha": "69b46ab8a4303ee217dd255791436623aaed5149",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-challenge.md"
+        ]
       }
     ]
   }
