@@ -1015,7 +1015,12 @@ export function runLintModule(ctx: ModuleContext): void {
     {
       "format:check": "prettier --check .",
       "lint:prose":
-        'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
+        // F9 (BAR-138): symmetric soft-skip — protect against missing vale
+        // binary AND missing referenced packages (e.g. write-good not synced
+        // after .vale.ini was rewritten or after a clean checkout). Hard-failing
+        // on a missing package would break local commits via the pre-commit
+        // hook with no actionable signal.
+        "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)\"; fi'",
       "lint:slop": "slop-scan scan .",
     },
     dryRun,
