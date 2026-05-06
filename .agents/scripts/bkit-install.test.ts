@@ -12,6 +12,12 @@ import {
   parseFrontmatter,
   runTemplates,
   updateManagedBlock,
+  getStagingDir,
+  initStagingDir,
+  commitStaging,
+  discardStaging,
+  discardAllStaging,
+  STAGING_ROOT,
 } from "./bkit-install";
 import { applyTokens } from "./bkit-tokens";
 
@@ -705,6 +711,135 @@ describe("html-comment marker round-trip + default-arg backward compat", () => {
     const yaml = `# bkit:start\nstep: true\n# bkit:end\n`;
     // Default arg = html-comment → should NOT find the hash markers
     expect(extractManagedBlock(yaml)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P4.T1 + P4.T2 — Staging dir + atomic rename (BAR-142 §A4)
+// ---------------------------------------------------------------------------
+
+describe("P4.T1 — getStagingDir / initStagingDir", () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-staging-test-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("getStagingDir returns the expected absolute path", () => {
+    const result = getStagingDir("core", tmpDir);
+    expect(result).toBe(path.join(tmpDir, STAGING_ROOT, "core"));
+  });
+
+  it("initStagingDir creates the staging dir", () => {
+    const stagingDir = getStagingDir("test-module", tmpDir);
+    initStagingDir(stagingDir);
+    expect(fs.existsSync(stagingDir)).toBe(true);
+    expect(fs.statSync(stagingDir).isDirectory()).toBe(true);
+  });
+
+  it("initStagingDir clears an existing staging dir (idempotent)", () => {
+    const stagingDir = getStagingDir("test-module", tmpDir);
+    initStagingDir(stagingDir);
+    fs.writeFileSync(path.join(stagingDir, "stale.txt"), "stale", "utf-8");
+    initStagingDir(stagingDir);
+    expect(fs.readdirSync(stagingDir)).toHaveLength(0);
+  });
+});
+
+describe("P4.T2 — commitStaging / discardStaging", () => {
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-staging-test-"));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("commitStaging moves staged files to their consumer destinations", () => {
+    const stagingDir = getStagingDir("core", tmpDir);
+    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stagingDir, ".claude", "agents", "bkit-foo.md"),
+      "agent content",
+      "utf-8",
+    );
+
+    const committed = commitStaging(stagingDir, tmpDir);
+    expect(committed).toContain(path.join(".claude", "agents", "bkit-foo.md"));
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
+    ).toBe("agent content");
+    // Staging dir itself is removed after commit
+    expect(fs.existsSync(stagingDir)).toBe(false);
+  });
+
+  it("commitStaging returns empty array when staging dir does not exist", () => {
+    const stagingDir = getStagingDir("nonexistent", tmpDir);
+    const committed = commitStaging(stagingDir, tmpDir);
+    expect(committed).toEqual([]);
+  });
+
+  it("commitStaging overwrites the consumer file at destination with staged version", () => {
+    // Verify the consumer file at destination gets the staged version
+    const stagingDir = getStagingDir("core", tmpDir);
+    // Create staging dir + staged file
+    fs.mkdirSync(path.join(stagingDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(stagingDir, ".agents", "existing.md"), "new content", "utf-8");
+    // Pre-existing consumer file
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "existing.md"), "old content", "utf-8");
+
+    commitStaging(stagingDir, tmpDir);
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".agents", "existing.md"), "utf-8"),
+    ).toBe("new content");
+  });
+
+  it("discardStaging removes staging dir without touching consumer files", () => {
+    const stagingDir = getStagingDir("core", tmpDir);
+    initStagingDir(stagingDir);
+    fs.writeFileSync(path.join(stagingDir, "staged.md"), "staged", "utf-8");
+
+    // Consumer file at real destination is untouched
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", "consumer.md"), "consumer data", "utf-8");
+
+    discardStaging(stagingDir);
+    expect(fs.existsSync(stagingDir)).toBe(false);
+    // Consumer file survives
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".agents", "consumer.md"), "utf-8"),
+    ).toBe("consumer data");
+  });
+
+  it("discardStaging is a no-op when dir does not exist", () => {
+    const stagingDir = getStagingDir("nonexistent", tmpDir);
+    expect(() => discardStaging(stagingDir)).not.toThrow();
+  });
+
+  it("discardAllStaging removes the entire STAGING_ROOT", () => {
+    const stagingRoot = path.join(tmpDir, STAGING_ROOT);
+    fs.mkdirSync(path.join(stagingRoot, "core"), { recursive: true });
+    fs.mkdirSync(path.join(stagingRoot, "claude"), { recursive: true });
+    fs.writeFileSync(path.join(stagingRoot, "core", "test.md"), "x");
+    discardAllStaging(tmpDir);
+    expect(fs.existsSync(stagingRoot)).toBe(false);
+  });
+
+  it("commitStaging creates missing parent dirs at destination", () => {
+    const stagingDir = getStagingDir("core", tmpDir);
+    fs.mkdirSync(path.join(stagingDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stagingDir, ".github", "workflows", "ci.yml"),
+      "name: CI",
+      "utf-8",
+    );
+    commitStaging(stagingDir, tmpDir);
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8"),
+    ).toBe("name: CI");
   });
 });
 

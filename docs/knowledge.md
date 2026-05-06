@@ -163,3 +163,27 @@
 - **Severity:** high
 - **Source:** phase
 - **Related:** BAR-146, BAR-131 (PR #7 first observation), `.agents/workflows/bkit-build.md` Step 17, `.agents/workflows/bkit-debug.md` Step 11, `.agents/workflows/bkit-ship.md` Step 3 + Gate 3, `.agents/workflows.md` § CI / Vercel commit tags
+
+## KN-12: Transactional install via staging dir — zero-overwrite mid-failure guarantee (2026-05-07)
+
+- **Category:** agentic
+- **Symptom (design goal):** A crash mid-install (after some modules write but before all complete) would leave partial consumer files in place — no way to distinguish "partial bkit write" from "consumer customisation".
+- **Root cause:** Pre-v0.9.0, modules wrote directly to consumer destinations. Any error after the first module's writes left a partially-updated consumer repo with no rollback path.
+- **Fix or rule:** v0.9.0+ staging contract: (1) Each module writes to `.bkit-staging/<module>/` (not the real destination). (2) After ALL modules complete, `commitStaging` renames staged files to consumer destinations (atomic per file). (3) On any error (throw, crash, SIGTERM), `discardAllStaging` removes `.bkit-staging/` entirely — consumer files untouched. Test this contract: seed consumer files, simulate mid-install failure via `discardAllStaging`, assert consumer files byte-identical to pre-install state (`fs.readFileSync` equality).
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-142 §A4, DE-9, `.agents/scripts/bkit-install.ts` (`getStagingDir`, `commitStaging`, `discardAllStaging`), `.agents/scripts/bkit-install.integration.test.ts` (Scenario 9)
+
+## KN-13: `canonicalHashes` vs `tier3Hashes` — distinct purposes, shared schema (2026-05-07)
+
+- **Category:** agentic
+- **Symptom (design clarification):** Two sha256 hash maps in `.agents/.bkit-version` serve different purposes; conflating them causes logic errors.
+- **Root cause / design:** `tier3Hashes` (v0.7.x+): hash of Tier-3 file content AT install time → used by `bkit uninstall` to decide safe-delete (hash match = bkit installed it, no consumer edit → delete; mismatch = consumer edited → preserve). `canonicalHashes` (v0.9.x+): hash of EVERY bkit-managed file content at install time → used by `bkit upgrade` to detect consumer drift (hash mismatch = consumer modified since install → conflict, do not overwrite).
+- **Fix or rule:** Do NOT use `tier3Hashes` for upgrade drift detection (it only covers Tier-3; Tier-1/Tier-2 also need drift detection). Do NOT use `canonicalHashes` for uninstall safe-delete (it covers all files; safe-delete semantics are Tier-3-only). Keep them separate.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-142 §A5, DE-10, `.agents/scripts/bkit-version.ts` (`BkitVersion` interface), `.agents/scripts/bkit-upgrade.ts`

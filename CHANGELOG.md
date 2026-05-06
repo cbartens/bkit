@@ -6,6 +6,36 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.0.0] — 2026-05-07
+
+### Added
+
+- **`setup-auth@v1` composite action** — GitHub Actions composite action at `.github/actions/setup-auth/action.yml` wraps the multi-line bash PAT-shim. Consumers reference `uses: cbartens/bkit/.github/actions/setup-auth@v1`. Requires `v1` annotated tag (pushed post-merge). Inputs: `token` (required, `GH_BKIT_TOKEN` PAT), `registry` (optional, defaults to `https://npm.pkg.github.com`). Exports `BKIT_READ_TOKEN` into the job env. (BAR-131 §1)
+- **`v1` annotated tag** — pushed post-merge, pointing to the sub-plan-4 squash-merge commit. Required for `uses: cbartens/bkit/.github/actions/setup-auth@v1` to resolve in consumers.
+
+### Notes
+
+- Multi-line bash PAT-shim block in seeded `ci.yml` is **retained** (RETAIN-WITH-REASON: external contract — non-Actions CI fallback). Kill-date: v1.1.0.
+- `.github/workflows/test-action.yml` meta-test workflow added for manual `workflow_dispatch` smoke testing.
+- Offline acceptance test `bkit-action-yaml.test.ts` parses `action.yml` without network calls.
+
+---
+
+## [0.9.0] — 2026-05-07
+
+### Added
+
+- **Transactional install** — `bkit install` now writes to `.bkit-staging/<module>/` per module before committing. On success, staged files are atomically renamed to consumer destinations. On failure, `discardAllStaging` removes all staging dirs — consumer files left byte-identical to pre-install state. (BAR-142 §A4)
+- **`bkit upgrade` verb** — diff engine compares old vs new template content against consumer drift. Non-conflicting changes applied automatically; conflicting files (consumer-modified since install) emitted to stderr without overwrite. `--non-interactive` flag: auto-apply non-conflicting; exit non-zero on any conflict (CI-safe). (BAR-142 §A5)
+- **`canonicalHashes` in `.bkit-version`** — additive field (v0.9.x+) records sha256 of every bkit-managed file at install time. Used by `bkit upgrade` drift detection. Backward-compat: absent field defaults to `{}` (all files appear "unknown" → conservative no-overwrite). (BAR-142 §A5)
+- **`isConsumerModified` helper** — exported from `bkit-version.ts`; returns true when a managed file's on-disk hash differs from its recorded canonical hash (consumer drift). (BAR-142 §A5)
+
+### Breaking Changes
+
+None. All new surface is additive. `canonicalHashes` absent in old `.bkit-version` payloads defaults to `{}` — backward-compat read.
+
+---
+
 ## [0.8.0] — 2026-05-07
 
 ### Added

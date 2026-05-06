@@ -10,6 +10,7 @@ import {
   sha256,
   hashFile,
   shouldDeleteTier3,
+  isConsumerModified,
   type BkitVersion,
 } from "./bkit-version";
 
@@ -214,5 +215,98 @@ describe("shouldDeleteTier3", () => {
     const filePath = path.join(tmpDir, "ci.yml");
     fs.writeFileSync(filePath, "yaml content\n", "utf-8");
     expect(shouldDeleteTier3(".github/workflows/ci.yml", filePath, {})).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// P4.T4 — canonicalHashes: backward-compat read + isConsumerModified
+// ---------------------------------------------------------------------------
+
+describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () => {
+  it("parseBkitVersion v0.6.x plain-text → canonicalHashes defaults to empty object", () => {
+    const result = parseBkitVersion("0.6.1\n");
+    expect(result).not.toBeNull();
+    expect(result!.canonicalHashes).toEqual({});
+  });
+
+  it("parseBkitVersion v0.7.x JSON (no canonicalHashes) → canonicalHashes defaults to empty object", () => {
+    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
+    const result = parseBkitVersion(json);
+    expect(result).not.toBeNull();
+    expect(result!.canonicalHashes).toEqual({});
+  });
+
+  it("parseBkitVersion v0.9.x JSON with canonicalHashes → reads correctly", () => {
+    const json = JSON.stringify({
+      pinnedVersion: "0.9.0",
+      tier3Hashes: {},
+      canonicalHashes: { ".claude/agents/bkit-foo.md": "abc123" },
+    });
+    const result = parseBkitVersion(json);
+    expect(result).not.toBeNull();
+    expect(result!.canonicalHashes).toEqual({ ".claude/agents/bkit-foo.md": "abc123" });
+  });
+
+  it("serializeBkitVersion includes canonicalHashes field", () => {
+    const v: BkitVersion = {
+      pinnedVersion: "0.9.0",
+      tier3Hashes: {},
+      canonicalHashes: { ".claude/agents/bkit-test.md": "deadbeef" },
+    };
+    const serialized = serializeBkitVersion(v);
+    const parsed = JSON.parse(serialized);
+    expect(parsed.canonicalHashes).toEqual({ ".claude/agents/bkit-test.md": "deadbeef" });
+  });
+
+  it("round-trip preserves canonicalHashes", () => {
+    const original: BkitVersion = {
+      pinnedVersion: "0.9.0",
+      tier3Hashes: { ".github/workflows/ci.yml": "hash1" },
+      canonicalHashes: { ".claude/agents/bkit-foo.md": "hash2" },
+    };
+    const serialized = serializeBkitVersion(original);
+    const parsed = parseBkitVersion(serialized);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.canonicalHashes).toEqual(original.canonicalHashes);
+    expect(parsed!.tier3Hashes).toEqual(original.tier3Hashes);
+  });
+
+  it("isConsumerModified returns false when canonicalHashes has no entry for path (unknown → conservative)", () => {
+    const filePath = path.join(tmpDir, "file.md");
+    fs.writeFileSync(filePath, "content", "utf-8");
+    expect(isConsumerModified("some/path.md", filePath, {})).toBe(false);
+  });
+
+  it("isConsumerModified returns false when file is absent", () => {
+    const hashes = { ".claude/agents/bkit-foo.md": sha256("content") };
+    expect(isConsumerModified(".claude/agents/bkit-foo.md", path.join(tmpDir, "absent.md"), hashes)).toBe(false);
+  });
+
+  it("isConsumerModified returns false when file content matches canonical hash (no drift)", () => {
+    const content = "bkit-managed content\n";
+    const filePath = path.join(tmpDir, "bkit-foo.md");
+    fs.writeFileSync(filePath, content, "utf-8");
+    const hashes = { ".claude/agents/bkit-foo.md": sha256(content) };
+    expect(isConsumerModified(".claude/agents/bkit-foo.md", filePath, hashes)).toBe(false);
+  });
+
+  it("isConsumerModified returns true when file content differs from canonical hash (consumer drift)", () => {
+    const originalContent = "original bkit content\n";
+    const consumerContent = "consumer added extra lines\n";
+    const filePath = path.join(tmpDir, "bkit-foo.md");
+    fs.writeFileSync(filePath, consumerContent, "utf-8");
+    const hashes = { ".claude/agents/bkit-foo.md": sha256(originalContent) };
+    expect(isConsumerModified(".claude/agents/bkit-foo.md", filePath, hashes)).toBe(true);
+  });
+
+  it("backward-compat: old payload without canonicalHashes → isConsumerModified returns false for all files (no silent overwrites)", () => {
+    // Simulates a consumer with v0.7.x .bkit-version (no canonicalHashes field)
+    const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
+    const parsed = parseBkitVersion(json);
+    expect(parsed).not.toBeNull();
+    const filePath = path.join(tmpDir, "ci.yml");
+    fs.writeFileSync(filePath, "some content\n", "utf-8");
+    // All files appear as "unknown" → conservative: not detected as drift
+    expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(false);
   });
 });

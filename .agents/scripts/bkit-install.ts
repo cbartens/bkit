@@ -12,7 +12,107 @@ import {
   readChangelogVersionDelta,
 } from "./bkit-postinstall.js";
 import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import { runUpgrade, updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade.js";
 import type { ModuleName } from "./bkit-manifest.js";
+
+// ---------------------------------------------------------------------------
+// Staging helpers (P4.T1 / P4.T2)
+//
+// Transactional install: each module writes into `.bkit-staging/<module>/`
+// first. `commitStaging` atomically renames the staging dir to the real
+// destination when ALL modules succeed. `discardStaging` cleans up on failure.
+//
+// Design contract (BAR-142 §A4):
+//   - Staging path: `.bkit-staging/<module>/` relative to cwd.
+//   - Each staged file lives at `<stagingDir>/<rel-consumer-path>`.
+//   - commitStaging: move each staged file → real destination (fs.renameSync).
+//     Falls back to copy+delete if cross-device rename throws EXDEV.
+//   - discardStaging: fs.rmSync(stagingDir, { recursive: true, force: true }).
+//
+// Callers:
+//   - bkit-modules.ts dispatchModules wraps each module fn with commit/discard
+//     so a crash inside any module discards that module's staging dir and all
+//     prior modules' staging dirs that have not yet been committed.
+// ---------------------------------------------------------------------------
+
+/** Staging root dir — all staging work lives under this path (relative to cwd). */
+export const STAGING_ROOT = ".bkit-staging";
+
+/**
+ * Build the staging directory path for a given module.
+ * Returns an absolute path.
+ */
+export function getStagingDir(module: string, cwd = process.cwd()): string {
+  return path.join(cwd, STAGING_ROOT, module);
+}
+
+/**
+ * Initialise a staging directory (create + empty).
+ * Safe to call multiple times — idempotent.
+ */
+export function initStagingDir(stagingDir: string): void {
+  if (fs.existsSync(stagingDir)) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(stagingDir, { recursive: true });
+}
+
+/**
+ * Commit a staging directory by moving each staged file to its real destination.
+ *
+ * Staged files live at `<stagingDir>/<relPath>` where `relPath` is relative to
+ * consumer root (e.g. `.claude/agents/bkit-foo.md`).
+ * On commit, each file is moved to `<cwd>/<relPath>`.
+ *
+ * Falls back to copy+delete when rename throws EXDEV (cross-device move).
+ * Returns the list of committed relative paths.
+ */
+export function commitStaging(stagingDir: string, cwd = process.cwd()): string[] {
+  if (!fs.existsSync(stagingDir)) return [];
+  const committed: string[] = [];
+  const entries = listFilesRecursive(stagingDir);
+  for (const absStaged of entries) {
+    const relPath = path.relative(stagingDir, absStaged);
+    const destAbs = path.join(cwd, relPath);
+    fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+    try {
+      fs.renameSync(absStaged, destAbs);
+    } catch (err: unknown) {
+      // Cross-device rename (EXDEV) — fall back to copy + delete
+      if ((err as NodeJS.ErrnoException).code === "EXDEV") {
+        fs.copyFileSync(absStaged, destAbs);
+        fs.chmodSync(destAbs, fs.statSync(absStaged).mode);
+        fs.rmSync(absStaged);
+      } else {
+        throw err;
+      }
+    }
+    committed.push(relPath);
+  }
+  // Clean up the (now-empty) staging dir
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  return committed;
+}
+
+/**
+ * Discard a staging directory without touching consumer files.
+ * Safe to call when stagingDir does not exist.
+ */
+export function discardStaging(stagingDir: string): void {
+  if (fs.existsSync(stagingDir)) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Discard ALL staging dirs under STAGING_ROOT (cleanup on mid-install failure).
+ */
+export function discardAllStaging(cwd = process.cwd()): void {
+  const stagingRoot = path.join(cwd, STAGING_ROOT);
+  if (fs.existsSync(stagingRoot)) {
+    fs.rmSync(stagingRoot, { recursive: true, force: true });
+  }
+}
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -636,7 +736,7 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
 }
 
 async function main() {
-  const { verb, modules, uninstallFlags } = parseArgs(process.argv.slice(2));
+  const { verb, modules, uninstallFlags, upgradeFlags } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
@@ -659,6 +759,64 @@ async function main() {
       console.log(banner);
     } else {
       console.log(`${LOG_PREFIX} No advisories found.`);
+    }
+    return;
+  }
+
+  if (verb === "upgrade") {
+    LOG_PREFIX = "[bkit-upgrade]";
+    console.log(
+      `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
+    );
+
+    // Collect bkit-managed template candidates from the package.
+    // Templates live in .agents/templates/ — walk the directory for all files.
+    const pkgRoot = getPkgRoot();
+    const tplRoot = path.join(pkgRoot, ".agents", "templates");
+    const candidates: Array<{ relPath: string; templatePath: string }> = [];
+
+    if (fs.existsSync(tplRoot)) {
+      function collectTemplates(dir: string, rel: string): void {
+        for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+          const entRel = rel ? path.join(rel, ent.name) : ent.name;
+          const entAbs = path.join(dir, ent.name);
+          if (ent.isDirectory()) {
+            collectTemplates(entAbs, entRel);
+          } else if (ent.isFile()) {
+            // Remap dotfile names (gitignore → .gitignore etc.)
+            const remapped = entRel.replace(/(?:^|\/)gitignore(?:\/|$)/, (m) =>
+              m.replace("gitignore", ".gitignore"),
+            ).replace(/(?:^|\/)npmignore(?:\/|$)/, (m) =>
+              m.replace("npmignore", ".npmignore"),
+            );
+            candidates.push({ relPath: remapped, templatePath: entAbs });
+          }
+        }
+      }
+      collectTemplates(tplRoot, "");
+    }
+
+    const result = runUpgrade(candidates, {
+      nonInteractive: upgradeFlags.nonInteractive,
+      dryRun: upgradeFlags.dryRun,
+      cwd: process.cwd(),
+    });
+
+    // Update canonical hashes for upgraded files (only on successful non-dry-run)
+    if (!upgradeFlags.dryRun && result.updated.length > 0) {
+      updateCanonicalHashesAfterUpgrade(result, candidates, {
+        dryRun: false,
+        cwd: process.cwd(),
+      });
+    }
+
+    console.log(
+      `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}`,
+    );
+
+    // Non-interactive mode: exit non-zero on conflicts
+    if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {
+      process.exit(1);
     }
     return;
   }

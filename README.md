@@ -304,6 +304,56 @@ BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
 
 This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.
 
+## Upgrade (v0.9.0+)
+
+`bkit upgrade` diffs old vs new template content against your consumer drift and applies non-conflicting changes. Files you have modified since install are flagged as conflicts — never silently overwritten.
+
+```bash
+# Review what would change (no writes)
+pnpm exec bkit upgrade --dry-run
+
+# Upgrade non-conflicting files; show conflict list (interactive)
+pnpm exec bkit upgrade
+
+# CI-safe: auto-apply non-conflicting; exit non-zero on conflicts
+pnpm exec bkit upgrade --non-interactive
+```
+
+**Conflict behaviour:** When `bkit upgrade` detects that a managed file has consumer drift (on-disk content differs from the hash recorded at last install), it emits the conflict to stderr and does NOT overwrite the file. The conflict entry includes both the new template content and the current on-disk content — paste into a coding assistant to apply the three-way merge manually.
+
+**How drift detection works:** Each `bkit install` records a `canonicalHashes` map in `.agents/.bkit-version` — sha256 of every file bkit wrote. On upgrade, `bkit upgrade` compares the current on-disk hash to the recorded canonical hash to detect consumer modifications.
+
+**Backward compatibility:** Consumers without a `canonicalHashes` entry (installed before v0.9.0) have no recorded hash for any file. `bkit upgrade` treats these as "unknown" and does not silently overwrite them — run `bkit install` once to seed the canonical hashes before using `bkit upgrade`.
+
+## Transactional install (v0.9.0+)
+
+`bkit install` writes to a `.bkit-staging/<module>/` staging directory per module. Staged files are atomically renamed to their consumer destination only after ALL modules complete successfully.
+
+**Mid-failure guarantee:** If install crashes or is interrupted after some modules complete but before all commit, the staging directory is discarded (`discardAllStaging`). Consumer files are left byte-identical to pre-install state — no partial writes.
+
+**Rollback:** On uninstall or install failure, `.bkit-staging/` is always cleaned up. The staging root never persists in a committed consumer repo state.
+
+## Helper action: `setup-auth@v1`
+
+A GitHub Actions composite action that configures `@cbartens` npm registry auth. Replaces the multi-line bash PAT-shim in CI workflows.
+
+```yaml
+- uses: cbartens/bkit/.github/actions/setup-auth@v1
+  with:
+    token: ${{ secrets.GH_BKIT_TOKEN }}
+```
+
+**What it does:** Exports `BKIT_READ_TOKEN` into the job environment so subsequent `pnpm install` steps pick it up via the consumer's `.npmrc`:
+
+```
+@cbartens:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}
+```
+
+**Requires:** `v1` tag pointing to the merge commit of sub-plan-4. Verify resolution with `gh api repos/cbartens/bkit/git/refs/tags/v1`.
+
+> Note: The multi-line bash PAT-shim in seeded `ci.yml` is **retained** as a fallback for non-Actions CI consumers (RETAIN-WITH-REASON). Kill-date: v1.1.0.
+
 ## Documentation
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.

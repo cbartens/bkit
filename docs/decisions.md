@@ -101,3 +101,34 @@
   ```
 - **Source:** phase
 - **Related:** BAR-142 §A1, `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.ts`, KN-8, DE-7
+
+## DE-9: BAR-142 §A4 — Transactional install via `.bkit-staging/` (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** `bkit install` writes each module's output to `.bkit-staging/<module>/` before committing. After ALL modules complete without error, `commitStaging` atomically renames staged files to consumer destinations. On any mid-install failure, `discardAllStaging` removes all staging dirs — consumer files left byte-identical to pre-install state.
+- **Why:** Prior to v0.9.0, a crash mid-install (e.g. `bkit-design-organise` lookup miss, BAR-141 regression) could leave partial writes in consumer dirs. The staging design makes mid-failure the common case trivially safe: no staged file ever reaches a consumer destination unless the entire install succeeds.
+- **Discarded:** (1) Backup-then-restore: copies all destination files before writing, restores on failure. Rejected — requires the same file I/O as install, doubles disk use, and restoration is error-prone on large installs. (2) Transactional DB: overkill for a CLI file installer.
+- **Key APIs:** `getStagingDir(module, cwd)`, `initStagingDir(stagingDir)`, `commitStaging(stagingDir, cwd)`, `discardStaging(stagingDir)`, `discardAllStaging(cwd)` — all exported from `bkit-install.ts`.
+- **Source:** phase
+- **Related:** BAR-142 §A4, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.integration.test.ts`
+
+## DE-10: BAR-142 §A5 — `bkit upgrade` diff engine + `canonicalHashes` (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** (1) `canonicalHashes` is an additive field in `.agents/.bkit-version` (v0.9.x+): map of consumer-relative path → sha256 of bkit-written content at install time. (2) `bkit upgrade` uses `isConsumerModified(relPath, absPath, canonicalHashes)` to detect consumer drift: if disk hash ≠ canonical hash → conflict, do NOT overwrite. (3) `--non-interactive`: auto-apply non-conflicting; emit conflict list to stderr; exit non-zero on any conflict. (4) `updateCanonicalHashesAfterUpgrade` updates hashes for upgraded files post-run.
+- **Why:** Silent overwrite of consumer drift was the root cause of the Gether regression (KN-8). `canonicalHashes` gives the upgrade engine a per-file ownership record that survives across installs. Backward-compat: absent field → `{}` → all files appear "unknown" → conservative no-overwrite (safe).
+- **Discarded:** (1) Three-way merge UI — OOS per plan. (2) Timestamp-based drift detection — unreliable across CI environments (git checkout resets mtime). (3) Storing full file content in `.bkit-version` — too large; sha256 is sufficient for drift detection.
+- **Source:** phase
+- **Related:** BAR-142 §A5, `.agents/scripts/bkit-upgrade.ts`, `.agents/scripts/bkit-version.ts`, `.agents/scripts/bkit-upgrade.test.ts`, `.agents/scripts/bkit-upgrade.integration.test.ts`, KN-8
+
+## DE-11: BAR-131 — `setup-auth@v1` composite action design (2026-05-07)
+
+- **Category:** infra
+- **Status:** active
+- **Decision:** Ship a GitHub Actions composite action at `.github/actions/setup-auth/action.yml`. Inputs: `token` (required), `registry` (optional, defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up automatically. The multi-line bash PAT-shim in seeded `ci.yml` is RETAINED as a fallback (RETAIN-WITH-REASON, kill-date v1.1.0). Requires a `v1` annotated tag post-merge.
+- **Why:** The composite action encapsulates the PAT-shim boilerplate so consumers can reference a single `uses:` line. The bash fallback is kept because non-Actions CI consumers (e.g. CircleCI, Buildkite) rely on the env var pattern in the seeded workflow — removing it would break them without a migration path.
+- **Discarded:** (1) Bundle action into sub-plan-3 — orthogonal to P3 scope; `setup-auth` depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern. (2) Remove bash fallback — external contract, not safe until v1.1.0 after consumer migration guidance shipped.
+- **Source:** phase
+- **Related:** BAR-131 §1, `.github/actions/setup-auth/action.yml`, `.agents/templates/.github/workflows/ci.yml`, `.agents/scripts/bkit-action-yaml.test.ts`

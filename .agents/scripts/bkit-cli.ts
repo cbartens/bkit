@@ -3,13 +3,15 @@
 
 export type ModuleFlag = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks" | "full";
 
-export type Verb = "install" | "check" | "doctor" | "uninstall" | "help";
+export type Verb = "install" | "check" | "doctor" | "uninstall" | "upgrade" | "help";
 
 export interface ParsedArgs {
   verb: Verb;
   modules: Set<ModuleFlag>;
   /** Uninstall-specific flags (only populated when verb === "uninstall"). */
   uninstallFlags: UninstallFlags;
+  /** Upgrade-specific flags (only populated when verb === "upgrade"). */
+  upgradeFlags: UpgradeFlags;
 }
 
 export interface UninstallFlags {
@@ -21,6 +23,14 @@ export interface UninstallFlags {
   keepNpmrc: boolean;
   keepTooling: boolean;
   autoRevert: boolean;
+}
+
+/** Flags for the `upgrade` verb (P4.T5/P4.T6). */
+export interface UpgradeFlags {
+  /** Non-interactive mode: auto-apply non-conflicting changes; emit conflict list to stderr; exit non-zero on conflicts. */
+  nonInteractive: boolean;
+  /** Dry-run: show what would change without writing. */
+  dryRun: boolean;
 }
 
 const MODULE_FLAGS = new Set<ModuleFlag>([
@@ -76,6 +86,10 @@ function defaultUninstallFlags(): UninstallFlags {
   };
 }
 
+function defaultUpgradeFlags(): UpgradeFlags {
+  return { nonInteractive: false, dryRun: false };
+}
+
 /**
  * Parse argv (process.argv.slice(2)) into a ParsedArgs object.
  * Rejects unknown verbs and flags with process.exit(1).
@@ -90,7 +104,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     firstArg === "install" ||
     firstArg === "check" ||
     firstArg === "doctor" ||
-    firstArg === "uninstall"
+    firstArg === "uninstall" ||
+    firstArg === "upgrade"
   ) {
     verb = firstArg as Verb;
     args.shift();
@@ -105,6 +120,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const moduleFlags = new Set<ModuleFlag>();
   const uninstallFlags = defaultUninstallFlags();
+  const upgradeFlags = defaultUpgradeFlags();
 
   for (const arg of args) {
     if (arg.startsWith("--")) {
@@ -113,6 +129,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       // Uninstall-specific flags (accepted for all verbs that use them)
       if (flag === "dry-run") {
         uninstallFlags.dryRun = true;
+        upgradeFlags.dryRun = true;
         continue;
       }
       if (flag === "force") {
@@ -143,6 +160,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
         uninstallFlags.autoRevert = true;
         continue;
       }
+      // Upgrade-specific flags (P4.T6)
+      if (flag === "non-interactive") {
+        upgradeFlags.nonInteractive = true;
+        continue;
+      }
 
       // Module flags
       const moduleFlag = flag as ModuleFlag;
@@ -161,7 +183,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const modules = resolveModules(moduleFlags);
 
-  return { verb, modules, uninstallFlags };
+  return { verb, modules, uninstallFlags, upgradeFlags };
 }
 
 export function printUsage(): void {
@@ -171,6 +193,9 @@ Usage:
   bkit install [module-flags]   Install (or re-sync) agent + CI + lint stack.
                                  No flags = --full (all modules).
   bkit check [module-flags]     Dry-run — report drift without writing. Exits 1 on drift.
+  bkit upgrade [module-flags]   Upgrade installed files. Diffs old vs new templates;
+                                 conflict list emitted to stderr. Use --non-interactive
+                                 for CI (auto-apply non-conflicting; exit non-zero on conflicts).
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = --full (all modules).
   bkit doctor                   Read-only preflight + post-install advisory replay.
@@ -197,6 +222,11 @@ Uninstall flags:
 
 Install flags:
   --auto-revert   On Phase 3 blocker, automatically run uninstall and exit 1.
+
+Upgrade flags:
+  --non-interactive  Auto-apply non-conflicting changes; emit conflict list to stderr;
+                     exit non-zero when any conflict is detected (CI-safe).
+  --dry-run          Show what would change without writing.
 
 Examples:
   bkit install                  Full stack install (all modules).

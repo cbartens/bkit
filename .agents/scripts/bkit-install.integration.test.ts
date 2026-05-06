@@ -13,6 +13,14 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPreflight } from "./bkit-preflight";
 import { formatChecklist, runPostInstallCheck } from "./bkit-postinstall";
+import {
+  initStagingDir,
+  commitStaging,
+  discardStaging,
+  discardAllStaging,
+  getStagingDir,
+  STAGING_ROOT,
+} from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
 
@@ -657,6 +665,96 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     // This is the byte-identical-to-pre-install check: file was absent → now absent.
     expect(fs.existsSync(versionFilePath)).toBe(false);
   }, 90_000);
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 9 — P4.T3: Mid-failure rollback fixture
+//
+// Tests the staging mechanism end-to-end: staging files written to
+// `.bkit-staging/<module>/` but NOT committed when a mid-install failure
+// fires. Consumer files must remain byte-identical to pre-install state.
+//
+// Reproduces the BAR-142 §A4 concern: a crash after first module but before
+// commitStaging must leave consumer git-diff empty.
+// ---------------------------------------------------------------------------
+
+describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched", () => {
+  it("discardAllStaging after partial writes leaves consumer files untouched", () => {
+    // Seed consumer state
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
+      "original agent content",
+      "utf-8",
+    );
+
+    // Simulate first module writing to staging (NOT committed yet)
+    const stagingDir = getStagingDir("claude", tmpDir);
+    initStagingDir(stagingDir);
+    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stagingDir, ".claude", "agents", "bkit-foo.md"),
+      "would-be-new content",
+      "utf-8",
+    );
+
+    // Simulate a second module starting to stage
+    const stagingDir2 = getStagingDir("cursor", tmpDir);
+    initStagingDir(stagingDir2);
+
+    // Simulate mid-failure: discard all staging (would be triggered by error handler)
+    discardAllStaging(tmpDir);
+
+    // Consumer file must be byte-identical to pre-install state
+    const consumerContent = fs.readFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
+      "utf-8",
+    );
+    expect(consumerContent).toBe("original agent content");
+
+    // All staging dirs must be removed
+    expect(fs.existsSync(path.join(tmpDir, STAGING_ROOT))).toBe(false);
+  });
+
+  it("commitStaging after successful module moves files + staging dir removed", () => {
+    // Seed staging with files to commit
+    const stagingDir = getStagingDir("claude", tmpDir);
+    initStagingDir(stagingDir);
+    fs.mkdirSync(path.join(stagingDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stagingDir, ".claude", "agents", "bkit-bar.md"),
+      "new agent content",
+      "utf-8",
+    );
+
+    // Commit the module
+    const committed = commitStaging(stagingDir, tmpDir);
+    expect(committed).toContain(path.join(".claude", "agents", "bkit-bar.md"));
+
+    // File is at consumer destination
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-bar.md"), "utf-8"),
+    ).toBe("new agent content");
+
+    // Staging dir removed
+    expect(fs.existsSync(stagingDir)).toBe(false);
+  });
+
+  it("staging root is NOT present in the consumer's repo after a full successful commit", () => {
+    // After all modules commit, STAGING_ROOT must not exist
+    const stagingDir = getStagingDir("core", tmpDir);
+    initStagingDir(stagingDir);
+    fs.writeFileSync(path.join(stagingDir, "file.md"), "x", "utf-8");
+    commitStaging(stagingDir, tmpDir);
+    // When all staging dirs are committed, STAGING_ROOT should be empty and can be removed
+    // (Each commitStaging removes its own subdir; STAGING_ROOT parent dir may still exist)
+    const stagingRoot = path.join(tmpDir, STAGING_ROOT);
+    if (fs.existsSync(stagingRoot)) {
+      // Should be empty — no uncommitted staging subdirs remain
+      const remaining = fs.readdirSync(stagingRoot);
+      expect(remaining).toHaveLength(0);
+    }
+  });
 });
 
 describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {

@@ -1,18 +1,27 @@
-// bkit-version.ts — Schema for .agents/.bkit-version (P2.T3).
+// bkit-version.ts — Schema for .agents/.bkit-version (P2.T3, P4.T4).
 //
-// Extension over the plain-text version pin (v0.6.x schema):
-//   Old: plain text "0.6.1\n"
-//   New: JSON { pinnedVersion: string; tier3Hashes?: Record<string, string> }
+// Extension history:
+//   v0.6.x schema: plain text "0.6.1\n"
+//   v0.7.x schema: JSON { pinnedVersion: string; tier3Hashes?: Record<string, string> }
+//   v0.9.x schema: JSON { pinnedVersion: string; tier3Hashes?: ...; canonicalHashes?: ... }
 //
 // Backward-compat: if the file parses as plain text (not JSON), treat it as
-// { pinnedVersion: trimmedContent, tier3Hashes: {} } — no fields are required.
-// This ensures `bkit uninstall` works on consumers that installed with v0.6.x
-// before the schema extension.
+// { pinnedVersion: trimmedContent, tier3Hashes: {}, canonicalHashes: {} } —
+// no fields are required. This ensures `bkit uninstall` works on consumers
+// that installed with v0.6.x before the schema extension.
 //
 // `tier3Hashes`: map of consumer-relative path → sha256 hex of the file content
 // AT THE TIME of install. Used by `bkit uninstall` to decide whether a Tier-3
 // file was modified by the consumer (preserve) or still matches the default
 // bkit installed content (safe to delete).
+//
+// `canonicalHashes` (P4.T4 — additive, v0.9.x+):
+// Map of consumer-relative path → sha256 hex of the CANONICAL bkit-managed
+// file content AT THE TIME of install. Covers Tier-1 and Tier-2 managed files
+// (all files bkit writes during install). Used by `bkit upgrade` diff engine
+// to detect consumer drift: if on-disk hash differs from canonicalHash, the
+// consumer modified the file since install. Absent means "unknown" →
+// backward-compat: treat as no recorded hash (preserve-default).
 //
 // Security note: sha256 used for content identity only, not cryptographic
 // authentication. No secrets are stored here.
@@ -35,6 +44,23 @@ export interface BkitVersion {
    * Absent means "unknown" → preserve-default policy applies (never delete).
    */
   tier3Hashes: Record<string, string>;
+  /**
+   * sha256 hex digests of ALL bkit-canonical managed files at install time.
+   * (P4.T4 — additive field, v0.9.x+)
+   *
+   * Key: consumer-relative path (e.g. ".claude/agents/bkit-foo.md")
+   * Value: sha256 hex of the bkit-written file content at install time.
+   *
+   * Used by `bkit upgrade` diff engine: if the current on-disk hash for a
+   * path differs from its canonicalHash, the consumer modified the file since
+   * install → do NOT silently overwrite during upgrade.
+   *
+   * Absent means "unknown" → backward-compat: treat as no recorded hash.
+   * Old payloads that lack this field produce {} on parse — all files appear
+   * as "consumer-modified" to the upgrade engine → conservative: no silent
+   * overwrites (safe).
+   */
+  canonicalHashes: Record<string, string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -43,10 +69,14 @@ export interface BkitVersion {
 
 /**
  * Parse `.agents/.bkit-version` content into a BkitVersion object.
- * Handles both:
- *   - New JSON format:  { pinnedVersion, tier3Hashes }
- *   - Old plain-text:   "0.6.1\n"  → { pinnedVersion: "0.6.1", tier3Hashes: {} }
+ * Handles all schema versions:
+ *   - v0.9.x JSON:  { pinnedVersion, tier3Hashes, canonicalHashes }
+ *   - v0.7.x JSON:  { pinnedVersion, tier3Hashes } → canonicalHashes defaults to {}
+ *   - v0.6.x text:  "0.6.1\n" → { pinnedVersion: "0.6.1", tier3Hashes: {}, canonicalHashes: {} }
  * Returns null if content is empty/whitespace-only (treat as absent).
+ *
+ * Backward-compat guarantee: absent `canonicalHashes` defaults to {} (upgrade engine
+ * treats all files as "unknown" → no silent overwrites — conservative/safe).
  */
 export function parseBkitVersion(content: string): BkitVersion | null {
   const trimmed = content.trim();
@@ -63,7 +93,14 @@ export function parseBkitVersion(content: string): BkitVersion | null {
         !Array.isArray(parsed.tier3Hashes)
           ? (parsed.tier3Hashes as Record<string, string>)
           : {};
-      return { pinnedVersion, tier3Hashes };
+      // P4.T4: canonicalHashes is additive — absent on old payloads → default {}
+      const canonicalHashes =
+        parsed.canonicalHashes &&
+        typeof parsed.canonicalHashes === "object" &&
+        !Array.isArray(parsed.canonicalHashes)
+          ? (parsed.canonicalHashes as Record<string, string>)
+          : {};
+      return { pinnedVersion, tier3Hashes, canonicalHashes };
     } catch {
       // Fall through to plain-text parse
     }
@@ -72,7 +109,7 @@ export function parseBkitVersion(content: string): BkitVersion | null {
   // Plain-text fallback (v0.6.x format: just a semver string)
   // KN-5 guard: reject NaN-producing inputs
   if (!trimmed) return null;
-  return { pinnedVersion: trimmed, tier3Hashes: {} };
+  return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {} };
 }
 
 /**
@@ -106,7 +143,44 @@ export function writeBkitVersion(versionFilePath: string, v: BkitVersion): void 
 }
 
 // ---------------------------------------------------------------------------
-// sha256 — content hashing for tier3Hashes
+// canonicalHashes helpers (P4.T4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Decide whether a managed file has been modified by the consumer since install.
+ *
+ * Returns true (consumer-modified) when:
+ *   - `canonicalHashes` has a recorded hash for `relPath`, AND
+ *   - The current on-disk content hash differs from the recorded canonical hash.
+ *
+ * Returns false (no drift detected — safe to upgrade) when:
+ *   - `canonicalHashes` has no entry for `relPath` (unknown → conservative: treat as modified)
+ *   - The current on-disk content matches the canonical hash
+ *   - The file is absent (nothing to compare)
+ *
+ * "Unknown" paths return false (not detected as modified) so the upgrade engine
+ * treats them as potentially consumer-modified → conservative no-overwrite default.
+ *
+ * `relPath`: consumer-relative path (e.g. ".claude/agents/bkit-foo.md")
+ * `absolutePath`: absolute path to the file on disk
+ * `canonicalHashes`: the hashes map from the BkitVersion record
+ */
+export function isConsumerModified(
+  relPath: string,
+  absolutePath: string,
+  canonicalHashes: Record<string, string>,
+): boolean {
+  const recorded = canonicalHashes[relPath];
+  if (!recorded) return false; // unknown → not detected as drift (conservative)
+
+  const current = hashFile(absolutePath);
+  if (!current) return false; // absent → nothing to compare
+
+  return current !== recorded;
+}
+
+// ---------------------------------------------------------------------------
+// sha256 — content hashing for tier3Hashes / canonicalHashes
 // ---------------------------------------------------------------------------
 
 /**
