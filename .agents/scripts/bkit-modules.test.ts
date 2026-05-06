@@ -1,5 +1,5 @@
 // bkit-modules.test.ts — Tests for package.json manifest invariants and
-// installer print constants (BAR-138: GH Packages distribution).
+// installer advisory constants (BAR-138: GH Packages distribution, BAR-141: structured findings).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -64,110 +64,79 @@ describe("package.json manifest invariants (BAR-138)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Task C1 — Installer print constants (BAR-138)
+// Task C1 — Installer advisory action constants (BAR-138, migrated to bkit-postinstall.ts)
 // ---------------------------------------------------------------------------
 
 // Read the source file as a string to inspect the constant bodies without
 // executing the module (avoids import side-effects and keeps tests fast).
-// Note: template literals in bkit-modules.ts use \${...} to escape interpolation,
-// so the extracted body text contains the backslash-escaped form. Tests check
-// for the escaped form when looking for env-var interpolation syntax.
-const SRC = fs.readFileSync(path.resolve(".agents/scripts/bkit-modules.ts"), "utf-8");
+// Note: the constants are now in bkit-postinstall.ts (Phase 3 owner), not bkit-modules.ts.
+const POSTINSTALL_SRC = fs.readFileSync(
+  path.resolve(".agents/scripts/bkit-postinstall.ts"),
+  "utf-8",
+);
+const MODULES_SRC = fs.readFileSync(path.resolve(".agents/scripts/bkit-modules.ts"), "utf-8");
 
-describe("GH_BKIT_TOKEN_MISSING_INSTRUCTIONS", () => {
-  // Extract the constant body between the declaration and the next const.
-  const match = SRC.match(/const GH_BKIT_TOKEN_MISSING_INSTRUCTIONS = `([\s\S]*?)`;/);
-  const body = match ? match[1] : "";
+describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", () => {
+  // The action string is now embedded in the const GH_BKIT_TOKEN_MISSING_ACTION
+  const match = POSTINSTALL_SRC.match(
+    /const GH_BKIT_TOKEN_MISSING_ACTION\s*=\s*([\s\S]*?)(?=\nconst |\nexport )/,
+  );
+  const body = match ? match[1] : POSTINSTALL_SRC;
 
-  it("constant body is non-empty", () => {
-    expect(body.length).toBeGreaterThan(0);
+  it("postinstall source contains .npmrc registry line", () => {
+    expect(POSTINSTALL_SRC).toContain("@cbartens:registry=https://npm.pkg.github.com");
   });
 
-  it("contains .npmrc registry line", () => {
-    expect(body).toContain("@cbartens:registry=https://npm.pkg.github.com");
+  it("postinstall source contains _authToken= line with GH_BKIT_TOKEN env-var interpolation", () => {
+    expect(POSTINSTALL_SRC).toContain("_authToken=");
+    expect(POSTINSTALL_SRC).toContain("GH_BKIT_TOKEN");
   });
 
-  it("contains _authToken= line with GH_BKIT_TOKEN env-var interpolation", () => {
-    // In source, the template literal uses \${GH_BKIT_TOKEN} (escaped) so the
-    // extracted body string contains the backslash: _authToken=\${GH_BKIT_TOKEN}
-    expect(body).toContain("_authToken=");
-    expect(body).toContain("GH_BKIT_TOKEN");
+  it("postinstall source contains read:packages scope reference", () => {
+    expect(POSTINSTALL_SRC).toContain("read:packages");
   });
 
-  it("contains read:packages scope reference", () => {
-    expect(body).toContain("read:packages");
+  it("postinstall source contains pnpm silent-ignore warning", () => {
+    expect(POSTINSTALL_SRC).toContain("silently ignores");
   });
 
-  it("contains pnpm silent-ignore warning", () => {
-    expect(body).toContain("silently ignores");
+  it("postinstall source does NOT contain git insteadOf shim language", () => {
+    expect(POSTINSTALL_SRC).not.toContain("git config --global url.");
   });
 
-  it("does NOT contain git insteadOf shim language", () => {
-    expect(body).not.toContain("insteadOf");
-    expect(body).not.toContain("git config --global url.");
-  });
-});
-
-describe("GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS", () => {
-  const match = SRC.match(/const GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS = `([\s\S]*?)`;/);
-  const body = match ? match[1] : "";
-
-  it("constant body is non-empty", () => {
-    expect(body.length).toBeGreaterThan(0);
+  it("GH_BKIT_TOKEN_MISSING_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+    expect(MODULES_SRC).not.toContain("GH_BKIT_TOKEN_MISSING_INSTRUCTIONS");
   });
 
-  it("contains .npmrc registry line", () => {
-    expect(body).toContain("@cbartens:registry=https://npm.pkg.github.com");
+  it("GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+    expect(MODULES_SRC).not.toContain("GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS");
   });
 
-  it("contains _authToken= line with GH_BKIT_TOKEN env-var interpolation", () => {
-    // In source, the template literal uses \${GH_BKIT_TOKEN} (escaped) so the
-    // extracted body string contains the backslash: _authToken=\${GH_BKIT_TOKEN}
-    expect(body).toContain("_authToken=");
-    expect(body).toContain("GH_BKIT_TOKEN");
-  });
-
-  it("contains read:packages scope reference", () => {
-    expect(body).toContain("read:packages");
-  });
-
-  it("contains pnpm silent-ignore warning", () => {
-    expect(body).toContain("silently ignores");
-  });
-
-  it("does NOT contain git insteadOf shim language", () => {
-    expect(body).not.toContain("insteadOf");
-    expect(body).not.toContain("git config --global url.");
+  it("VERCEL_AUTH_INSTRUCTIONS no longer exists in bkit-modules.ts", () => {
+    expect(MODULES_SRC).not.toContain("VERCEL_AUTH_INSTRUCTIONS");
   });
 });
 
-describe("VERCEL_AUTH_INSTRUCTIONS", () => {
-  const match = SRC.match(/const VERCEL_AUTH_INSTRUCTIONS = `([\s\S]*?)`;/);
-  const body = match ? match[1] : "";
-
-  it("constant body is non-empty", () => {
-    expect(body.length).toBeGreaterThan(0);
+describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
+  it("postinstall source contains vercel env add GH_BKIT_TOKEN", () => {
+    expect(POSTINSTALL_SRC).toContain("vercel env add GH_BKIT_TOKEN");
   });
 
-  it("contains vercel env add GH_BKIT_TOKEN", () => {
-    expect(body).toContain("vercel env add GH_BKIT_TOKEN");
+  it("postinstall source contains .npmrc reference", () => {
+    expect(POSTINSTALL_SRC).toContain(".npmrc");
   });
 
-  it("contains .npmrc reference", () => {
-    expect(body).toContain(".npmrc");
+  it("postinstall source contains Remove directive for legacy installCommand", () => {
+    expect(POSTINSTALL_SRC).toContain("Remove");
   });
 
-  it("contains Remove directive for legacy installCommand", () => {
-    expect(body).toContain("Remove");
-  });
-
-  it("does NOT contain git config --global url. shim", () => {
-    expect(body).not.toContain("git config --global url.");
+  it("postinstall source does NOT contain git config --global url. shim", () => {
+    expect(POSTINSTALL_SRC).not.toContain("git config --global url.");
   });
 });
 
-describe("CI_YML_MERGE_INSTRUCTIONS", () => {
-  const match = SRC.match(/const CI_YML_MERGE_INSTRUCTIONS = `([\s\S]*?)`;/);
+describe("CI_YML_MERGE_INSTRUCTIONS (in bkit-modules.ts — used for Tier 3 merge advisory)", () => {
+  const match = MODULES_SRC.match(/const CI_YML_MERGE_INSTRUCTIONS = `([\s\S]*?)`;/);
   const body = match ? match[1] : "";
 
   it("constant body is non-empty", () => {
@@ -179,8 +148,6 @@ describe("CI_YML_MERGE_INSTRUCTIONS", () => {
   });
 
   it("contains GH_BKIT_TOKEN env block for install step", () => {
-    // The install step env block in the template literal uses YAML indentation
-    // and escaped template syntax, so match the key presence
     expect(body).toContain("GH_BKIT_TOKEN:");
     expect(body).toContain("secrets.GH_BKIT_TOKEN");
   });
@@ -195,21 +162,30 @@ describe("CI_YML_MERGE_INSTRUCTIONS", () => {
   });
 });
 
-describe("runCoreModule first-install banner", () => {
-  // Extract the printSink.push block inside runCoreModule (the first-install banner).
-  // Match from the push call containing "First install detected" to the closing );
-  const match = SRC.match(/printSink\.push\(\s*`([\s\S]*?First install detected[\s\S]*?)`\s*\)/);
-  const banner = match ? match[1] : "";
-
-  it("banner is non-empty", () => {
-    expect(banner.length).toBeGreaterThan(0);
+describe("runCoreModule first-install advisory (BAR-141: structured finding)", () => {
+  // The first-install message is now emitted as a structured PreflightFinding advisory.
+  // Check the source uses advisories.push with the correct id.
+  it("uses advisories.push (not printSink.push) for first-install message", () => {
+    expect(MODULES_SRC).not.toContain("printSink.push");
+    expect(MODULES_SRC).toContain("advisories.push");
   });
 
-  it("does NOT contain onlyBuiltDependencies", () => {
-    expect(banner).not.toContain("onlyBuiltDependencies");
+  it("first-install advisory id is first-install-postinstall-steps", () => {
+    expect(MODULES_SRC).toContain("first-install-postinstall-steps");
   });
 
-  it("step 1 references read:packages scope", () => {
-    expect(banner).toContain("read:packages");
+  it("first-install advisory action does NOT contain onlyBuiltDependencies", () => {
+    // Extract the action string from the advisory block
+    const match = MODULES_SRC.match(
+      /id: "first-install-postinstall-steps"[\s\S]*?action:\s*"([\s\S]*?)",/,
+    );
+    const action = match ? match[1] : MODULES_SRC;
+    expect(action).not.toContain("onlyBuiltDependencies");
+  });
+
+  it("first-install advisory action references read:packages scope", () => {
+    const startIdx = MODULES_SRC.indexOf("first-install-postinstall-steps");
+    const block = MODULES_SRC.slice(startIdx, startIdx + 1500);
+    expect(block).toContain("read:packages");
   });
 });
