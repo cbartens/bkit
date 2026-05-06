@@ -38,10 +38,12 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale not in PATH — skipping\"; fi'"
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale not in PATH — skipping\"; fi'",
+    "prepare": "husky install"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "husky": "^9.1.7",
     "prettier": "^3.5.3",
     "slop-scan": "0.3.0",
     "tsx": "^4.19.2",
