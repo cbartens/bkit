@@ -217,13 +217,13 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 
 ### Phase 0 — Test-infra prerequisite
 
-- [ ] **P0.T0:** Append OOS items from this plan to `docs/pending.md` (already complete in v3 commit; this task confirms append landed and re-runs only if missing). NOT relying on summariser hand-off.
+- [x] **P0.T0:** Append OOS items from this plan to `docs/pending.md` (already complete in v3 commit; this task confirms append landed and re-runs only if missing). NOT relying on summariser hand-off.
   - Files: `docs/pending.md`
   - Depends on: none
   - Effort: S
   - Verify: `grep -q "Deferred from bar-131-related-bars-suite plan" docs/pending.md`
   - Closes: none (internal — plan summariser fallback)
-- [ ] **P0.T1:** Extend `vitest.config.ts` include glob to match both `*.test.ts` and `*.integration.test.ts`. Required BEFORE any integration test added in P1+ (otherwise tests silently skip and gates produce false-greens).
+- [x] **P0.T1:** Extend `vitest.config.ts` include glob to match both `*.test.ts` and `*.integration.test.ts`. Required BEFORE any integration test added in P1+ (otherwise tests silently skip and gates produce false-greens).
   - Files: `vitest.config.ts`
   - Depends on: none
   - Effort: S
@@ -232,55 +232,55 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 
 ### Phase 1 — v0.6.x
 
-- [ ] **P1.T0:** Create `CHANGELOG.md` skeleton at repo root; add v0.6.x section header. Add `CHANGELOG.md` to `package.json` `files` array.
+- [x] **P1.T0:** Create `CHANGELOG.md` skeleton at repo root; add v0.6.x section header. Add `CHANGELOG.md` to `package.json` `files` array.
   - Files: `CHANGELOG.md`, `package.json`
   - Depends on: P0.T1
   - Effort: S
   - Verify: `pnpm pack --dry-run | grep -q CHANGELOG.md`
   - Closes: BAR-142 §A7 (prerequisite)
-- [ ] **P1.T1:** Register `doctor` verb in `bkit-cli.ts`. Wire `main()` switch in `bkit-install.ts`. Expose pure-read replay in `bkit-postinstall.ts` with signature **`runPostInstallCheck(modules: ModuleSet, cwd: string, opts: { dryRun: true })`** — re-evaluates post-install detectors without writes; reuses existing detector entry points from `bkit-postinstall.ts`. New integration test `bkit-doctor.integration.test.ts`.
+- [x] **P1.T1:** Register `doctor` verb in `bkit-cli.ts`. Wire `main()` switch in `bkit-install.ts`. Expose pure-read replay in `bkit-postinstall.ts` with signature **`runPostInstallCheck(modules: ModuleSet, cwd: string, opts: { dryRun: true })`** — re-evaluates post-install detectors without writes; reuses existing detector entry points from `bkit-postinstall.ts`. New integration test `bkit-doctor.integration.test.ts`.
   - Files: `.agents/scripts/bkit-cli.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-cli.test.ts`, `.agents/scripts/bkit-doctor.integration.test.ts`
   - Depends on: P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-cli.test.ts .agents/scripts/bkit-doctor.integration.test.ts`
   - Closes: BAR-142 §A3
-- [ ] **P1.T2:** Replace `hasBkitMarkers` substring check with line-anchored regex matching `findLineAnchoredMarkers`. Add prose-fenced fixture.
+- [x] **P1.T2:** Replace `hasBkitMarkers` substring check with line-anchored regex matching `findLineAnchoredMarkers`. Add prose-fenced fixture.
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P0.T1
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`
   - Closes: BAR-142 §B1
-- [ ] **P1.T3:** Position-stable cross-phase dedup in `runPostInstallCheck`.
+- [x] **P1.T3:** Position-stable cross-phase dedup in `runPostInstallCheck`.
   - Files: `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-postinstall.test.ts`
   - Depends on: P1.T1
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-postinstall.test.ts`
   - Closes: BAR-142 §B2
-- [ ] **P1.T4:** Differentiate `unset` vs empty-string in `detectShellToken`.
+- [x] **P1.T4:** Differentiate `unset` vs empty-string in `detectShellToken`.
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P0.T1
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`
   - Closes: BAR-142 §B4
-- [ ] **P1.T5:** Prepend `LOG_PREFIX` to dry-run blocker banner.
+- [x] **P1.T5:** Prepend `LOG_PREFIX` to dry-run blocker banner.
   - Files: `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.test.ts`
   - Depends on: P0.T1
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.test.ts`
   - Closes: BAR-142 §B5
-- [ ] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct concrete one-liner: `export GH_BKIT_TOKEN=$(gh auth token)` (test asserts on this exact substring). (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file).
+- [x] **P1.T6:** (a) Update `gh-bkit-token-secret-unknown` action text in `bkit-preflight.ts` to instruct concrete one-liner: `export GH_BKIT_TOKEN=$(gh auth token)` (test asserts on this exact substring). (b) Investigate POSIX `${VAR:-}` fallback in pnpm `.npmrc`; if supported, **edit inline string in `.agents/scripts/bkit-modules.ts` lines ~367-369 AND ~549-552** (NOT a top-level `templates/.npmrc` — no such file).
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`; manual `pnpm install` in shell without token (no warning)
   - Closes: BAR-142 §B6
-- [ ] **P1.T7:** Changelog version-delta header in `bkit-postinstall.ts`.
+- [x] **P1.T7:** Changelog version-delta header in `bkit-postinstall.ts`.
   - Files: `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-postinstall.test.ts`
   - Depends on: P1.T0
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-postinstall.test.ts`
   - Closes: BAR-142 §A7
-- [ ] **P1.T8:** README "Doctor" section + help-text rollup. CHANGELOG v0.6.x bullets per closed task.
+- [x] **P1.T8:** README "Doctor" section + help-text rollup. CHANGELOG v0.6.x bullets per closed task.
   - Files: `README.md`, `CHANGELOG.md`
   - Depends on: P1.T1, P1.T2, P1.T3, P1.T4, P1.T5, P1.T6, P1.T7
   - Effort: S
