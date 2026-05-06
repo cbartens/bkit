@@ -48,7 +48,7 @@ maxTurns: 100
 7. Implement sequentially in priority order — apply targeted remediation per gap (edit/create source files); implement missing tests if suggested → verify acceptance criteria met → append log entry → proceed.
 8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]'; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
 9. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
-10. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+10. Update **Create** output - set Verdict via `Edit`; mapping:
     - `PASS` = every gap has a `DONE` entry across logs AND local tests pass.
     - `FAIL` = unable to remediate gaps; any gap that ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR local tests fail.
     - `CONCERNS` = remediation applied, tests pass, but introduced non-blocking flake/warning needing follow-up.

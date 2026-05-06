@@ -38,7 +38,7 @@ maxTurns: 25
 5. Verdict mapping:
    - `SINGLE` = estimated tokens ≤ 100K.
    - `SPLIT` = estimated tokens > 100K (into sub-plans).
-6. Produce **Create** outputs.
+6. Produce **Create** output.
 
 **Output format:**
 

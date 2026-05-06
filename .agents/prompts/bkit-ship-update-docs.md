@@ -41,7 +41,7 @@ maxTurns: 50
 6. **If** cycle delivered shipped scope → APPEND `docs/completed.md` entry. **Else** (revert/no-op merge) skip append.
 7. Grep `docs/pending.md` for `{FID}` matches → surface in output `## Pending Items Surfaced` for human review (sole-writer policy: cannot write pending.md).
 8. **If** no completed entry written AND no docs updated AND no pending items surfaced → output "No updates needed.".
-9. Produce **Create** outputs.
+9. Produce **Create** output.
 
 **Output format:**
 

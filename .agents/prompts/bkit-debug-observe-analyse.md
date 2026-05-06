@@ -42,7 +42,7 @@ maxTurns: 50
 6. Read CI/CD logs from input Context (NEVER `/tmp/`).
 7. Extract every `[DEBUG-OBSERVE]` line — group by source location; >100 hits → sample evenly per location and note `(N total, M sampled)` in `Evidence Extracted`.
 8. Reconcile evidence with prior hypotheses: What is now confirmed, what is rejected, what new behaviour emerged, where the root cause is now narrowed.
-9. Update **Create** output - replace Verdict `PENDING` via `Edit`; mapping:
+9. Update **Create** output - set Verdict via `Edit`; mapping:
    - `PASS` = at least one hypothesis confirmed/rejected with concrete evidence (root cause may or may not be fully refined).
    - `FAIL` = no useful evidence captured (logs missing, agent never ran, all observations inconclusive).
    - `CONCERNS` = evidence captured but inconclusive on key hypothesis.
