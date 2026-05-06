@@ -42,6 +42,17 @@
           "docs/plans/logs/bar-141-preflight-checklist/plan-review-1.md",
           "docs/plans/logs/bar-141-preflight-checklist/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T05:02:20Z",
+        "commitSha": "e519c0ca9d5aa9fdfb252a0cada2427e854f38f6",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
