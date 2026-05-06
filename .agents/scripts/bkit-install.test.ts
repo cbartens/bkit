@@ -184,6 +184,18 @@ describe("T3 — subagent frontmatter rewrite", () => {
     expect(() => applyT3(input, modelLookup)).toThrow("process.exit(1)");
     exitSpy.mockRestore();
   });
+
+  it("exits non-zero when frontmatter is missing the `name` field", () => {
+    // Guards against a per-prompt file shipped in `.agents/prompts/` losing its
+    // `name:` field (manual edit / merge conflict / template skew). Without this
+    // test the failure surfaces only on a consumer running install.
+    const input = `---\ndescription: desc\neffort: medium\n---\nBody.\n`;
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(((code: number) => {
+      throw new Error(`process.exit(${code})`);
+    }) as never);
+    expect(() => applyT3(input, modelLookup)).toThrow("process.exit(1)");
+    exitSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -90,18 +90,16 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
     // Skip subprocess test if tsx is not available (CI without devDeps installed)
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(
-      "node",
-      ["--import", `${tsxBin}/register`, bkitInstallPath, "install", "--full"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 30_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 30_000,
+    });
 
     expect(result.status).toBe(1);
+    // The blocker checklist must be the cause of exit-1 (not an unrelated crash).
+    expect(`${result.stdout ?? ""}\n${result.stderr ?? ""}`).toContain("no-package-json");
     // No files should have been written (tmpDir only contains what we put there — nothing)
     const written = fs.readdirSync(tmpDir);
     expect(written).toHaveLength(0);
@@ -405,5 +403,112 @@ describe("formatChecklist format contract", () => {
     ];
     const banner = formatChecklist(findings);
     expect(banner).toContain("--- 1/1 [advisory] single ---");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 4 — Regression: stale consumer .agents/prompts.md does NOT crash
+// install on "Missing model lookup for <name>".
+//
+// Repro of the v0.5.0 hard-fail (BAR-141 follow-up): a consumer upgrading from
+// a release that predates a newly-added prompt (e.g. bkit-design-organise)
+// would have an empty/stale Models table on disk. Before the fix, install
+// parsed the consumer's stale prompts.md → applyT3 hit "Missing model lookup
+// for bkit-design-organise" → process.exit(1) mid-install (partial state).
+//
+// The fix sources the model lookup from the PACKAGE's .agents/prompts.md, so a
+// stale consumer copy is tolerated. This test guards against regression and
+// catches the analogous failure for ANY future prompt added without backfill.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Scenario 5 — Smoke: full install against a clean scratch consumer.
+//
+// Closes the highest-impact CI gap: prior to this test, the only spawn-based
+// install coverage was Scenario 1 (blocker exit-1 path). No test asserted that
+// `bkit install --full` actually completes against a normal consumer state, so
+// any hard-fail in the dispatch chain (T3 model lookup, frontmatter parsing,
+// token resolution, module ordering) shipped to consumers without CI noticing.
+//
+// This test runs the full install end-to-end and asserts exit 0 — meaning the
+// repo cannot tag a release whose install path crashes on a clean consumer.
+// ---------------------------------------------------------------------------
+
+describe("Scenario 5 — full install smoke against scratch consumer", () => {
+  it("bkit install --full against a clean consumer exits 0 and writes core mirrors", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(result.status, `install crashed:\n${combined}`).toBe(0);
+    expect(combined).not.toContain("Missing model lookup");
+    expect(combined).not.toContain("frontmatter missing");
+    // Sanity-check the install actually produced consumer outputs.
+    expect(fs.existsSync(path.join(tmpDir, ".claude", "agents"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".cursor", "agents"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".agents", ".bkit-version"))).toBe(true);
+  });
+});
+
+describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {
+  it("bkit check with stale consumer prompts.md does not emit Missing model lookup", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    // Mark as a git repo to satisfy not-git-repo blocker (--core requires it).
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // Stale consumer .agents/prompts.md — empty Models table (the worst-case
+    // version of the v0.4.x → v0.5.0 skew that triggered the original bug).
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", "prompts.md"),
+      "# Stale\n\n## Models\n\n| Name | Cursor model | Claude model |\n| --- | --- | --- |\n",
+    );
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 30_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined).not.toContain("Missing model lookup");
+    // Sanity-check the install actually executed past parse — without an exit-0
+    // assertion we want at least one positive signal that the binary reached
+    // dispatch (otherwise a missing-tsx error path would pass vacuously).
+    expect(combined).toMatch(/\[bkit-(check|install)\]/);
   });
 });
