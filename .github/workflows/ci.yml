@@ -20,30 +20,30 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Type check
+      - name: Run Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Run Vitest Tests
         run: pnpm test
 
-      - name: Format check
+      - name: Run Prettier Format Check
         run: pnpm format:check
 
-      - name: Lint prose
+      - name: Run Vale Prose Lint
         run: pnpm lint:prose
 
-      - name: Lint slop
+      - name: Run Slop Scan
         run: pnpm lint:slop
 
       # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
       # regenerated and committed whenever .agents/scripts/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
-      - name: Verify dist/ is fresh
+      - name: Verify Dist Freshness
         run: pnpm check:dist
 
-      - name: bkit check
+      - name: Run Bkit Check
         run: pnpm bkit check

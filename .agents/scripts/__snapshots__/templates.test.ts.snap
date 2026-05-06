@@ -23,27 +23,27 @@ jobs:
       # Do NOT add \`with: version:\` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
-      - name: Install dependencies
+      - name: Install Dependencies
         run: pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
-      - name: Type check
+      - name: Run Typecheck
         run: pnpm typecheck
 
-      - name: Test
+      - name: Run Vitest Tests
         run: pnpm test
 
-      - name: Format check
+      - name: Run Prettier Format Check
         run: pnpm format:check
 
-      - name: Lint prose
+      - name: Run Vale Prose Lint
         run: pnpm lint:prose
 
-      - name: Lint slop
+      - name: Run Slop Scan
         run: pnpm lint:slop
 
-      - name: bkit check
+      - name: Run Bkit Check
         run: pnpm bkit check
 "
 `;
