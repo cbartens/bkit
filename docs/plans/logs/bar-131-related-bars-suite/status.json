@@ -198,6 +198,19 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/build-plan-execute-2-log.md"
         ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "subPlan": 2,
+        "failures": 2,
+        "at": "2026-05-06T22:53:07Z",
+        "commitSha": "719bf92e7d2384cdf2499a5f3954a63979da5e2f",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/build-plan-verify-2-1.md"
+        ]
       }
     ]
   }
