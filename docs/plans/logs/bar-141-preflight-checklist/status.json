@@ -215,6 +215,17 @@
         "at": "2026-05-06T06:38:56Z",
         "commitSha": "58de53b2c51c209fa1ee4d66de9b151cbbe3d8ba",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T06:40:50Z",
+        "commitSha": "9db84fb304d43318c58fd08f1bff609135f264f7",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/build-summary.md"
+        ]
       }
     ]
   }
