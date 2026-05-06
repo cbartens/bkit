@@ -6,7 +6,6 @@
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { writeTier1, writeTier2, writeTier3, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
@@ -183,7 +182,7 @@ function copyAdditive(src, dst, dryRun, log, relRoot) {
     return writes;
 }
 export function runCoreModule(ctx) {
-    const { dryRun, ws, printSink, logPrefix, postDispatch } = ctx;
+    const { dryRun, ws, advisories, logPrefix, postDispatch } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const cwd = process.cwd();
     const PKG_ROOT = getPkgRoot();
@@ -251,27 +250,26 @@ export function runCoreModule(ctx) {
     // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, prepare)
     // are auto-added by their respective modules — no manual copy-paste required.
     if (isFirstInstall) {
-        printSink.push(`
-[bkit] First install detected (.bkit-version was absent). Post-install steps:
-
-1. Add GH_BKIT_TOKEN to your GitHub Actions repository secrets:
-   - Create a classic PAT with \`read:packages\` scope (fine-grained PATs are
-     not currently supported by GitHub Packages npm registry).
-   - GitHub Settings → Secrets and variables → Actions → New repository secret
-   - Name: GH_BKIT_TOKEN
-   - See README.md ## Consumer CI auth for full setup.
-
-2. Add a \`.npmrc\` at your repo root so pnpm can authenticate to GH Packages:
-     @cbartens:registry=https://npm.pkg.github.com
-     //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
-
-3. Run \`pnpm install\` to refresh the lockfile, then commit.
-
-Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,
-prepare) are auto-added by bkit when their parent module installs. Run
-\`pnpm bkit install --full\` to seed them all. Existing scripts are preserved
-(consumer values always win).
-`);
+        advisories.push({
+            id: "first-install-postinstall-steps",
+            severity: "advisory",
+            detect: "First install detected (.bkit-version was absent).",
+            action: "Post-install steps:\n\n" +
+                "1. Add GH_BKIT_TOKEN to your GitHub Actions repository secrets:\n" +
+                "   - Create a classic PAT with `read:packages` scope (fine-grained PATs are\n" +
+                "     not currently supported by GitHub Packages npm registry).\n" +
+                "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
+                "   - Name: GH_BKIT_TOKEN\n" +
+                "   - See README.md ## Consumer CI auth for full setup.\n\n" +
+                "2. Add a `.npmrc` at your repo root so pnpm can authenticate to GH Packages:\n" +
+                "     @cbartens:registry=https://npm.pkg.github.com\n" +
+                "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
+                "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+                "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
+                "prepare) are auto-added by bkit when their parent module installs. Run\n" +
+                "`pnpm bkit install --full` to seed them all. Existing scripts are preserved\n" +
+                "(consumer values always win).",
+        });
     }
 }
 // ---------------------------------------------------------------------------
@@ -319,7 +317,7 @@ export function runClaudeModule(ctx) {
 // runCursorModule — T1/T2/T3 transforms from .agents/ → .cursor/
 // ---------------------------------------------------------------------------
 export function runCursorModule(ctx) {
-    const { dryRun, tokens, modelLookup, printSink, ws, logPrefix } = ctx;
+    const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     // Commands: T1 + T2
     {
@@ -397,7 +395,7 @@ export function runCursorModule(ctx) {
         if (!fs.existsSync(src))
             continue;
         const prevLen = ws.writes.length;
-        const result = writeTier3(src, dst, dryRun, printSink, ws, msg);
+        const result = writeTier3(src, dst, dryRun, advisories, ws, msg);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}cursor: ${dst}`);
         }
@@ -406,165 +404,7 @@ export function runCursorModule(ctx) {
         }
     }
 }
-function checkBkitTokenSecret(secretName = "GH_BKIT_TOKEN") {
-    try {
-        const out = execSync(`gh secret list --json name -q '.[].name'`, {
-            encoding: "utf-8",
-            stdio: ["ignore", "pipe", "ignore"],
-            timeout: 5000,
-        });
-        const names = out
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        return names.includes(secretName) ? "present" : "missing";
-    }
-    catch {
-        return "unknown";
-    }
-}
-const GH_BKIT_TOKEN_MISSING_INSTRUCTIONS = `[bkit] GH_BKIT_TOKEN secret NOT FOUND in this repo's GitHub Actions secrets.
-
-Without it, CI runs that install @cbartens/bkit will fail at
-\`pnpm install --frozen-lockfile\` because the GHA runner cannot authenticate
-against the GitHub Packages npm registry.
-
-IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in
-the runner environment, pnpm silently ignores the entire .npmrc file and falls
-back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package
-not found), NOT as a "token missing" error. If you see a 401 during pnpm
-install, check GH_BKIT_TOKEN first.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  1. Ensure a .npmrc file exists at the repo root with these two lines:
-
-        @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
-
-     The \${GH_BKIT_TOKEN} form uses env-variable interpolation — do NOT
-     hardcode the token value. pnpm reads this at install time.
-
-  2. Set the GH_BKIT_TOKEN secret on this repo. The token must be a GitHub
-     PAT (classic or fine-grained) with read:packages scope (classic) OR
-     Packages: read permission (fine-grained). Generate at:
-     https://github.com/settings/tokens
-
-     Then run ONE of these to set it:
-
-        gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
-
-        # or, if user prefers piping from a file:
-        gh secret set GH_BKIT_TOKEN < /path/to/file/with/token
-
-     Web alternative: GitHub repo → Settings → Secrets and variables →
-     Actions → New repository secret. Name: GH_BKIT_TOKEN.
-
-  3. Ensure the install step in .github/workflows/ci.yml passes the env var:
-
-        - name: Install dependencies
-          run: pnpm install --frozen-lockfile
-          env:
-            GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
-
-  Verify secret set: gh secret list | grep GH_BKIT_TOKEN
-`;
-// ---------------------------------------------------------------------------
-// Vercel detection + auth instructions
-//
-// Vercel runs its own `pnpm install` in a fresh build container and does NOT
-// inherit the GitHub Actions auth-shim. If the consumer deploys to Vercel,
-// the same private-dep auth issue surfaces a second time. Heuristic: presence
-// of vercel.json at the repo root or under apps/<name>/. If present, push a
-// dedicated AI instruction block alongside the GH-side one.
-// ---------------------------------------------------------------------------
-function detectVercelProject(cwd) {
-    if (fs.existsSync(path.join(cwd, "vercel.json")))
-        return true;
-    const appsDir = path.join(cwd, "apps");
-    if (!fs.existsSync(appsDir) || !fs.statSync(appsDir).isDirectory())
-        return false;
-    for (const entry of fs.readdirSync(appsDir, { withFileTypes: true })) {
-        if (!entry.isDirectory())
-            continue;
-        if (fs.existsSync(path.join(appsDir, entry.name, "vercel.json")))
-            return true;
-    }
-    return false;
-}
-const VERCEL_AUTH_INSTRUCTIONS = `[bkit] vercel.json detected — Vercel needs its own registry auth. Vercel runs pnpm install in a separate build container and does NOT inherit GitHub Actions secrets automatically.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  1. Ensure a .npmrc file exists at the repo root with these two lines:
-
-        @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
-
-     Commit this .npmrc to the repo — Vercel reads it during its build.
-     The \${GH_BKIT_TOKEN} form uses env-variable interpolation at install
-     time; do NOT hardcode the token value.
-
-  2. Remove any legacy git-shim installCommand from vercel.json. If vercel.json
-     has an installCommand that injects a git-credential-helper insteadOf rewrite,
-     Remove it. Replace with plain pnpm install (or remove the installCommand key
-     entirely to use Vercel's default):
-
-        "installCommand": "pnpm install"
-
-     Or simply delete the installCommand key if no other flags are needed.
-
-  3. Set GH_BKIT_TOKEN as a Vercel environment variable for each environment:
-
-        vercel env add GH_BKIT_TOKEN preview
-        vercel env add GH_BKIT_TOKEN production
-
-     Or via web: Vercel project → Settings → Environment Variables.
-     The token must be a GitHub PAT with read:packages scope (classic) or
-     Packages: read permission (fine-grained).
-
-  4. Trigger a redeploy (push a commit) and watch the Vercel build log
-     for pnpm install succeeding with the package resolved from
-     https://npm.pkg.github.com/.
-`;
-const GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS = `[bkit] Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).
-
-Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub
-repo. It is required for the seeded ci.yml install step to authenticate
-against the GitHub Packages npm registry when installing @cbartens/bkit.
-
-IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in
-the runner environment, pnpm silently ignores the entire .npmrc file and falls
-back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package
-not found), NOT as a "token missing" error. If you see a 401 during pnpm
-install, check GH_BKIT_TOKEN first.
-
-INSTRUCTIONS FOR AN AI AGENT:
-
-  1. Ensure a .npmrc file exists at the repo root with these two lines:
-
-        @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
-
-     The \${GH_BKIT_TOKEN} form uses env-variable interpolation — do NOT
-     hardcode the token value.
-
-  2. Once \`gh\` is installed and authenticated (\`gh auth login\`), verify:
-
-        gh secret list | grep GH_BKIT_TOKEN
-
-     If absent, the token must be a GitHub PAT with read:packages scope
-     (classic) or Packages: read permission (fine-grained). Set it:
-
-        gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'
-
-  3. Ensure the install step in .github/workflows/ci.yml passes the env var:
-
-        - name: Install dependencies
-          run: pnpm install --frozen-lockfile
-          env:
-            GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
-`;
+// checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
 // ---------------------------------------------------------------------------
 // AI-actionable Tier 3 merge instructions
 //
@@ -711,7 +551,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // merge instructions when present.
 // ---------------------------------------------------------------------------
 export function runCiModule(ctx) {
-    const { dryRun, tokens, ws, printSink, logPrefix } = ctx;
+    const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const PKG_ROOT = getPkgRoot();
     const templatePath = path.join(PKG_ROOT, ".agents", "templates", ".github", "workflows", "ci.yml");
@@ -721,7 +561,7 @@ export function runCiModule(ctx) {
     }
     const dstPath = path.join(".github", "workflows", "ci.yml");
     const prevLen = ws.writes.length;
-    const result = writeTier3(templatePath, dstPath, dryRun, printSink, ws, CI_YML_MERGE_INSTRUCTIONS, tokens);
+    const result = writeTier3(templatePath, dstPath, dryRun, advisories, ws, CI_YML_MERGE_INSTRUCTIONS, tokens);
     if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath}`);
     }
@@ -738,48 +578,46 @@ export function runCiModule(ctx) {
         console.log(`${logPrefix} ${tag}ci: package.json scripts added [${ciScripts.added.join(", ")}]`);
     }
     if (ciScripts.missingPkg) {
-        printSink.push("[bkit] ci: package.json not found — cannot ensure `typecheck` script. The seeded ci.yml will fail until you add it.");
+        advisories.push({
+            id: "ci-package-json-missing",
+            severity: "advisory",
+            detect: "package.json not found — cannot ensure `typecheck` script.",
+            action: "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --ci` after creating package.json.",
+        });
     }
     else if (ciScripts.malformed) {
-        printSink.push("[bkit] ci: package.json failed to parse — cannot ensure `typecheck` script. Fix JSON syntax and re-run.");
+        advisories.push({
+            id: "ci-package-json-malformed",
+            severity: "advisory",
+            detect: "package.json failed to parse — cannot ensure `typecheck` script.",
+            action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
+        });
     }
     // The `test` script is the consumer's responsibility — flag if absent so they know.
     if (!dryRun && !ciScripts.missingPkg && !ciScripts.malformed) {
         try {
             const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8"));
             if (!pkg.scripts || !pkg.scripts.test) {
-                printSink.push('[bkit] ci: package.json has no `test` script. The seeded ci.yml calls `pnpm test` — add a script (e.g. "test": "vitest run") or remove the step from ci.yml.');
+                advisories.push({
+                    id: "ci-no-test-script",
+                    severity: "advisory",
+                    detect: "package.json has no `test` script.",
+                    action: 'The seeded ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
+                });
             }
         }
         catch {
             // Already handled above
         }
     }
-    // Check whether GH_BKIT_TOKEN secret is set on the consumer's GitHub repo.
-    // The seeded ci.yml auth-shim depends on it. Skip the check on dry-run so
-    // bkit check stays read-only and predictable.
-    if (!dryRun) {
-        const secretStatus = checkBkitTokenSecret();
-        if (secretStatus === "missing") {
-            printSink.push(GH_BKIT_TOKEN_MISSING_INSTRUCTIONS);
-        }
-        else if (secretStatus === "unknown") {
-            printSink.push(GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS);
-        }
-        // "present" → silent, no extra noise
-    }
-    // Vercel surface — separate auth provisioning required if the consumer
-    // deploys via Vercel. Heuristic-only (presence of vercel.json); skip
-    // silently if the consumer doesn't use Vercel.
-    if (detectVercelProject(process.cwd())) {
-        printSink.push(VERCEL_AUTH_INSTRUCTIONS);
-    }
+    // Note: GH_BKIT_TOKEN secret check and Vercel detection are now Phase 3 responsibilities.
+    // runPostInstallCheck in bkit-postinstall.ts handles them after writes complete.
 }
 // ---------------------------------------------------------------------------
 // runLintModule — vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore
 // ---------------------------------------------------------------------------
 export function runLintModule(ctx) {
-    const { dryRun, tokens, printSink, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const PKG_ROOT = getPkgRoot();
     const templatesBase = path.join(PKG_ROOT, ".agents", "templates");
@@ -791,7 +629,7 @@ export function runLintModule(ctx) {
     if (fs.existsSync(valeIniSrc)) {
         const valeDst = ".vale.ini";
         const prevLen = ws.writes.length;
-        const valeRes = writeTier3(valeIniSrc, valeDst, dryRun, printSink, ws, VALE_INI_MERGE_INSTRUCTIONS);
+        const valeRes = writeTier3(valeIniSrc, valeDst, dryRun, advisories, ws, VALE_INI_MERGE_INSTRUCTIONS);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}lint: ${valeDst}`);
         }
@@ -821,7 +659,7 @@ export function runLintModule(ctx) {
     if (fs.existsSync(slopSrc)) {
         const slopDst = "slop-scan.config.json";
         const prevLen = ws.writes.length;
-        const slopRes = writeTier3(slopSrc, slopDst, dryRun, printSink, ws, SLOP_SCAN_MERGE_INSTRUCTIONS);
+        const slopRes = writeTier3(slopSrc, slopDst, dryRun, advisories, ws, SLOP_SCAN_MERGE_INSTRUCTIONS);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}lint: ${slopDst}`);
         }
@@ -856,10 +694,20 @@ export function runLintModule(ctx) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
     }
     if (lintScripts.missingPkg) {
-        printSink.push("[bkit] lint: package.json not found — cannot ensure lint scripts. Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`.");
+        advisories.push({
+            id: "lint-package-json-missing",
+            severity: "advisory",
+            detect: "package.json not found — cannot ensure lint scripts.",
+            action: "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop` scripts to package.json.",
+        });
     }
     else if (lintScripts.malformed) {
-        printSink.push("[bkit] lint: package.json failed to parse — cannot ensure lint scripts. Fix JSON syntax and re-run.");
+        advisories.push({
+            id: "lint-package-json-malformed",
+            severity: "advisory",
+            detect: "package.json failed to parse — cannot ensure lint scripts.",
+            action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
+        });
     }
     // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
     // (binary) and is documented as a prereq instead of a managed devDep.
@@ -869,19 +717,28 @@ export function runLintModule(ctx) {
     }, dryRun, ws);
     if (lintDevDeps.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json devDependencies added [${lintDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
-        printSink.push(`[bkit] lint: added [${lintDevDeps.added.join(", ")}] to devDependencies. Run \`pnpm install\` to fetch the new packages before running \`pnpm bkit check\` or pushing.`);
+        // Thread devDepsAdded through the WriteSet for Phase 3 detection
+        const lastWrite = ws.writes[ws.writes.length - 1];
+        if (lastWrite && lastWrite.path === "package.json") {
+            lastWrite.devDepsAdded = lintDevDeps.added;
+        }
     }
     // F7: vale is a system binary, not an npm package. The seeded .vale.ini
     // references the `write-good` Vale package which Vale downloads via
     // `vale sync`. Print a one-time hint after writing .vale.ini so the consumer
     // knows to run sync before lint:prose works against the seeded styles.
-    printSink.push("[bkit] lint: .vale.ini references the `write-good` Vale package — run `vale sync` (one-time per repo) to download it. Vale itself is a system binary; install via brew/apt/etc. The lint:prose script soft-skips when vale isn't on PATH, so CI passes either way.");
+    advisories.push({
+        id: "vale-sync-recommended",
+        severity: "advisory",
+        detect: ".vale.ini references the `write-good` Vale package which requires `vale sync` to download.",
+        action: "Run `vale sync` (one-time per repo) to download the write-good package. Vale itself is a system binary; install via brew/apt/etc. The lint:prose script soft-skips when vale isn't on PATH, so CI passes either way.",
+    });
 }
 // ---------------------------------------------------------------------------
 // runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 2 hash-comment)
 // ---------------------------------------------------------------------------
 export function runGitHooksModule(ctx) {
-    const { dryRun, tokens, printSink, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const PKG_ROOT = getPkgRoot();
     const huskyTemplatesDir = path.join(PKG_ROOT, ".agents", "templates", ".husky");
@@ -916,16 +773,31 @@ export function runGitHooksModule(ctx) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json scripts added [${hookScripts.added.join(", ")}]`);
     }
     if (hookScripts.missingPkg) {
-        printSink.push('[bkit] git-hooks: package.json not found — cannot ensure `prepare` script. Hooks installed but won\'t activate until you add `"prepare": "husky"` and run `pnpm install`.');
+        advisories.push({
+            id: "git-hooks-package-json-missing",
+            severity: "advisory",
+            detect: "package.json not found — cannot ensure `prepare` script.",
+            action: 'Hooks installed but won\'t activate until you add `"prepare": "husky"` to package.json and run `pnpm install`.',
+        });
     }
     else if (hookScripts.malformed) {
-        printSink.push("[bkit] git-hooks: package.json failed to parse — cannot ensure `prepare` script. Fix JSON syntax and re-run.");
+        advisories.push({
+            id: "git-hooks-package-json-malformed",
+            severity: "advisory",
+            detect: "package.json failed to parse — cannot ensure `prepare` script.",
+            action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
+        });
     }
     else if (hookScripts.preserved.includes("prepare")) {
         // Consumer has a custom `prepare` value — note it but don't override.
         // Either `husky` (modern, 9+) or `husky install` (legacy) activates the
         // hooks; the legacy form just emits a deprecation warning on each install.
-        printSink.push("[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it runs `husky` (or legacy `husky install`) for hooks to activate.");
+        advisories.push({
+            id: "git-hooks-package-json-preserved-prepare",
+            severity: "advisory",
+            detect: "package.json `prepare` already set (preserved — consumer value wins).",
+            action: "Ensure it runs `husky` (or legacy `husky install`) for hooks to activate. The modern form is plain `husky`; `husky install` emits a deprecation warning on each `pnpm install`.",
+        });
     }
     // Ensure husky devDep — without it, the `prepare: husky install` script we
     // just added blows up on `pnpm install` with `husky: not found`. This was
@@ -933,7 +805,17 @@ export function runGitHooksModule(ctx) {
     const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
     if (hookDevDeps.added.length > 0) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
-        printSink.push("[bkit] git-hooks: added `husky` to devDependencies. Run `pnpm install` to fetch it; husky install will then activate the hooks.");
+        advisories.push({
+            id: "git-hooks-husky-devdep-added",
+            severity: "advisory",
+            detect: "husky added to package.json devDependencies.",
+            action: "Run `pnpm install` to fetch husky; husky install will then activate the hooks.",
+        });
+        // Thread devDepsAdded through the WriteSet for Phase 3 detection
+        const lastWrite = ws.writes[ws.writes.length - 1];
+        if (lastWrite && lastWrite.path === "package.json") {
+            lastWrite.devDepsAdded = hookDevDeps.added;
+        }
     }
 }
 // ---------------------------------------------------------------------------
@@ -959,7 +841,7 @@ export const MODULE_DISPATCH_ORDER = [
 ];
 /**
  * Dispatch modules in canonical order.
- * ctx.ws is populated by each module fn; printSink is flushed by caller.
+ * ctx.ws is populated by each module fn; ctx.advisories accumulates findings flushed by caller.
  * After all modules complete, ctx.postDispatch callbacks are run in order.
  */
 export function dispatchModules(modules, ctx) {
