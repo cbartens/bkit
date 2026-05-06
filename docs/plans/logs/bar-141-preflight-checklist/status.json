@@ -285,6 +285,13 @@
         "artifacts": [
           "docs/plans/logs/bar-141-preflight-checklist/ship-summary.md"
         ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-06T10:49:20Z",
+        "commitSha": "76bfb2a284bb7c26b3d7ef542e29ce35bfe968a6",
+        "artifacts": []
       }
     ]
   }
