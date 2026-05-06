@@ -2,7 +2,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeTier1, writeTier2, writeTier3, type WriteSet } from "./bkit-tiers";
+import {
+  writeTier1,
+  writeTier2,
+  writeTier3,
+  ensurePackageJsonScripts,
+  type WriteSet,
+} from "./bkit-tiers";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -275,5 +281,130 @@ describe("writeTier3", () => {
     expect(result.suggested).toBe(false);
     expect(fs.existsSync(dst)).toBe(false);
     expect(ws.writes).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePackageJsonScripts — managed package.json scripts
+// ---------------------------------------------------------------------------
+
+describe("ensurePackageJsonScripts", () => {
+  function writePkg(content: object | string): void {
+    const body = typeof content === "string" ? content : JSON.stringify(content, null, 2) + "\n";
+    fs.writeFileSync("package.json", body, "utf-8");
+  }
+
+  function readPkg(): { scripts?: Record<string, string>; [k: string]: unknown } {
+    return JSON.parse(fs.readFileSync("package.json", "utf-8"));
+  }
+
+  it("returns missingPkg=true when package.json does not exist", () => {
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws);
+    expect(result.missingPkg).toBe(true);
+    expect(result.added).toEqual([]);
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("returns malformed=true when package.json is invalid JSON", () => {
+    fs.writeFileSync("package.json", "{ not valid json", "utf-8");
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws);
+    expect(result.malformed).toBe(true);
+    expect(result.missingPkg).toBe(false);
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("seeds scripts block when absent", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts(
+      { typecheck: "tsc --noEmit", "format:check": "prettier --check ." },
+      false,
+      ws,
+    );
+    expect(result.added).toEqual(["typecheck", "format:check"]);
+    expect(result.preserved).toEqual([]);
+    expect(ws.writes).toHaveLength(1);
+    expect(ws.writes[0]).toEqual({ path: "package.json", action: "update" });
+    const pkg = readPkg();
+    expect(pkg.scripts).toEqual({
+      typecheck: "tsc --noEmit",
+      "format:check": "prettier --check .",
+    });
+  });
+
+  it("adds only missing scripts; preserves existing values verbatim", () => {
+    writePkg({
+      name: "x",
+      version: "1.0.0",
+      scripts: { typecheck: "custom-tsc-runner" },
+    });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts(
+      { typecheck: "tsc --noEmit", "lint:slop": "slop-scan scan ." },
+      false,
+      ws,
+    );
+    expect(result.added).toEqual(["lint:slop"]);
+    expect(result.preserved).toEqual(["typecheck"]);
+    const pkg = readPkg();
+    expect(pkg.scripts?.typecheck).toBe("custom-tsc-runner");
+    expect(pkg.scripts?.["lint:slop"]).toBe("slop-scan scan .");
+  });
+
+  it("is a no-op (no write) when all scripts already present", () => {
+    writePkg({
+      name: "x",
+      version: "1.0.0",
+      scripts: { typecheck: "tsc --noEmit" },
+    });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws);
+    expect(result.added).toEqual([]);
+    expect(result.preserved).toEqual(["typecheck"]);
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("dryRun=true records drift in WriteSet but does not write to disk", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, true, ws);
+    expect(result.added).toEqual(["typecheck"]);
+    expect(ws.writes).toHaveLength(1);
+    const pkg = readPkg();
+    expect(pkg.scripts).toBeUndefined(); // dryRun did NOT write
+  });
+
+  it("preserves 4-space indent style of original package.json", () => {
+    fs.writeFileSync(
+      "package.json",
+      JSON.stringify({ name: "x", version: "1.0.0" }, null, 4) + "\n",
+      "utf-8",
+    );
+    const ws = makeWriteSet();
+    ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws);
+    const raw = fs.readFileSync("package.json", "utf-8");
+    // Top-level key indented with 4 spaces (typecheck is nested → 8 spaces).
+    expect(raw).toContain('\n    "name"');
+    expect(raw).toContain('\n        "typecheck"');
+  });
+
+  it("preserves trailing newline of original package.json", () => {
+    writePkg({ name: "x", version: "1.0.0" }); // helper writes with trailing \n
+    const ws = makeWriteSet();
+    ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws);
+    const raw = fs.readFileSync("package.json", "utf-8");
+    expect(raw.endsWith("\n")).toBe(true);
+  });
+
+  it("is idempotent across two consecutive runs", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    const ws1 = makeWriteSet();
+    ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws1);
+    const ws2 = makeWriteSet();
+    const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws2);
+    expect(result.added).toEqual([]);
+    expect(ws2.writes).toHaveLength(0); // no second write
   });
 });

@@ -9,7 +9,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { writeTier1, writeTier2, writeTier3, type WriteSet } from "./bkit-tiers.js";
+import {
+  writeTier1,
+  writeTier2,
+  writeTier3,
+  ensurePackageJsonScripts,
+  type WriteSet,
+} from "./bkit-tiers.js";
 import type { TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
@@ -322,36 +328,30 @@ export function runCoreModule(ctx: ModuleContext): void {
   });
 
   // 5. First-run extra logging (only when .bkit-version was absent at start of install)
+  // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, prepare)
+  // are auto-added by their respective modules — no manual copy-paste required.
   if (isFirstInstall) {
-    // Build the script block as a proper JSON object so values are copy-paste safe.
-    const scriptEntries = JSON.stringify(
-      {
-        "lint:prose":
-          'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
-        "lint:slop": "slop-scan scan .",
-        "format:check": "prettier --check .",
-        prepare: "husky install",
-      },
-      null,
-      2,
-    )
-      .split("\n")
-      .slice(1, -1) // strip outer { }
-      .map((l) => `   ${l}`)
-      .join("\n");
-
     printSink.push(
       `
 [bkit] First install detected (.bkit-version was absent). Post-install steps:
 
 1. Add GH_BKIT_TOKEN to your GitHub Actions repository secrets:
-   - Create a PAT with read:packages scope (classic) or Packages: read (fine-grained)
+   - Create a classic PAT with \`read:packages\` scope (fine-grained PATs are
+     not currently supported by GitHub Packages npm registry).
    - GitHub Settings → Secrets and variables → Actions → New repository secret
    - Name: GH_BKIT_TOKEN
    - See README.md ## Consumer CI auth for full setup.
 
-2. Add these scripts to your package.json "scripts" block (copy-paste ready):
-${scriptEntries}
+2. Add a \`.npmrc\` at your repo root so pnpm can authenticate to GH Packages:
+     @cbartens:registry=https://npm.pkg.github.com
+     //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
+
+3. Run \`pnpm install\` to refresh the lockfile, then commit.
+
+Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,
+prepare) are auto-added by bkit when their parent module installs. Run
+\`pnpm bkit install --full\` to seed them all. Existing scripts are preserved
+(consumer values always win).
 `,
     );
   }
@@ -870,14 +870,41 @@ export function runCiModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
 
-  // Always remind which package.json scripts the workflow expects.
-  // Seeded by --lint (and prepare); --ci alone does NOT add them.
-  printSink.push(
-    `[bkit] ci: the generated ci.yml invokes the following package.json scripts — ensure they exist (run \`bkit install --lint\` to seed them, or add manually):
-   "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then vale $(find . -name \"*.md\" -not -path \"*/node_modules/*\"); else echo \"[bkit] vale not in PATH — skipping\"; fi'"
-   "lint:slop": "slop-scan scan ."
-   "format:check": "prettier --check ."`,
-  );
+  // Ensure the typecheck script the workflow calls exists in package.json.
+  // `test` is deliberately not managed — too opinionated for a default.
+  const typecheckDefault = fs.existsSync("tsconfig.json")
+    ? "tsc --noEmit"
+    : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
+  const ciScripts = ensurePackageJsonScripts({ typecheck: typecheckDefault }, dryRun, ws);
+  if (ciScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}ci: package.json scripts added [${ciScripts.added.join(", ")}]`,
+    );
+  }
+  if (ciScripts.missingPkg) {
+    printSink.push(
+      "[bkit] ci: package.json not found — cannot ensure `typecheck` script. The seeded ci.yml will fail until you add it.",
+    );
+  } else if (ciScripts.malformed) {
+    printSink.push(
+      "[bkit] ci: package.json failed to parse — cannot ensure `typecheck` script. Fix JSON syntax and re-run.",
+    );
+  }
+  // The `test` script is the consumer's responsibility — flag if absent so they know.
+  if (!dryRun && !ciScripts.missingPkg && !ciScripts.malformed) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
+        scripts?: Record<string, string>;
+      };
+      if (!pkg.scripts || !pkg.scripts.test) {
+        printSink.push(
+          '[bkit] ci: package.json has no `test` script. The seeded ci.yml calls `pnpm test` — add a script (e.g. "test": "vitest run") or remove the step from ci.yml.',
+        );
+      }
+    } catch {
+      // Already handled above
+    }
+  }
 
   // Check whether GH_BKIT_TOKEN secret is set on the consumer's GitHub repo.
   // The seeded ci.yml auth-shim depends on it. Skip the check on dry-run so
@@ -980,6 +1007,33 @@ export function runLintModule(ctx: ModuleContext): void {
       console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
     }
   }
+
+  // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
+  // expect actually exist in package.json. Add-if-missing; consumer values win.
+  const lintScripts = ensurePackageJsonScripts(
+    {
+      "format:check": "prettier --check .",
+      "lint:prose":
+        'bash -c \'if command -v vale >/dev/null 2>&1; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale not in PATH — skipping"; fi\'',
+      "lint:slop": "slop-scan scan .",
+    },
+    dryRun,
+    ws,
+  );
+  if (lintScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`,
+    );
+  }
+  if (lintScripts.missingPkg) {
+    printSink.push(
+      "[bkit] lint: package.json not found — cannot ensure lint scripts. Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`.",
+    );
+  } else if (lintScripts.malformed) {
+    printSink.push(
+      "[bkit] lint: package.json failed to parse — cannot ensure lint scripts. Fix JSON syntax and re-run.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,10 +1070,28 @@ export function runGitHooksModule(ctx: ModuleContext): void {
     }
   }
 
-  // Print-sink: suggest prepare script
-  printSink.push(
-    '[bkit] git-hooks: add "prepare": "husky install" to your package.json scripts to activate hooks.',
-  );
+  // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.
+  // Husky 9+ requires this; without it, the .husky/* files exist but never run.
+  const hookScripts = ensurePackageJsonScripts({ prepare: "husky install" }, dryRun, ws);
+  if (hookScripts.added.length > 0) {
+    console.log(
+      `${logPrefix} ${tag}git-hooks: package.json scripts added [${hookScripts.added.join(", ")}]`,
+    );
+  }
+  if (hookScripts.missingPkg) {
+    printSink.push(
+      '[bkit] git-hooks: package.json not found — cannot ensure `prepare` script. Hooks installed but won\'t activate until you add `"prepare": "husky install"` and run `pnpm install`.',
+    );
+  } else if (hookScripts.malformed) {
+    printSink.push(
+      "[bkit] git-hooks: package.json failed to parse — cannot ensure `prepare` script. Fix JSON syntax and re-run.",
+    );
+  } else if (hookScripts.preserved.includes("prepare")) {
+    // Consumer has a custom `prepare` value — note it but don't override
+    printSink.push(
+      "[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it includes `husky install` for hooks to activate.",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
