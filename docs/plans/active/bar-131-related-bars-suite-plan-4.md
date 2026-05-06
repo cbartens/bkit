@@ -231,55 +231,55 @@ Sub-plan-4 is NOT independently shippable. sub-plan-2 AND sub-plan-3 MUST be mer
 
 > **Cross-sub-plan dep reminder:** sub-plan-4 is NOT independently shippable. P4.T1 -> sub-plan-3 P3.T3; P4.T4 -> sub-plan-2 P2.T3.
 
-- [ ] **P4.T1:** `.bkit-staging/<module>/` write path. Staging-aware write wrapper.
+- [x] **P4.T1:** `.bkit-staging/<module>/` write path. Staging-aware write wrapper.
   - Files: `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.test.ts`, `.agents/scripts/bkit-modules.ts`
   - Depends on: sub-plan-3 P3.T3 (cross-sub-plan)
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.test.ts`
   - Closes: BAR-142 §A4 (staging foundation)
-- [ ] **P4.T2:** Validate-then-atomic-rename per module. `commitStaging` / `discardStaging`.
+- [x] **P4.T2:** Validate-then-atomic-rename per module. `commitStaging` / `discardStaging`.
   - Files: `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.test.ts`
   - Depends on: P4.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.test.ts`
   - Closes: BAR-142 §A4 (commit/discard)
-- [ ] **P4.T3:** Mid-failure rollback test fixtures (reproduce 0.5.0 `bkit-design-organise` lookup-miss); SIGTERM-after-first-module fixture.
+- [x] **P4.T3:** Mid-failure rollback test fixtures (reproduce 0.5.0 `bkit-design-organise` lookup-miss); SIGTERM-after-first-module fixture.
   - Files: `.agents/scripts/bkit-install.integration.test.ts`
   - Depends on: P4.T2
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-install.integration.test.ts`
   - Closes: BAR-142 §A4 (regression net)
-- [ ] **P4.T4:** `.bkit-version` `canonicalHashes` field (additive); backward-compat read for old payloads.
+- [x] **P4.T4:** `.bkit-version` `canonicalHashes` field (additive); backward-compat read for old payloads.
   - Files: `.agents/scripts/bkit-version.ts`, `.agents/scripts/bkit-version.test.ts`
   - Depends on: sub-plan-2 P2.T3 (cross-sub-plan)
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-version.test.ts`
   - Closes: BAR-142 §A5 (schema extension)
-- [ ] **P4.T5:** `bkit upgrade` CLI verb + diff engine.
+- [x] **P4.T5:** `bkit upgrade` CLI verb + diff engine.
   - Files: `.agents/scripts/bkit-cli.ts`, `.agents/scripts/bkit-upgrade.ts`, `.agents/scripts/bkit-upgrade.test.ts`
   - Depends on: P4.T4, sub-plan-3 P3.T6 (cross-sub-plan)
   - Effort: L
   - Verify: `pnpm vitest run .agents/scripts/bkit-upgrade.test.ts`
   - Closes: BAR-142 §A5 (upgrade verb)
-- [ ] **P4.T6:** `--non-interactive` upgrade auto-apply.
+- [x] **P4.T6:** `--non-interactive` upgrade auto-apply.
   - Files: `.agents/scripts/bkit-upgrade.ts`, `.agents/scripts/bkit-upgrade.test.ts`
   - Depends on: P4.T5
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-upgrade.test.ts`
   - Closes: BAR-142 §A5 (non-interactive)
-- [ ] **P4.T7:** Upgrade integration test (0.4.x -> 0.5.x customised hooks).
+- [x] **P4.T7:** Upgrade integration test (0.4.x -> 0.5.x customised hooks).
   - Files: `.agents/scripts/bkit-upgrade.integration.test.ts`, `tests/fixtures/heavy-customised-consumer/...` (referenced)
   - Depends on: P4.T5, sub-plan-2 P2.T8a (cross-sub-plan)
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-upgrade.integration.test.ts`
   - Closes: BAR-142 §A5 (regression net)
-- [ ] **P4.T8:** BAR-131 helper-action `setup-auth@v1` at `.github/actions/setup-auth/action.yml`. Update `.agents/templates/.github/workflows/ci.yml` step to `uses: cbartens/bkit/.github/actions/setup-auth@v1`. Add `.github/workflows/test-action.yml` meta-test. Add **offline acceptance**: Vitest-level YAML schema/parse test in `.agents/scripts/bkit-action-yaml.test.ts` asserting `action.yml` parses + has expected `inputs` (`token`, `registry`). **Tag step (sub-task):** after sub-plan-4 squash-merge lands on default branch, create + push annotated tag `v1` pointing to that commit (`gh release create v1 --target <SHA> --title 'setup-auth@v1'` OR `git tag -a v1 -m 'setup-auth helper action v1' <SHA> && git push origin v1`). Without the `v1` tag, `uses: cbartens/bkit/.github/actions/setup-auth@v1` fails to resolve in consumers. Manual GitHub Actions smoke at gate-time.
+- [x] **P4.T8:** BAR-131 helper-action `setup-auth@v1` at `.github/actions/setup-auth/action.yml`. Update `.agents/templates/.github/workflows/ci.yml` step to `uses: cbartens/bkit/.github/actions/setup-auth@v1`. Add `.github/workflows/test-action.yml` meta-test. Add **offline acceptance**: Vitest-level YAML schema/parse test in `.agents/scripts/bkit-action-yaml.test.ts` asserting `action.yml` parses + has expected `inputs` (`token`, `registry`). **Tag step (sub-task):** after sub-plan-4 squash-merge lands on default branch, create + push annotated tag `v1` pointing to that commit (`gh release create v1 --target <SHA> --title 'setup-auth@v1'` OR `git tag -a v1 -m 'setup-auth helper action v1' <SHA> && git push origin v1`). Without the `v1` tag, `uses: cbartens/bkit/.github/actions/setup-auth@v1` fails to resolve in consumers. Manual GitHub Actions smoke at gate-time.
   - Files: `.github/actions/setup-auth/action.yml`, `.agents/templates/.github/workflows/ci.yml`, `.github/workflows/test-action.yml`, `.agents/scripts/bkit-action-yaml.test.ts`
   - Depends on: sub-plan-1 P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-action-yaml.test.ts`; manual GitHub Actions smoke on test consumer fork (post-tag)
   - Closes: BAR-131 §1 (helper action stretch)
-- [ ] **P4.T9:** README + CHANGELOG v0.9/v1.0 + `docs/decisions.md` + `docs/knowledge.md`.
+- [x] **P4.T9:** README + CHANGELOG v0.9/v1.0 + `docs/decisions.md` + `docs/knowledge.md`.
   - Files: `README.md`, `CHANGELOG.md`, `docs/decisions.md`, `docs/knowledge.md`
   - Depends on: P4.T1, P4.T2, P4.T3, P4.T4, P4.T5, P4.T6, P4.T7, P4.T8
   - Effort: S
