@@ -66,6 +66,17 @@
           "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-1.md",
           "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-2.md"
         ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-06T05:09:05Z",
+        "commitSha": "a8852fe0056438e1a8de3b056ab4a0b0828e9398",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-v3-checked.md"
+        ]
       }
     ]
   }
