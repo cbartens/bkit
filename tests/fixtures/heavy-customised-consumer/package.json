@@ -1,0 +1,19 @@
+{
+  "name": "heavy-customised-consumer",
+  "version": "1.0.0",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "format:check": "prettier --check .",
+    "lint:slop": "slop-scan scan . --extra-flag",
+    "lint:prose": "custom-prose-linter",
+    "prepare": "husky install",
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "prettier": "^3.5.3",
+    "slop-scan": "^0.4.0",
+    "husky": "^9.0.0"
+  }
+}

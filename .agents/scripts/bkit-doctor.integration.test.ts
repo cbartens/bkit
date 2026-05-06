@@ -29,7 +29,11 @@ afterEach(() => {
 });
 
 function seedMinimalConsumer(dir: string): void {
-  fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name: "test-consumer" }), "utf-8");
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "test-consumer" }),
+    "utf-8",
+  );
   fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
 }
 
@@ -99,10 +103,7 @@ describe("bkit doctor — integration", () => {
     });
 
     // doctor exits 0 even when advisories are found (read-only)
-    expect(
-      result.status,
-      `doctor crashed:\n${result.stdout}\n${result.stderr}`,
-    ).toBe(0);
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 
     // Should contain the stale-pin advisory
     const combinedOutput = result.stdout + result.stderr;

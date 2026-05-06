@@ -3,11 +3,24 @@
 
 export type ModuleFlag = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks" | "full";
 
-export type Verb = "install" | "check" | "doctor" | "help";
+export type Verb = "install" | "check" | "doctor" | "uninstall" | "help";
 
 export interface ParsedArgs {
   verb: Verb;
   modules: Set<ModuleFlag>;
+  /** Uninstall-specific flags (only populated when verb === "uninstall"). */
+  uninstallFlags: UninstallFlags;
+}
+
+export interface UninstallFlags {
+  dryRun: boolean;
+  force: boolean;
+  nuke: boolean;
+  yes: boolean;
+  stripPackage: boolean;
+  keepNpmrc: boolean;
+  keepTooling: boolean;
+  autoRevert: boolean;
 }
 
 const MODULE_FLAGS = new Set<ModuleFlag>([
@@ -23,6 +36,21 @@ const MODULE_FLAGS = new Set<ModuleFlag>([
 // ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core
 const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 
+// Uninstall-specific flags (not module flags)
+const UNINSTALL_ONLY_FLAGS = new Set([
+  "dry-run",
+  "force",
+  "nuke",
+  "yes",
+  "package",
+  "keep-npmrc",
+  "keep-tooling",
+  "auto-revert",
+]);
+
+// Install-specific flags (not module flags; not uninstall flags)
+const INSTALL_ONLY_FLAGS = new Set(["auto-revert"]);
+
 export function resolveModules(flags: Set<ModuleFlag>): Set<ModuleFlag> {
   // --full or empty flags → all modules
   if (flags.has("full") || flags.size === 0) {
@@ -35,6 +63,19 @@ export function resolveModules(flags: Set<ModuleFlag>): Set<ModuleFlag> {
   return out;
 }
 
+function defaultUninstallFlags(): UninstallFlags {
+  return {
+    dryRun: false,
+    force: false,
+    nuke: false,
+    yes: false,
+    stripPackage: false,
+    keepNpmrc: false,
+    keepTooling: false,
+    autoRevert: false,
+  };
+}
+
 /**
  * Parse argv (process.argv.slice(2)) into a ParsedArgs object.
  * Rejects unknown verbs and flags with process.exit(1).
@@ -45,7 +86,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   // Verb extraction
   const firstArg = args[0];
-  if (firstArg === "install" || firstArg === "check" || firstArg === "doctor") {
+  if (
+    firstArg === "install" ||
+    firstArg === "check" ||
+    firstArg === "doctor" ||
+    firstArg === "uninstall"
+  ) {
     verb = firstArg as Verb;
     args.shift();
   } else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
@@ -58,17 +104,53 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   const moduleFlags = new Set<ModuleFlag>();
+  const uninstallFlags = defaultUninstallFlags();
 
   for (const arg of args) {
-    // Module flags: --<flag>
-    // `--host=` removed in v0.2.0 — use `--claude` / `--cursor` directly.
     if (arg.startsWith("--")) {
-      const flag = arg.slice(2) as ModuleFlag;
-      if (!MODULE_FLAGS.has(flag)) {
+      const flag = arg.slice(2);
+
+      // Uninstall-specific flags (accepted for all verbs that use them)
+      if (flag === "dry-run") {
+        uninstallFlags.dryRun = true;
+        continue;
+      }
+      if (flag === "force") {
+        uninstallFlags.force = true;
+        continue;
+      }
+      if (flag === "nuke") {
+        uninstallFlags.nuke = true;
+        continue;
+      }
+      if (flag === "yes") {
+        uninstallFlags.yes = true;
+        continue;
+      }
+      if (flag === "package") {
+        uninstallFlags.stripPackage = true;
+        continue;
+      }
+      if (flag === "keep-npmrc") {
+        uninstallFlags.keepNpmrc = true;
+        continue;
+      }
+      if (flag === "keep-tooling") {
+        uninstallFlags.keepTooling = true;
+        continue;
+      }
+      if (flag === "auto-revert") {
+        uninstallFlags.autoRevert = true;
+        continue;
+      }
+
+      // Module flags
+      const moduleFlag = flag as ModuleFlag;
+      if (!MODULE_FLAGS.has(moduleFlag)) {
         console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
         process.exit(1);
       }
-      moduleFlags.add(flag);
+      moduleFlags.add(moduleFlag);
       continue;
     }
 
@@ -79,7 +161,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const modules = resolveModules(moduleFlags);
 
-  return { verb, modules };
+  return { verb, modules, uninstallFlags };
 }
 
 export function printUsage(): void {
@@ -89,11 +171,13 @@ Usage:
   bkit install [module-flags]   Install (or re-sync) agent + CI + lint stack.
                                  No flags = --full (all modules).
   bkit check [module-flags]     Dry-run — report drift without writing. Exits 1 on drift.
+  bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
+                                 No flags = --full (all modules).
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
   bkit help                     Print this message.
 
-Module flags (composable):
+Module flags (composable — same for install and uninstall):
   --full          All modules (default when no flags given).
   --core          .agents/ payload pass + .gitignore block + rules.md block + .bkit-version.
   --claude        .claude/commands/ + .claude/agents/ (byte-identical mirror).
@@ -102,12 +186,27 @@ Module flags (composable):
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 2 managed-block).
 
+Uninstall flags:
+  --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
+  --force         Force-delete Tier-3 files even if consumer modified them.
+  --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
+  --yes           Skip interactive confirm for --nuke.
+  --package       Also strip managed package.json scripts/devDependencies.
+  --keep-npmrc    Preserve .npmrc (default: .npmrc is not bkit-managed, always preserved).
+  --keep-tooling  Preserve tooling devDependencies (prettier/slop-scan/husky).
+
+Install flags:
+  --auto-revert   On Phase 3 blocker, automatically run uninstall and exit 1.
+
 Examples:
   bkit install                  Full stack install (all modules).
   bkit install --claude         Only .claude/** + core.
   bkit install --ci --lint      CI + lint stack + core; nothing else.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).
+  bkit uninstall                Full stack uninstall (all modules).
+  bkit uninstall --dry-run      Preview what would be removed.
+  bkit uninstall --ci --lint    Uninstall CI + lint stack only.
 
 Consumer CI auth:
   Set GH_BKIT_TOKEN in GitHub Actions secrets (classic PAT with read:packages scope —

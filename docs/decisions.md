@@ -43,6 +43,26 @@
 - **Source:** phase
 - **Related:** BAR-138, BAR-130, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
 
+## DE-5: BAR-139 — .bkit-version schema extension: tier3Hashes (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Extend `.agents/.bkit-version` from a plain-text semver pin to a JSON object `{ pinnedVersion: string; tier3Hashes: Record<path, sha256> }`. The sha256 map records the content hash of each Tier-3 file at install time. During `bkit uninstall`, `shouldDeleteTier3` checks whether the current on-disk content matches the recorded hash — if so, the file is safe to delete; if not (consumer modified), it is preserved. Backward-compat reader parses old plain-text payloads as `{ pinnedVersion, tier3Hashes: {} }` (unknown → preserve-default).
+- **Why:** Tier-3 files (seed-or-print) are deleted during uninstall only if they are still in the exact state bkit wrote them. Without a recorded hash, `bkit uninstall` cannot distinguish between a default-seeded `ci.yml` (safe to delete) and a consumer-customised one (must preserve). Plain-text format is insufficient; JSON is human-readable and extensible.
+- **Discarded:** (1) Keep plain-text; detect "default content" by re-rendering the template at uninstall time — fails for Tier-3 files with token substitution that bkit can no longer re-compute (consumer tokens may have changed). (2) Store hashes in a separate `.bkit-hashes.json` — two files to keep in sync; `.bkit-version` is the natural home.
+- **Source:** phase
+- **Related:** BAR-139, `.agents/scripts/bkit-version.ts`, `.agents/scripts/bkit-uninstall.ts`
+
+## DE-6: BAR-142 §A2 — .bkitignore public contract (2026-05-07)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** `.bkitignore` is a new public file at the consumer repo root. Syntax: `#` comment, blank-line ignore, [picomatch](https://github.com/micromatch/picomatch) glob, optional `:dotted.key` suffix for per-key exclusion. Per-key is opt-in behind `BKIT_BKITIGNORE_PER_KEY=1` env var (off by default). Once shipped, the file and its syntax are a public contract.
+- **Why:** Consumers legitimately override bkit-managed files (e.g. custom ci.yml jobs, additional `.claude/settings.json` hook events). `bkit check` currently reports false-positive drift for these. `.bkitignore` gives consumers a declarative escape hatch without touching the managed file itself. Per-key is opt-in because implementation cost is high and per-file covers the majority use-cases (gether-life scenario).
+- **Discarded:** (1) Make per-key the default — implementation cost likely high; opt-in via env covers the primary use case. (2) Use a custom DSL instead of gitignore-style — picomatch is well-understood, has no shell-out, and is a pure-regex library (security: no injection risk). (3) Store in `.agents/.bkitignore` — consumer-owned files belong at repo root, not in the `.agents/` subtree (which is bkit-managed).
+- **Source:** phase
+- **Related:** BAR-142 §A2, `.agents/scripts/bkit-bkitignore.ts`, `docs/pending.md` (per-key deferred)
+
 ## DE-4: BAR-141 — Structured PreflightFinding replaces printSink (2026-05-06)
 
 - **Category:** agentic

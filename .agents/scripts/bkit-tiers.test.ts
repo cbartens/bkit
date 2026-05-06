@@ -9,6 +9,7 @@ import {
   writeTier3,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
+  stripManagedBlock,
   type WriteSet,
 } from "./bkit-tiers";
 
@@ -487,5 +488,118 @@ describe("ensurePackageJsonDevDeps", () => {
     const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws2);
     expect(result.added).toEqual([]);
     expect(ws2.writes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stripManagedBlock — pure-string transform (P2.T2)
+// ---------------------------------------------------------------------------
+
+describe("stripManagedBlock — html-comment markers", () => {
+  it("removes the managed block and marker lines from content", () => {
+    const content =
+      "# Consumer heading\n\n<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n\nConsumer footer.\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).not.toContain("<!-- bkit:start -->");
+    expect(result).not.toContain("bkit content");
+    expect(result).not.toContain("<!-- bkit:end -->");
+    expect(result).toContain("Consumer heading");
+    expect(result).toContain("Consumer footer.");
+  });
+
+  it("returns content unchanged when markers are absent", () => {
+    const content = "# Consumer heading\n\nConsumer content.\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("returns content unchanged when markers are duplicated (safety guard)", () => {
+    const content =
+      "<!-- bkit:start -->\na\n<!-- bkit:end -->\n<!-- bkit:start -->\nb\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("returns content unchanged when markers are inverted (safety guard)", () => {
+    const content = "<!-- bkit:end -->\ncontent\n<!-- bkit:start -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("is idempotent — calling twice produces same result", () => {
+    const content =
+      "Consumer content.\n\n<!-- bkit:start -->\nbkit managed\n<!-- bkit:end -->\n\nMore consumer.\n";
+    const first = stripManagedBlock(content, "html-comment");
+    const second = stripManagedBlock(first, "html-comment");
+    expect(second).toBe(first);
+  });
+
+  it("strips block when content only contains the managed block", () => {
+    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).not.toContain("bkit content");
+    expect(result.trim()).toBe("");
+  });
+
+  it("preserves consumer content above AND below the block", () => {
+    const content =
+      "above content\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n\nbelow content\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("above content");
+    expect(result).toContain("below content");
+    expect(result).not.toContain("bkit block");
+  });
+});
+
+describe("stripManagedBlock — hash-comment markers", () => {
+  it("removes hash-comment managed block from YAML/shell files", () => {
+    const content =
+      "# consumer preamble\n\n# bkit:start\nbkit-step: true\n# bkit:end\n\n# consumer footer\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).not.toContain("# bkit:start");
+    expect(result).not.toContain("bkit-step: true");
+    expect(result).not.toContain("# bkit:end");
+    expect(result).toContain("# consumer preamble");
+    expect(result).toContain("# consumer footer");
+  });
+
+  it("returns content unchanged when hash markers are absent", () => {
+    const content = "# consumer yaml\nstep: true\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip html-comment block when style is hash-comment", () => {
+    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip hash-comment block when style is html-comment", () => {
+    const content = "# bkit:start\nbkit content\n# bkit:end\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+});
+
+describe("stripManagedBlock — whitespace handling (BAR-138 lesson)", () => {
+  it("does not use greedy whitespace regex — only removes the managed block region", () => {
+    // Regression guard: greedy whitespace between markers would eat consumer content
+    const content =
+      "line1\nline2\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n\nline3\nline4\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("line1");
+    expect(result).toContain("line2");
+    expect(result).toContain("line3");
+    expect(result).toContain("line4");
+    expect(result).not.toContain("bkit block");
+  });
+
+  it("handles marker with no blank lines around it", () => {
+    const content = "above\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\nbelow\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("above");
+    expect(result).toContain("below");
+    expect(result).not.toContain("bkit");
   });
 });

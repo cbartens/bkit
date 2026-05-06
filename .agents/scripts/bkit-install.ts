@@ -6,7 +6,13 @@ import { parseArgs, printUsage } from "./bkit-cli.js";
 import { dispatchModules, getPkgRoot, type ModuleContext } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
-import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta } from "./bkit-postinstall.js";
+import {
+  runPostInstallCheck,
+  formatChecklist,
+  readChangelogVersionDelta,
+} from "./bkit-postinstall.js";
+import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import type { ModuleName } from "./bkit-manifest.js";
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -630,7 +636,7 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
 }
 
 async function main() {
-  const { verb, modules } = parseArgs(process.argv.slice(2));
+  const { verb, modules, uninstallFlags } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
@@ -653,6 +659,35 @@ async function main() {
       console.log(banner);
     } else {
       console.log(`${LOG_PREFIX} No advisories found.`);
+    }
+    return;
+  }
+
+  if (verb === "uninstall") {
+    LOG_PREFIX = "[bkit-uninstall]";
+    const uninstallCtx: UninstallContext = {
+      cwd: process.cwd(),
+      dryRun: uninstallFlags.dryRun,
+      force: uninstallFlags.force,
+      nuke: uninstallFlags.nuke,
+      yes: uninstallFlags.yes,
+      stripPackage: uninstallFlags.stripPackage,
+      logPrefix: LOG_PREFIX,
+    };
+    const moduleList = [...modules] as ModuleName[];
+    console.log(`${LOG_PREFIX} Running uninstall${uninstallCtx.dryRun ? " (dry-run)" : ""}...`);
+    const result = await runUninstall(moduleList, uninstallCtx);
+    const totalDeleted = result.deleted.length;
+    const totalStripped = result.stripped.length;
+    const totalPreserved = result.preserved.length;
+    if (uninstallCtx.dryRun) {
+      console.log(
+        `${LOG_PREFIX} [dry-run] Would delete: ${totalDeleted}, strip: ${totalStripped}, preserve: ${totalPreserved}`,
+      );
+    } else {
+      console.log(
+        `${LOG_PREFIX} Done. Deleted: ${totalDeleted}, stripped: ${totalStripped}, preserved: ${totalPreserved}`,
+      );
     }
     return;
   }
@@ -750,6 +785,34 @@ async function main() {
   const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
+
+  // P2.T9: exit-1 on Phase 3 blockers + recovery action text.
+  // Blockers in Phase 3 are actionable hard-fails (e.g. gh-bkit-token gap in CI).
+  // Advisory findings are informational only and do NOT exit-1.
+  const phase3Blockers = postFindings.filter((f) => f.severity === "blocker");
+  if (phase3Blockers.length > 0) {
+    const moduleFlags = [...modules].map((m) => `--${m}`).join(" ");
+    const recoveryLine = `pnpm bkit uninstall ${moduleFlags} && <fix the issue> && pnpm bkit install ${moduleFlags}`;
+    console.error(
+      `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,
+    );
+    // P2.T10: --auto-revert: run uninstall in-process before exit-1
+    if (uninstallFlags.autoRevert) {
+      console.log(`${LOG_PREFIX} --auto-revert: reverting install...`);
+      const uninstallCtx: UninstallContext = {
+        cwd: process.cwd(),
+        dryRun: false,
+        force: false,
+        nuke: false,
+        yes: true,
+        stripPackage: false,
+        logPrefix: "[bkit-uninstall]",
+      };
+      await runUninstall([...modules] as ModuleName[], uninstallCtx);
+      console.log(`${LOG_PREFIX} --auto-revert: uninstall complete. Exiting 1.`);
+    }
+    process.exit(1);
+  }
 }
 
 function isMainScript(): boolean {

@@ -470,6 +470,124 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)
+//
+// When Phase 3 detects a blocker-severity finding (e.g. ci-yml-missing-token-env
+// elevated to blocker), bkit install must exit 1 and print a recovery line.
+// ---------------------------------------------------------------------------
+
+describe("Scenario 6 — Phase 3 blocker exit-1 + recovery line (P2.T9)", () => {
+  it("runPostInstallCheck includes blocker-severity finding when ci.yml missing token and .npmrc references token", () => {
+    // Seed: .npmrc references ${GH_BKIT_TOKEN} → ci-yml-missing-token-env elevated to blocker
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test", version: "0.0.0" }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    // ci.yml has pnpm install but no GH_BKIT_TOKEN env mapping
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install\n",
+      "utf-8",
+    );
+    // .npmrc references ${GH_BKIT_TOKEN} → elevates ci-yml finding to blocker
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "utf-8",
+    );
+
+    const ws: WriteSet = { writes: [] };
+    const findings = runPostInstallCheck([], ws, makeModules("core", "ci"), tmpDir, false);
+    const blocker = findings.find((f) => f.severity === "blocker");
+    expect(blocker).toBeDefined();
+    expect(blocker!.id).toBe("ci-yml-missing-token-env");
+  });
+
+  it("Phase 3 blocker findings are distinguished from advisories (severity=blocker)", () => {
+    // Verify that the existing blocker escalation logic in detectCiYmlMissingTokenEnv
+    // produces a severity=blocker finding — this is the trigger for exit-1 in bkit-install.ts
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }));
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "steps:\n  - run: pnpm install\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+    );
+
+    const ws: WriteSet = { writes: [] };
+    const findings = runPostInstallCheck([], ws, makeModules("ci"), tmpDir, false);
+    const blockerFindings = findings.filter((f) => f.severity === "blocker");
+    expect(blockerFindings.length).toBeGreaterThan(0);
+    expect(blockerFindings[0]!.id).toBe("ci-yml-missing-token-env");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario 7 — bkit install exits 1 on Phase 3 blocker (subprocess, P2.T9)
+// ---------------------------------------------------------------------------
+
+describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.T9)", () => {
+  it("bkit install exits 1 when Phase 3 blocker detected + recovery line in output", () => {
+    // Set up consumer with Phase 3 blocker condition: ci.yml missing token env + .npmrc with token
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "test-consumer",
+        version: "0.0.0",
+        devDependencies: {},
+        scripts: { test: "echo ok" },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    // ci.yml missing GH_BKIT_TOKEN env mapping
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
+    );
+    // .npmrc that references ${GH_BKIT_TOKEN} — triggers blocker escalation
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+    );
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--ci"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        // Override GH_BKIT_TOKEN to avoid shell-token advisory overlapping
+        GH_BKIT_TOKEN: "fake-token-for-test",
+      },
+      timeout: 60_000,
+    });
+
+    // Exit 1 due to Phase 3 blocker
+    expect(result.status).toBe(1);
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    // Recovery line should be present
+    expect(combined).toContain("pnpm bkit uninstall");
+    expect(combined).toContain("pnpm bkit install");
+  });
+});
+
 describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {
   it("bkit check with stale consumer prompts.md does not emit Missing model lookup", () => {
     fs.writeFileSync(

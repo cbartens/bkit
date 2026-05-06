@@ -183,6 +183,99 @@ Use `bkit doctor` to:
 
 `bkit doctor` always exits 0. If advisories are found they are printed in the same checklist banner format as `bkit install`. If none are found, it prints `[bkit-doctor] No advisories found.`
 
+## Uninstall
+
+`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations.
+
+```bash
+# Uninstall full stack (all modules)
+pnpm exec bkit uninstall
+
+# Preview what would be removed (no writes)
+pnpm exec bkit uninstall --dry-run
+
+# Uninstall specific modules
+pnpm exec bkit uninstall --ci --lint
+
+# Also strip managed package.json scripts/devDeps
+pnpm exec bkit uninstall --package
+
+# Force-delete Tier-3 files even if consumer modified them
+pnpm exec bkit uninstall --force
+
+# Delete ALL bkit files regardless of consumer modifications (confirm prompt)
+pnpm exec bkit uninstall --nuke
+# Skip interactive confirm:
+pnpm exec bkit uninstall --nuke --yes
+```
+
+### Tier semantics during uninstall
+
+| Tier                   | Behaviour                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tier-1 (fully managed) | Always deleted (bkit owns 100% of the file).                                                                                                                   |
+| Tier-2 (managed-block) | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
+| Tier-3 (seed-or-print) | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
+
+### Idempotency
+
+Running `bkit uninstall` twice is safe — subsequent runs skip absent files and produce zero writes.
+
+## Phase 3 exit-1 and recovery
+
+When `bkit install` detects a **blocker-severity** finding in Phase 3 (e.g. `ci.yml` missing `GH_BKIT_TOKEN` env mapping with `.npmrc` referencing the token), it exits 1 and prints a single-line recovery command:
+
+```
+[bkit-install] 1 Phase 3 blocker(s) detected. Recovery:
+  pnpm bkit uninstall <flags> && <fix the issue> && pnpm bkit install <flags>
+```
+
+Advisories (non-blockers) are informational only and do NOT trigger exit-1.
+
+### --auto-revert
+
+Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-process when a Phase 3 blocker fires:
+
+```bash
+pnpm exec bkit install --auto-revert
+```
+
+This is useful in CI scripts where you want to guarantee a clean state on failure.
+
+## .bkitignore
+
+Create a `.bkitignore` file at your repo root to suppress `bkit check` drift for specific files or JSON keys.
+
+### Syntax
+
+- Lines starting with `#` are comments.
+- Blank lines are ignored.
+- All other lines are [picomatch](https://github.com/micromatch/picomatch) glob patterns.
+- Append `:dotted.key` to ignore a specific JSON key (opt-in, requires `BKIT_BKITIGNORE_PER_KEY=1`).
+
+### Examples
+
+```
+# Suppress ci.yml drift entirely (consumer has custom jobs)
+.github/workflows/ci.yml
+
+# Suppress all Vale style drift
+.vale/**
+
+# Suppress specific JSON key drift (requires BKIT_BKITIGNORE_PER_KEY=1)
+.claude/settings.json:hooks.Stop
+```
+
+### Per-key mode
+
+Per-key (`:dotted.key`) matching is off by default. Enable it with the env var:
+
+```bash
+BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
+```
+
+This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.
+
 ## Documentation
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.

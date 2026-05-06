@@ -4,6 +4,7 @@ import {
   extractFullManagedBlock,
   extractManagedBlock,
   updateManagedBlock,
+  findLineAnchoredMarkers,
   type MarkerStyle,
   type WriteEntry,
   type WriteSet,
@@ -11,7 +12,60 @@ import {
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 
-export type { WriteSet, WriteEntry };
+export type { WriteSet, WriteEntry, MarkerStyle };
+
+// ---------------------------------------------------------------------------
+// stripManagedBlock — pure-string transform (P2.T2)
+//
+// Remove the bkit-managed block (including marker lines) from a string,
+// preserving all consumer-owned content outside the block.
+//
+// Semantics:
+//   - Markers absent  → returns content unchanged (idempotent, safe for re-run)
+//   - Duplicated/inverted markers → returns content unchanged (error-safe)
+//   - Marker lines and surrounding blank lines are removed along with the block
+//
+// Uses the line-anchored marker detection from BAR-138 (KN-8 lesson: greedy
+// whitespace regexes are unsafe — use the anchored parser instead).
+// ---------------------------------------------------------------------------
+
+export function stripManagedBlock(
+  content: string,
+  markerStyle: MarkerStyle = "html-comment",
+): string {
+  const startMarker = markerStyle === "hash-comment" ? "# bkit:start" : "<!-- bkit:start -->";
+  const endMarker = markerStyle === "hash-comment" ? "# bkit:end" : "<!-- bkit:end -->";
+
+  const starts = findLineAnchoredMarkers(content, startMarker);
+  const ends = findLineAnchoredMarkers(content, endMarker);
+
+  // Safety guards: absent, duplicated, or inverted → no-op
+  if (starts.length === 0 || ends.length === 0) return content;
+  if (starts.length > 1 || ends.length > 1) return content;
+  const startIdx = starts[0]!;
+  const endIdx = ends[0]!;
+  if (startIdx >= endIdx) return content;
+
+  // Find start-of-line for the start marker
+  let startLineStart = startIdx;
+  while (startLineStart > 0 && content[startLineStart - 1] !== "\n") startLineStart--;
+
+  // Find end-of-line for the end marker (include trailing newline)
+  const endMarkerEnd = endIdx + endMarker.length;
+  let blockEnd = endMarkerEnd;
+  if (blockEnd < content.length && content[blockEnd] === "\n") blockEnd++;
+
+  const before = content.slice(0, startLineStart);
+  const after = content.slice(blockEnd);
+
+  // Trim one leading blank line from `after` to avoid double-blank after strip
+  const afterTrimmed = after.replace(/^\n/, "");
+
+  // Trim one trailing blank line from `before` to avoid double-blank before strip
+  const beforeTrimmed = before.replace(/\n\n$/, "\n");
+
+  return beforeTrimmed + afterTrimmed;
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers

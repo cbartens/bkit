@@ -1,7 +1,7 @@
 // bkit-cli.test.ts — v4-3 scope (CLI dispatch surface).
 // Stubs created in v4-2 Phase 0; filled by v4-3 Phase 3.
 import { describe, expect, it, vi } from "vitest";
-import { parseArgs, printUsage, resolveModules } from "./bkit-cli";
+import { parseArgs, printUsage, resolveModules, type ParsedArgs } from "./bkit-cli";
 
 // ---------------------------------------------------------------------------
 // parseArgs — verb parsing
@@ -249,5 +249,99 @@ describe("printUsage — help output", () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+
+  it("help output includes uninstall verb (P2.T6)", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("uninstall");
+      expect(output).toContain("--dry-run");
+      expect(output).toContain("--nuke");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — uninstall verb (P2.T6)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — uninstall verb (P2.T6)", () => {
+  it("uninstall verb is parsed correctly", () => {
+    const result = parseArgs(["uninstall"]);
+    expect(result.verb).toBe("uninstall");
+  });
+
+  it("uninstall with no flags resolves to all modules (--full equivalent)", () => {
+    const result = parseArgs(["uninstall"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("claude")).toBe(true);
+    expect(result.modules.has("cursor")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("lint")).toBe(true);
+    expect(result.modules.has("git-hooks")).toBe(true);
+  });
+
+  it("uninstall with --ci --lint resolves to core + ci + lint", () => {
+    const result = parseArgs(["uninstall", "--ci", "--lint"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("lint")).toBe(true);
+    expect(result.modules.has("claude")).toBe(false);
+  });
+
+  it("uninstall --dry-run sets dryRun flag", () => {
+    const result = parseArgs(["uninstall", "--dry-run"]);
+    expect(result.uninstallFlags.dryRun).toBe(true);
+  });
+
+  it("uninstall --force sets force flag", () => {
+    const result = parseArgs(["uninstall", "--force"]);
+    expect(result.uninstallFlags.force).toBe(true);
+  });
+
+  it("uninstall --nuke sets nuke flag", () => {
+    const result = parseArgs(["uninstall", "--nuke"]);
+    expect(result.uninstallFlags.nuke).toBe(true);
+  });
+
+  it("uninstall --yes sets yes flag", () => {
+    const result = parseArgs(["uninstall", "--yes"]);
+    expect(result.uninstallFlags.yes).toBe(true);
+  });
+
+  it("uninstall --package sets stripPackage flag", () => {
+    const result = parseArgs(["uninstall", "--package"]);
+    expect(result.uninstallFlags.stripPackage).toBe(true);
+  });
+
+  it("uninstall --nuke --yes --force compose correctly", () => {
+    const result = parseArgs(["uninstall", "--nuke", "--yes", "--force"]);
+    expect(result.uninstallFlags.nuke).toBe(true);
+    expect(result.uninstallFlags.yes).toBe(true);
+    expect(result.uninstallFlags.force).toBe(true);
+  });
+
+  it("uninstall flags default to false when not specified", () => {
+    const result = parseArgs(["uninstall"]);
+    expect(result.uninstallFlags.dryRun).toBe(false);
+    expect(result.uninstallFlags.force).toBe(false);
+    expect(result.uninstallFlags.nuke).toBe(false);
+    expect(result.uninstallFlags.yes).toBe(false);
+    expect(result.uninstallFlags.stripPackage).toBe(false);
+  });
+
+  it("install --auto-revert sets autoRevert flag", () => {
+    const result = parseArgs(["install", "--auto-revert"]);
+    expect(result.uninstallFlags.autoRevert).toBe(true);
+  });
+
+  it("module flags work with uninstall (--full mirrors install)", () => {
+    const withFull = parseArgs(["uninstall", "--full"]);
+    const noFlags = parseArgs(["uninstall"]);
+    expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());
   });
 });

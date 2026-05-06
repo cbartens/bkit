@@ -44,11 +44,13 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.4.0",
-    "vitest": "^2.1.0",
+    "@types/picomatch": "^4.0.3",
+    "husky": "^9.1.7",
+    "picomatch": "^4.0.4",
     "prettier": "^3.5.3",
     "slop-scan": "^0.3.0",
-    "husky": "^9.1.7"
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
   }
 }
