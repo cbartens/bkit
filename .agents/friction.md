@@ -65,4 +65,16 @@
 - **Recovery:** Files moved from `docs/plans/drafts/bar-138-plan*.md` → `docs/plans/active/bar-138-gh-packages-distribution-plan*.md` with full slug during build worktree-setup step. Slug-less naming is a workflow authoring gap for future runs.
 - **Status:** RECOVERED
 
+## Plan-execute agent returned PENDING verdict after ~20min (2026-05-06)
+
+- **Category:** agent-rework
+- **Workflow:** build
+- **Step:** 5 — Plan Execute
+- **FID:** bar-141-preflight-checklist
+- **Source:** subagent
+- **Description:** `@bkit-build-plan-execute` ran for 1188887ms (~20min) and returned with log file containing only `Verdict: PENDING` (6 lines). The agent did substantial implementation work (created bkit-preflight.ts, bkit-postinstall.ts, test files, modified bkit-install.ts) but never wrote the final log summary or updated the verdict. Orchestrator had to re-invoke the agent with context about completed work to finish the log.
+- **Suggested fix:** Add a hard timeout guard to plan-execute prompt — if the agent detects it's near context/time limits, it should immediately write a partial log with CONCERNS verdict and list remaining gaps rather than failing silently. Alternatively, split large implementation tasks into smaller sub-plans so each execute agent session is bounded.
+- **Recovery:** Re-invoked `@bkit-build-plan-execute` with explicit context listing what was already done. Second invocation completed in ~4min and produced valid PASS verdict.
+- **Status:** RECOVERED
+
 <!-- bkit:end -->
