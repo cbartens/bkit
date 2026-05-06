@@ -148,8 +148,10 @@ export function detectBkitVersionMajorDowngrade(
   const versionFile = path.join(cwd, ".agents", ".bkit-version");
   if (!fs.existsSync(versionFile)) return null;
   const onDisk = fs.readFileSync(versionFile, "utf-8").trim();
+  if (!onDisk) return null; // empty/whitespace file — guard against parseInt("") = NaN
   const onDiskMajor = parseInt(onDisk.split(".")[0] ?? "0", 10);
   const installingMajor = parseInt(installingVersion.split(".")[0] ?? "0", 10);
+  if (Number.isNaN(onDiskMajor) || Number.isNaN(installingMajor)) return null; // malformed version strings — no false advisory
   if (onDiskMajor <= installingMajor) return null;
   return {
     id: "bkit-version-major-downgrade",

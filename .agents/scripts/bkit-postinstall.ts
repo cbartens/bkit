@@ -2,7 +2,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
@@ -84,8 +84,10 @@ export function detectVercelEnv(
   cwd: string = process.cwd(),
 ): TokenPresence {
   if (!detectVercelProject(cwd)) return "unknown";
+  // Runtime guard: reject unexpected env values even though TypeScript narrows them.
+  if (env !== "preview" && env !== "production") return "unknown";
   try {
-    const out = execSync(`vercel env ls ${env}`, {
+    const out = execFileSync("vercel", ["env", "ls", env], {
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 10000,
@@ -112,7 +114,12 @@ export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null
   // Only flag if we can clearly see an install step without the env mapping.
   // Require presence of an Install step before flagging (avoid false positives).
   if (!content.includes("pnpm install")) return null;
-  if (content.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}")) return null;
+  // Use a regex to handle whitespace/quoting variations:
+  //   GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+  //   GH_BKIT_TOKEN: "${{ secrets.GH_BKIT_TOKEN }}"
+  //   GH_BKIT_TOKEN:${{secrets.GH_BKIT_TOKEN}}
+  if (/GH_BKIT_TOKEN\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}["']?/.test(content))
+    return null;
 
   return {
     id: "ci-yml-missing-token-env",
@@ -280,8 +287,8 @@ export function runPostInstallCheck(
   dryRun = false,
 ): PreflightFinding[] {
   if (dryRun) {
-    // Dry-run: skip Phase 3; return preflight advisories only.
-    return [...preflightAdvisories];
+    // Dry-run: skip Phase 3; return preflight advisories only (deduped defensively).
+    return dedupeById([...preflightAdvisories]);
   }
 
   const phase3: PreflightFinding[] = [];
@@ -374,20 +381,24 @@ export function runPostInstallCheck(
   // Intra-phase dedup (first occurrence wins)
   const deduped = dedupeById(phase3);
 
+  // Dedupe the incoming preflightAdvisories (ctx.advisories may contain module-emitted
+  // duplicates in addition to runPreflight's already-deduped output).
+  const dedupedPreflight = dedupeById(preflightAdvisories);
+
   // Cross-phase dedup: Phase 3 wins on conflict (remove preflight entries whose id
   // appears in Phase 3, then merge Phase 3 at the front for the winning position).
   const phase3Ids = new Set(deduped.map((f) => f.id));
-  const filteredPreflight = preflightAdvisories.filter((f) => !phase3Ids.has(f.id));
+  const filteredPreflight = dedupedPreflight.filter((f) => !phase3Ids.has(f.id));
 
   // Final order: preflight advisories (that weren't superseded) first, then Phase 3
   return [...filteredPreflight, ...deduped];
 }
 
 // ---------------------------------------------------------------------------
-// Internal dedup helper
+// Dedup helper (exported for unit-testability; consumers should not rely on this)
 // ---------------------------------------------------------------------------
 
-function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
+export function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
   const seen = new Set<string>();
   return findings.filter((f) => {
     if (seen.has(f.id)) return false;

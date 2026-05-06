@@ -17,6 +17,7 @@ import {
   detectDevDepsNeedFetch,
   formatChecklist,
   runPostInstallCheck,
+  dedupeById,
 } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
@@ -25,8 +26,11 @@ import {
 // the mock declaration before imports. Individual tests use mockReset +
 // mockReturnValue / mockImplementation to configure per-case behaviour.
 // ---------------------------------------------------------------------------
-const { execSync } = vi.hoisted(() => ({ execSync: vi.fn() }));
-vi.mock("node:child_process", () => ({ execSync }));
+const { execSync, execFileSync } = vi.hoisted(() => ({
+  execSync: vi.fn(),
+  execFileSync: vi.fn(),
+}));
+vi.mock("node:child_process", () => ({ execSync, execFileSync }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,6 +53,7 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
   vi.restoreAllMocks();
   execSync.mockReset();
+  execFileSync.mockReset();
 });
 
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
@@ -179,19 +184,19 @@ describe("detectVercelEnv", () => {
 
   it("returns 'present' when vercel CLI reports GH_BKIT_TOKEN", () => {
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
-    execSync.mockReturnValue("GH_BKIT_TOKEN  preview\n");
+    execFileSync.mockReturnValue("GH_BKIT_TOKEN  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("present");
   });
 
   it("returns 'missing' when vercel CLI output lacks GH_BKIT_TOKEN", () => {
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
-    execSync.mockReturnValue("OTHER_VAR  preview\n");
+    execFileSync.mockReturnValue("OTHER_VAR  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("missing");
   });
 
   it("returns 'unknown' when vercel CLI throws", () => {
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), '{}', "utf-8");
-    execSync.mockImplementation(() => {
+    execFileSync.mockImplementation(() => {
       throw new Error("vercel: command not found");
     });
     expect(detectVercelEnv("preview", tmpDir)).toBe("unknown");
@@ -222,7 +227,7 @@ jobs:
     expect(result!.severity).toBe("advisory");
   });
 
-  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping", () => {
+  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping (standard form)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
@@ -234,6 +239,42 @@ jobs:
         run: pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+`,
+      "utf-8",
+    );
+    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping with quotes", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      `
+jobs:
+  build:
+    steps:
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: "\${{ secrets.GH_BKIT_TOKEN }}"
+`,
+      "utf-8",
+    );
+    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping with no inner spaces", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      `
+jobs:
+  build:
+    steps:
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: \${{secrets.GH_BKIT_TOKEN}}
 `,
       "utf-8",
     );
@@ -433,5 +474,56 @@ describe("runPostInstallCheck deduplication", () => {
     const ws = makeWs({ path: "package.json", action: "update", devDepsAdded: ["prettier"] });
     const result = runPostInstallCheck([], ws, makeModules("lint"), tmpDir);
     expect(result.some((f) => f.id === "devdeps-need-fetch")).toBe(true);
+  });
+
+  it("deduplicates duplicate ids within incoming preflightAdvisories (intra-preflight dedup)", () => {
+    process.env.GH_BKIT_TOKEN = "test";
+    // Two entries with the same id — only the first should survive.
+    const preflightAdvisories: PreflightFinding[] = [
+      { id: "husky-no-markers-precommit", severity: "advisory", detect: "first", action: "a1" },
+      { id: "husky-no-markers-precommit", severity: "advisory", detect: "second", action: "a2" },
+    ];
+    const result = runPostInstallCheck(preflightAdvisories, makeWs(), makeModules("lint"), tmpDir);
+    const matches = result.filter((f) => f.id === "husky-no-markers-precommit");
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.detect).toBe("first"); // first occurrence wins
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dedupeById — intra-phase dedup unit tests
+// ---------------------------------------------------------------------------
+
+describe("dedupeById", () => {
+  it("keeps first occurrence when duplicate ids are present", () => {
+    const findings: PreflightFinding[] = [
+      { id: "foo", severity: "advisory", detect: "first", action: "a1" },
+      { id: "bar", severity: "advisory", detect: "bar-detect", action: "a2" },
+      { id: "foo", severity: "advisory", detect: "second", action: "a3" },
+    ];
+    const result = dedupeById(findings);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.id).toBe("foo");
+    expect(result[0]!.detect).toBe("first");
+    expect(result[1]!.id).toBe("bar");
+  });
+
+  it("returns all entries unchanged when all ids are unique", () => {
+    const findings: PreflightFinding[] = [
+      { id: "a", severity: "advisory", detect: "d1", action: "x" },
+      { id: "b", severity: "blocker", detect: "d2", action: "y" },
+    ];
+    expect(dedupeById(findings)).toHaveLength(2);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(dedupeById([])).toHaveLength(0);
+  });
+
+  it("keeps a single entry unchanged", () => {
+    const findings: PreflightFinding[] = [
+      { id: "only", severity: "advisory", detect: "d", action: "a" },
+    ];
+    expect(dedupeById(findings)).toHaveLength(1);
   });
 });
