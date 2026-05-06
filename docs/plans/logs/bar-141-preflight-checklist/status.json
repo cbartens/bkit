@@ -10,6 +10,15 @@
         "at": "2026-05-06T04:46:49Z",
         "commitSha": "a15a370665928948126b199524562bfe99ec8ba1",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-06T04:48:46Z",
+        "commitSha": "55405dd9de7eb7ba51cbd169b6735a62fe82de2b",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-input.md"
+        ]
       }
     ]
   }
