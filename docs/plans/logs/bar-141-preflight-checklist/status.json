@@ -292,6 +292,13 @@
         "at": "2026-05-06T10:49:20Z",
         "commitSha": "76bfb2a284bb7c26b3d7ef542e29ce35bfe968a6",
         "artifacts": []
+      },
+      {
+        "step": "worktree-cleanup",
+        "status": "DONE",
+        "at": "2026-05-06T10:50:10Z",
+        "commitSha": "2392f224cb46b81a1331d53e6a8b89ee801e2953",
+        "artifacts": []
       }
     ]
   }
