@@ -1,0 +1,49 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`consumer CI template (.agents/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
+"name: CI
+
+on:
+  push:
+    branches: [{{DEFAULT_BRANCH}}, dev]
+  pull_request:
+    branches: [{{DEFAULT_BRANCH}}]
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: {{NODE_VERSION}}
+
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add \`with: version:\` here — pnpm/action-setup@v4 errors when both are set.
+      - uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Format check
+        run: pnpm format:check
+
+      - name: Lint prose
+        run: pnpm lint:prose
+
+      - name: Lint slop
+        run: pnpm lint:slop
+
+      - name: bkit check
+        run: pnpm bkit check
+"
+`;

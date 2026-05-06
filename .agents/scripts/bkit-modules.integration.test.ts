@@ -132,9 +132,10 @@ describe("ci.yml end-to-end token substitution (Task 6.1b)", () => {
     expect(onDisk).not.toContain("{{DEFAULT_BRANCH}}");
     expect(onDisk).not.toContain("{{PROJECT_NAME}}");
 
-    // Assert auth-shim is present
+    // Assert registry-auth env var is present (BAR-138: replaced git auth-shim)
     expect(onDisk).toContain("GH_BKIT_TOKEN");
-    expect(onDisk).toContain("git config --global url.");
+    // BAR-138: the old git auth-shim has been removed from the template
+    expect(onDisk).not.toContain("git config --global url.");
   });
 
   it("existing ci.yml is left untouched and an AI merge instruction is printed (v0.2.1 Tier 3)", async () => {
