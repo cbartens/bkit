@@ -37,6 +37,22 @@ describe("package.json manifest invariants (BAR-138)", () => {
     expect(pkg.description).toBeTruthy();
     expect(pkg.description).not.toContain("git dependency from a private GitHub repo");
   });
+
+  // Defense-in-depth: files array should not explicitly include *.test.ts patterns
+  // (BAR-138 challenge remediation — Finding 3, defense-in-depth layer).
+  // .npmignore is the primary guard; this ensures the files array doesn't
+  // re-include test patterns that would override .npmignore via explicit allowlisting.
+  it("files array does not include a *.test.ts glob pattern", () => {
+    const filesArray: string[] = pkg.files ?? [];
+    const testPatterns = filesArray.filter((f: string) => f.includes(".test.ts"));
+    expect(testPatterns).toHaveLength(0);
+  });
+
+  it("files array does not include a __snapshots__ pattern", () => {
+    const filesArray: string[] = pkg.files ?? [];
+    const snapshotPatterns = filesArray.filter((f: string) => f.includes("__snapshots__"));
+    expect(snapshotPatterns).toHaveLength(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

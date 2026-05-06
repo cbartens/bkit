@@ -140,4 +140,51 @@ describe("release.yml structural assertions (BAR-138)", () => {
     const publishIdx = lineIndex("npm publish");
     expect(publishIdx).toBeGreaterThan(distIdx);
   });
+
+  // ---------------------------------------------------------------------------
+  // Concurrency guard (BAR-138 challenge remediation — Finding 1)
+  // ---------------------------------------------------------------------------
+
+  it("has a top-level concurrency block (prevents duplicate publish races)", () => {
+    expect(content).toContain("concurrency:");
+  });
+
+  it("concurrency group references github.ref", () => {
+    expect(content).toMatch(/group:\s+release-\$\{\{[^}]*github\.ref[^}]*\}\}/);
+  });
+
+  it("concurrency cancel-in-progress is false (in-flight publish must not be killed)", () => {
+    expect(content).toContain("cancel-in-progress: false");
+  });
+
+  // ---------------------------------------------------------------------------
+  // SHA-pinned actions (BAR-138 challenge remediation — Finding 2)
+  // ---------------------------------------------------------------------------
+
+  it("uses actions/checkout pinned to a SHA (supply-chain hardening)", () => {
+    expect(content).toMatch(/actions\/checkout@[0-9a-f]{40}/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// .npmignore — test-file exclusion from published tarball
+// (BAR-138 challenge remediation — Finding 3)
+// ---------------------------------------------------------------------------
+
+describe(".npmignore tarball exclusions (BAR-138)", () => {
+  const NPMIGNORE_PATH = path.resolve(".npmignore");
+
+  it(".npmignore file exists", () => {
+    expect(fs.existsSync(NPMIGNORE_PATH)).toBe(true);
+  });
+
+  it(".npmignore excludes .agents/scripts/*.ts (test sources + compiled TS)", () => {
+    const content = fs.readFileSync(NPMIGNORE_PATH, "utf-8");
+    expect(content).toContain(".agents/scripts/*.ts");
+  });
+
+  it(".npmignore excludes .agents/scripts/__snapshots__/ (vitest snapshot files)", () => {
+    const content = fs.readFileSync(NPMIGNORE_PATH, "utf-8");
+    expect(content).toContain(".agents/scripts/__snapshots__/");
+  });
 });
