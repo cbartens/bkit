@@ -588,6 +588,77 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
   });
 });
 
+// ---------------------------------------------------------------------------
+// Scenario 8 — --auto-revert reverts on Phase 3 blocker (subprocess, P2.T10)
+// ---------------------------------------------------------------------------
+
+describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (P2.T10)", () => {
+  it("--auto-revert: exits 1, auto-revert message present, Tier-1 writes reverted", () => {
+    // Set up consumer with Phase 3 blocker condition (same as Scenario 7):
+    // ci.yml missing GH_BKIT_TOKEN env + .npmrc referencing ${GH_BKIT_TOKEN}
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "test-consumer",
+        version: "0.0.0",
+        devDependencies: {},
+        scripts: { test: "echo ok" },
+      }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    // ci.yml missing GH_BKIT_TOKEN env mapping — triggers blocker in Phase 3
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm install --frozen-lockfile\n",
+    );
+    // .npmrc that references ${GH_BKIT_TOKEN} — escalates to blocker
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+    );
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Capture pre-install state: .agents/.bkit-version must not exist
+    const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
+    expect(fs.existsSync(versionFilePath)).toBe(false);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--core", "--auto-revert"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+        // Set GH_BKIT_TOKEN so the shell-token advisory doesn't interfere
+        GH_BKIT_TOKEN: "fake-token-for-test",
+      },
+      timeout: 60_000,
+    });
+
+    // Exit 1 due to Phase 3 blocker
+    expect(result.status).toBe(1);
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+
+    // Auto-revert log messages must be present — confirms in-process revert ran
+    expect(combined).toContain("--auto-revert");
+
+    // The Tier-1 .agents/.bkit-version written by --core MUST be absent after
+    // auto-revert (runUninstall deleted it as a Tier-1 file).
+    // This is the byte-identical-to-pre-install check: file was absent → now absent.
+    expect(fs.existsSync(versionFilePath)).toBe(false);
+  }, 90_000);
+});
+
 describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {
   it("bkit check with stale consumer prompts.md does not emit Missing model lookup", () => {
     fs.writeFileSync(

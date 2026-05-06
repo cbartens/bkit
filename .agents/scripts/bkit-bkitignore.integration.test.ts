@@ -6,6 +6,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readBkitIgnoreFile, isFileIgnored, isKeyIgnored } from "./bkit-bkitignore";
+import { filterBkitIgnored } from "./bkit-postinstall";
+import type { PreflightFinding } from "./bkit-preflight";
 
 let tmpDir: string;
 
@@ -105,6 +107,85 @@ describe("readBkitIgnoreFile — per-key (BKIT_BKITIGNORE_PER_KEY=1)", () => {
     // This test runs AFTER afterEach cleans BKIT_BKITIGNORE_PER_KEY
     // The env var is NOT set here (afterEach ran delete above before each new test)
     expect(process.env.BKIT_BKITIGNORE_PER_KEY).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// filterBkitIgnored — .bkitignore wired into postinstall (P2.T11 success criterion)
+// ---------------------------------------------------------------------------
+
+describe("filterBkitIgnored — Tier-3 drift suppressed when file is in .bkitignore", () => {
+  it("removes Tier-3 drift finding when file path is matched by .bkitignore", () => {
+    // Write a .bkitignore that ignores ci.yml
+    fs.writeFileSync(path.join(tmpDir, ".bkitignore"), ".github/workflows/ci.yml\n", "utf-8");
+
+    const tier3Finding: PreflightFinding = {
+      id: "tier3-merge-suggested-ci.yml",
+      severity: "advisory",
+      detect: ".github/workflows/ci.yml exists and differs from the bkit reference.",
+      action: "Manual merge required.",
+    };
+
+    const result = filterBkitIgnored([tier3Finding], tmpDir);
+    expect(result).toHaveLength(0);
+  });
+
+  it("keeps Tier-3 drift finding when file path is NOT in .bkitignore", () => {
+    fs.writeFileSync(path.join(tmpDir, ".bkitignore"), ".github/workflows/release.yml\n", "utf-8");
+
+    const tier3Finding: PreflightFinding = {
+      id: "tier3-merge-suggested-ci.yml",
+      severity: "advisory",
+      detect: ".github/workflows/ci.yml exists and differs from the bkit reference.",
+      action: "Manual merge required.",
+    };
+
+    const result = filterBkitIgnored([tier3Finding], tmpDir);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe("tier3-merge-suggested-ci.yml");
+  });
+
+  it("keeps non-Tier-3 findings regardless of .bkitignore content", () => {
+    fs.writeFileSync(path.join(tmpDir, ".bkitignore"), "**/*.yml\n", "utf-8");
+
+    const nonTier3: PreflightFinding = {
+      id: "gh-bkit-token-missing-shell",
+      severity: "advisory",
+      detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
+      action: "Export GH_BKIT_TOKEN.",
+    };
+
+    const result = filterBkitIgnored([nonTier3], tmpDir);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe("gh-bkit-token-missing-shell");
+  });
+
+  it("no-op when .bkitignore is absent", () => {
+    // No .bkitignore written in tmpDir
+    const tier3Finding: PreflightFinding = {
+      id: "tier3-merge-suggested-ci.yml",
+      severity: "advisory",
+      detect: ".github/workflows/ci.yml exists and differs from the bkit reference.",
+      action: "Manual merge required.",
+    };
+
+    const result = filterBkitIgnored([tier3Finding], tmpDir);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.id).toBe("tier3-merge-suggested-ci.yml");
+  });
+
+  it("glob pattern in .bkitignore matches Tier-3 file", () => {
+    fs.writeFileSync(path.join(tmpDir, ".bkitignore"), ".github/**/*.yml\n", "utf-8");
+
+    const tier3Finding: PreflightFinding = {
+      id: "tier3-merge-suggested-ci.yml",
+      severity: "advisory",
+      detect: ".github/workflows/ci.yml exists and differs from the bkit reference.",
+      action: "Manual merge required.",
+    };
+
+    const result = filterBkitIgnored([tier3Finding], tmpDir);
+    expect(result).toHaveLength(0);
   });
 });
 

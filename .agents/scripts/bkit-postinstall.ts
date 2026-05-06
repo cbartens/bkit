@@ -6,6 +6,7 @@ import { execSync, execFileSync } from "node:child_process";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
+import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 
 export type { PreflightFinding };
 
@@ -350,7 +351,8 @@ export function runPostInstallCheck(
 ): PreflightFinding[] {
   if (dryRun) {
     // Dry-run: skip Phase 3; return preflight advisories only (deduped defensively).
-    return dedupeById([...preflightAdvisories]);
+    // Apply .bkitignore filter so `bkit check` exits 0 for ignored Tier-3 files.
+    return dedupeById(filterBkitIgnored([...preflightAdvisories], cwd));
   }
 
   const phase3: PreflightFinding[] = [];
@@ -453,7 +455,8 @@ export function runPostInstallCheck(
 
   // Dedupe the incoming preflightAdvisories (ctx.advisories may contain module-emitted
   // duplicates in addition to runPreflight's already-deduped output).
-  const dedupedPreflight = dedupeById(preflightAdvisories);
+  // Apply .bkitignore filter: suppress Tier-3 drift findings for ignored files.
+  const dedupedPreflight = dedupeById(filterBkitIgnored(preflightAdvisories, cwd));
 
   // Cross-phase dedup: Phase 3 wins on conflict (remove preflight entries whose id
   // appears in Phase 3, then merge Phase 3 at the front for the winning position).
@@ -462,6 +465,39 @@ export function runPostInstallCheck(
 
   // Final order: preflight advisories (that weren't superseded) first, then Phase 3
   return [...filteredPreflight, ...deduped];
+}
+
+// ---------------------------------------------------------------------------
+// .bkitignore filter helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the file path from a Tier-3 drift finding's detect string.
+ * Tier-3 findings have detect: `${dstPath} exists and differs from the bkit reference.`
+ * Returns the path portion (before " exists and differs") or null if not a Tier-3 finding.
+ */
+function extractTier3FilePath(finding: PreflightFinding): string | null {
+  if (!finding.id.startsWith("tier3-merge-suggested-")) return null;
+  const suffix = " exists and differs from the bkit reference.";
+  if (finding.detect.endsWith(suffix)) {
+    return finding.detect.slice(0, finding.detect.length - suffix.length);
+  }
+  return null;
+}
+
+/**
+ * Filter findings array to remove Tier-3 drift findings whose file path is
+ * matched by the consumer's .bkitignore. Non-Tier-3 findings pass through.
+ * Graceful no-op if .bkitignore is absent (readBkitIgnoreFile returns []).
+ */
+export function filterBkitIgnored(findings: PreflightFinding[], cwd: string): PreflightFinding[] {
+  const rules = readBkitIgnoreFile(cwd);
+  if (rules.length === 0) return findings;
+  return findings.filter((f) => {
+    const filePath = extractTier3FilePath(f);
+    if (filePath === null) return true; // not a Tier-3 finding — always keep
+    return !isFileIgnored(filePath, rules);
+  });
 }
 
 // ---------------------------------------------------------------------------
