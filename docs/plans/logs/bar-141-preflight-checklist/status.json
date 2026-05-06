@@ -88,6 +88,17 @@
         "artifacts": [
           "docs/plans/logs/bar-141-preflight-checklist/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-06T05:12:21Z",
+        "commitSha": "847709d631b3e389edbf0968d2ddc1a197141eef",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-summary.md"
+        ]
       }
     ]
   }
