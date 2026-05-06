@@ -53,6 +53,19 @@
         "artifacts": [
           "docs/plans/logs/bar-141-preflight-checklist/plan-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 9,
+        "at": "2026-05-06T05:05:15Z",
+        "commitSha": "bef09a67287b04020fc56828ac82739146399c1b",
+        "artifacts": [
+          "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-1.md",
+          "docs/plans/logs/bar-141-preflight-checklist/plan-scope-check-2.md"
+        ]
       }
     ]
   }
