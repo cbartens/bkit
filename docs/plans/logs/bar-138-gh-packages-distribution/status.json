@@ -355,6 +355,17 @@
         "at": "2026-05-06T01:17:12Z",
         "commitSha": "7b07efb09eceabc4f51a07616f51d27cd2a62a2a",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-06T01:18:50Z",
+        "commitSha": "f08f75a6b5181bc3d90c634d3a264c76117cb6e4",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-summary.md"
+        ]
       }
     ]
   }
