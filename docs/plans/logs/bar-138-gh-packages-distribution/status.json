@@ -239,6 +239,16 @@
         "at": "2026-05-06T00:07:37Z",
         "commitSha": "0334cd9983e82a7911ebdb9d12f22149e6818b65",
         "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-06T00:09:14Z",
+        "commitSha": "dad8ee0904e6f9b5b1491ec840383c7e83248c87",
+        "artifacts": [
+          "docs/plans/logs/bar-138-gh-packages-distribution/build-install-skills.md"
+        ]
       }
     ]
   }
