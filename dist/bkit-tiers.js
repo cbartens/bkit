@@ -183,3 +183,65 @@ export function ensurePackageJsonScripts(scripts, dryRun, ws) {
     }
     return { added, preserved, missingPkg: false, malformed: false };
 }
+// ---------------------------------------------------------------------------
+// Managed package.json devDependencies — add-if-missing with consumer ownership
+//
+// Mirrors ensurePackageJsonScripts. Closes the bootstrap-half-done gap where
+// bkit installs configs + scripts but doesn't ensure the tools those scripts
+// invoke are installed (e.g. `prepare: husky install` script gets added but
+// husky devDep doesn't, so `pnpm install` fails).
+//
+// Semantics:
+//   - File absent           → no-op, returns missingPkg: true
+//   - File malformed JSON   → no-op, returns malformed: true
+//   - dep key absent        → add with default version-spec
+//   - dep key exists        → preserve consumer value (never overwrite the pin)
+//
+// Note: this only ensures the entry in package.json. Actually fetching the
+// package requires the consumer to run `pnpm install` after bkit install —
+// runLintModule/runGitHooksModule print a hint when new devDeps are added.
+// ---------------------------------------------------------------------------
+export function ensurePackageJsonDevDeps(deps, dryRun, ws) {
+    const pkgPath = "package.json";
+    if (!fs.existsSync(pkgPath)) {
+        return { added: [], preserved: [], missingPkg: true, malformed: false };
+    }
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    let pkg;
+    try {
+        pkg = JSON.parse(raw);
+    }
+    catch {
+        return { added: [], preserved: [], missingPkg: false, malformed: true };
+    }
+    let pkgDevDeps = pkg.devDependencies ?? undefined;
+    const added = [];
+    const preserved = [];
+    for (const [name, version] of Object.entries(deps)) {
+        // Also treat presence in `dependencies` as preserved (consumer chose runtime
+        // dep instead of devDep — don't double-add).
+        const alreadyInDeps = pkg.dependencies && Object.prototype.hasOwnProperty.call(pkg.dependencies, name);
+        if (alreadyInDeps ||
+            (pkgDevDeps && Object.prototype.hasOwnProperty.call(pkgDevDeps, name))) {
+            preserved.push(name);
+        }
+        else {
+            if (!pkgDevDeps) {
+                pkgDevDeps = {};
+                pkg.devDependencies = pkgDevDeps;
+            }
+            pkgDevDeps[name] = version;
+            added.push(name);
+        }
+    }
+    if (added.length > 0) {
+        ws.writes.push({ path: pkgPath, action: "update" });
+        if (!dryRun) {
+            const indentMatch = raw.match(/\n([ \t]+)"/);
+            const indent = indentMatch ? indentMatch[1] : "  ";
+            const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+        }
+    }
+    return { added, preserved, missingPkg: false, malformed: false };
+}

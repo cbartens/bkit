@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { writeTier1, writeTier2, writeTier3, ensurePackageJsonScripts, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeTier3, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -855,6 +855,21 @@ export function runLintModule(ctx) {
     else if (lintScripts.malformed) {
         printSink.push("[bkit] lint: package.json failed to parse — cannot ensure lint scripts. Fix JSON syntax and re-run.");
     }
+    // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
+    // (binary) and is documented as a prereq instead of a managed devDep.
+    const lintDevDeps = ensurePackageJsonDevDeps({
+        prettier: "^3.5.3",
+        "slop-scan": "^0.3.0",
+    }, dryRun, ws);
+    if (lintDevDeps.added.length > 0) {
+        console.log(`${logPrefix} ${tag}lint: package.json devDependencies added [${lintDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
+        printSink.push(`[bkit] lint: added [${lintDevDeps.added.join(", ")}] to devDependencies. Run \`pnpm install\` to fetch the new packages before running \`pnpm bkit check\` or pushing.`);
+    }
+    // F7: vale is a system binary, not an npm package. The seeded .vale.ini
+    // references the `write-good` Vale package which Vale downloads via
+    // `vale sync`. Print a one-time hint after writing .vale.ini so the consumer
+    // knows to run sync before lint:prose works against the seeded styles.
+    printSink.push("[bkit] lint: .vale.ini references the `write-good` Vale package — run `vale sync` (one-time per repo) to download it. Vale itself is a system binary; install via brew/apt/etc. The lint:prose script soft-skips when vale isn't on PATH, so CI passes either way.");
 }
 // ---------------------------------------------------------------------------
 // runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 2 hash-comment)
@@ -899,6 +914,14 @@ export function runGitHooksModule(ctx) {
     else if (hookScripts.preserved.includes("prepare")) {
         // Consumer has a custom `prepare` value — note it but don't override
         printSink.push("[bkit] git-hooks: package.json `prepare` already set (preserved). Ensure it includes `husky install` for hooks to activate.");
+    }
+    // Ensure husky devDep — without it, the `prepare: husky install` script we
+    // just added blows up on `pnpm install` with `husky: not found`. This was
+    // BAR-138 Finding 5 from visitfrasercoast smoke testing.
+    const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
+    if (hookDevDeps.added.length > 0) {
+        console.log(`${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
+        printSink.push("[bkit] git-hooks: added `husky` to devDependencies. Run `pnpm install` to fetch it; husky install will then activate the hooks.");
     }
 }
 // ---------------------------------------------------------------------------

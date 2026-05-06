@@ -7,6 +7,7 @@ import {
   writeTier2,
   writeTier3,
   ensurePackageJsonScripts,
+  ensurePackageJsonDevDeps,
   type WriteSet,
 } from "./bkit-tiers";
 
@@ -406,5 +407,88 @@ describe("ensurePackageJsonScripts", () => {
     const result = ensurePackageJsonScripts({ typecheck: "tsc --noEmit" }, false, ws2);
     expect(result.added).toEqual([]);
     expect(ws2.writes).toHaveLength(0); // no second write
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ensurePackageJsonDevDeps — managed devDependencies (BAR-138 Finding 5)
+// ---------------------------------------------------------------------------
+
+describe("ensurePackageJsonDevDeps", () => {
+  function writePkg(content: object | string): void {
+    const body = typeof content === "string" ? content : JSON.stringify(content, null, 2) + "\n";
+    fs.writeFileSync("package.json", body, "utf-8");
+  }
+
+  function readPkg(): {
+    devDependencies?: Record<string, string>;
+    dependencies?: Record<string, string>;
+    [k: string]: unknown;
+  } {
+    return JSON.parse(fs.readFileSync("package.json", "utf-8"));
+  }
+
+  it("returns missingPkg=true when package.json absent", () => {
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9" }, false, ws);
+    expect(result.missingPkg).toBe(true);
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("returns malformed=true when package.json is invalid JSON", () => {
+    fs.writeFileSync("package.json", "{ broken", "utf-8");
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9" }, false, ws);
+    expect(result.malformed).toBe(true);
+    expect(ws.writes).toHaveLength(0);
+  });
+
+  it("seeds devDependencies block when absent", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps(
+      { husky: "^9.1.7", prettier: "^3.5.3" },
+      false,
+      ws,
+    );
+    expect(result.added).toEqual(["husky", "prettier"]);
+    expect(ws.writes).toEqual([{ path: "package.json", action: "update" }]);
+    expect(readPkg().devDependencies).toEqual({ husky: "^9.1.7", prettier: "^3.5.3" });
+  });
+
+  it("preserves consumer's pinned version (consumer wins)", () => {
+    writePkg({ name: "x", version: "1.0.0", devDependencies: { husky: "8.0.0" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws);
+    expect(result.added).toEqual([]);
+    expect(result.preserved).toEqual(["husky"]);
+    expect(readPkg().devDependencies?.husky).toBe("8.0.0");
+  });
+
+  it("skips devDeps add when package already has it under `dependencies` (consumer chose runtime)", () => {
+    writePkg({ name: "x", version: "1.0.0", dependencies: { husky: "9.1.0" } });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws);
+    expect(result.added).toEqual([]);
+    expect(result.preserved).toEqual(["husky"]);
+    expect(readPkg().devDependencies).toBeUndefined();
+  });
+
+  it("dryRun=true records drift but does not write", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    const ws = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, true, ws);
+    expect(result.added).toEqual(["husky"]);
+    expect(ws.writes).toHaveLength(1);
+    expect(readPkg().devDependencies).toBeUndefined();
+  });
+
+  it("is idempotent across two consecutive runs", () => {
+    writePkg({ name: "x", version: "1.0.0" });
+    ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, makeWriteSet());
+    const ws2 = makeWriteSet();
+    const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws2);
+    expect(result.added).toEqual([]);
+    expect(ws2.writes).toHaveLength(0);
   });
 });

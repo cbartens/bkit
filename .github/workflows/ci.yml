@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
@@ -45,5 +45,9 @@ jobs:
       - name: Verify dist/ is fresh
         run: pnpm check:dist
 
-      - name: bkit check (informational — bkit-self has intentional template asymmetries)
-        run: pnpm bkit check || true
+      # Pre-seed .bkit-version (runtime artifact, gitignored — always shows
+      # drift on fresh checkout). After install --core, drift detection is
+      # purely "do bkit's templates match the consumer files?" which is the
+      # signal we actually want from bkit check.
+      - name: bkit check
+        run: pnpm bkit install --core && pnpm bkit check
