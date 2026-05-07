@@ -31,6 +31,8 @@ jobs:
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
 
       - name: Run Typecheck
         run: pnpm typecheck
