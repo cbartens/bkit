@@ -839,7 +839,9 @@ describe("migrateTier1JsonToTier2", () => {
     const tier1Content = {
       $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
-        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+        SessionStart: [
+          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+        ],
         Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
       },
     };

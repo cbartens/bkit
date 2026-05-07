@@ -1,10 +1,7 @@
 // bkit-tier1-defaults.test.ts — Snapshot equality tests for BKIT_TIER1_DEFAULTS_BY_VERSION (P3.T6a)
 
 import { describe, expect, it } from "vitest";
-import {
-  BKIT_TIER1_DEFAULTS_BY_VERSION,
-  lookupTier1Defaults,
-} from "./bkit-tier1-defaults";
+import { BKIT_TIER1_DEFAULTS_BY_VERSION, lookupTier1Defaults } from "./bkit-tier1-defaults";
 
 // ---------------------------------------------------------------------------
 // BKIT_TIER1_DEFAULTS_BY_VERSION — structure invariants
@@ -17,8 +14,14 @@ describe("BKIT_TIER1_DEFAULTS_BY_VERSION structure", () => {
 
   it("every version entry has .claude/settings.json and .cursor/hooks.json keys", () => {
     for (const [version, defaults] of Object.entries(BKIT_TIER1_DEFAULTS_BY_VERSION)) {
-      expect(defaults[".claude/settings.json"], `version ${version} missing .claude/settings.json`).toBeTruthy();
-      expect(defaults[".cursor/hooks.json"], `version ${version} missing .cursor/hooks.json`).toBeTruthy();
+      expect(
+        defaults[".claude/settings.json"],
+        `version ${version} missing .claude/settings.json`,
+      ).toBeTruthy();
+      expect(
+        defaults[".cursor/hooks.json"],
+        `version ${version} missing .cursor/hooks.json`,
+      ).toBeTruthy();
     }
   });
 

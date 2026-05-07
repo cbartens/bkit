@@ -732,9 +732,9 @@ describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched",
     expect(committed).toContain(path.join(".claude", "agents", "bkit-bar.md"));
 
     // File is at consumer destination
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-bar.md"), "utf-8"),
-    ).toBe("new agent content");
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-bar.md"), "utf-8")).toBe(
+      "new agent content",
+    );
 
     // Staging dir removed
     expect(fs.existsSync(stagingDir)).toBe(false);

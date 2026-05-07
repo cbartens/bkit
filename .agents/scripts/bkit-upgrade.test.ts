@@ -154,16 +154,17 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     // Template file at pkg root
     const templatePath = writeFile(".bkit-staging/template/bkit-foo.md", newContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: false, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.updated).toContain(".claude/agents/bkit-foo.md");
     expect(result.conflicts).toHaveLength(0);
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe(newContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      newContent,
+    );
   });
 
   it("reports conflict when consumer drift detected (does NOT overwrite)", () => {
@@ -175,19 +176,20 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(originalContent) }));
     const templatePath = writeFile(".bkit-staging/template/bkit-foo.md", newTemplateContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: false, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.conflicts).toHaveLength(1);
     expect(result.conflicts[0]!.relPath).toBe(".claude/agents/bkit-foo.md");
     expect(result.updated).not.toContain(".claude/agents/bkit-foo.md");
 
     // Consumer file NOT overwritten
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe(consumerContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      consumerContent,
+    );
   });
 
   it("skips file when template unchanged (disk matches canonical hash)", () => {
@@ -196,10 +198,11 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(content) }));
     const templatePath = writeFile(".bkit-staging/template/bkit-foo.md", content);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: false, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.skipped).toContain(".claude/agents/bkit-foo.md");
     expect(result.updated).toHaveLength(0);
@@ -210,15 +213,16 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     const newContent = "new agent\n";
     const templatePath = writeFile(".bkit-staging/template/bkit-new.md", newContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-new.md", templatePath }],
-      { nonInteractive: false, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-new.md", templatePath }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.updated).toContain(".claude/agents/bkit-new.md");
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-new.md"), "utf-8"),
-    ).toBe(newContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-new.md"), "utf-8")).toBe(
+      newContent,
+    );
   });
 
   it("dry-run does not write files but reports what would change", () => {
@@ -228,16 +232,17 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(oldContent) }));
     const templatePath = writeFile(".bkit-staging/template/bkit-foo.md", newContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: false, dryRun: true, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: false,
+      dryRun: true,
+      cwd: tmpDir,
+    });
 
     expect(result.updated).toContain(".claude/agents/bkit-foo.md");
     // File NOT written (dry-run)
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe(oldContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      oldContent,
+    );
   });
 
   it("multiple candidates: mixed update/conflict/skip", () => {
@@ -250,11 +255,13 @@ describe("P4.T5 — runUpgrade diff engine", () => {
     writeFile(".claude/agents/bkit-conflict.md", consumerMod);
     writeFile(".claude/agents/bkit-skip.md", unchanged);
 
-    writeBkitVersionInDir(makeVersion({
-      ".claude/agents/bkit-update.md": sha256(oldBkit),
-      ".claude/agents/bkit-conflict.md": sha256(oldBkit), // original bkit content
-      ".claude/agents/bkit-skip.md": sha256(unchanged),
-    }));
+    writeBkitVersionInDir(
+      makeVersion({
+        ".claude/agents/bkit-update.md": sha256(oldBkit),
+        ".claude/agents/bkit-conflict.md": sha256(oldBkit), // original bkit content
+        ".claude/agents/bkit-skip.md": sha256(unchanged),
+      }),
+    );
 
     const tUpdate = writeFile(".bkit-staging/t/update.md", newTemplate);
     const tConflict = writeFile(".bkit-staging/t/conflict.md", newTemplate);
@@ -276,7 +283,12 @@ describe("P4.T5 — runUpgrade diff engine", () => {
 
   it("skips missing template files without throwing", () => {
     const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath: path.join(tmpDir, "nonexistent.md") }],
+      [
+        {
+          relPath: ".claude/agents/bkit-foo.md",
+          templatePath: path.join(tmpDir, "nonexistent.md"),
+        },
+      ],
       { nonInteractive: false, dryRun: false, cwd: tmpDir },
     );
     expect(result.updated).toHaveLength(0);
@@ -297,16 +309,17 @@ describe("P4.T6 — --non-interactive upgrade auto-apply", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(oldContent) }));
     const templatePath = writeFile(".bkit-staging/t/foo.md", newContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: true, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: true,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.updated).toContain(".claude/agents/bkit-foo.md");
     expect(result.conflicts).toHaveLength(0);
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe(newContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      newContent,
+    );
   });
 
   it("non-interactive: does NOT overwrite consumer drift (conflict preserved)", () => {
@@ -318,16 +331,17 @@ describe("P4.T6 — --non-interactive upgrade auto-apply", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256(originalContent) }));
     const templatePath = writeFile(".bkit-staging/t/foo.md", newTemplateContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { nonInteractive: true, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-foo.md", templatePath }], {
+      nonInteractive: true,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.conflicts).toHaveLength(1);
     // Consumer file NOT overwritten
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe(consumerContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      consumerContent,
+    );
   });
 
   it("non-interactive: returns conflicts list with relPath and content", () => {
@@ -339,10 +353,11 @@ describe("P4.T6 — --non-interactive upgrade auto-apply", () => {
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-test.md": sha256(originalContent) }));
     const templatePath = writeFile(".bkit-staging/t/test.md", newTemplateContent);
 
-    const result = runUpgrade(
-      [{ relPath: ".claude/agents/bkit-test.md", templatePath }],
-      { nonInteractive: true, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".claude/agents/bkit-test.md", templatePath }], {
+      nonInteractive: true,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.conflicts).toHaveLength(1);
     const conflict = result.conflicts[0] as UpgradeConflict;

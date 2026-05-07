@@ -784,11 +784,9 @@ async function main() {
             collectTemplates(entAbs, entRel);
           } else if (ent.isFile()) {
             // Remap dotfile names (gitignore → .gitignore etc.)
-            const remapped = entRel.replace(/(?:^|\/)gitignore(?:\/|$)/, (m) =>
-              m.replace("gitignore", ".gitignore"),
-            ).replace(/(?:^|\/)npmignore(?:\/|$)/, (m) =>
-              m.replace("npmignore", ".npmignore"),
-            );
+            const remapped = entRel
+              .replace(/(?:^|\/)gitignore(?:\/|$)/, (m) => m.replace("gitignore", ".gitignore"))
+              .replace(/(?:^|\/)npmignore(?:\/|$)/, (m) => m.replace("npmignore", ".npmignore"));
             candidates.push({ relPath: remapped, templatePath: entAbs });
           }
         }

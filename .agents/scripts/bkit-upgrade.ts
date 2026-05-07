@@ -172,9 +172,7 @@ export function runUpgrade(
           fs.writeFileSync(absolutePath, diffAction.templateContent, "utf-8");
         }
         result.updated.push(relPath);
-        console.log(
-          `${LOG_PREFIX}${options.dryRun ? " [dry-run]" : ""} upgrade: ${relPath}`,
-        );
+        console.log(`${LOG_PREFIX}${options.dryRun ? " [dry-run]" : ""} upgrade: ${relPath}`);
         break;
       }
 

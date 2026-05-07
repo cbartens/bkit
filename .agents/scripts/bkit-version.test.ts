@@ -279,7 +279,9 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
 
   it("isConsumerModified returns false when file is absent", () => {
     const hashes = { ".claude/agents/bkit-foo.md": sha256("content") };
-    expect(isConsumerModified(".claude/agents/bkit-foo.md", path.join(tmpDir, "absent.md"), hashes)).toBe(false);
+    expect(
+      isConsumerModified(".claude/agents/bkit-foo.md", path.join(tmpDir, "absent.md"), hashes),
+    ).toBe(false);
   });
 
   it("isConsumerModified returns false when file content matches canonical hash (no drift)", () => {
@@ -307,6 +309,8 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     const filePath = path.join(tmpDir, "ci.yml");
     fs.writeFileSync(filePath, "some content\n", "utf-8");
     // All files appear as "unknown" → conservative: not detected as drift
-    expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(false);
+    expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
+      false,
+    );
   });
 });

@@ -19,13 +19,7 @@ export type { WriteSet, WriteEntry, MarkerStyle };
 // JsonValue — generic JSON type used throughout Tier-2 JSON helpers
 // ---------------------------------------------------------------------------
 
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [k: string]: JsonValue };
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 // ---------------------------------------------------------------------------
 // deepMergeJson — recursive JSON merge primitive (P3.T1)
@@ -37,11 +31,7 @@ export type JsonValue =
 // ---------------------------------------------------------------------------
 
 export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
-  if (
-    override === null ||
-    typeof override !== "object" ||
-    Array.isArray(override)
-  ) {
+  if (override === null || typeof override !== "object" || Array.isArray(override)) {
     return override;
   }
   if (base === null || typeof base !== "object" || Array.isArray(base)) {
@@ -249,13 +239,9 @@ export function migrateTier1JsonToTier2(
 
     // Key is in bkit defaults
     const defaultIsObject =
-      defaultValue !== null &&
-      typeof defaultValue === "object" &&
-      !Array.isArray(defaultValue);
+      defaultValue !== null && typeof defaultValue === "object" && !Array.isArray(defaultValue);
     const onDiskIsObject =
-      onDiskValue !== null &&
-      typeof onDiskValue === "object" &&
-      !Array.isArray(onDiskValue);
+      onDiskValue !== null && typeof onDiskValue === "object" && !Array.isArray(onDiskValue);
 
     if (defaultIsObject && onDiskIsObject) {
       // Both plain objects — split at sub-key level

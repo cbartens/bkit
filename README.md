@@ -67,6 +67,7 @@ Starting v0.8.0, `.claude/settings.json` and `.cursor/hooks.json` are managed vi
 ```
 
 **Rules:**
+
 - Consumer keys outside `__bkit__` survive every `bkit install` upgrade byte-identically.
 - `bkit install` updates **only** `__bkit__` on subsequent installs; consumer keys are never touched.
 - `__bkit__` is a **public contract** — once shipped (v0.8.0), the key name is stable.

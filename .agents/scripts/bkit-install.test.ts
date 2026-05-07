@@ -768,9 +768,9 @@ describe("P4.T2 — commitStaging / discardStaging", () => {
 
     const committed = commitStaging(stagingDir, tmpDir);
     expect(committed).toContain(path.join(".claude", "agents", "bkit-foo.md"));
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8"),
-    ).toBe("agent content");
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-foo.md"), "utf-8")).toBe(
+      "agent content",
+    );
     // Staging dir itself is removed after commit
     expect(fs.existsSync(stagingDir)).toBe(false);
   });
@@ -792,9 +792,9 @@ describe("P4.T2 — commitStaging / discardStaging", () => {
     fs.writeFileSync(path.join(tmpDir, ".agents", "existing.md"), "old content", "utf-8");
 
     commitStaging(stagingDir, tmpDir);
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".agents", "existing.md"), "utf-8"),
-    ).toBe("new content");
+    expect(fs.readFileSync(path.join(tmpDir, ".agents", "existing.md"), "utf-8")).toBe(
+      "new content",
+    );
   });
 
   it("discardStaging removes staging dir without touching consumer files", () => {
@@ -809,9 +809,9 @@ describe("P4.T2 — commitStaging / discardStaging", () => {
     discardStaging(stagingDir);
     expect(fs.existsSync(stagingDir)).toBe(false);
     // Consumer file survives
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".agents", "consumer.md"), "utf-8"),
-    ).toBe("consumer data");
+    expect(fs.readFileSync(path.join(tmpDir, ".agents", "consumer.md"), "utf-8")).toBe(
+      "consumer data",
+    );
   });
 
   it("discardStaging is a no-op when dir does not exist", () => {
@@ -831,15 +831,11 @@ describe("P4.T2 — commitStaging / discardStaging", () => {
   it("commitStaging creates missing parent dirs at destination", () => {
     const stagingDir = getStagingDir("core", tmpDir);
     fs.mkdirSync(path.join(stagingDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(stagingDir, ".github", "workflows", "ci.yml"),
-      "name: CI",
-      "utf-8",
-    );
+    fs.writeFileSync(path.join(stagingDir, ".github", "workflows", "ci.yml"), "name: CI", "utf-8");
     commitStaging(stagingDir, tmpDir);
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8"),
-    ).toBe("name: CI");
+    expect(fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8")).toBe(
+      "name: CI",
+    );
   });
 });
 

@@ -101,55 +101,55 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     seedCursorHooksFromFixture();
 
     // The fixture hooks.json has consumer additions (failClosed, loop_limit)
-    const fixtureContent = fs.readFileSync(
-      path.join(FIXTURES_DIR, "cursor-hooks.json"),
-      "utf-8",
-    );
+    const fixtureContent = fs.readFileSync(path.join(FIXTURES_DIR, "cursor-hooks.json"), "utf-8");
 
     // Simulate what bkit@0.4.x would have written as the canonical content:
     // A minimal hooks.json with just SessionStart (no consumer additions)
-    const bkit04CanonicalContent = JSON.stringify(
-      {
-        hooks: {
-          SessionStart: [
-            {
-              matcher: "",
-              hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
-            },
-          ],
+    const bkit04CanonicalContent =
+      JSON.stringify(
+        {
+          hooks: {
+            SessionStart: [
+              {
+                matcher: "",
+                hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
+              },
+            ],
+          },
         },
-      },
-      null,
-      2,
-    ) + "\n";
+        null,
+        2,
+      ) + "\n";
 
     // Record the 0.4.x canonical hash — disk content differs (consumer drift)
     writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
 
     // bkit@0.5.x template: updated hooks.json (adds a new hook event)
-    const newTemplateContent = JSON.stringify(
-      {
-        hooks: {
-          SessionStart: [
-            {
-              matcher: "",
-              hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
-            },
-          ],
-          PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "echo done" }] }],
+    const newTemplateContent =
+      JSON.stringify(
+        {
+          hooks: {
+            SessionStart: [
+              {
+                matcher: "",
+                hooks: [{ type: "command", command: ".cursor/hooks/preflight.sh" }],
+              },
+            ],
+            PostToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "echo done" }] }],
+          },
         },
-      },
-      null,
-      2,
-    ) + "\n";
+        null,
+        2,
+      ) + "\n";
 
     const templatePath = path.join(tmpDir, ".bkit-template-hooks.json");
     fs.writeFileSync(templatePath, newTemplateContent, "utf-8");
 
-    const result = runUpgrade(
-      [{ relPath: ".cursor/hooks.json", templatePath }],
-      { nonInteractive: false, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".cursor/hooks.json", templatePath }], {
+      nonInteractive: false,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     // Conflict detected: consumer has failClosed, loop_limit (drift)
     expect(result.conflicts).toHaveLength(1);
@@ -174,18 +174,16 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
     writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
 
-    const newTemplateContent = JSON.stringify(
-      { hooks: { SessionStart: [], PostToolUse: [] } },
-      null,
-      2,
-    ) + "\n";
+    const newTemplateContent =
+      JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
     const templatePath = path.join(tmpDir, ".bkit-template-hooks.json");
     fs.writeFileSync(templatePath, newTemplateContent, "utf-8");
 
-    const result = runUpgrade(
-      [{ relPath: ".cursor/hooks.json", templatePath }],
-      { nonInteractive: true, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".cursor/hooks.json", templatePath }], {
+      nonInteractive: true,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     // Must report conflict, not update
     expect(result.conflicts).toHaveLength(1);
@@ -193,10 +191,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
 
     // Consumer file byte-identical to pre-upgrade (no overwrite)
     const diskContent = fs.readFileSync(path.join(tmpDir, ".cursor", "hooks.json"), "utf-8");
-    const fixtureContent = fs.readFileSync(
-      path.join(FIXTURES_DIR, "cursor-hooks.json"),
-      "utf-8",
-    );
+    const fixtureContent = fs.readFileSync(path.join(FIXTURES_DIR, "cursor-hooks.json"), "utf-8");
     expect(diskContent).toBe(fixtureContent);
   });
 
@@ -211,14 +206,16 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     const bkit04CanonicalContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
     writeVersionFile({ ".cursor/hooks.json": sha256(bkit04CanonicalContent) });
 
-    const newTemplateContent = JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
+    const newTemplateContent =
+      JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
     const templatePath = path.join(tmpDir, ".bkit-template-hooks.json");
     fs.writeFileSync(templatePath, newTemplateContent, "utf-8");
 
-    const result = runUpgrade(
-      [{ relPath: ".cursor/hooks.json", templatePath }],
-      { nonInteractive: true, dryRun: false, cwd: tmpDir },
-    );
+    const result = runUpgrade([{ relPath: ".cursor/hooks.json", templatePath }], {
+      nonInteractive: true,
+      dryRun: false,
+      cwd: tmpDir,
+    });
 
     expect(result.conflicts).toHaveLength(1);
     const conflict = result.conflicts[0]!;
@@ -226,10 +223,7 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     // templateContent: the new bkit template
     expect(conflict.templateContent).toBe(newTemplateContent);
     // diskContent: consumer's modified version
-    const fixtureContent = fs.readFileSync(
-      path.join(FIXTURES_DIR, "cursor-hooks.json"),
-      "utf-8",
-    );
+    const fixtureContent = fs.readFileSync(path.join(FIXTURES_DIR, "cursor-hooks.json"), "utf-8");
     expect(conflict.diskContent).toBe(fixtureContent);
   });
 
@@ -241,19 +235,25 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
 
     seedCursorHooksFromFixture();
 
-    const bkit04CanonicalHooksContent = JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
+    const bkit04CanonicalHooksContent =
+      JSON.stringify({ hooks: { SessionStart: [] } }, null, 2) + "\n";
     const oldAgentContent = "old agent content\n";
 
     // Two files: .cursor/hooks.json (conflict) + .claude/agents/bkit-test.md (clean update)
     fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".claude", "agents", "bkit-test.md"), oldAgentContent, "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-test.md"),
+      oldAgentContent,
+      "utf-8",
+    );
 
     writeVersionFile({
       ".cursor/hooks.json": sha256(bkit04CanonicalHooksContent),
       ".claude/agents/bkit-test.md": sha256(oldAgentContent), // no consumer drift
     });
 
-    const newHooksContent = JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
+    const newHooksContent =
+      JSON.stringify({ hooks: { SessionStart: [], PostToolUse: [] } }, null, 2) + "\n";
     const newAgentContent = "updated agent content\n";
 
     const templateHooks = path.join(tmpDir, ".bkit-template-hooks.json");
@@ -271,15 +271,15 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
 
     // Clean update applied
     expect(result.updated).toContain(".claude/agents/bkit-test.md");
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-test.md"), "utf-8"),
-    ).toBe(newAgentContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".claude", "agents", "bkit-test.md"), "utf-8")).toBe(
+      newAgentContent,
+    );
 
     // Conflicting file preserved
     expect(result.conflicts.map((c) => c.relPath)).toContain(".cursor/hooks.json");
     const fixtureContent = fs.readFileSync(path.join(FIXTURES_DIR, "cursor-hooks.json"), "utf-8");
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".cursor", "hooks.json"), "utf-8"),
-    ).toBe(fixtureContent);
+    expect(fs.readFileSync(path.join(tmpDir, ".cursor", "hooks.json"), "utf-8")).toBe(
+      fixtureContent,
+    );
   });
 });

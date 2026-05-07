@@ -347,9 +347,7 @@ export function runCoreModule(ctx: ModuleContext): void {
     // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
     const newCanonicalEntries: Record<string, string> = {};
     for (const entry of ws.writes) {
-      const absPath = path.isAbsolute(entry.path)
-        ? entry.path
-        : path.resolve(cwd, entry.path);
+      const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
       const relPath = path.relative(cwd, absPath);
       if (relPath === path.join(".agents", ".bkit-version")) continue;
       if (relPath.startsWith(".agents" + path.sep)) continue;
@@ -359,7 +357,10 @@ export function runCoreModule(ctx: ModuleContext): void {
     }
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
-    const canonicalHashes: Record<string, string> = { ...existingCanonical, ...newCanonicalEntries };
+    const canonicalHashes: Record<string, string> = {
+      ...existingCanonical,
+      ...newCanonicalEntries,
+    };
 
     // Decide whether a write is needed: version mismatch, first install, or new canonical entries.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
@@ -451,7 +452,11 @@ export function runClaudeModule(ctx: ModuleContext): void {
       const parsed = readBkitVersion(versionFile);
       const onDiskVersion = parsed?.pinnedVersion ?? "";
       if (onDiskVersion) {
-        const migrated = migrateTier1JsonToTier2(settingsDst, ".claude/settings.json", onDiskVersion);
+        const migrated = migrateTier1JsonToTier2(
+          settingsDst,
+          ".claude/settings.json",
+          onDiskVersion,
+        );
         if (migrated) {
           console.log(`${logPrefix} ${tag}claude: ${settingsDst} (migrated Tier-1 → Tier-2)`);
         }

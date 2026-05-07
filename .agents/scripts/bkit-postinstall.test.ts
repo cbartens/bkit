@@ -191,7 +191,11 @@ describe("detectVercelEnv", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".vercel", "project.json"), '{"projectId":"proj_x"}', "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".vercel", "project.json"),
+      '{"projectId":"proj_x"}',
+      "utf-8",
+    );
     execFileSync.mockReturnValue("GH_BKIT_TOKEN  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("present");
   });
@@ -200,7 +204,11 @@ describe("detectVercelEnv", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".vercel", "project.json"), '{"projectId":"proj_x"}', "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".vercel", "project.json"),
+      '{"projectId":"proj_x"}',
+      "utf-8",
+    );
     execFileSync.mockReturnValue("OTHER_VAR  preview\n");
     expect(detectVercelEnv("preview", tmpDir)).toBe("missing");
   });
@@ -209,7 +217,11 @@ describe("detectVercelEnv", () => {
     // B3: must also have .vercel/project.json for CLI call to proceed
     fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}", "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".vercel"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".vercel", "project.json"), '{"projectId":"proj_x"}', "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".vercel", "project.json"),
+      '{"projectId":"proj_x"}',
+      "utf-8",
+    );
     execFileSync.mockImplementation(() => {
       throw new Error("vercel: command not found");
     });

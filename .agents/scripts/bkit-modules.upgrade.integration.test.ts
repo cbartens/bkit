@@ -10,11 +10,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  writeTier2Json,
-  migrateTier1JsonToTier2,
-  type WriteSet,
-} from "./bkit-tiers";
+import { writeTier2Json, migrateTier1JsonToTier2, type WriteSet } from "./bkit-tiers";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -77,7 +73,9 @@ describe("two-version upgrade-survival regression (gether scenario)", () => {
     const afterMigration = JSON.parse(fs.readFileSync(onDiskClaude, "utf-8"));
     expect(afterMigration.__bkit__).toBeDefined();
     expect(afterMigration.__bkit__.hooks.SessionStart).toBeDefined();
-    expect(JSON.stringify(afterMigration.hooks?.Stop ?? afterMigration.Stop)).toContain("Consumer Stop hook");
+    expect(JSON.stringify(afterMigration.hooks?.Stop ?? afterMigration.Stop)).toContain(
+      "Consumer Stop hook",
+    );
 
     // Step 2: Run writeTier2Json (bkit@0.8.0 install with updated template)
     // Create a mock template with __bkit__ + updated SessionStart
@@ -173,7 +171,9 @@ describe("two-version upgrade-survival regression (gether scenario)", () => {
     const consumerDoc = {
       __bkit__: {
         hooks: {
-          SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+          SessionStart: [
+            { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+          ],
         },
       },
       hooks: {
@@ -189,11 +189,15 @@ describe("two-version upgrade-survival regression (gether scenario)", () => {
     const template = {
       __bkit__: {
         hooks: {
-          SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight-v2.sh" }] }],
+          SessionStart: [
+            { hooks: [{ type: "command", command: "bash .claude/hooks/preflight-v2.sh" }] },
+          ],
         },
       },
       hooks: {
-        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight-v2.sh" }] }],
+        SessionStart: [
+          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight-v2.sh" }] },
+        ],
       },
     };
     fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");

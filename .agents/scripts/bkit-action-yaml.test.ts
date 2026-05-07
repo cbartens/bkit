@@ -62,10 +62,9 @@ function hasYamlKey(content: string, indentLevel: number, key: string): boolean 
 
 describe("P4.T8 — setup-auth/action.yml offline acceptance", () => {
   it("action.yml file exists at expected path", () => {
-    expect(
-      fs.existsSync(ACTION_YAML_PATH),
-      `action.yml must exist at ${ACTION_YAML_PATH}`,
-    ).toBe(true);
+    expect(fs.existsSync(ACTION_YAML_PATH), `action.yml must exist at ${ACTION_YAML_PATH}`).toBe(
+      true,
+    );
   });
 
   it("action.yml is non-empty and readable", () => {
@@ -130,7 +129,7 @@ describe("P4.T8 — setup-auth/action.yml offline acceptance", () => {
     const runsIdx = content.indexOf("runs:");
     expect(runsIdx).toBeGreaterThan(-1);
     const afterRuns = content.slice(runsIdx, runsIdx + 500);
-    expect(afterRuns).toContain("using: \"composite\"");
+    expect(afterRuns).toContain('using: "composite"');
   });
 
   it("action.yml has at least one step under `runs.steps`", () => {

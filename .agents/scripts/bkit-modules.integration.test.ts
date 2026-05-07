@@ -734,7 +734,9 @@ describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON
     const tier1Settings = {
       $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
-        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+        SessionStart: [
+          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+        ],
         Stop: [{ hooks: [{ type: "command", command: "echo 'Consumer Stop hook'" }] }],
       },
     };
@@ -753,7 +755,10 @@ describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON
     const onDisk = JSON.parse(
       fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
     );
-    expect(onDisk.__bkit__, "__bkit__ envelope absent — migration was skipped (C1 regression)").toBeDefined();
+    expect(
+      onDisk.__bkit__,
+      "__bkit__ envelope absent — migration was skipped (C1 regression)",
+    ).toBeDefined();
 
     // Assert: consumer Stop hook survived migration (deep-merge preserved it)
     // The Stop hook was not a bkit-owned default at v0.5.0 → stays at top level
@@ -780,7 +785,9 @@ describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON
     const tier1Settings = {
       $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
-        SessionStart: [{ hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] }],
+        SessionStart: [
+          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+        ],
       },
       customKey: "consumer-value",
     };
@@ -798,7 +805,10 @@ describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON
       fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
     );
     // Migration ran: __bkit__ envelope present
-    expect(onDisk.__bkit__, "__bkit__ envelope absent — migration skipped (C1 regression with v0.7.0 JSON)").toBeDefined();
+    expect(
+      onDisk.__bkit__,
+      "__bkit__ envelope absent — migration skipped (C1 regression with v0.7.0 JSON)",
+    ).toBeDefined();
     // Consumer key survives
     expect(onDisk.customKey).toBe("consumer-value");
   });
