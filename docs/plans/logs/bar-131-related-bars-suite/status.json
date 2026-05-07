@@ -375,6 +375,16 @@
         "commitSha": "f7a181e79f51a41a85137930802c98b74c77227b",
         "artifacts": [],
         "failures": 0
+      },
+      {
+        "step": "build-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "at": "2026-05-07T00:03:31Z",
+        "commitSha": "bc5a2b693c11b6ed3d0136f768eb4f17422d76c6",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/build-summary.md"
+        ]
       }
     ]
   }
