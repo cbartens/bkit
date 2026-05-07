@@ -9,7 +9,7 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Pre-push runs lint/typecheck/format/unit tests; never `--no-verify`.
+> - Pre-push runs the project's gate set locally (see "Pre-push checklist" below); never `--no-verify`.
 
 <!-- bkit:end -->
 
@@ -27,6 +27,21 @@
 | Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production` | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \| "production")` (Phase 3) |
 
 Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
+
+### Pre-push checklist
+
+Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `run-tests` job:
+
+| # | Gate | Command | Hook block | Failure mode |
+| --- | --- | --- | --- | --- |
+| 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
+| 2 | Unit + integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
+| 3 | bkit self-check | `pnpm bkit check` | bkit-managed | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 4 | Dist freshness | `pnpm check:dist` | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+
+Pre-commit (`.husky/pre-commit`) runs `pnpm lint:prose && pnpm lint:slop` — those gates fire earlier in the cycle, not at push time. CI runs them again as steps 4 + 5 of the `run-tests` job for belt-and-braces.
+
+When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-verify` and do NOT amend over a failed hook (see auto-memory: "skip-ci commits must not be HEAD when PR is created"). If the gate is genuinely broken (e.g. flaky external call), STOP and document the blocker — do not push.
 
 ### `dist/` commit policy
 

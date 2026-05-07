@@ -1,1 +1,10 @@
-0.5.1
+{
+  "pinnedVersion": "0.5.1",
+  "tier3Hashes": {},
+  "canonicalHashes": {
+    "docs/deployments.md": "558e4cf9bdf763e340b49be12d45102837f25ca7d59e4a0a036a02c6fb3ce569",
+    "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
+    ".claude/settings.json": "2dd01b8b4d873165c8902206662a181425036778185d6e0b405d2a768125bc7d",
+    ".husky/pre-push": "35a8df08d06b3ed43466cade178d1c9d6c0685f126b1b52c0c7008a62862bbd2"
+  }
+}
