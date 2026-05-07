@@ -26,10 +26,6 @@
       "Bash(chmod -R 777 /:*)",
       "Read(./.env)",
       "Read(./.env.*)",
-      "Read(./apps/*/.env)",
-      "Read(./apps/*/.env.*)",
-      "Read(./packages/*/.env)",
-      "Read(./packages/*/.env.*)",
       "Read(./**/secrets/*.env*)",
       "Read(./**/*.pem)",
       "Read(./**/*.p12)",
@@ -55,7 +51,11 @@
       "Bash(vercel rm:*)",
       "Bash(vercel remove:*)",
       "Bash(supabase db reset:*)",
-      "Bash(supabase projects delete:*)"
+      "Bash(supabase projects delete:*)",
+      "Read(./apps/*/.env)",
+      "Read(./apps/*/.env.*)",
+      "Read(./packages/*/.env)",
+      "Read(./packages/*/.env.*)"
     ],
     "defaultMode": "default"
   },
