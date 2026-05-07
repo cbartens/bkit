@@ -30,11 +30,12 @@ Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: re
 
 ### `dist/` commit policy
 
-Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
+Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
 
-- Pre-commit and pre-push hooks run `typecheck` + `test` only — they do NOT run `pnpm build`.
-- CI's `run-tests` job has a "Verify dist/ is fresh" step (`pnpm build && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source.
-- See KN-7 for the recurring source-only-commit failure mode.
+- Pre-commit and pre-push hooks run `typecheck` + `test` only — they do NOT run `pnpm build`. Run `pnpm build` manually (or `pnpm check:dist` to validate without committing) before pushing any TS source change.
+- CI's `run-tests` job has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
+- Consumer scope: consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
+- See KN-7 for failure-mode and recurrence history.
 
 ### `.husky/pre-push` mirror-drift gate (bkit repo only)
 
