@@ -587,8 +587,9 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
      '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
+   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status trigger CI"
    rm -f "docs/plans/logs/{FID}/.lock"
+   git push origin "$(git branch --show-current)"
    ```
 3. **Mode-aware Linear update:**
    - **If** `OBSERVE_MODE` = off → add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
@@ -604,6 +605,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
+- [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (`debug` `DONE`, step `close-workflow` recorded with `commitSha`)
 - [ ] Issue update attempted (matches `OBSERVE_MODE`: off → `In Review`/`Review`; instrument → unchanged `In Progress`/`Debug`)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

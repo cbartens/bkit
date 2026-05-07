@@ -761,7 +761,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 
 1. `git fetch origin dev`.
 2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `[force build]` → `git push`.
-3. Create PR. Body = plan-link URL wrapped in `<!-- bkit:start -->` / `<!-- bkit:end -->` markers so all bkit-managed content is delimited (debug state itself lives in status.json's `workflow == "debug"` entries, not the PR body).
+3. Create PR.
    ```bash
    gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
    <!-- bkit:start -->
@@ -809,8 +809,9 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
      '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
+   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status trigger CI"
    rm -f "docs/plans/logs/{FID}/.lock"
+   git push origin "$(git branch --show-current)"
    ```
 3. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`.
@@ -823,6 +824,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
+- [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (`build` `DONE`, step `close-workflow` recorded with `commitSha`)
 - [ ] Issue update attempted (state `In Review`, label `Review`)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

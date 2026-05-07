@@ -38,7 +38,7 @@ bkit's CI must catch any hard-fail that a downstream consumer would hit on `pnpm
 2. **Smoke spawn test** of `bkit install --full` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.agents/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
 
-The smoke test (#2) is the load-bearing one — it would have caught BAR-141 v0.5.0's `Missing model lookup for bkit-design-organise` regression before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
+The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
 
 ## Spawning `bkit` from tests
 

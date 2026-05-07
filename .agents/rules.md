@@ -59,7 +59,7 @@
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
-- **CI:** NEVER manually trigger; pushes auto-trigger.
+- **CI:** Pushes auto-trigger; NEVER manually trigger - final push to PR / `dev` HEAD MUST NOT contain `[skip ci]`.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
 
@@ -97,6 +97,6 @@
 
 - **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
 - **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
-- **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
+- **Workflow edits:** ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules when editing `.agents/workflows/*.md`.
+- **Prompt edits:** ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules when editing `.agents/prompts/*.md`.
 - **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.

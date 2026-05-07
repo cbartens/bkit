@@ -17,7 +17,7 @@
 
 ### `GH_BKIT_TOKEN` — four-surface presence matrix
 
-`GH_BKIT_TOKEN` is required at four surfaces; missing any one breaks an install or CI run. Detector coverage in BAR-141 mirrors this matrix.
+`GH_BKIT_TOKEN` is required at four surfaces; missing any one breaks an install or CI run. Detector coverage in `bkit install` Phase 3 mirrors this matrix.
 
 | Surface | Where to set | Symptom if missing | bkit detector |
 | --- | --- | --- | --- |
@@ -34,11 +34,24 @@ Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm 
 
 - Pre-commit and pre-push hooks run `typecheck` + `test` only — they do NOT run `pnpm build`.
 - CI's `run-tests` job has a "Verify dist/ is fresh" step (`pnpm build && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source.
-- Hit during BAR-141 PR #5: commit `edbd891` (source only) failed; commit `7ab6bff` regenerated `dist/` and unblocked CI. See KN-7.
+- See KN-7 for the recurring source-only-commit failure mode.
+
+### CI trigger on final workflow push
+
+GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` (or `[skip actions]`). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
+
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `[skip ci]`.
+
+| Surface | Mechanic |
+| --- | --- |
+| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `[skip build] [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `[skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
+
+All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `[skip build] [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
 
 ### `bkit install` three-phase contract
 
-bkit's installer runs in three phases (BAR-141, DE-4):
+bkit's installer runs in three phases:
 
 1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, hooks-config overwrite risk on consumer-extended files). Advisories accumulate in `ctx.advisories`.
 2. **Phase 2 — Install (writes).** Module dispatch as before; modules append further structured advisories to `ctx.advisories`.

@@ -259,6 +259,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] CI run triggered on dev (`RUN_ID` captured)
 - [ ] Verdicts extracted (`MERGE_VERDICT`, `MERGE_FAILURES`)
 - [ ] Verdict valid (`MERGE_VERDICT` in `PASS|FAIL`)
+- [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (step `merge-pr` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 3` section)
 
