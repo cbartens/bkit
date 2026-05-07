@@ -127,7 +127,7 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-06T22:15:53Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -395,6 +395,7 @@
           "https://github.com/cbartens/bkit/pull/7"
         ]
       }
-    ]
+    ],
+    "completedAt": "2026-05-07T00:04:35Z"
   }
 ]
