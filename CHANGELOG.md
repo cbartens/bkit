@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.0.1] — 2026-05-08
+
+### Fixed
+
+- **`bkit upgrade` no longer silently overwrites files lacking a recorded canonical hash.** Previously `isConsumerModified` returned `false` for unknown-hash files, which the upgrade engine treated as "no drift detected → safe to overwrite". Pre-v0.9.x installs (where `canonicalHashes` did not exist) and any managed file not re-written by `bkit install` since BAR-142 landed had no hash recorded — a single `bkit upgrade` could destroy consumer content. Default flipped: missing hash now returns `true` (treat as modified, surface a conflict, require explicit consumer resolution). `diffFile`'s idempotent `disk == template → skip` check moved earlier so identical files still skip cleanly. (DE-12, commit `954e827`)
+- **`.claude/settings.json` template now matches consumer mirror for `apps/*/.env` and `packages/*/.env` reads.** Original deny→ask move (commit `1ecd15d`) only edited the consumer mirror; the canonical template still listed those reads under `deny`, so the next `bkit install` mirror-regen reverted the move. Now editing both in lockstep. (commit `8db6636`)
+
+### Added
+
+- **Auto-seed `canonicalHashes` for skipped files on `bkit upgrade`.** `updateCanonicalHashesAfterUpgrade` now records canonical hashes for files where `disk == template` (the upgrade engine's `skip` classification), in addition to the existing `update` path. Conflict files are explicitly NOT seeded — that would re-introduce the silent-overwrite bug. Effect: running `bkit upgrade` once after this release auto-heals the missing-hash gap for any consumer installed before BAR-142. Truly-customised files continue to surface as conflicts requiring manual resolution. (DE-13, commit `e2889e1`)
+
+### Notes
+
+- Pre-v0.9.x consumers will see all-conflict on first `bkit upgrade` after this release. This is the safe failure mode — review each conflict, accept or reject, and the auto-seed populates canonical hashes for any files where you accept the bkit template. Subsequent upgrades will only flag genuine drift.
+
+---
+
 ## [1.0.0] — 2026-05-07
 
 ### Added
