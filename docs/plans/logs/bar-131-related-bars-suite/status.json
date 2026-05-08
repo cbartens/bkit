@@ -401,6 +401,28 @@
         "at": "2026-05-08T05:45:24Z",
         "commitSha": "5416f68cdb6bf3de1edba70d69cf8320ed720175",
         "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-08T05:58:16Z",
+        "commitSha": "a8c1ab5f43251892c8ced7a55d6f0bee1f131e01",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-08T05:58:16Z",
+        "commitSha": "a8c1ab5f43251892c8ced7a55d6f0bee1f131e01",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/ship-summary.md"
+        ]
       }
     ],
     "completedAt": "2026-05-07T00:04:35Z"
