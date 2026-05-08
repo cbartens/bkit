@@ -36,6 +36,14 @@ Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm 
 - CI's `run-tests` job has a "Verify dist/ is fresh" step (`pnpm build && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source.
 - See KN-7 for the recurring source-only-commit failure mode.
 
+### `.husky/pre-push` mirror-drift gate (bkit repo only)
+
+The bkit repo's `.husky/pre-push` runs `pnpm bkit check` AFTER the templated `# bkit:end` marker, guarded by `set -e` above `# bkit:start`. Failing exit aborts the push when `.agents/*` was edited without `bkit install` regenerating `.claude/*` / `.cursor/*` / `.husky/*` mirrors.
+
+- Lives **outside** the bkit:start/end block so Tier-2 re-install preserves it AND it does not leak into consumer repos via `.agents/templates/.husky/pre-push`.
+- Consumers don't get this gate — they don't typically edit `.agents/*` source, so adding it to the template is pure ~1s push overhead with no detected pain.
+- Fix on failure: run `pnpm bkit install`, stage the regenerated `.claude/*` / `.cursor/*` / `.husky/*` files, commit, push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
+
 ### CI trigger on final workflow push
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` (or `[skip actions]`). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
