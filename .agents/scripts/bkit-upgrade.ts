@@ -208,7 +208,15 @@ export function runUpgrade(
 
 /**
  * After a successful upgrade, update `canonicalHashes` in `.agents/.bkit-version`
- * to reflect the new template content for upgraded files.
+ * to reflect the template content for files where bkit knows the on-disk content
+ * matches the template:
+ *   - `result.updated` — bkit just wrote the new template content; record its hash.
+ *   - `result.skipped` — disk already matched template (idempotent); record the
+ *     same template hash so future upgrades stop flagging the file as
+ *     unknown-state (the safe-by-default conflict path added when DE-12 flipped
+ *     the missing-hash default in `isConsumerModified`).
+ *
+ * Conflicts are NEVER seeded — that would re-introduce the silent-overwrite bug.
  *
  * Call this AFTER `runUpgrade` completes (P4.T4 integration: hashes must stay
  * in sync with the files bkit actually wrote so the next upgrade can detect drift).
@@ -219,18 +227,18 @@ export function updateCanonicalHashesAfterUpgrade(
   options: { dryRun: boolean; cwd?: string },
 ): void {
   if (options.dryRun) return;
-  if (result.updated.length === 0) return;
+  if (result.updated.length === 0 && result.skipped.length === 0) return;
 
   const cwd = options.cwd ?? process.cwd();
   const versionFile = path.join(cwd, ".agents", ".bkit-version");
   const bkitVersion = readBkitVersion(versionFile);
   if (!bkitVersion) return;
 
-  const updatedPaths = new Set(result.updated);
+  const seedablePaths = new Set([...result.updated, ...result.skipped]);
   const candidateMap = new Map(candidates.map((c) => [c.relPath, c.templatePath]));
 
   const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
-  for (const relPath of updatedPaths) {
+  for (const relPath of seedablePaths) {
     const templatePath = candidateMap.get(relPath);
     if (!templatePath || !fs.existsSync(templatePath)) continue;
     const content = fs.readFileSync(templatePath, "utf-8");

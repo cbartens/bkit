@@ -414,4 +414,47 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
       updateCanonicalHashesAfterUpgrade(result, [], { dryRun: false, cwd: tmpDir }),
     ).not.toThrow();
   });
+
+  it("seeds canonicalHashes for skipped files (disk == template) so future upgrades distinguish drift", () => {
+    const content = "stable template content\n";
+    // .bkit-version exists but has no entry for the skipped file (pre-DE-12 install).
+    writeBkitVersionInDir(makeVersion({}));
+    const templatePath = writeFile(".bkit-staging/t/foo.md", content);
+
+    // diffFile would classify this as "skip" because diskHash === templateHash.
+    const result = { updated: [], conflicts: [], skipped: [".claude/agents/bkit-foo.md"] };
+    const candidates = [{ relPath: ".claude/agents/bkit-foo.md", templatePath }];
+
+    updateCanonicalHashesAfterUpgrade(result, candidates, { dryRun: false, cwd: tmpDir });
+
+    const updated = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    expect(updated).not.toBeNull();
+    // Canonical hash now recorded — next upgrade can detect true drift instead of all-conflict.
+    expect(updated!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(content));
+  });
+
+  it("does NOT seed canonicalHashes for conflict files (would re-introduce silent overwrite)", () => {
+    const templateContent = "new template content\n";
+    writeBkitVersionInDir(makeVersion({}));
+    const templatePath = writeFile(".bkit-staging/t/foo.md", templateContent);
+
+    // Conflict means consumer drift was detected — we MUST NOT record a hash for these.
+    const result = {
+      updated: [],
+      conflicts: [
+        {
+          relPath: ".claude/agents/bkit-foo.md",
+          templateContent,
+          diskContent: "consumer-customised\n",
+        },
+      ],
+      skipped: [],
+    };
+    const candidates = [{ relPath: ".claude/agents/bkit-foo.md", templatePath }];
+
+    updateCanonicalHashesAfterUpgrade(result, candidates, { dryRun: false, cwd: tmpDir });
+
+    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBeUndefined();
+  });
 });
