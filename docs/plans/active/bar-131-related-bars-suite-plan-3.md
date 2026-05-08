@@ -222,79 +222,79 @@ Always squash. One PR for sub-plan-3 -> v0.8.x release. `gh pr merge --squash --
 
 ### Phase 3 — v0.8.x (Major-Changes — human approval before PR opens)
 
-- [ ] **P3.T0:** Verify Cursor v1 hooks schema; record decision in `docs/decisions.md`. **P3.T0 acceptance must explicitly bless or veto `__bkit__` envelope shape** (if Cursor reserves a conflicting key, namespace must change). **Abort path:** if Cursor v1 schema is undocumented after reasonable web-search effort, agent issues a blocker Linear issue against BAR-142 and pauses Phase 3 entry — does NOT proceed to P3.T1a on guess.
+- [x] **P3.T0:** Verify Cursor v1 hooks schema; record decision in `docs/decisions.md`. **P3.T0 acceptance must explicitly bless or veto `__bkit__` envelope shape** (if Cursor reserves a conflicting key, namespace must change). **Abort path:** if Cursor v1 schema is undocumented after reasonable web-search effort, agent issues a blocker Linear issue against BAR-142 and pauses Phase 3 entry — does NOT proceed to P3.T1a on guess.
   - Files: `docs/decisions.md`
   - Depends on: sub-plan-1 P0.T1
   - Effort: M
   - Verify: human review of decisions.md entry; record blesses-or-vetoes `__bkit__` shape
   - Closes: BAR-142 §A1 prerequisite
-- [ ] **P3.T1a (NEW — namespace contract spec):** One-page contract doc in `docs/decisions.md` defining `__bkit__` envelope shape, extractor semantics, bkit-owned-key predicate signature, AND **disposition for `detectHooksConfigOverwriteRisk` (DELETE — do not repurpose; rationale: detector becomes architecturally redundant once `__bkit__` envelope is canonical SoT)**. Output: stable type signatures in `bkit-tiers.ts`.
+- [x] **P3.T1a (NEW — namespace contract spec):** One-page contract doc in `docs/decisions.md` defining `__bkit__` envelope shape, extractor semantics, bkit-owned-key predicate signature, AND **disposition for `detectHooksConfigOverwriteRisk` (DELETE — do not repurpose; rationale: detector becomes architecturally redundant once `__bkit__` envelope is canonical SoT)**. Output: stable type signatures in `bkit-tiers.ts`.
   - Files: `docs/decisions.md`, `.agents/scripts/bkit-tiers.ts`
   - Depends on: P3.T0
   - Effort: M
   - Verify: `pnpm typecheck` (type signatures compile); decisions.md entry reviewed
   - Closes: none (contract spec — unblocks P3.T1, P3.T2, P3.T7)
-- [ ] **P3.T1:** JSON `deepMergeJson` primitive (consumes contract from P3.T1a). Test six `.claude/settings.json` cases.
+- [x] **P3.T1:** JSON `deepMergeJson` primitive (consumes contract from P3.T1a). Test six `.claude/settings.json` cases.
   - Files: `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tiers.test.ts`
   - Depends on: P3.T1a
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-tiers.test.ts`
   - Closes: BAR-142 §A1 (deep-merge primitive)
-- [ ] **P3.T2:** `__bkit__` namespace extractor/applier (`extractBkitNamespace`, `applyBkitNamespace`); restructure `.agents/templates/.claude/settings.json` and `.agents/templates/.cursor/hooks.json` payloads.
+- [x] **P3.T2:** `__bkit__` namespace extractor/applier (`extractBkitNamespace`, `applyBkitNamespace`); restructure `.agents/templates/.claude/settings.json` and `.agents/templates/.cursor/hooks.json` payloads.
   - Files: `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tiers.test.ts`, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`
   - Depends on: P3.T1a, P3.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-tiers.test.ts`
   - Closes: BAR-142 §A1 (namespace extractor)
-- [ ] **P3.T3:** `writeTier2Json()` helper. Idempotent round-trip. **Acceptance: `writeTier2Json` MUST throw (not swallow) when the input lacks the `__bkit__` envelope; unit test asserts the throw with explicit message.** This guards rollback path (templates reverted to pre-`__bkit__` shape must error loudly, not corrupt silently).
+- [x] **P3.T3:** `writeTier2Json()` helper. Idempotent round-trip. **Acceptance: `writeTier2Json` MUST throw (not swallow) when the input lacks the `__bkit__` envelope; unit test asserts the throw with explicit message.** This guards rollback path (templates reverted to pre-`__bkit__` shape must error loudly, not corrupt silently).
   - Files: `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tiers.test.ts`
   - Depends on: P3.T2
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-tiers.test.ts` (covers both happy-path and missing-envelope throw)
   - Closes: BAR-142 §A1 (write helper)
-- [ ] **P3.T4:** Reclassify `.claude/settings.json` to Tier-2 (Claude module dispatcher).
+- [x] **P3.T4:** Reclassify `.claude/settings.json` to Tier-2 (Claude module dispatcher).
   - Files: `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-modules.test.ts`
   - Depends on: P3.T3
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-modules.test.ts`
   - Closes: BAR-142 §A1 (Claude reclass)
-- [ ] **P3.T5:** Reclassify `.cursor/hooks.json` to Tier-2; if P3.T0 vetoed shipped schema, fix it here (one breaking change, not two).
+- [x] **P3.T5:** Reclassify `.cursor/hooks.json` to Tier-2; if P3.T0 vetoed shipped schema, fix it here (one breaking change, not two).
   - Files: `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-modules.test.ts`, `.agents/templates/.cursor/hooks.json`
   - Depends on: P3.T0, P3.T3
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-modules.test.ts`
   - Closes: BAR-142 §A1 (Cursor reclass)
-- [ ] **P3.T6a (NEW — versioned defaults source-of-truth):** Create `.agents/scripts/bkit-tier1-defaults.ts` with `BKIT_TIER1_DEFAULTS_BY_VERSION` snapshots for prior versions (0.5.x, 0.6.x, 0.7.x), extracted from `git show <tag>:.agents/templates/.claude/settings.json` and `git show <tag>:.agents/templates/.cursor/hooks.json`. Test: snapshot equality vs git-history JSON.
+- [x] **P3.T6a (NEW — versioned defaults source-of-truth):** Create `.agents/scripts/bkit-tier1-defaults.ts` with `BKIT_TIER1_DEFAULTS_BY_VERSION` snapshots for prior versions (0.5.x, 0.6.x, 0.7.x), extracted from `git show <tag>:.agents/templates/.claude/settings.json` and `git show <tag>:.agents/templates/.cursor/hooks.json`. Test: snapshot equality vs git-history JSON.
   - Files: `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/scripts/bkit-tier1-defaults.test.ts`
   - Depends on: sub-plan-1 P0.T1
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-tier1-defaults.test.ts`
   - Closes: none (migration prerequisite for P3.T6)
-- [ ] **P3.T6:** `migrateTier1JsonToTier2` consults `BKIT_TIER1_DEFAULTS_BY_VERSION` (P3.T6a) to identify previous bkit defaults; lifts into `__bkit__` envelope; idempotent on re-run.
+- [x] **P3.T6:** `migrateTier1JsonToTier2` consults `BKIT_TIER1_DEFAULTS_BY_VERSION` (P3.T6a) to identify previous bkit defaults; lifts into `__bkit__` envelope; idempotent on re-run.
   - Files: `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tiers.test.ts`
   - Depends on: P3.T4, P3.T5, P3.T6a
   - Effort: L
   - Verify: `pnpm vitest run .agents/scripts/bkit-tiers.test.ts`
   - Closes: BAR-142 §A1 (migration)
-- [ ] **P3.T7:** Retire `detectHooksConfigOverwriteRisk` — **DELETE per P3.T1a contract spec (NOT repurposed)**. Remove obsolete tests. **v0.7.x interim disposition:** detector remains active until P3.T7 merges in v0.8.0; no back-port.
+- [x] **P3.T7:** Retire `detectHooksConfigOverwriteRisk` — **DELETE per P3.T1a contract spec (NOT repurposed)**. Remove obsolete tests. **v0.7.x interim disposition:** detector remains active until P3.T7 merges in v0.8.0; no back-port.
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P3.T1a, P3.T5
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`
   - Closes: BAR-142 §A1 (cleanup)
-- [ ] **P3.T8:** Vercel CLI hang guard (B3). **Concrete behaviour: pre-check `.vercel/project.json` and SKIP `vercel env ls` when file absent (do NOT shell out, do NOT depend on timeout heuristics).** Phase 3 work touches `bkit-preflight.ts` via P3.T7, so this is unconditional.
+- [x] **P3.T8:** Vercel CLI hang guard (B3). **Concrete behaviour: pre-check `.vercel/project.json` and SKIP `vercel env ls` when file absent (do NOT shell out, do NOT depend on timeout heuristics).** Phase 3 work touches `bkit-preflight.ts` via P3.T7, so this is unconditional.
   - Files: `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-preflight.test.ts`
   - Depends on: P3.T7
   - Effort: S
   - Verify: `pnpm vitest run .agents/scripts/bkit-preflight.test.ts`
   - Closes: BAR-142 §B3
-- [ ] **P3.T9:** Two-version upgrade-survival regression test (gether/fraser-coast fixture). Consumes `tests/fixtures/heavy-customised-consumer/` from sub-plan-2 P2.T8a.
+- [x] **P3.T9:** Two-version upgrade-survival regression test (gether/fraser-coast fixture). Consumes `tests/fixtures/heavy-customised-consumer/` from sub-plan-2 P2.T8a.
   - Files: `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `tests/fixtures/heavy-customised-consumer/...` (referenced)
   - Depends on: sub-plan-2 P2.T8a (cross-sub-plan), P3.T6
   - Effort: M
   - Verify: `pnpm vitest run .agents/scripts/bkit-modules.upgrade.integration.test.ts`
   - Closes: BAR-142 §A1 (regression net)
-- [ ] **P3.T10:** KN-8 + decisions + README + CHANGELOG v0.8.x.
+- [x] **P3.T10:** KN-8 + decisions + README + CHANGELOG v0.8.x.
   - Files: `docs/knowledge.md`, `docs/decisions.md`, `README.md`, `CHANGELOG.md`
   - Depends on: P3.T1, P3.T2, P3.T3, P3.T4, P3.T5, P3.T6, P3.T6a, P3.T7, P3.T8, P3.T9
   - Effort: S

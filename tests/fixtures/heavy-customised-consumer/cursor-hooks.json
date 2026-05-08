@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".cursor/hooks/preflight.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "failClosed": true,
+  "loop_limit": 5
+}

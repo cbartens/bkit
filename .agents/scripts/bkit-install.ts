@@ -6,7 +6,113 @@ import { parseArgs, printUsage } from "./bkit-cli.js";
 import { dispatchModules, getPkgRoot, type ModuleContext } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
-import { runPostInstallCheck, formatChecklist } from "./bkit-postinstall.js";
+import {
+  runPostInstallCheck,
+  formatChecklist,
+  readChangelogVersionDelta,
+} from "./bkit-postinstall.js";
+import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import { runUpgrade, updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade.js";
+import type { ModuleName } from "./bkit-manifest.js";
+
+// ---------------------------------------------------------------------------
+// Staging helpers (P4.T1 / P4.T2)
+//
+// Transactional install: each module writes into `.bkit-staging/<module>/`
+// first. `commitStaging` atomically renames the staging dir to the real
+// destination when ALL modules succeed. `discardStaging` cleans up on failure.
+//
+// Design contract (BAR-142 §A4):
+//   - Staging path: `.bkit-staging/<module>/` relative to cwd.
+//   - Each staged file lives at `<stagingDir>/<rel-consumer-path>`.
+//   - commitStaging: move each staged file → real destination (fs.renameSync).
+//     Falls back to copy+delete if cross-device rename throws EXDEV.
+//   - discardStaging: fs.rmSync(stagingDir, { recursive: true, force: true }).
+//
+// Callers:
+//   - bkit-modules.ts dispatchModules wraps each module fn with commit/discard
+//     so a crash inside any module discards that module's staging dir and all
+//     prior modules' staging dirs that have not yet been committed.
+// ---------------------------------------------------------------------------
+
+/** Staging root dir — all staging work lives under this path (relative to cwd). */
+export const STAGING_ROOT = ".bkit-staging";
+
+/**
+ * Build the staging directory path for a given module.
+ * Returns an absolute path.
+ */
+export function getStagingDir(module: string, cwd = process.cwd()): string {
+  return path.join(cwd, STAGING_ROOT, module);
+}
+
+/**
+ * Initialise a staging directory (create + empty).
+ * Safe to call multiple times — idempotent.
+ */
+export function initStagingDir(stagingDir: string): void {
+  if (fs.existsSync(stagingDir)) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(stagingDir, { recursive: true });
+}
+
+/**
+ * Commit a staging directory by moving each staged file to its real destination.
+ *
+ * Staged files live at `<stagingDir>/<relPath>` where `relPath` is relative to
+ * consumer root (e.g. `.claude/agents/bkit-foo.md`).
+ * On commit, each file is moved to `<cwd>/<relPath>`.
+ *
+ * Falls back to copy+delete when rename throws EXDEV (cross-device move).
+ * Returns the list of committed relative paths.
+ */
+export function commitStaging(stagingDir: string, cwd = process.cwd()): string[] {
+  if (!fs.existsSync(stagingDir)) return [];
+  const committed: string[] = [];
+  const entries = listFilesRecursive(stagingDir);
+  for (const absStaged of entries) {
+    const relPath = path.relative(stagingDir, absStaged);
+    const destAbs = path.join(cwd, relPath);
+    fs.mkdirSync(path.dirname(destAbs), { recursive: true });
+    try {
+      fs.renameSync(absStaged, destAbs);
+    } catch (err: unknown) {
+      // Cross-device rename (EXDEV) — fall back to copy + delete
+      if ((err as NodeJS.ErrnoException).code === "EXDEV") {
+        fs.copyFileSync(absStaged, destAbs);
+        fs.chmodSync(destAbs, fs.statSync(absStaged).mode);
+        fs.rmSync(absStaged);
+      } else {
+        throw err;
+      }
+    }
+    committed.push(relPath);
+  }
+  // Clean up the (now-empty) staging dir
+  fs.rmSync(stagingDir, { recursive: true, force: true });
+  return committed;
+}
+
+/**
+ * Discard a staging directory without touching consumer files.
+ * Safe to call when stagingDir does not exist.
+ */
+export function discardStaging(stagingDir: string): void {
+  if (fs.existsSync(stagingDir)) {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Discard ALL staging dirs under STAGING_ROOT (cleanup on mid-install failure).
+ */
+export function discardAllStaging(cwd = process.cwd()): void {
+  const stagingRoot = path.join(cwd, STAGING_ROOT);
+  if (fs.existsSync(stagingRoot)) {
+    fs.rmSync(stagingRoot, { recursive: true, force: true });
+  }
+}
 
 // Hard allowlist: install / payload prune may ONLY remove files from these dirs.
 // `.agents/{workflows,prompts}/` are mirrored from the package payload during the
@@ -630,10 +736,115 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
 }
 
 async function main() {
-  const { verb, modules } = parseArgs(process.argv.slice(2));
+  const { verb, modules, uninstallFlags, upgradeFlags } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
+    return;
+  }
+
+  if (verb === "doctor") {
+    LOG_PREFIX = "[bkit-doctor]";
+    console.log(`${LOG_PREFIX} Running read-only advisory scan (no writes)`);
+    const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
+    const allFindings = runPostInstallCheck(
+      [...preflightAdvisories, ...blockers],
+      { writes: [] },
+      modules,
+      process.cwd(),
+      false,
+    );
+    const banner = formatChecklist(allFindings);
+    if (banner) {
+      console.log(banner);
+    } else {
+      console.log(`${LOG_PREFIX} No advisories found.`);
+    }
+    return;
+  }
+
+  if (verb === "upgrade") {
+    LOG_PREFIX = "[bkit-upgrade]";
+    console.log(
+      `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
+    );
+
+    // Collect bkit-managed template candidates from the package.
+    // Templates live in .agents/templates/ — walk the directory for all files.
+    const pkgRoot = getPkgRoot();
+    const tplRoot = path.join(pkgRoot, ".agents", "templates");
+    const candidates: Array<{ relPath: string; templatePath: string }> = [];
+
+    if (fs.existsSync(tplRoot)) {
+      function collectTemplates(dir: string, rel: string): void {
+        for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+          const entRel = rel ? path.join(rel, ent.name) : ent.name;
+          const entAbs = path.join(dir, ent.name);
+          if (ent.isDirectory()) {
+            collectTemplates(entAbs, entRel);
+          } else if (ent.isFile()) {
+            // Remap dotfile names (gitignore → .gitignore etc.)
+            const remapped = entRel
+              .replace(/(?:^|\/)gitignore(?:\/|$)/, (m) => m.replace("gitignore", ".gitignore"))
+              .replace(/(?:^|\/)npmignore(?:\/|$)/, (m) => m.replace("npmignore", ".npmignore"));
+            candidates.push({ relPath: remapped, templatePath: entAbs });
+          }
+        }
+      }
+      collectTemplates(tplRoot, "");
+    }
+
+    const result = runUpgrade(candidates, {
+      nonInteractive: upgradeFlags.nonInteractive,
+      dryRun: upgradeFlags.dryRun,
+      cwd: process.cwd(),
+    });
+
+    // Update canonical hashes for upgraded files (only on successful non-dry-run)
+    if (!upgradeFlags.dryRun && result.updated.length > 0) {
+      updateCanonicalHashesAfterUpgrade(result, candidates, {
+        dryRun: false,
+        cwd: process.cwd(),
+      });
+    }
+
+    console.log(
+      `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}`,
+    );
+
+    // Non-interactive mode: exit non-zero on conflicts
+    if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (verb === "uninstall") {
+    LOG_PREFIX = "[bkit-uninstall]";
+    const uninstallCtx: UninstallContext = {
+      cwd: process.cwd(),
+      dryRun: uninstallFlags.dryRun,
+      force: uninstallFlags.force,
+      nuke: uninstallFlags.nuke,
+      yes: uninstallFlags.yes,
+      stripPackage: uninstallFlags.stripPackage,
+      logPrefix: LOG_PREFIX,
+    };
+    const moduleList = [...modules] as ModuleName[];
+    console.log(`${LOG_PREFIX} Running uninstall${uninstallCtx.dryRun ? " (dry-run)" : ""}...`);
+    const result = await runUninstall(moduleList, uninstallCtx);
+    const totalDeleted = result.deleted.length;
+    const totalStripped = result.stripped.length;
+    const totalPreserved = result.preserved.length;
+    if (uninstallCtx.dryRun) {
+      console.log(
+        `${LOG_PREFIX} [dry-run] Would delete: ${totalDeleted}, strip: ${totalStripped}, preserve: ${totalPreserved}`,
+      );
+    } else {
+      console.log(
+        `${LOG_PREFIX} Done. Deleted: ${totalDeleted}, stripped: ${totalStripped}, preserved: ${totalPreserved}`,
+      );
+    }
     return;
   }
 
@@ -646,6 +857,7 @@ async function main() {
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
   const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
   if (blockers.length > 0) {
+    console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
     const blockerBanner = formatChecklist(blockers);
     if (blockerBanner) console.log(blockerBanner);
     process.exit(1);
@@ -715,9 +927,48 @@ async function main() {
   }
 
   // --- Phase 3: Post-install checks (re-detect + unified output) ---
+  // Changelog version-delta header (A7): surface what changed in the installed version.
+  try {
+    const pkgJsonPath = path.join(getPkgRoot(), "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as { version?: string };
+      const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
+      if (deltaHeader) console.log(deltaHeader);
+    }
+  } catch {
+    // Non-fatal — changelog header is informational
+  }
   const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
+
+  // P2.T9: exit-1 on Phase 3 blockers + recovery action text.
+  // Blockers in Phase 3 are actionable hard-fails (e.g. gh-bkit-token gap in CI).
+  // Advisory findings are informational only and do NOT exit-1.
+  const phase3Blockers = postFindings.filter((f) => f.severity === "blocker");
+  if (phase3Blockers.length > 0) {
+    const moduleFlags = [...modules].map((m) => `--${m}`).join(" ");
+    const recoveryLine = `pnpm bkit uninstall ${moduleFlags} && <fix the issue> && pnpm bkit install ${moduleFlags}`;
+    console.error(
+      `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,
+    );
+    // P2.T10: --auto-revert: run uninstall in-process before exit-1
+    if (uninstallFlags.autoRevert) {
+      console.log(`${LOG_PREFIX} --auto-revert: reverting install...`);
+      const uninstallCtx: UninstallContext = {
+        cwd: process.cwd(),
+        dryRun: false,
+        force: false,
+        nuke: false,
+        yes: true,
+        stripPackage: false,
+        logPrefix: "[bkit-uninstall]",
+      };
+      await runUninstall([...modules] as ModuleName[], uninstallCtx);
+      console.log(`${LOG_PREFIX} --auto-revert: uninstall complete. Exiting 1.`);
+    }
+    process.exit(1);
+  }
 }
 
 function isMainScript(): boolean {

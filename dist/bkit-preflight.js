@@ -9,9 +9,18 @@ import * as path from "node:path";
  * Check whether a file's content contains bkit-managed block markers.
  * Recognises both HTML-comment style (`<!-- bkit:start -->`) and hash-comment
  * style (`# bkit:start`).
+ *
+ * Uses line-anchored matching (equivalent to `findLineAnchoredMarkers`): a marker
+ * is only detected when it occupies its own line (possibly with a comment prefix
+ * `# ` or `// `). Backtick-quoted prose mentions like `` `<!-- bkit:start -->` ``
+ * in markdown are NOT detected. (BAR-142 §B1)
  */
 export function hasBkitMarkers(content) {
-    return content.includes("<!-- bkit:start -->") || content.includes("# bkit:start");
+    // Line-anchored: marker must be preceded only by start-of-line or a recognised
+    // comment prefix ("# " / "// "), and followed only by end-of-line.
+    const htmlPattern = /^(?:# |\/\/ )?<!-- bkit:start -->$/m;
+    const hashPattern = /^(?:# |\/\/ )?# bkit:start$/m;
+    return htmlPattern.test(content) || hashPattern.test(content);
 }
 // Deduplicate an array of findings by `id`, first occurrence wins.
 function dedupeById(findings) {
@@ -175,83 +184,6 @@ export function detectBkitVersionPinStale(cwd) {
         detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .agents/.bkit-version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run \`pnpm bkit install\`.`,
         action: "Run `pnpm bkit install --full` to resync the .agents payload + version pin, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
     };
-}
-// ---------------------------------------------------------------------------
-// Tier-1 hooks-config overwrite blockers (BAR-141 iter 2)
-// ---------------------------------------------------------------------------
-/**
- * Detect customised `.claude/settings.json` and `.cursor/hooks.json`.
- *
- * bkit ships these as Tier-1 (full-overwrite). Consumers commonly add Stop
- * hooks, postflight wiring, `failClosed`, `loop_limit`, etc. — full overwrite
- * silently destroys those. Surface as blocker so the consumer chooses to skip
- * the module or back up first; recoverable losses must not be silent.
- *
- * Returns up to two findings (one per file).
- */
-export function detectHooksConfigOverwriteRisk(cwd, modules) {
-    const findings = [];
-    // .claude/settings.json — bkit ships hooks.SessionStart only
-    if (modules.has("claude")) {
-        const claudePath = path.join(cwd, ".claude", "settings.json");
-        if (fs.existsSync(claudePath)) {
-            try {
-                const parsed = JSON.parse(fs.readFileSync(claudePath, "utf-8"));
-                const hooks = parsed.hooks;
-                if (hooks && typeof hooks === "object" && !Array.isArray(hooks)) {
-                    const extraKeys = Object.keys(hooks).filter((k) => k !== "SessionStart");
-                    if (extraKeys.length > 0) {
-                        findings.push({
-                            id: "hooks-config-overwrite-risk-claude",
-                            severity: "blocker",
-                            detect: `.claude/settings.json contains hook event(s) beyond SessionStart: [${extraKeys.join(", ")}]. bkit's --claude module fully overwrites this file (Tier-1) and would silently destroy these.`,
-                            action: "Choose one:\n\n" +
-                                "  (a) Back up .claude/settings.json now, then re-run with --claude. After install, manually merge your custom hook entries (Stop, PostToolUse, etc.) back into the bkit-installed file.\n\n" +
-                                "  (b) Skip --claude on this run. Use `pnpm bkit install` without --claude to leave .claude/settings.json untouched.\n\n" +
-                                "Long-term: these hook configs should be Tier-2 (managed-block) so consumer hook entries survive bkit upgrades. Track this need in a separate issue.",
-                        });
-                    }
-                }
-            }
-            catch {
-                // Malformed JSON — skip; another detector handles syntax errors
-            }
-        }
-    }
-    // .cursor/hooks.json — bkit ships flat array form with sessionStart/sessionStop
-    if (modules.has("cursor")) {
-        const cursorPath = path.join(cwd, ".cursor", "hooks.json");
-        if (fs.existsSync(cursorPath)) {
-            try {
-                const parsed = JSON.parse(fs.readFileSync(cursorPath, "utf-8"));
-                // Cursor v1 schema (`{"version": 1, "hooks": {...}}`) is the documented form
-                // but bkit ships the flat-array form. v1 schema → consumer is using docs-form
-                // and bkit's overwrite would destroy it.
-                const isV1Schema = "version" in parsed;
-                // Detect advanced fields bkit's seed never has.
-                const raw = JSON.stringify(parsed);
-                const advancedFields = ["failClosed", "loop_limit", "preflight.sh", "postflight.sh"].filter((f) => raw.includes(f));
-                if (isV1Schema || advancedFields.length > 0) {
-                    const detected = isV1Schema
-                        ? "Cursor v1 schema (top-level `version` key)"
-                        : `advanced fields [${advancedFields.join(", ")}]`;
-                    findings.push({
-                        id: "hooks-config-overwrite-risk-cursor",
-                        severity: "blocker",
-                        detect: `.cursor/hooks.json contains custom configuration: ${detected}. bkit's --cursor module fully overwrites this file (Tier-1) and would silently destroy these settings.`,
-                        action: "Choose one:\n\n" +
-                            "  (a) Back up .cursor/hooks.json now, then re-run with --cursor. After install, manually merge your custom hook entries (failClosed, loop_limit, postflight wiring, v1 schema, etc.) back into the bkit-installed file.\n\n" +
-                            "  (b) Skip --cursor on this run. Use `pnpm bkit install` without --cursor to leave .cursor/hooks.json untouched.\n\n" +
-                            "Long-term: these hook configs should be Tier-2 (managed-block) so consumer hook entries survive bkit upgrades. Track this need in a separate issue.",
-                    });
-                }
-            }
-            catch {
-                // Malformed JSON — skip
-            }
-        }
-    }
-    return findings;
 }
 // ---------------------------------------------------------------------------
 // Husky/managed-file duplication advisories (BAR-141 iter 2)
@@ -426,9 +358,6 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
     const notGitRepo = detectNotGitRepo(cwd, modules);
     if (notGitRepo)
         blockers.push(notGitRepo);
-    // Tier-1 hooks-config overwrite blockers (per-module gated)
-    for (const f of detectHooksConfigOverwriteRisk(cwd, modules))
-        blockers.push(f);
     // --- Advisory detectors ---
     const huskyPreCommit = detectHuskyNoMarkers(cwd, "pre-commit");
     if (huskyPreCommit)

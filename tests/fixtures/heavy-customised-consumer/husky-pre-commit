@@ -1,0 +1,14 @@
+#!/bin/sh
+# Consumer pre-commit hook with bkit managed section AND consumer commands
+
+echo "Running consumer pre-commit checks..."
+
+# bkit:start
+pnpm typecheck
+pnpm format:check
+# bkit:end
+
+# Consumer custom check
+if [ -f "custom-check.sh" ]; then
+  ./custom-check.sh
+fi

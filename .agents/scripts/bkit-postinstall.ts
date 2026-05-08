@@ -6,6 +6,7 @@ import { execSync, execFileSync } from "node:child_process";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
+import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 
 export type { PreflightFinding };
 
@@ -13,14 +14,21 @@ export type { PreflightFinding };
 // Token-surface detectors
 // ---------------------------------------------------------------------------
 
-type TokenPresence = "present" | "missing" | "unknown";
+type TokenPresence = "present" | "missing" | "empty" | "unknown";
 
 /**
  * Detect whether GH_BKIT_TOKEN is set in the shell environment.
- * Returns "present" or "missing" — never reads the value.
+ * - "present"  → set and non-empty
+ * - "missing"  → not set at all (undefined)
+ * - "empty"    → set but empty string (`GH_BKIT_TOKEN=""`)
+ *
+ * Distinguishes empty from unset so action text can guide the user precisely.
+ * Never reads the token value beyond truthiness.
  */
 export function detectShellToken(): TokenPresence {
-  return Boolean(process.env.GH_BKIT_TOKEN) ? "present" : "missing";
+  if (process.env.GH_BKIT_TOKEN === undefined) return "missing";
+  if (process.env.GH_BKIT_TOKEN === "") return "empty";
+  return "present";
 }
 
 /**
@@ -77,7 +85,13 @@ export function detectVercelProject(cwd: string): boolean {
 
 /**
  * Detect whether GH_BKIT_TOKEN is present in a Vercel environment.
- * Short-circuits silently (returns null, no finding) if detectVercelProject is false.
+ *
+ * B3 Vercel CLI hang guard: pre-checks `.vercel/project.json` and SKIPS `vercel env ls`
+ * when the file is absent. Does NOT shell out unless the project file exists — this
+ * avoids the CLI login prompt / TTY hang in non-interactive CI environments.
+ *
+ * Fallback: if detectVercelProject finds vercel.json but .vercel/project.json is absent,
+ * the project is not yet linked to a Vercel deployment — skip CLI call.
  */
 export function detectVercelEnv(
   env: "preview" | "production",
@@ -86,6 +100,11 @@ export function detectVercelEnv(
   if (!detectVercelProject(cwd)) return "unknown";
   // Runtime guard: reject unexpected env values even though TypeScript narrows them.
   if (env !== "preview" && env !== "production") return "unknown";
+  // B3: Guard against `vercel env ls` hanging when the project is not linked.
+  // `.vercel/project.json` is written by `vercel link` — absent means not linked.
+  // Without this guard, `vercel env ls` blocks on a TTY login prompt in CI.
+  const vercelProjectFile = path.join(cwd, ".vercel", "project.json");
+  if (!fs.existsSync(vercelProjectFile)) return "unknown";
   try {
     const out = execFileSync("vercel", ["env", "ls", env], {
       encoding: "utf-8",
@@ -219,10 +238,12 @@ const GH_BKIT_TOKEN_UNKNOWN_ACTION =
   "Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
   "Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub repo. It is required for the seeded ci.yml install step to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
   "IMPORTANT — pnpm v7.20+ silent-ignore footgun: if GH_BKIT_TOKEN is unset in the runner environment, pnpm silently ignores the entire .npmrc file and falls back to npmjs.org. The failure appears as an opaque 401 from npmjs.org (package not found), NOT as a 'token missing' error.\n\n" +
-  "Once `gh` is installed and authenticated (`gh auth login`), verify:\n\n" +
+  "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
+  "    export GH_BKIT_TOKEN=$(gh auth token)\n\n" +
+  "Then verify the secret is set on the repo:\n\n" +
   "    gh secret list | grep GH_BKIT_TOKEN\n\n" +
   "If absent, set it:\n\n" +
-  "    gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'";
+  "    gh secret set GH_BKIT_TOKEN --body=$(gh auth token)";
 
 const VERCEL_MISSING_ACTION =
   "Ensure a .npmrc file exists at the repo root with these two lines:\n\n" +
@@ -279,6 +300,46 @@ export function formatChecklist(findings: PreflightFinding[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Changelog version-delta header (A7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the bkit CHANGELOG.md (from the package root) and extract the section
+ * header for `version`. Returns a formatted version-delta string for display
+ * in post-install output, or null if CHANGELOG.md is absent or version not found.
+ *
+ * Version header format in CHANGELOG.md: `## [X.Y.Z] — YYYY-MM-DD`
+ */
+export function readChangelogVersionDelta(version: string): string | null {
+  try {
+    // Locate CHANGELOG.md relative to this script's location (package root)
+    const scriptDir = new URL(".", import.meta.url).pathname;
+    const candidates = [
+      path.resolve(scriptDir, "..", "..", "CHANGELOG.md"), // consumer: pkg/CHANGELOG.md
+      path.resolve(scriptDir, "..", "CHANGELOG.md"), // dist/ layout
+      path.resolve("CHANGELOG.md"), // CWD fallback (producer / test)
+    ];
+    let changelogPath: string | null = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        changelogPath = p;
+        break;
+      }
+    }
+    if (!changelogPath) return null;
+    const content = fs.readFileSync(changelogPath, "utf-8");
+    // Find the header for this version
+    const versionEscaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const headerRe = new RegExp(`^## \\[${versionEscaped}\\][^\n]*`, "m");
+    const match = content.match(headerRe);
+    if (!match) return null;
+    return `[bkit] What's new in v${version}: ${match[0].replace(/^## /, "")}`;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 
@@ -301,7 +362,8 @@ export function runPostInstallCheck(
 ): PreflightFinding[] {
   if (dryRun) {
     // Dry-run: skip Phase 3; return preflight advisories only (deduped defensively).
-    return dedupeById([...preflightAdvisories]);
+    // Apply .bkitignore filter so `bkit check` exits 0 for ignored Tier-3 files.
+    return dedupeById(filterBkitIgnored([...preflightAdvisories], cwd));
   }
 
   const phase3: PreflightFinding[] = [];
@@ -312,9 +374,18 @@ export function runPostInstallCheck(
     phase3.push({
       id: "gh-bkit-token-missing-shell",
       severity: "advisory",
-      detect: "GH_BKIT_TOKEN is not set in the shell environment.",
+      detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
       action:
-        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens",
+    });
+  } else if (shellStatus === "empty") {
+    phase3.push({
+      id: "gh-bkit-token-missing-shell",
+      severity: "advisory",
+      detect:
+        'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
+      action:
+        "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset — pnpm's ${GH_BKIT_TOKEN:-} fallback will substitute empty string, which pnpm may accept or reject depending on version. Safest fix: set a real token.",
     });
   }
 
@@ -395,7 +466,8 @@ export function runPostInstallCheck(
 
   // Dedupe the incoming preflightAdvisories (ctx.advisories may contain module-emitted
   // duplicates in addition to runPreflight's already-deduped output).
-  const dedupedPreflight = dedupeById(preflightAdvisories);
+  // Apply .bkitignore filter: suppress Tier-3 drift findings for ignored files.
+  const dedupedPreflight = dedupeById(filterBkitIgnored(preflightAdvisories, cwd));
 
   // Cross-phase dedup: Phase 3 wins on conflict (remove preflight entries whose id
   // appears in Phase 3, then merge Phase 3 at the front for the winning position).
@@ -404,6 +476,39 @@ export function runPostInstallCheck(
 
   // Final order: preflight advisories (that weren't superseded) first, then Phase 3
   return [...filteredPreflight, ...deduped];
+}
+
+// ---------------------------------------------------------------------------
+// .bkitignore filter helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the file path from a Tier-3 drift finding's detect string.
+ * Tier-3 findings have detect: `${dstPath} exists and differs from the bkit reference.`
+ * Returns the path portion (before " exists and differs") or null if not a Tier-3 finding.
+ */
+function extractTier3FilePath(finding: PreflightFinding): string | null {
+  if (!finding.id.startsWith("tier3-merge-suggested-")) return null;
+  const suffix = " exists and differs from the bkit reference.";
+  if (finding.detect.endsWith(suffix)) {
+    return finding.detect.slice(0, finding.detect.length - suffix.length);
+  }
+  return null;
+}
+
+/**
+ * Filter findings array to remove Tier-3 drift findings whose file path is
+ * matched by the consumer's .bkitignore. Non-Tier-3 findings pass through.
+ * Graceful no-op if .bkitignore is absent (readBkitIgnoreFile returns []).
+ */
+export function filterBkitIgnored(findings: PreflightFinding[], cwd: string): PreflightFinding[] {
+  const rules = readBkitIgnoreFile(cwd);
+  if (rules.length === 0) return findings;
+  return findings.filter((f) => {
+    const filePath = extractTier3FilePath(f);
+    if (filePath === null) return true; // not a Tier-3 finding — always keep
+    return !isFileIgnored(filePath, rules);
+  });
 }
 
 // ---------------------------------------------------------------------------

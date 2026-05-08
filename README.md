@@ -47,6 +47,35 @@ pnpm exec bkit check --full
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
+## `__bkit__` envelope — consumer-visible behaviour (v0.8.0+)
+
+Starting v0.8.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **Tier-2 JSON deep-merge** instead of full-overwrite. bkit's managed content lives inside a `__bkit__` top-level key (the "envelope"). Consumer-added keys live **outside** `__bkit__` and survive every `bkit install` upgrade.
+
+```json
+// .claude/settings.json (v0.8.0+)
+{
+  "__bkit__": {
+    "hooks": {
+      "SessionStart": [{ "hooks": [{ "type": "command", "command": "bash .claude/hooks/preflight.sh" }] }]
+    }
+  },
+  "hooks": {
+    "SessionStart": [...],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "postflight.sh" }] }]
+  }
+}
+```
+
+**Rules:**
+
+- Consumer keys outside `__bkit__` survive every `bkit install` upgrade byte-identically.
+- `bkit install` updates **only** `__bkit__` on subsequent installs; consumer keys are never touched.
+- `__bkit__` is a **public contract** — once shipped (v0.8.0), the key name is stable.
+
+**Upgrading from v0.7.x or earlier:** `bkit install` auto-migrates existing files (no manual steps required). Consumer-added keys are preserved. Re-running is idempotent.
+
+**Rollback safety:** If a template is accidentally reverted to a pre-v0.8.0 shape (missing `__bkit__`), `bkit install` throws an explicit error instead of silently corrupting consumer files. Restore the `__bkit__` key in the template to unblock.
+
 ## Consumer CI auth
 
 bkit resolves from the **GitHub Packages npm registry**. Authentication requires:
@@ -164,6 +193,167 @@ interface PreflightFinding {
 Findings are rendered in the format `--- i/N [severity] id ---` with `DETECT:` and `ACTION:` sections — copy-paste the whole banner into a coding assistant to apply fixes in sequence.
 
 For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
+
+## Doctor
+
+`bkit doctor` is a **read-only diagnostic verb** — it runs Phase 1 preflight + Phase 3 token-surface detectors without writing any files and exits 0.
+
+```bash
+# Diagnose drift without running install
+pnpm exec bkit doctor
+```
+
+Use `bkit doctor` to:
+
+- Check whether `GH_BKIT_TOKEN` is set in the shell and on the GitHub repo.
+- Surface `bkit-version-pin-stale` advisory (installed version ahead of `.agents/.bkit-version`).
+- Preview all advisories that `bkit install` would show post-install, without triggering writes.
+- Verify the environment is ready before running `bkit install` on a new machine.
+
+`bkit doctor` always exits 0. If advisories are found they are printed in the same checklist banner format as `bkit install`. If none are found, it prints `[bkit-doctor] No advisories found.`
+
+## Uninstall
+
+`bkit uninstall` surgically removes bkit-managed content while preserving consumer customisations.
+
+```bash
+# Uninstall full stack (all modules)
+pnpm exec bkit uninstall
+
+# Preview what would be removed (no writes)
+pnpm exec bkit uninstall --dry-run
+
+# Uninstall specific modules
+pnpm exec bkit uninstall --ci --lint
+
+# Also strip managed package.json scripts/devDeps
+pnpm exec bkit uninstall --package
+
+# Force-delete Tier-3 files even if consumer modified them
+pnpm exec bkit uninstall --force
+
+# Delete ALL bkit files regardless of consumer modifications (confirm prompt)
+pnpm exec bkit uninstall --nuke
+# Skip interactive confirm:
+pnpm exec bkit uninstall --nuke --yes
+```
+
+### Tier semantics during uninstall
+
+| Tier                   | Behaviour                                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tier-1 (fully managed) | Always deleted (bkit owns 100% of the file).                                                                                                                   |
+| Tier-2 (managed-block) | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
+| Tier-3 (seed-or-print) | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
+
+### Idempotency
+
+Running `bkit uninstall` twice is safe — subsequent runs skip absent files and produce zero writes.
+
+## Phase 3 exit-1 and recovery
+
+When `bkit install` detects a **blocker-severity** finding in Phase 3 (e.g. `ci.yml` missing `GH_BKIT_TOKEN` env mapping with `.npmrc` referencing the token), it exits 1 and prints a single-line recovery command:
+
+```
+[bkit-install] 1 Phase 3 blocker(s) detected. Recovery:
+  pnpm bkit uninstall <flags> && <fix the issue> && pnpm bkit install <flags>
+```
+
+Advisories (non-blockers) are informational only and do NOT trigger exit-1.
+
+### --auto-revert
+
+Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-process when a Phase 3 blocker fires:
+
+```bash
+pnpm exec bkit install --auto-revert
+```
+
+This is useful in CI scripts where you want to guarantee a clean state on failure.
+
+## .bkitignore
+
+Create a `.bkitignore` file at your repo root to suppress `bkit check` drift for specific files or JSON keys.
+
+### Syntax
+
+- Lines starting with `#` are comments.
+- Blank lines are ignored.
+- All other lines are [picomatch](https://github.com/micromatch/picomatch) glob patterns.
+- Append `:dotted.key` to ignore a specific JSON key (opt-in, requires `BKIT_BKITIGNORE_PER_KEY=1`).
+
+### Examples
+
+```
+# Suppress ci.yml drift entirely (consumer has custom jobs)
+.github/workflows/ci.yml
+
+# Suppress all Vale style drift
+.vale/**
+
+# Suppress specific JSON key drift (requires BKIT_BKITIGNORE_PER_KEY=1)
+.claude/settings.json:hooks.Stop
+```
+
+### Per-key mode
+
+Per-key (`:dotted.key`) matching is off by default. Enable it with the env var:
+
+```bash
+BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
+```
+
+This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.
+
+## Upgrade (v0.9.0+)
+
+`bkit upgrade` diffs old vs new template content against your consumer drift and applies non-conflicting changes. Files you have modified since install are flagged as conflicts — never silently overwritten.
+
+```bash
+# Review what would change (no writes)
+pnpm exec bkit upgrade --dry-run
+
+# Upgrade non-conflicting files; show conflict list (interactive)
+pnpm exec bkit upgrade
+
+# CI-safe: auto-apply non-conflicting; exit non-zero on conflicts
+pnpm exec bkit upgrade --non-interactive
+```
+
+**Conflict behaviour:** When `bkit upgrade` detects that a managed file has consumer drift (on-disk content differs from the hash recorded at last install), it emits the conflict to stderr and does NOT overwrite the file. The conflict entry includes both the new template content and the current on-disk content — paste into a coding assistant to apply the three-way merge manually.
+
+**How drift detection works:** Each `bkit install` records a `canonicalHashes` map in `.agents/.bkit-version` — sha256 of every file bkit wrote. On upgrade, `bkit upgrade` compares the current on-disk hash to the recorded canonical hash to detect consumer modifications.
+
+**Backward compatibility:** Consumers without a `canonicalHashes` entry (installed before v0.9.0) have no recorded hash for any file. `bkit upgrade` treats these as "unknown" and does not silently overwrite them — run `bkit install` once to seed the canonical hashes before using `bkit upgrade`.
+
+## Transactional install (v0.9.0+)
+
+`bkit install` writes to a `.bkit-staging/<module>/` staging directory per module. Staged files are atomically renamed to their consumer destination only after ALL modules complete successfully.
+
+**Mid-failure guarantee:** If install crashes or is interrupted after some modules complete but before all commit, the staging directory is discarded (`discardAllStaging`). Consumer files are left byte-identical to pre-install state — no partial writes.
+
+**Rollback:** On uninstall or install failure, `.bkit-staging/` is always cleaned up. The staging root never persists in a committed consumer repo state.
+
+## Helper action: `setup-auth@v1`
+
+A GitHub Actions composite action that configures `@cbartens` npm registry auth. Replaces the multi-line bash PAT-shim in CI workflows.
+
+```yaml
+- uses: cbartens/bkit/.github/actions/setup-auth@v1
+  with:
+    token: ${{ secrets.GH_BKIT_TOKEN }}
+```
+
+**What it does:** Exports `BKIT_READ_TOKEN` into the job environment so subsequent `pnpm install` steps pick it up via the consumer's `.npmrc`:
+
+```
+@cbartens:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}
+```
+
+**Requires:** `v1` tag pointing to the merge commit of sub-plan-4. Verify resolution with `gh api repos/cbartens/bkit/git/refs/tags/v1`.
+
+> Note: The multi-line bash PAT-shim in seeded `ci.yml` is **retained** as a fallback for non-Actions CI consumers (RETAIN-WITH-REASON). Kill-date: v1.1.0.
 
 ## Documentation
 
