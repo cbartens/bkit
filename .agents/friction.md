@@ -31,42 +31,6 @@
 
 <!-- bkit:end -->
 
-## Canonical design copy lost on worktree teardown (2026-05-06)
-
-- **Category:** destructive-backout
-- **Workflow:** design
-- **Step:** 8 — Close Workflow
-- **Source:** orchestrator
-- **Description:** Step 8 instructions run `cp "$DESIGN_FINAL" "docs/plans/drafts/{FID}-design.md"` inside the worktree, then merge `feat/{FID}` → `dev` and remove the worktree. The cp creates an uncommitted working-tree change on the feature branch; if the orchestrator switches to `dev` and merges before committing the cp, the merge carries `docs/plans/logs/{FID}/` but NOT `docs/plans/drafts/{FID}-design.md`. `git worktree remove --force` then deletes the uncommitted file. Result: canonical design output silently missing on `dev`. User caught it manually.
-- **Suggested fix:** Reorder Step 8 — commit the drafts copy on the feature branch BEFORE merging to `dev` (mirrors `bkit-plan` Step 11 pattern). Add a post-merge verification check (`git show dev:docs/plans/drafts/{FID}-design.md`) before pruning the worktree, fail loud if missing. Verdict header is preserved verbatim — never strip.
-- **Related:** bar-138, commits `dcc10ad` (close-workflow on dev, missing cp), `9d939ba` (manual recreate from logs)
-- **Recovery:** Manual recreate by re-copying `docs/plans/logs/bar-138/design-v2-reviewed.md` → `docs/plans/drafts/bar-138-design.md` on `dev`.
-- **Status:** RECOVERED
-
-## Drafts filename lacks descriptive slug (2026-05-06)
-
-- **Category:** other
-- **Workflow:** design
-- **Step:** 8 — Close Workflow
-- **Source:** orchestrator
-- **Description:** Step 8 instructs `cp "$DESIGN_FINAL" "docs/plans/drafts/{FID}-design.md"` — produces filenames like `bar-138-design.md` with no topic slug. Inconsistent with `bar-120-managed-agents-runtime-plan.md` precedent in `docs/plans/drafts/`. Forces readers to open every file to know what it is. User had to ask for a manual rename post-merge.
-- **Suggested fix:** Update Step 8 cp target to include a topic slug: `docs/plans/drafts/{FID}-{slug}-design.md`, where `{slug}` is the same kebab token already derived in Step 2 from Linear title (≤3 tokens, no stopwords). The `FID` derivation in Step 2 already produces `{issue-id}-{slug}` (e.g. `bar-138-gh-packages-distribution`); reusing that gives `{FID}-design.md` = `bar-138-gh-packages-distribution-design.md` for free IF Step 2 actually carries the slug into FID. Audit: in this run, `FID` resolved to bare `bar-138` (slug dropped), so Step 2's FID derivation is also part of the gap.
-- **Related:** bar-138, commits `9d939ba` (initial generic name), `d237a9d` (manual rename to descriptive slug)
-- **Recovery:** Manual `git mv docs/plans/drafts/bar-138-design.md → bar-138-gh-packages-distribution-design.md`.
-- **Status:** RECOVERED
-
-## Plan-workflow drafts filename also lacks descriptive slug (2026-05-06)
-
-- **Category:** other
-- **Workflow:** plan
-- **Step:** 11 — Close Workflow
-- **Source:** orchestrator
-- **Description:** Step 11 cp target `docs/plans/drafts/{FID}-plan.md` mirrors the design-side bug — produces `bar-138-plan.md` (and `bar-138-plan-1.md`, `bar-138-plan-2.md` for splits) with no topic slug, while the precedent in `docs/plans/drafts/` is `bar-120-managed-agents-runtime-plan.md`. Same FID-derivation root cause as the design-side entry above.
-- **Suggested fix:** Same as design-side fix — Step 1 FID derivation should produce `{issue-id}-{slug}` (e.g. `bar-138-gh-packages-distribution`); then `docs/plans/drafts/{FID}-plan.md` resolves to `bar-138-gh-packages-distribution-plan.md` for free. Apply the fix once at the FID-derivation step in `.agents/workflows/*` and BOTH design and plan close-workflow steps benefit.
-- **Related:** bar-138, plan workflow drafts: `docs/plans/drafts/bar-138-plan.md`, `bar-138-plan-1.md`, `bar-138-plan-2.md`.
-- **Recovery:** Files moved from `docs/plans/drafts/bar-138-plan*.md` → `docs/plans/active/bar-138-gh-packages-distribution-plan*.md` with full slug during build worktree-setup step. Slug-less naming is a workflow authoring gap for future runs.
-- **Status:** RECOVERED
-
 ## Plan-execute agent returned PENDING verdict after ~20min (2026-05-06)
 
 - **Category:** agent-rework
@@ -102,4 +66,27 @@
 - **Suggested fix:** Workflow Step 2 should detect conflict shape and offer guidance: (1) for `docs/knowledge.md` KN-{N} numeric collisions, auto-renumber feature branch's contested IDs by next-available-greater integer + grep for cross-references; (2) for `.agents/templates/*` vs `.agents/*` design conflicts, prefer the more recent decision direction (latest commit on either side wins, with the user-confirmed preference recorded as a one-line memory check); (3) on rebase abort, write a `ship-rebase-conflict-{N}.md` summary so the next session can pick up. Also: 50-commit feat branches should have triggered an early "rebase regularly" advisory during build, not deferred all conflicts to ship.
 - **Related:** bar-131-related-bars-suite, BAR-131, conflicts vs commits 188b1c6 / 54805f3 / 83d69fc / 1e9f131, KN-12 / KN-13, `.husky/pre-push`
 - **Recovery:** Manually resolved all 5 conflict commits in-place during ship Step 2; renumbered feature's KN-9/KN-10 to KN-12/KN-13 (no cross-references found via `git grep`); reverted template auto-merge to keep `pnpm bkit check` outside markers (per auto-memory "bkit-repo dev pain vs consumer pain — don't conflate"); force-with-lease pushed rebased branch; CI run #25538826802 green.
+- **Status:** RECOVERED
+
+## bkit-build-challenge subagent budget exhaustion (BAR-93 re-run) (2026-05-08)
+
+- **Repo:** app-gether-life
+- **FID:** bar-93-members-colours-tagging
+- **Step:** 9 (Build Challenge)
+- **Symptom:** Subagent ran 59 tool calls / 108k tokens / 226s and returned without writing the verdict — `build-challenge.md` ended at `Verdict: PENDING`.
+- **Recovery:** Restored prior `build-challenge.md` from git (commit `02100959`); the diff on this branch is identical to the prior run's, so the 9 findings still apply.
+- **Status:** Workaround applied; Step 10 (challenge-remediate) will address the 4 CRITICAL/HIGH findings.
+- **Pattern:** Independent-review subagents on diffs > ~2k lines may need a more focused brief (probe specific risk areas, not full freeform review) to fit within budget.
+
+## Subagent context exhaustion on large plan-execute (2026-05-06)
+
+- **Category:** agent-rework
+- **Workflow:** build
+- **Step:** 5 — Plan Execute (sub-plan 1/1)
+- **Source:** bkit-build-plan-execute
+- **Repo:** visitfrasercoast-com
+- **Description:** Sub-plan 1 (31 tasks, bootstrap monorepo from app-gether-life) is the largest single sub-plan in the project. Each agent invocation hit context limits mid-execution (cutoffs at Task 1.14, Task 1.19, Task 1.21) and returned without writing the log file. Orchestrator had to re-invoke 3 times with explicit "resume from Task N" prompts before the log file was produced. Root cause: 31 tasks × source-copy + file-create operations each consume significant context; a single agent invocation is insufficient for this scope. Same pattern repeated on plan-verify (cutoff mid-checklist update, required 2 continuations).
+- **Suggested fix:** (1) Break plan-execute for plans with >20 tasks into task-range invocations (e.g. "Tasks 1–15", "Tasks 16–31") at orchestrator level; re-join into single log. (2) Add task-range parameter to bkit-build-plan-execute prompt template. (3) Alternatively, enforce sub-plan task cap of ≤15 at plan-generate time.
+- **Related:** bar-102-digital-agent-mvp, BAR-132, sub-plan 1 (31 tasks)
+- **Recovery:** 3× manual re-invocations of bkit-build-plan-execute with explicit resume-task context. Build continued successfully.
 - **Status:** RECOVERED
