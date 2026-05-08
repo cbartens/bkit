@@ -77,7 +77,7 @@ export function getPkgRoot() {
 // These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
 // ---------------------------------------------------------------------------
 // Top-level template directories/files that belong to core (not other modules)
-const CORE_TEMPLATE_DIRS = new Set(["docs"]);
+const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents"]);
 // Top-level template files (non-directory) that belong to core
 const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore"]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
@@ -126,10 +126,13 @@ function runCoreTemplates(dryRun, pkgRoot, tokens, ws, logPrefix) {
             processCoreTemplateDir(srcPath, name, dryRun, tokens, ws, logPrefix);
         }
     }
-    // Note: .agents/ subtemplates in templates/.agents/ are intentionally NOT processed here.
-    // They are handled by copyAdditive (which copies PKG_AGENTS → consumer .agents/ additively).
-    // Processing them here would cause dry-run parity issues since copyAdditive skips existing files
-    // in live mode but runCoreTemplates would re-record them in dry-run mode.
+    // Note: `.agents/` subtemplates in `templates/.agents/` ARE processed here
+    // (via CORE_TEMPLATE_DIRS) so that their managed block is sourced from the
+    // template — NOT from bkit's own dogfood `.agents/*.md` (which carries
+    // bkit-specific out-of-block content like `### bkit Repo Authoring`). These
+    // basenames are listed in COPY_EXCLUDE so copyAdditive does not race the
+    // templates pass for the same destination paths (would double-record in
+    // dry-run mode otherwise).
 }
 function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) {
     const tag = dryRun ? "[dry-run] " : "";
@@ -158,7 +161,22 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
 // never source of truth. Including it would pollute consumer `.agents/` and
 // break the dry-run/install parity check (postDispatch suppresses its own
 // write when the file already matches pkgVersion).
-const COPY_EXCLUDE = new Set(["skills", "scripts", "README.md", ".bkit-version"]);
+//
+// Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded
+// because they ship as templates under `.agents/templates/.agents/` and are
+// installed by the templates pass. Copying them here additively would dump
+// bkit's own out-of-block content (e.g. bkit's `## Project Rules` body in
+// `rules.md`, bkit's friction-log entries) onto consumers on first install.
+const COPY_EXCLUDE = new Set([
+    "skills",
+    "scripts",
+    "README.md",
+    ".bkit-version",
+    "rules.md",
+    "friction.md",
+    "docs.md",
+    "skills.md",
+]);
 // Top-level `.agents/` files that bkit owns end-to-end (no managed-block, no
 // consumer edits). copyAdditive's default skip-if-exists semantics are wrong
 // for these — a stale consumer copy left over from a prior version causes

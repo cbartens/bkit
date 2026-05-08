@@ -110,46 +110,15 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 
 ---
 
-## Distribution
+## Distribution & install
 
-bkit is distributed as a **scoped package via the GitHub Packages npm registry** (`https://npm.pkg.github.com`). Consumers install via:
+Consumer-facing install, auth (`GH_BKIT_TOKEN` / `.npmrc` / GHA / Vercel), and CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) live in the root [`README.md`](../README.md).
 
-```bash
-pnpm add -D @cbartens/bkit@^0.4.0
-```
+The `.agents/` directory is **canonical**. `bkit install` regenerates host-specific outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across the consumer repo.
 
-Auth requires a **classic PAT with `read:packages` scope** (fine-grained PATs are currently rejected by GHPR npm registry — see README § Consumer CI auth) set as `GH_BKIT_TOKEN`, plus `.npmrc` at the repo root:
+### Dogfood path (this repo only)
 
-```
-@cbartens:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
-```
-
-No git-clone, no `onlyBuiltDependencies` allowlist needed. The seeded `prepare: husky install` script in consumers is a managed bkit addition (see § Three-tier file ownership) — bkit also seeds the `husky` devDep so `pnpm install` resolves the binary on first run. See `README.md` § Consumer CI auth and § Consumer Vercel auth for full setup.
-
-## Install / regenerate
-
-The `.agents/` directory is canonical. `bkit install` regenerates the host-specific outputs and rewrites bkit-managed blocks across the repo.
-
-In a consumer repo (after `pnpm add -D @cbartens/bkit@^0.4.0`):
-
-```bash
-# Full install — all modules (core + claude + cursor + ci + lint + git-hooks)
-pnpm exec bkit install
-
-# Selective install — only specified modules + core (implicit)
-pnpm exec bkit install --claude         # .claude/** + core
-pnpm exec bkit install --ci --lint      # CI + lint stack + core
-pnpm exec bkit install --cursor         # .cursor/** + core
-pnpm exec bkit install --full           # all modules (same as no flags)
-
-# Drift detection — exits non-zero on drift (CI gate)
-pnpm exec bkit check --full
-```
-
-> **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
-
-In **this repo** (bkit's own dogfood — runs the script directly via tsx, not the bin):
+bkit's own repo runs the install script directly via `tsx` instead of the published bin:
 
 ```bash
 pnpm tsx .agents/scripts/bkit-install.ts install
