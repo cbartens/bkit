@@ -7,9 +7,16 @@ import {
   writeTier1,
   writeTier2,
   writeTier3,
+  writeTier2Json,
+  deepMergeJson,
+  extractBkitNamespace,
+  applyBkitNamespace,
+  migrateTier1JsonToTier2,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
+  stripManagedBlock,
   type WriteSet,
+  type JsonValue,
 } from "./bkit-tiers";
 
 // ---------------------------------------------------------------------------
@@ -487,5 +494,419 @@ describe("ensurePackageJsonDevDeps", () => {
     const result = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, false, ws2);
     expect(result.added).toEqual([]);
     expect(ws2.writes).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// stripManagedBlock — pure-string transform (P2.T2)
+// ---------------------------------------------------------------------------
+
+describe("stripManagedBlock — html-comment markers", () => {
+  it("removes the managed block and marker lines from content", () => {
+    const content =
+      "# Consumer heading\n\n<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n\nConsumer footer.\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).not.toContain("<!-- bkit:start -->");
+    expect(result).not.toContain("bkit content");
+    expect(result).not.toContain("<!-- bkit:end -->");
+    expect(result).toContain("Consumer heading");
+    expect(result).toContain("Consumer footer.");
+  });
+
+  it("returns content unchanged when markers are absent", () => {
+    const content = "# Consumer heading\n\nConsumer content.\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("returns content unchanged when markers are duplicated (safety guard)", () => {
+    const content =
+      "<!-- bkit:start -->\na\n<!-- bkit:end -->\n<!-- bkit:start -->\nb\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("returns content unchanged when markers are inverted (safety guard)", () => {
+    const content = "<!-- bkit:end -->\ncontent\n<!-- bkit:start -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+
+  it("is idempotent — calling twice produces same result", () => {
+    const content =
+      "Consumer content.\n\n<!-- bkit:start -->\nbkit managed\n<!-- bkit:end -->\n\nMore consumer.\n";
+    const first = stripManagedBlock(content, "html-comment");
+    const second = stripManagedBlock(first, "html-comment");
+    expect(second).toBe(first);
+  });
+
+  it("strips block when content only contains the managed block", () => {
+    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).not.toContain("bkit content");
+    expect(result.trim()).toBe("");
+  });
+
+  it("preserves consumer content above AND below the block", () => {
+    const content =
+      "above content\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n\nbelow content\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("above content");
+    expect(result).toContain("below content");
+    expect(result).not.toContain("bkit block");
+  });
+});
+
+describe("stripManagedBlock — hash-comment markers", () => {
+  it("removes hash-comment managed block from YAML/shell files", () => {
+    const content =
+      "# consumer preamble\n\n# bkit:start\nbkit-step: true\n# bkit:end\n\n# consumer footer\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).not.toContain("# bkit:start");
+    expect(result).not.toContain("bkit-step: true");
+    expect(result).not.toContain("# bkit:end");
+    expect(result).toContain("# consumer preamble");
+    expect(result).toContain("# consumer footer");
+  });
+
+  it("returns content unchanged when hash markers are absent", () => {
+    const content = "# consumer yaml\nstep: true\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip html-comment block when style is hash-comment", () => {
+    const content = "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
+    const result = stripManagedBlock(content, "hash-comment");
+    expect(result).toBe(content);
+  });
+
+  it("does not strip hash-comment block when style is html-comment", () => {
+    const content = "# bkit:start\nbkit content\n# bkit:end\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toBe(content);
+  });
+});
+
+describe("stripManagedBlock — whitespace handling (BAR-138 lesson)", () => {
+  it("does not use greedy whitespace regex — only removes the managed block region", () => {
+    // Regression guard: greedy whitespace between markers would eat consumer content
+    const content =
+      "line1\nline2\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n\nline3\nline4\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("line1");
+    expect(result).toContain("line2");
+    expect(result).toContain("line3");
+    expect(result).toContain("line4");
+    expect(result).not.toContain("bkit block");
+  });
+
+  it("handles marker with no blank lines around it", () => {
+    const content = "above\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\nbelow\n";
+    const result = stripManagedBlock(content, "html-comment");
+    expect(result).toContain("above");
+    expect(result).toContain("below");
+    expect(result).not.toContain("bkit");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deepMergeJson — JSON merge primitive (P3.T1)
+// Six .claude/settings.json cases from the Derived Test Matrix
+// ---------------------------------------------------------------------------
+
+describe("deepMergeJson", () => {
+  it("(1) primitives: override wins over base", () => {
+    expect(deepMergeJson("old", "new")).toBe("new");
+    expect(deepMergeJson(1, 2)).toBe(2);
+    expect(deepMergeJson(true, false)).toBe(false);
+    expect(deepMergeJson("x", null)).toBeNull();
+  });
+
+  it("(2) arrays: override replaces base entirely (no concat)", () => {
+    const base: JsonValue = ["a", "b"];
+    const override: JsonValue = ["c"];
+    expect(deepMergeJson(base, override)).toEqual(["c"]);
+  });
+
+  it("(3) objects: merge recursively; override keys win; base keys retained", () => {
+    const base: JsonValue = { a: 1, b: { x: 10, y: 20 } };
+    const override: JsonValue = { b: { y: 99 }, c: 3 };
+    const result = deepMergeJson(base, override) as Record<string, JsonValue>;
+    expect(result.a).toBe(1);
+    expect((result.b as Record<string, JsonValue>).x).toBe(10);
+    expect((result.b as Record<string, JsonValue>).y).toBe(99);
+    expect(result.c).toBe(3);
+  });
+
+  it("(4) array inside object: override array replaces base array (not concat)", () => {
+    const base: JsonValue = { hooks: ["sessionStart", "sessionStop"], other: "keep" };
+    const override: JsonValue = { hooks: ["sessionStart"] };
+    const result = deepMergeJson(base, override) as Record<string, JsonValue>;
+    expect(result.hooks).toEqual(["sessionStart"]);
+    expect(result.other).toBe("keep");
+  });
+
+  it("(5) claude settings.json case: consumer Stop hook survives bkit SessionStart update", () => {
+    const base: JsonValue = {
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "old-preflight.sh" }] }],
+        Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
+      },
+    };
+    const override: JsonValue = {
+      hooks: {
+        SessionStart: [{ hooks: [{ type: "command", command: "new-preflight.sh" }] }],
+      },
+    };
+    const result = deepMergeJson(base, override) as Record<string, JsonValue>;
+    const hooksResult = result.hooks as Record<string, JsonValue>;
+    expect(hooksResult["Stop"]).toBeDefined();
+    const sessionStart = hooksResult["SessionStart"] as Array<Record<string, JsonValue>>;
+    expect(JSON.stringify(sessionStart)).toContain("new-preflight.sh");
+  });
+
+  it("(6) null base with object override: override wins wholesale", () => {
+    expect(deepMergeJson(null, { a: 1 })).toEqual({ a: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractBkitNamespace + applyBkitNamespace (P3.T2)
+// ---------------------------------------------------------------------------
+
+describe("extractBkitNamespace", () => {
+  it("returns the __bkit__ envelope when present", () => {
+    const doc = { __bkit__: { hooks: { SessionStart: [] } }, other: "key" };
+    const result = extractBkitNamespace(doc as Record<string, JsonValue>);
+    expect(result).not.toBeNull();
+    expect(result!.hooks).toBeDefined();
+  });
+
+  it("returns null when __bkit__ is absent", () => {
+    const doc = { hooks: { SessionStart: [] } };
+    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  });
+
+  it("returns null when __bkit__ is null", () => {
+    const doc = { __bkit__: null };
+    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  });
+
+  it("returns null when __bkit__ is an array (not a plain object)", () => {
+    const doc = { __bkit__: [1, 2, 3] };
+    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  });
+});
+
+describe("applyBkitNamespace", () => {
+  it("returns { ...consumer, __bkit__: bkitPayload }", () => {
+    const consumer = { hooks: { Stop: [] }, other: "value" };
+    const payload = { hooks: { SessionStart: [] } };
+    const result = applyBkitNamespace(
+      consumer as Record<string, JsonValue>,
+      payload as Record<string, JsonValue>,
+    );
+    expect(result.__bkit__).toEqual(payload);
+    expect(result.other).toBe("value");
+    expect((result as Record<string, JsonValue>).hooks).toEqual({ Stop: [] });
+  });
+
+  it("replaces existing __bkit__ envelope", () => {
+    const consumer = { __bkit__: { old: true }, hooks: { Stop: [] } };
+    const newPayload = { hooks: { SessionStart: [] } };
+    const result = applyBkitNamespace(
+      consumer as Record<string, JsonValue>,
+      newPayload as Record<string, JsonValue>,
+    );
+    expect(result.__bkit__).toEqual(newPayload);
+  });
+
+  it("does NOT mutate consumer", () => {
+    const consumer = { hooks: { Stop: [] } };
+    const payload = { hooks: {} };
+    const consumerCopy = JSON.parse(JSON.stringify(consumer)) as Record<string, JsonValue>;
+    applyBkitNamespace(consumer as Record<string, JsonValue>, payload as Record<string, JsonValue>);
+    expect(consumer).toEqual(consumerCopy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// writeTier2Json — idempotent round-trip + throw on missing envelope (P3.T3)
+// ---------------------------------------------------------------------------
+
+describe("writeTier2Json", () => {
+  it("writes template when dest is absent", () => {
+    const src = path.join(tmpDir, "settings.json");
+    const dst = path.join(tmpDir, ".claude", "settings.json");
+    const template = {
+      __bkit__: { hooks: { SessionStart: [{ type: "command" }] } },
+      $schema: "https://example.com/schema.json",
+    };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2Json(src, dst, false, ws);
+
+    expect(fs.existsSync(dst)).toBe(true);
+    const written = JSON.parse(fs.readFileSync(dst, "utf-8"));
+    expect(written.__bkit__).toBeDefined();
+    expect(ws.writes).toHaveLength(1);
+    expect(ws.writes[0]!.action).toBe("write");
+  });
+
+  it("deep-merges: consumer keys preserved; __bkit__ from template wins", () => {
+    const src = path.join(tmpDir, "settings.json");
+    const dst = path.join(tmpDir, "settings-out.json");
+    const template = {
+      __bkit__: { hooks: { SessionStart: [{ command: "new-preflight.sh" }] } },
+    };
+    const existing = {
+      __bkit__: { hooks: { SessionStart: [{ command: "old-preflight.sh" }] } },
+      hooks: { Stop: [{ command: "postflight.sh" }] },
+      customKey: "consumer-value",
+    };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    fs.writeFileSync(dst, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2Json(src, dst, false, ws);
+
+    const result = JSON.parse(fs.readFileSync(dst, "utf-8"));
+    // __bkit__ updated from template
+    expect(result.__bkit__.hooks.SessionStart[0].command).toBe("new-preflight.sh");
+    // consumer keys preserved
+    expect(result.hooks.Stop).toBeDefined();
+    expect(result.customKey).toBe("consumer-value");
+    expect(ws.writes).toHaveLength(1);
+    expect(ws.writes[0]!.action).toBe("update");
+  });
+
+  it("is idempotent: no write when merged result equals on-disk content", () => {
+    const src = path.join(tmpDir, "settings.json");
+    const dst = path.join(tmpDir, "settings-out.json");
+    const template = {
+      __bkit__: { hooks: { SessionStart: [] } },
+    };
+    const existing = {
+      __bkit__: { hooks: { SessionStart: [] } },
+      hooks: { Stop: [] },
+    };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    // Write existing as the expected merged output
+    const merged = { ...existing, __bkit__: template.__bkit__ };
+    fs.writeFileSync(dst, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2Json(src, dst, false, ws);
+
+    expect(ws.writes).toHaveLength(0); // idempotent — no write
+  });
+
+  it("THROWS when template is missing __bkit__ envelope (rollback safety)", () => {
+    const src = path.join(tmpDir, "settings.json");
+    const dst = path.join(tmpDir, "settings-out.json");
+    // Template without __bkit__ — simulates rollback to pre-v0.8.0
+    const template = { hooks: { SessionStart: [] } };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    expect(() => writeTier2Json(src, dst, false, ws)).toThrow(/missing the __bkit__ envelope/);
+  });
+
+  it("dry-run: records write in WriteSet without touching disk", () => {
+    const src = path.join(tmpDir, "settings.json");
+    const dst = path.join(tmpDir, "dry-out.json");
+    const template = { __bkit__: { hooks: { SessionStart: [] } } };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2Json(src, dst, true, ws);
+
+    expect(fs.existsSync(dst)).toBe(false);
+    expect(ws.writes).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// migrateTier1JsonToTier2 — versioned defaults SoT migration (P3.T6)
+// ---------------------------------------------------------------------------
+
+describe("migrateTier1JsonToTier2", () => {
+  it("migrates .claude/settings.json without __bkit__ (v0.5.0 on-disk version)", () => {
+    const filePath = path.join(tmpDir, "settings.json");
+    // Simulate a consumer file written by bkit v0.5.0 (Tier-1, no __bkit__)
+    const tier1Content = {
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
+      hooks: {
+        SessionStart: [
+          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
+        ],
+        Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
+      },
+    };
+    fs.writeFileSync(filePath, JSON.stringify(tier1Content, null, 2) + "\n", "utf-8");
+
+    const changed = migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0");
+
+    expect(changed).toBe(true);
+    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    // __bkit__ envelope now present
+    expect(result.__bkit__).toBeDefined();
+    // bkit-owned keys moved under __bkit__
+    expect(result.__bkit__.hooks).toBeDefined();
+    expect(result.__bkit__.hooks.SessionStart).toBeDefined();
+    // Consumer Stop hook preserved at top level (outside __bkit__)
+    expect(result.hooks).toBeDefined();
+    expect(result.hooks.Stop).toBeDefined();
+  });
+
+  it("is idempotent: re-running on already-migrated file returns false (no write)", () => {
+    const filePath = path.join(tmpDir, "settings-migrated.json");
+    const alreadyMigrated = {
+      __bkit__: { hooks: { SessionStart: [] } },
+      hooks: { Stop: [] },
+    };
+    fs.writeFileSync(filePath, JSON.stringify(alreadyMigrated, null, 2) + "\n", "utf-8");
+
+    const changed = migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0");
+
+    expect(changed).toBe(false);
+    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    // Content unchanged
+    expect(result).toEqual(alreadyMigrated);
+  });
+
+  it("returns false when file does not exist", () => {
+    const filePath = path.join(tmpDir, "nonexistent.json");
+    expect(migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0")).toBe(false);
+  });
+
+  it("returns false for pre-0.5.0 version (0.4.1) — no registered defaults", () => {
+    const filePath = path.join(tmpDir, "old-settings.json");
+    fs.writeFileSync(filePath, JSON.stringify({ hooks: { SessionStart: [] } }), "utf-8");
+    expect(migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.4.1")).toBe(false);
+  });
+
+  it("migrates .cursor/hooks.json with consumer failClosed field preserved", () => {
+    const filePath = path.join(tmpDir, "hooks.json");
+    const tier1Content = {
+      hooks: [
+        { event: "sessionStart", command: "echo '[bkit] session started'" },
+        { event: "sessionStop", command: "echo '[bkit] session stopped'" },
+      ],
+      failClosed: true,
+      loop_limit: 5,
+    };
+    fs.writeFileSync(filePath, JSON.stringify(tier1Content, null, 2) + "\n", "utf-8");
+
+    const changed = migrateTier1JsonToTier2(filePath, ".cursor/hooks.json", "0.5.0");
+
+    expect(changed).toBe(true);
+    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    expect(result.__bkit__).toBeDefined();
+    // Consumer fields preserved outside envelope
+    expect(result.failClosed).toBe(true);
+    expect(result.loop_limit).toBe(5);
   });
 });

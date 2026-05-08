@@ -7,7 +7,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeTier1, writeTier2, writeTier3, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeTier3, writeTier2Json, migrateTier1JsonToTier2, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 // ---------------------------------------------------------------------------
 // Helpers
@@ -249,20 +250,47 @@ export function runCoreModule(ctx) {
     // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).
+    // C3 fix: write JSON format with canonicalHashes populated from ws.writes (fully populated
+    // by the time postDispatch runs — all modules have completed). canonicalHashes records the
+    // sha256 of each bkit-managed consumer file as written, enabling drift detection on upgrade.
     postDispatch.push(() => {
-        let needsVersionWrite = !fs.existsSync(versionFile);
-        if (!needsVersionWrite) {
-            const existing = fs.readFileSync(versionFile, "utf-8").trim();
-            if (existing !== pkgVersion)
-                needsVersionWrite = true;
+        // Read existing file to check whether an update is needed.
+        const existingVersion = readBkitVersion(versionFile);
+        const tier3Hashes = existingVersion?.tier3Hashes ?? {};
+        const existingCanonical = existingVersion?.canonicalHashes ?? {};
+        // Build new canonicalHashes entries from ws.writes (files written in this run).
+        // ws.writes is fully populated by the time postDispatch runs.
+        // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
+        const newCanonicalEntries = {};
+        for (const entry of ws.writes) {
+            const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
+            const relPath = path.relative(cwd, absPath);
+            if (relPath === path.join(".agents", ".bkit-version"))
+                continue;
+            if (relPath.startsWith(".agents" + path.sep))
+                continue;
+            if (!fs.existsSync(absPath))
+                continue;
+            const hash = hashFile(absPath);
+            if (hash)
+                newCanonicalEntries[relPath] = hash;
         }
-        if (needsVersionWrite) {
-            if (!dryRun) {
-                fs.mkdirSync(target, { recursive: true });
-                fs.writeFileSync(versionFile, pkgVersion + "\n", "utf-8");
-            }
+        // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
+        const canonicalHashes = {
+            ...existingCanonical,
+            ...newCanonicalEntries,
+        };
+        // Decide whether a write is needed: version mismatch, first install, or new canonical entries.
+        const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
+        const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
+        const needsWrite = versionChanged || hasNewEntries;
+        if (needsWrite) {
             console.log(`${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
             ws.writes.push({ path: versionFile, action: "write" });
+            if (!dryRun) {
+                fs.mkdirSync(target, { recursive: true });
+                writeBkitVersion(versionFile, { pinnedVersion: pkgVersion, tier3Hashes, canonicalHashes });
+            }
         }
     });
     // 5. First-run extra logging (only when .bkit-version was absent at start of install)
@@ -282,7 +310,7 @@ export function runCoreModule(ctx) {
                 "   - See README.md ## Consumer CI auth for full setup.\n\n" +
                 "2. Add a `.npmrc` at your repo root so pnpm can authenticate to GH Packages:\n" +
                 "     @cbartens:registry=https://npm.pkg.github.com\n" +
-                "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
+                "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN:-}\n\n" +
                 "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
                 "prepare) are auto-added by bkit when their parent module installs. Run\n" +
@@ -315,11 +343,33 @@ export function runClaudeModule(ctx) {
             console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
         }
     }
-    // Tier 1 — fully managed: settings.json + preflight hook
     const PKG_ROOT = getPkgRoot();
     const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
+    // Tier 2 JSON — deep-merge: settings.json (reclassified from Tier-1 in v0.8.0)
+    // Auto-migrate from Tier-1 shape (no __bkit__ envelope) before writing.
+    const settingsSrc = path.join(claudeTemplates, "settings.json");
+    const settingsDst = ".claude/settings.json";
+    if (fs.existsSync(settingsSrc)) {
+        // Run migration first (idempotent if already migrated)
+        const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
+        if (fs.existsSync(versionFile) && !dryRun) {
+            const parsed = readBkitVersion(versionFile);
+            const onDiskVersion = parsed?.pinnedVersion ?? "";
+            if (onDiskVersion) {
+                const migrated = migrateTier1JsonToTier2(settingsDst, ".claude/settings.json", onDiskVersion);
+                if (migrated) {
+                    console.log(`${logPrefix} ${tag}claude: ${settingsDst} (migrated Tier-1 → Tier-2)`);
+                }
+            }
+        }
+        const prevLen = ws.writes.length;
+        writeTier2Json(settingsSrc, settingsDst, dryRun, ws);
+        if (ws.writes.length > prevLen) {
+            console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
+        }
+    }
+    // Tier 1 — fully managed: preflight hook (remains Tier-1)
     const tier1Files = [
-        [path.join(claudeTemplates, "settings.json"), ".claude/settings.json"],
         [path.join(claudeTemplates, "hooks", "preflight.sh"), ".claude/hooks/preflight.sh"],
     ];
     for (const [src, dst] of tier1Files) {
@@ -372,11 +422,32 @@ export function runCursorModule(ctx) {
             console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
         }
     }
-    // Tier 1 — fully managed: hooks.json, preflight, shared rules
+    // Tier 2 JSON — deep-merge: hooks.json (reclassified from Tier-1 in v0.8.0)
     const PKG_ROOT = getPkgRoot();
     const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
+    const hooksSrc = path.join(cursorTemplates, "hooks.json");
+    const hooksDst = ".cursor/hooks.json";
+    if (fs.existsSync(hooksSrc)) {
+        // Auto-migrate from Tier-1 shape before writing
+        const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
+        if (fs.existsSync(versionFile) && !dryRun) {
+            const parsed = readBkitVersion(versionFile);
+            const onDiskVersion = parsed?.pinnedVersion ?? "";
+            if (onDiskVersion) {
+                const migrated = migrateTier1JsonToTier2(hooksDst, ".cursor/hooks.json", onDiskVersion);
+                if (migrated) {
+                    console.log(`${logPrefix} ${tag}cursor: ${hooksDst} (migrated Tier-1 → Tier-2)`);
+                }
+            }
+        }
+        const prevLen = ws.writes.length;
+        writeTier2Json(hooksSrc, hooksDst, dryRun, ws);
+        if (ws.writes.length > prevLen) {
+            console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
+        }
+    }
+    // Tier 1 — fully managed: preflight, shared rules (remain Tier-1)
     const tier1Files = [
-        [path.join(cursorTemplates, "hooks.json"), ".cursor/hooks.json"],
         [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
         [
             path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
@@ -446,7 +517,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   1. Ensure a .npmrc file exists at the repo root with these two lines:
 
         @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN:-}
 
      Commit this .npmrc file — the CI runner reads it during pnpm install.
 

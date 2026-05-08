@@ -77,17 +77,29 @@
 - **Recovery:** Re-invoked `@bkit-build-plan-execute` with explicit context listing what was already done. Second invocation completed in ~4min and produced valid PASS verdict.
 - **Status:** RECOVERED
 
-## CI failure after rebase — Prettier on generated mirror files (2026-05-06)
+<!-- bkit:end -->
 
-- **Category:** other
-- **Workflow:** ship
-- **Step:** 2 — Worktree Setup
-- **FID:** bar-141-preflight-checklist
-- **Source:** orchestrator
-- **Description:** After rebasing `feat/bar-141-preflight-checklist` onto `origin/dev` (which included bar-143 `bkit install` mirror regeneration), CI failed Prettier format:check on `.claude/agents/bkit-design-organise.md` and `.cursor/agents/bkit-design-organise.md`. These files were added by bar-143's `bkit install` run but not Prettier-formatted before commit. The project rules say NEVER edit `.claude/*` or `.cursor/*` directly, but the only fix was running `pnpm prettier --write` on those two files.
-- **Suggested fix:** `bkit install` should run `prettier --write` on all generated mirror files before reporting "install complete", or the install output should be checked against Prettier before the [skip ci] mirror-regen commit lands on dev. Alternatively, add `.claude/` and `.cursor/` to `.prettierignore`.
-- **Related:** bar-141-preflight-checklist, bar-143-design-organise commit `42e93b3`, CI run 25430358129
-- **Recovery:** Ran `pnpm prettier --write .claude/agents/bkit-design-organise.md .cursor/agents/bkit-design-organise.md` in worktree, committed, pushed. CI passed on retry.
+## bkit-plan-generate stream-timeout on multi-issue plan input (2026-05-06)
+
+- **Category:** tool-failure
+- **Workflow:** plan
+- **Step:** 3 — Generate Plan
+- **Source:** bkit-plan-generate
+- **Description:** Subagent ran ~8 min / 43 tool uses on 32KB `plan-input.md` covering BAR-131/139/142 and hit `API Error: Stream idle timeout - partial response received`. No output file produced.
+- **Suggested fix:** When unified plan input >25KB or covers >2 Linear issues, orchestrator should split generate-plan into per-phase invocations (one subagent call per phase) and concatenate, OR have the subagent write incrementally with periodic flushes. Consider a `plan-input-size` advisory in workflow Step 3.
+- **Related:** bar-131-related-bars-suite, BAR-131, BAR-139, BAR-142
+- **Recovery:** Retried with focused/incremental-write prompt (skip codebase deep-dive, write skeleton + per-phase tables, save after each section). Retry succeeded.
 - **Status:** RECOVERED
 
-<!-- bkit:end -->
+## Multi-conflict rebase on long-lived feat branch — manual resolution loop (2026-05-08)
+
+- **Category:** human-confirm
+- **Workflow:** ship
+- **Step:** 2 — Worktree Setup
+- **FID:** bar-131-related-bars-suite
+- **Source:** orchestrator
+- **Description:** `git rebase origin/dev` on a 50-commit feature branch produced 5 sequential conflict commits across `docs/knowledge.md` (twice — KN-8 widening then KN-9/KN-10 collision with parallel BAR-146 entries needing renumber to KN-12/KN-13), `docs/deployments.md` (incoming "Consumer scope" bullet vs HEAD's two new sub-sections), `.agents/rules.md` (incoming Pre-push Checklist subsection vs HEAD's narrower bullets), `.husky/pre-push` + `.agents/templates/.husky/pre-push` (architectural divergence: feat branch put `pnpm bkit check` INSIDE bkit-managed block thus pushing to consumers; HEAD's recent `1e155ff` chose bkit-repo-only outside markers). Workflow Step 2 only says `git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }` — it has no semantic guidance on how to resolve, no auto-renumber for collision-prone IDs (KN-{N}), and no preference between competing template designs.
+- **Suggested fix:** Workflow Step 2 should detect conflict shape and offer guidance: (1) for `docs/knowledge.md` KN-{N} numeric collisions, auto-renumber feature branch's contested IDs by next-available-greater integer + grep for cross-references; (2) for `.agents/templates/*` vs `.agents/*` design conflicts, prefer the more recent decision direction (latest commit on either side wins, with the user-confirmed preference recorded as a one-line memory check); (3) on rebase abort, write a `ship-rebase-conflict-{N}.md` summary so the next session can pick up. Also: 50-commit feat branches should have triggered an early "rebase regularly" advisory during build, not deferred all conflicts to ship.
+- **Related:** bar-131-related-bars-suite, BAR-131, conflicts vs commits 188b1c6 / 54805f3 / 83d69fc / 1e9f131, KN-12 / KN-13, `.husky/pre-push`
+- **Recovery:** Manually resolved all 5 conflict commits in-place during ship Step 2; renumbered feature's KN-9/KN-10 to KN-12/KN-13 (no cross-references found via `git grep`); reverted template auto-merge to keep `pnpm bkit check` outside markers (per auto-memory "bkit-repo dev pain vs consumer pain — don't conflate"); force-with-lease pushed rebased branch; CI run #25538826802 green.
+- **Status:** RECOVERED

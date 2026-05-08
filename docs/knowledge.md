@@ -109,21 +109,93 @@
 - **Category:** infra
 - **Symptom:** Local pre-commit/pre-push hooks pass green (`typecheck`, `test`, `format:check`, `lint:slop`, `lint:prose`) but CI's `run-tests` job fails on the very first step "Verify dist/ is fresh" with a giant unified diff showing `dist/*.js` is missing the latest source changes.
 - **Root cause:** Pre-commit/pre-push hooks invoke `tsc --noEmit` (typecheck only) and `vitest run` (no compile). They do NOT run `pnpm build`. CI runs `pnpm build && git diff --exit-code dist/` to ensure shipped artefacts match source. Source-only commits leave `dist/` stale; CI catches it.
-- **Fix or rule:** Any TS edit under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit. Or move `pnpm build` into the pre-push hook to make this automatic. Hit during BAR-141 PR #5: commit `edbd891` failed the dist/ check; commit `7ab6bff` regenerated dist and unblocked CI.
+- **Fix or rule:** Any TS edit under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit. Hook-level enforcement landed in BAR-131 PR #7 — `.husky/pre-push` now runs `pnpm check:dist` (source-repo only, outside the bkit:start..bkit:end block so `bkit install` doesn't strip it), so a stale dist/ now fails the push locally rather than waiting for CI. Fired twice before enforcement: BAR-141 PR #5 (commit `edbd891` broke, `7ab6bff` fixed) and BAR-131/139/142 PR #7 (~2.6k lines of new TS across 13 files with zero dist/ updates; required a separate rebuild commit). Recurrence motivated the hook upgrade.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** phase
-- **Related:** BAR-141, PR #5, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`
+- **Related:** BAR-141, BAR-131, PR #5, PR #7, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`, `docs/deployments.md` § Pre-push checklist
 
-## KN-8: Tier-1 full-overwrite is unsafe for consumer-extensible config files (2026-05-06)
+## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07)
 
 - **Category:** agentic
-- **Symptom:** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
-- **Root cause:** Both files ship as Tier-1 (full-overwrite) in `bkit-modules.ts`. Consumers legitimately add their own hook events (e.g. `hooks.Stop`) alongside bkit's `hooks.SessionStart` — full-overwrite has no awareness of consumer additions and silently destroys them on every install.
-- **Fix or rule:** Default rule — any file where the schema permits multiple top-level entries AND consumers commonly add their own keys must be Tier-2 (managed-block: bkit owns only the marker-delimited region). Tier-1 is reserved for files bkit fully owns end-to-end (e.g. `vale.ini`, slop-scan config). Mitigated in BAR-141 PR #5 by `detectHooksConfigOverwriteRisk` (preflight blocker — exits 1 if non-default content detected). Long-term Tier-1 → Tier-2 refactor for these two files tracked separately.
+- **Symptom (original):** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
+- **Root cause:** Both files shipped as Tier-1 (full-overwrite) in `bkit-modules.ts`. Consumers legitimately add their own hook events alongside bkit's `hooks.SessionStart` — full-overwrite silently destroys them on every install.
+- **Fix or rule (v0.8.0+):** Any JSON file where the schema permits multiple top-level entries AND consumers commonly add their own keys MUST be Tier-2 JSON deep-merge via `__bkit__` envelope (`writeTier2Json`). Tier-1 is reserved for files bkit fully owns end-to-end (e.g. `vale.ini`, slop-scan config). The `__bkit__` top-level key is the public contract (v0.8.0): bkit's shipped values live there; consumer keys live outside. `writeTier2Json` THROWS when template lacks `__bkit__` (rollback safety). Migration (`migrateTier1JsonToTier2`) auto-lifts pre-v0.8.0 installs; consults `BKIT_TIER1_DEFAULTS_BY_VERSION`. `detectHooksConfigOverwriteRisk` DELETED in v0.8.0 — architecturally redundant once `__bkit__` is canonical SoT. Markers-as-SoT (BAR-138 lesson) applies to text files; `__bkit__` envelope applies to JSON files.
 - **Type:** pattern
 - **Confidence:** high
 - **Severity:** critical
 - **Source:** phase
-- **Related:** BAR-141, PR #5, `.agents/scripts/bkit-modules.ts` (cursor + claude module functions), `.agents/scripts/bkit-preflight.ts` (`detectHooksConfigOverwriteRisk`), Gether install findings comment on Linear BAR-141
+- **Related:** BAR-141, BAR-142 §A1, PR #5, `.agents/scripts/bkit-modules.ts` (cursor + claude module functions), `.agents/scripts/bkit-tiers.ts` (`writeTier2Json`, `migrateTier1JsonToTier2`), `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`, DE-7, DE-8, Gether install findings comment on Linear BAR-141
+
+## KN-9: .bkit-version migration reads must use readBkitVersion().pinnedVersion (2026-05-07)
+
+- **Category:** agentic
+- **Symptom:** `migrateTier1JsonToTier2` receives a full JSON string (e.g. `{"pinnedVersion":"0.8.0",...}`) instead of a semver string when `.bkit-version` is in v0.7.x+ JSON format. `semverLte` returns false for the JSON blob, silently skipping the Tier-1 → Tier-2 migration.
+- **Root cause:** The claude and cursor modules in `bkit-modules.ts` read `.bkit-version` with `fs.readFileSync(...).trim()` before the fix. This works for v0.6.x plain-text format but yields the full JSON string for v0.7.x+. `migrateTier1JsonToTier2` uses the value in a semver comparison — a JSON blob fails the comparison silently.
+- **Fix or rule:** Always read `.bkit-version` via `readBkitVersion(path).pinnedVersion` (or `parseBkitVersion(content).pinnedVersion`) — never with raw `readFileSync(...).trim()`. The helper handles all schema versions (v0.6.x plain-text, v0.7.x+ JSON) and returns null for absent/empty files.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-131, build-challenge C1, `.agents/scripts/bkit-modules.ts` (claude + cursor migration paths), `.agents/scripts/bkit-version.ts` (`readBkitVersion`)
+
+## KN-10: bkit install never populated canonicalHashes until after first upgrade (2026-05-07)
+
+- **Category:** agentic
+- **Symptom:** After `bkit install`, `.bkit-version` had `canonicalHashes: {}`. On `bkit upgrade`, `isConsumerModified` always returned `false` for all paths (no recorded hashes), so drift detection was ineffective until after the first upgrade pass populated the hashes.
+- **Root cause:** `writeBkitVersion` was only called from `bkit-upgrade.ts:updateCanonicalHashesAfterUpgrade`. The `runCoreModule` postDispatch wrote `.bkit-version` with `fs.writeFileSync(versionFile, pkgVersion + "\n")` — plain text, no canonicalHashes. Consumer key survival was preserved by `writeTier2Json` deep-merge semantics regardless, but drift detection via `canonicalHashes` was broken on fresh installs.
+- **Fix or rule:** The postDispatch in `runCoreModule` now uses `writeBkitVersion` (JSON format) and populates `canonicalHashes` from `ws.writes` entries (files written in this run, excluding `.agents/` internal paths). The write is guarded: only when pinnedVersion changed or new canonical entries were recorded (preserves idempotence — 3rd run of install produces zero writes).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-131, build-challenge C3, `.agents/scripts/bkit-modules.ts` (`runCoreModule` postDispatch), `.agents/scripts/bkit-version.ts` (`writeBkitVersion`)
+
+## KN-11: PR `statusCheckRollup` stays empty when `[skip ci]` is HEAD on push (2026-05-08)
+
+- **Category:** agentic
+- **Symptom:** PR opens with no Actions runs visible — `gh pr view --json statusCheckRollup` returns empty. Ship Step 2's CI fail-fast gate (`if ANY failures → Failure Path`) admits the PR despite no actual CI verification. First observed on PR #7 (BAR-131 consumer-friction suite) — CI only triggered after manually pushing an empty commit without `[skip ci]`.
+- **Root cause:** GitHub suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` (or `[skip actions]`). Build's Step 15 summary push left `summary status [skip build] [skip ci]` as remote HEAD, so when `gh pr create` opened the PR (Step 16), no `pull_request` event fired. Same shape in debug Step 7 summary push, which would overwrite a previously-clean HEAD (e.g. push-remediation) with `[skip ci]` and silently empty the PR's rollup. Build Step 17 / debug Step 11 close-workflow commits also never reached remote — there was no explicit `git push` in either step.
+- **Fix or rule:** Final commit before `git push` in build / debug close-workflow renamed to `chore({FID}): close-workflow status trigger CI` (no skip tags). Explicit `git push` added to close-workflow (also fixes the missing-push side bug). Ship Step 3 already used `gh pr merge --body ""` (empty body strips `[skip ci]` from the squash subject). Identical gate phrasing across all three workflows: `HEAD on remote does NOT contain [skip ci]`. Codified in `.agents/rules.md` § Git block as "Last push to PR / `dev` (validated): HEAD MUST NOT contain `[skip ci]`."
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-146, BAR-131 (PR #7 first observation), `.agents/workflows/bkit-build.md` Step 17, `.agents/workflows/bkit-debug.md` Step 11, `.agents/workflows/bkit-ship.md` Step 3 + Gate 3, `.agents/workflows.md` § CI / Vercel commit tags
+
+## KN-12: Transactional install via staging dir — zero-overwrite mid-failure guarantee (2026-05-07)
+
+- **Category:** agentic
+- **Symptom (design goal):** A crash mid-install (after some modules write but before all complete) would leave partial consumer files in place — no way to distinguish "partial bkit write" from "consumer customisation".
+- **Root cause:** Pre-v0.9.0, modules wrote directly to consumer destinations. Any error after the first module's writes left a partially-updated consumer repo with no rollback path.
+- **Fix or rule:** v0.9.0+ staging contract: (1) Each module writes to `.bkit-staging/<module>/` (not the real destination). (2) After ALL modules complete, `commitStaging` renames staged files to consumer destinations (atomic per file). (3) On any error (throw, crash, SIGTERM), `discardAllStaging` removes `.bkit-staging/` entirely — consumer files untouched. Test this contract: seed consumer files, simulate mid-install failure via `discardAllStaging`, assert consumer files byte-identical to pre-install state (`fs.readFileSync` equality).
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-142 §A4, DE-9, `.agents/scripts/bkit-install.ts` (`getStagingDir`, `commitStaging`, `discardAllStaging`), `.agents/scripts/bkit-install.integration.test.ts` (Scenario 9)
+
+## KN-13: `canonicalHashes` vs `tier3Hashes` — distinct purposes, shared schema (2026-05-07)
+
+- **Category:** agentic
+- **Symptom (design clarification):** Two sha256 hash maps in `.agents/.bkit-version` serve different purposes; conflating them causes logic errors.
+- **Root cause / design:** `tier3Hashes` (v0.7.x+): hash of Tier-3 file content AT install time → used by `bkit uninstall` to decide safe-delete (hash match = bkit installed it, no consumer edit → delete; mismatch = consumer edited → preserve). `canonicalHashes` (v0.9.x+): hash of EVERY bkit-managed file content at install time → used by `bkit upgrade` to detect consumer drift (hash mismatch = consumer modified since install → conflict, do not overwrite).
+- **Fix or rule:** Do NOT use `tier3Hashes` for upgrade drift detection (it only covers Tier-3; Tier-1/Tier-2 also need drift detection). Do NOT use `canonicalHashes` for uninstall safe-delete (it covers all files; safe-delete semantics are Tier-3-only). Keep them separate.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-142 §A5, DE-10, `.agents/scripts/bkit-version.ts` (`BkitVersion` interface), `.agents/scripts/bkit-upgrade.ts`
+
+## KN-14: Helper-action additions to seeded templates are additive, not replacement (2026-05-07)
+
+- **Category:** agentic
+- **Symptom:** Four assertions in `templates.test.ts` and `bkit-install.test.ts` fail — substring `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` not found in seeded `ci.yml` template.
+- **Root cause:** Sub-plan P4.T8 added `cbartens/bkit/.github/actions/setup-auth@v1` to `.agents/templates/.github/workflows/ci.yml` but simultaneously deleted the inline `env: GH_BKIT_TOKEN` block under `Install Dependencies`. The plan marked that block RETAIN-WITH-REASON (kill-date v1.1.0). The implementer treated the composite action as a replacement, not an addition.
+- **Fix or rule:** When a sub-plan adds a composite GitHub Action alongside an existing inline auth pattern that is marked RETAIN-WITH-REASON in the Supersession Inventory, the inline pattern MUST be preserved verbatim until its declared kill-date. The addition is strictly additive. After editing any seeded `.agents/templates/.github/workflows/*.yml` file, re-run `pnpm vitest run .agents/scripts/templates.test.ts .agents/scripts/bkit-install.test.ts` and regenerate the snapshot with `-u`.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-131, BAR-138, `.agents/templates/.github/workflows/ci.yml`, `bar-131-related-bars-suite-plan-4.md` §P4.T8, `build-failure-diagnose-1.md`

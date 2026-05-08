@@ -57,9 +57,9 @@
 - **Docs-only commits:** Append `[skip build] [skip ci]`. Do NOT push alone — batch with next code push.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
-- **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
+- **Pre-push:** Run all CI gates locally first — see `docs/deployments.md` "Pre-push checklist" for the project's gate list. `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
-- **CI:** NEVER manually trigger; pushes auto-trigger.
+- **CI:** Pushes auto-trigger; NEVER manually trigger - final push to PR / `dev` HEAD MUST NOT contain `[skip ci]`.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
 

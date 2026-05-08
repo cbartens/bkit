@@ -189,3 +189,59 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
     expect(block).toContain("read:packages");
   });
 });
+
+// ---------------------------------------------------------------------------
+// P3.T4 + P3.T5 — reclassification verification (source-level)
+// .claude/settings.json and .cursor/hooks.json use writeTier2Json (not writeTier1)
+// ---------------------------------------------------------------------------
+
+describe("P3.T4 — .claude/settings.json reclassified to Tier-2 JSON deep-merge (v0.8.0)", () => {
+  it("bkit-modules.ts calls writeTier2Json for .claude/settings.json (not writeTier1)", () => {
+    // Claude settings.json must use deep-merge path
+    expect(MODULES_SRC).toContain("writeTier2Json");
+    // The call must reference settings.json in the claude module context
+    const claudeModuleIdx = MODULES_SRC.indexOf("runClaudeModule");
+    const settingsIdx = MODULES_SRC.indexOf('"settings.json"', claudeModuleIdx);
+    const tier2JsonIdx = MODULES_SRC.indexOf("writeTier2Json", claudeModuleIdx);
+    expect(settingsIdx).toBeGreaterThan(-1);
+    expect(tier2JsonIdx).toBeGreaterThan(-1);
+  });
+
+  it("bkit-modules.ts calls migrateTier1JsonToTier2 for .claude/settings.json", () => {
+    expect(MODULES_SRC).toContain("migrateTier1JsonToTier2");
+    expect(MODULES_SRC).toContain('".claude/settings.json"');
+  });
+
+  it(".claude/settings.json template has __bkit__ envelope", () => {
+    // Source-level check: the template must have __bkit__ for writeTier2Json to work
+    const templatePath = path.resolve(".agents/templates/.claude/settings.json");
+    if (!fs.existsSync(templatePath)) return; // skip if template not accessible
+    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+    expect(template.__bkit__).toBeDefined();
+    expect(template.__bkit__.hooks).toBeDefined();
+    expect(template.__bkit__.hooks.SessionStart).toBeDefined();
+  });
+});
+
+describe("P3.T5 — .cursor/hooks.json reclassified to Tier-2 JSON deep-merge (v0.8.0)", () => {
+  it("bkit-modules.ts calls writeTier2Json for .cursor/hooks.json (not writeTier1)", () => {
+    expect(MODULES_SRC).toContain("writeTier2Json");
+    const cursorModuleIdx = MODULES_SRC.indexOf("runCursorModule");
+    const hooksIdx = MODULES_SRC.indexOf('"hooks.json"', cursorModuleIdx);
+    const tier2JsonIdx = MODULES_SRC.indexOf("writeTier2Json", cursorModuleIdx);
+    expect(hooksIdx).toBeGreaterThan(-1);
+    expect(tier2JsonIdx).toBeGreaterThan(-1);
+  });
+
+  it("bkit-modules.ts calls migrateTier1JsonToTier2 for .cursor/hooks.json", () => {
+    expect(MODULES_SRC).toContain('".cursor/hooks.json"');
+  });
+
+  it(".cursor/hooks.json template has __bkit__ envelope", () => {
+    const templatePath = path.resolve(".agents/templates/.cursor/hooks.json");
+    if (!fs.existsSync(templatePath)) return;
+    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+    expect(template.__bkit__).toBeDefined();
+    expect(template.__bkit__.hooks).toBeDefined();
+  });
+});

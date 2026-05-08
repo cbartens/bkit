@@ -10,7 +10,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Tiers strictly separated — Unit · Integration · E2E · Smoke.
-> - Pre-push runs lint/typecheck/unit only; integration and E2E excluded. NEVER `--no-verify`.
+> - Pre-push runs typecheck + unit tests + `bkit check`; integration and E2E excluded. NEVER `--no-verify`.
 
 <!-- bkit:end -->
 
@@ -37,8 +37,36 @@ bkit's CI must catch any hard-fail that a downstream consumer would hit on `pnpm
 1. **Unit test** of the failure branch (positive: bad input → exit). Cheap regression guard.
 2. **Smoke spawn test** of `bkit install --full` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.agents/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
+4. **Phase 3 blocker exit-1 + recovery test** — Scenario 6 (exit 1 with recovery line) + Scenario 7 (`--auto-revert` calls `runUninstall` in-process before exit). v0.7.0+.
+5. **Mid-failure rollback test** — Scenario 9: simulate failure after first module commit; assert consumer files byte-identical to pre-install state via `discardAllStaging` (KN-12). v0.9.0+.
 
-The smoke test (#2) is the load-bearing one — it would have caught BAR-141 v0.5.0's `Missing model lookup for bkit-design-organise` regression before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
+## Heavy-customised consumer fixture
+
+`tests/fixtures/heavy-customised-consumer/` is committed and consumed by:
+
+- `bkit-uninstall.surgical.integration.test.ts` — round-trip uninstall preserves consumer content byte-identically.
+- `bkit-modules.upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook + `failClosed` + `loop_limit` keys survive `__bkit__` Tier-2 deep-merge.
+- `bkit-upgrade.integration.test.ts` — drift detection against `canonicalHashes`; `--non-interactive` exits non-zero on conflicts.
+
+When adding new bkit-managed file types or new Tier-2 envelope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
+
+## Test files added in v0.6.x → v1.0
+
+| File | Tier | Scope |
+| --- | --- | --- |
+| `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay. |
+| `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — Tier 1/2/3 decision matrix, dry-run, idempotency, `--nuke`. |
+| `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`. |
+| `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
+| `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
+| `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
+| `bkit-tier1-defaults.test.ts` | Unit | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION). |
+| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version Tier-1 → Tier-2 migration (consumer key survival). |
+| `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
+| `bkit-action-yaml.test.ts` | Unit | Offline YAML parse of `.github/actions/setup-auth/action.yml` (no network). |
+| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
+
+The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
 
 ## Spawning `bkit` from tests
 

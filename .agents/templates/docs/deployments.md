@@ -9,6 +9,6 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Pre-push runs lint/typecheck/format/unit tests; never `--no-verify`.
+> - Pre-push runs the project's gate set locally (see "Pre-push checklist" below); never `--no-verify`.
 
 <!-- bkit:end -->

@@ -187,7 +187,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-review-1` | Feasibility research with `WebFetch`/`WebSearch`; ecosystem search per capability; writes review log. |
 | `bkit-design-review-2` | Same as `-1`; runs in parallel with cross-tier model diversity. |
 | `bkit-design-update` | Apply CRITICAL + consensus-OPTIONAL items from both reviews; whole-doc rewrite of design. |
-| `bkit-design-organise` | Decompose `design-v2-reviewed.md` into dependency-annotated workstreams (`WS-1`, `WS-2`, …); inline `dependsOn` per workstream + dependency graph table; `FAIL` if cycles detected. |
+| `bkit-design-organise` | Decompose `design-v2-reviewed.md` into dependency-annotated workstreams (`WS-1`, `WS-2`, …); inline `Requires` per workstream; `FAIL` if cycles detected. Workflow Step 9 (`design-workstream-issues`) consumes this output to spawn one Linear sub-issue per `WS-N` with `blockedBy` edges. |
 | `bkit-design-summary` | Read-only verdict on design doc + spike. |
 
 ## Plan Phase
@@ -195,7 +195,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | Agent | Scope |
 | --- | --- |
-| `bkit-plan-generate` | Read design + template + docs → write new plan draft. |
+| `bkit-plan-generate` | Read design + template + docs → write new plan draft. Workstream contract: if input includes `**Workstream:**` directive, plan covers ONLY that workstream's `## Scope` content unless stated otherwise; surface `**Requires:**` at top of plan. |
 | `bkit-plan-review-1` | Read-only critique; effort slot 1 (`high`). Parallel with `-2`. |
 | `bkit-plan-review-2` | Same scope, effort slot 2 (`medium`). |
 | `bkit-plan-scope-check-1` | Internal-completeness scope audit; effort slot 1 (`high`). |
@@ -214,8 +214,8 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-build-plan-execute` | Execute plan tasks sequentially; modify source; write stub artifact first then incremental `## Task Log` entries. Does NOT tick plan checkboxes (verify owns that). |
 | `bkit-build-plan-verify` | Verify implementation vs plan; writes Plan Verification log. Ticks plan `[ ]`→`[x]` for every task whose codebase artifact is verified. |
 | `bkit-build-plan-gaps-remediate` | Fix specific gaps from latest verify log; Standard/Pivot/Final escalation. |
-| `bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`; writes findings. |
-| `bkit-build-challenge-remediate` | Apply challenge fixes in priority order; runs lint/typecheck/test. |
+| `bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`; writes findings, each tagged `class: mechanical|architectural`. |
+| `bkit-build-challenge-remediate` | Classify-gate (data-driven on `class`): any architectural → `FAIL` (no fixes; BLOCKED entries logged); else apply mechanical fixes in priority order; runs lint/typecheck/test. |
 | `bkit-build-challenge-tests` | Add edge-case tests for changed files; runs lint/typecheck/test. |
 | `bkit-build-summary` | Read-only verdict on build outcome. |
 

@@ -17,7 +17,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 
 ```
 .agents/workflows/
-├── bkit-design.md         # Workflow 1/5 — 9 steps; hard stop after summary
+├── bkit-design.md         # Workflow 1/5 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/5 — 11 steps; hard stop after summary
 ├── bkit-build.md          # Workflow 3/5 — 17 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 8 steps; PR-debug or normal-debug mode
@@ -289,7 +289,10 @@ Every transformation step writes ONE new versioned file in `docs/plans/logs/{FID
 | `design-generate` | `design-v1-draft.md` | versioned draft |
 | `design-review-1`, `design-review-2` | `design-review-1.md`, `design-review-2.md` | opinion-only log |
 | `design-apply-review` | `design-v2-reviewed.md` | versioned draft |
-| `close-workflow` (copy) | `drafts/{FID}-design.md` | canonical (copy of v2) |
+| `design-organise` | `design-v3-organised.md` | versioned draft |
+| `summary` | `design-summary.md` | summary-only |
+| `design-workstream-issues` | (Linear sub-issues + `blockedBy` edges) | side-effect only — no file deliverable |
+| `close-workflow` (copy) | `drafts/{FID}-design.md` | canonical (copy of v3) |
 
 **Versioned chain — plan** (`drafts/{FID}-plan.md` is the canonical artifact; populated only at close):
 
@@ -395,7 +398,7 @@ Then assert each Update/Create artifact exists and is non-empty. Empty → **Fai
 | Agent | Verdict values | Routing |
 | --- | --- | --- |
 | `@bkit-build-plan-verify` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → next sub-plan or Step 8; `CONCERNS`/`FAIL` → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` = 3 → Failure Path). |
-| `@bkit-build-challenge` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 12; `CONCERNS` → Step 10 (`@bkit-build-challenge-remediate`) → Step 11 (tests); `FAIL` → Failure Path (CRITICAL, not addressable in-loop). |
+| `@bkit-build-challenge` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → re-Step 9; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical|architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
 | `@bkit-design-review-1` / `-2` | `PASS` / `CONCERNS` / `FAIL` | `REVIEW_VERDICT` = worst-of-two. `PASS`/`CONCERNS` → Step 6 apply-review; `FAIL` → Failure Path (design fundamentally not viable, human reframe required). |
 | `@bkit-design-update` | `PASS` / `CONCERNS` / `FAIL` | All paths continue to Step 7 design-organise; CRITICAL items applied, OPTIONAL applied on consensus, OUT-OF-SCOPE deferred. |
 | `@bkit-design-organise` | `PASS` / `CONCERNS` / `FAIL` | `PASS`/`CONCERNS` → Step 8 summary; `FAIL` → Failure Path (cycles detected, human review required). |
@@ -440,7 +443,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 Each subsection below documents what command actually does — step list, subagents invoked, artifacts written, verdict routing, close behavior. For agent capability and effort details, cross-reference `.agents/prompts.md`.
 
-### `/bkit-design` — 9 steps
+### `/bkit-design` — 10 steps
 
 **Goal:** design doc only. No plan, no code. Always hard-stops after summary for human review (do NOT invoke `/bkit-plan`).
 
@@ -455,9 +458,12 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `docs({FID}): design complete [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 9 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Add `Review` label, `In Review`. |
+| 9 — Design Workstream Issues | — | `design-v3-organised.md` | Linear sub-issues + `blockedBy` edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: `list_issues({ parentId })` → existing match → `save_comment` sync (body untouched); else `save_issue({ parentId, title: "WS-N: …", description: … })` with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: `save_issue({ blockedBy })` per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
+| 10 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Add `Review` label, `In Review`. |
 
-**Hard stop in Step 9 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
+**Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
+
+**Step 9 contract:** sub-issue body carries everything `/bkit-plan` needs — no Linear labels, no `WS_ID` parameter, no parent-shape detection. The two markdown markers (`**Parent design:**`, `**Workstream:**`) are load-bearing and parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract (workstream scope). The `**Parent design:**` value is wrapped as a markdown link (`[docs/plans/drafts/{FID}-design.md](URL)`) — display text is the canonical bare path so plan's parser can extract the slug. `Requires:` translates 1:1 to Linear `blockedBy` edges so `/bkit-build` Step 1.6's existing `relations.blocked_by` gate enforces ordering — no new build-side gate needed. Re-runs are non-destructive: existing sub-issue bodies/titles are never rewritten (only sync comments appended); orphaned sub-issues stay open with a `## Workstream Delete` notification comment. Even single-workstream designs spawn one sub-issue; design and plan never share an FID.
 
 ### `/bkit-plan` — 11 steps
 
@@ -466,8 +472,8 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Set label `Plan`, `In Progress`. |
-| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` includes session prompt + Linear description + comments + `{FID}-design.md` (if exists). |
+| 1 — Start Workflow | — | Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` (sub-issue case); **else** leave empty (standalone plan run on issue input alone). |
+| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + Linear description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. |
 | 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template). Writes `plan-generate.md` log + `docs/plans/drafts/{FID}-plan.md`. |
 | 4 — Review Plan | `@bkit-plan-review-1` ‖ `@bkit-plan-review-2` (parallel) | Effort diversity; both write critique logs. |
 | 5 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. |
@@ -489,18 +495,18 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Set label `Build`, `In Progress`. Check `relations.blocked_by` — non-Done blockers → Failure Path. Plan must exist (drafts/ or active/) — else Failure Path with `Build requires plan.` |
+| 1 — Start Workflow | — | Set label `Build`, `In Progress`. Check `relations.blocked_by` — any blocker not in `{Done, Cancelled}` → Failure Path with `Blocked by {BLOCKER_ID}`. Plan must exist (drafts/ or active/) — else Failure Path with `Build requires plan.` |
 | 2 — Worktree Setup | — | `mv docs/plans/drafts/{FID}-*.md docs/plans/active/`. Init `SUB_COUNT`, `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1. `build-input.md` includes the active plan. |
 | 3 — Branch Sync | — | `git fetch origin`; if `git log HEAD..origin/dev --oneline -- docs/` non-empty → merge `origin/dev` (prefer `dev` for `docs/` conflicts). |
 | 4 — Skills | `@bkit-build-install-skills` _(skip if input contains `[skills=false]`)_ | If new skills installed → commit `chore({FID}): install skills [skip build] [skip ci]`. |
-| 5 — Execute Plan | `@bkit-build-plan-execute` | Per sub-plan N: `build-plan-execute-N-log.md`. Single-attempt; writes stub-first then incremental `DONE` / `BLOCKED` log entries via `Bash echo >>`; writes source. Does NOT modify the sub-plan markdown — checkbox ticking is verify's job (BAR-137: 3/3 BAR-130 plan-execute runs timed out during the per-task `Edit`-tick phase after impl was done). On timeout (`EXECUTE_VERDICT = PENDING`), no in-Step retry — the verify→remediate loop (Step 6 → Step 7, bounded by `MAX_VERIFY_ATTEMPT` = 3) absorbs the recovery via `bkit-build-plan-gaps-remediate`. `EXECUTE_VERDICT`: `PASS` → Step 6. Other → Failure Path. |
+| 5 — Execute Plan | `@bkit-build-plan-execute` | Per sub-plan N: `build-plan-execute-N-log.md`. Single-attempt; writes stub-first then incremental `DONE` / `BLOCKED` log entries via `Bash echo >>`; writes source. Does NOT modify the sub-plan markdown — checkbox ticking is verify's job (per-task `Edit`-tick phase after impl is done is a known timeout vector; verify absorbs recovery). On timeout (`EXECUTE_VERDICT = PENDING`), no in-Step retry — the verify→remediate loop (Step 6 → Step 7, bounded by `MAX_VERIFY_ATTEMPT` = 3) absorbs the recovery via `bkit-build-plan-gaps-remediate`. `EXECUTE_VERDICT`: `PASS` → Step 6. Other → Failure Path. |
 | 6 — Verify Plan | `@bkit-build-plan-verify` | Per sub-plan N, attempt-numbered: `build-plan-verify-N-{VERIFY_ATTEMPT}.md`. Reads glob of execute attempts' `DONE —` lines to cross-reference against `git diff`; ticks plan `[ ]`→`[x]` only when codebase artifact verified (NEVER on `DONE —` claim alone). `VERIFY_VERDICT` ∈ {PASS, CONCERNS, FAIL}. `PASS` → next N or Step 8. `CONCERNS` / `FAIL` → Step 7. Reads prior verify and remediate logs to know what was already verified. |
 | 7 — Remediate Gaps | `@bkit-build-plan-gaps-remediate` _(only if Step 6 CONCERNS or FAIL)_ | Attempt-numbered: `build-plan-gaps-remediate-N-{VERIFY_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per gap fixed; `BLOCKED —` per blocked gap, appended via `Bash echo >>`); reads glob of own prior attempts to skip already-fixed gaps. Increment `VERIFY_ATTEMPT`; re-run Step 6. > `MAX_VERIFY_ATTEMPT` → Failure Path. |
 | 8 — Holistic Verification | `@bkit-build-plan-verify` (holistic mode) _(only if `SUB_COUNT` >= 2)_ | Cross-sub-plan integration check; writes `build-plan-verify-holistic.md`. `HOLISTIC_VERDICT` `FAIL` → Failure Path. |
-| 9 — Challenge Build | `@bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`. Large-diff guard: > 10 000 lines → per-file budget mode (top 20 files, 500 lines each, capped at 50 000 total; flag `partial` in report). `CHALLENGE_VERDICT`: `PASS` → Step 12; `CONCERNS` → Step 10; `FAIL` → Failure Path. |
-| 10 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 9 CONCERNS)_ | Apply challenge fixes. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding, appended via `Bash echo >>`). Single-attempt artifact — no skip-done glob. |
-| 11 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 9 CONCERNS)_ | Add edge-case tests from verify + challenge findings. |
-| 12 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (BAR-137 / BAR-130: bkit itself is a single-package repo, plain `pnpm turbo` exited with `Command "turbo" not found`). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 15. `FAIL` → Step 13 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
+| 9 — Challenge Build | `@bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`. Each finding tagged `class: mechanical|architectural`. Large-diff guard: > 10 000 lines → per-file budget mode (top 20 files, 500 lines each, capped at 50 000 total; flag `partial` in report). `CHALLENGE_VERDICT`: `PASS` → Step 12. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. After Step 11 (when `CHALLENGE_VERDICT` was FAIL), re-runs Step 9. |
+| 10 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits `FAIL` (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). Verdict `PASS` / `CONCERNS` / `FAIL`. |
+| 11 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 9 (safety net; counter already incremented in Step 10); else falls through to Step 12. |
+| 12 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 15. `FAIL` → Step 13 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
 | 13 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 12 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. Add `Debug: Build` label. |
 | 14 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 12 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 12. > `MAX_TEST_ATTEMPT` → Failure Path. |
 | 15 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
@@ -640,9 +646,10 @@ Tool names (only these are used):
 <!-- prettier-ignore -->
 | Tool | Purpose |
 | --- | --- |
-| `get_issue` | `{ id: "XXX-123" }` → `state`, `labels`, `description`, `relations` |
+| `get_issue` | `{ id: "XXX-123", includeRelations: true }` → `state`, `labels`, `description`, `relations` (`includeRelations: true` required when `relations` field is consumed — `/bkit-build` Step 1.6) |
 | `list_comments` | `{ issueId, orderBy: "createdAt desc", limit: 250 }` |
-| `save_issue` | `{ id, state, labels }` (or `{ title, description, team, assignee, state, labels }` to create) |
+| `list_issues` | `{ parentId: "XXX-123", limit: 250 }` (used by `/bkit-design` Step 9 to enumerate workstream sub-issues) |
+| `save_issue` | `{ id, state, labels, blockedBy, parentId }` (or `{ title, description, team, assignee, state, labels, parentId }` to create). `blockedBy` is append-only — re-runs are no-ops for unchanged edges. |
 | `save_comment` | `{ issueId, body }` to create, `{ id, body }` to edit |
 
 ### Phase labels (mutually exclusive)
@@ -686,7 +693,7 @@ ONE comment per workflow run; Step 1 creates it, every later step appends. See �
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` extracts `relations.blocked_by` from `get_issue`. Any blocker whose state is not `Done` or `Cancelled` → Failure Path with `Blocked by {ISSUE_ID}`.
+`/bkit-build` Step 1.6 calls `get_issue({ id, includeRelations: true })` and extracts `relations.blocked_by`. Any blocker whose state is not `Done` **and** not `Cancelled` → Failure Path with `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})` (the offending blocker's id, not the current issue's). Workstream sub-issues spawned by `/bkit-design` Step 9 set `blockedBy` per their `Requires` line, so this gate also enforces workstream ordering — no separate workstream-aware gate exists.
 
 ## GitHub Integration
 
@@ -750,6 +757,19 @@ Precedence: `[force build]` on head commit wins.
 | `docs({FID}): archive cleanup` (ship Step 8) | `[skip build] [skip ci]` |
 | `docs({FID}): {phase} aborted` (Failure Path handover) | `[skip build] [skip ci]` |
 | `fix({FID}): debug attempt N/MAX` (debug Step 6) | none — must trigger CI |
+| `chore({FID}): close-workflow status trigger CI` (build Step 17, debug Step 11) | none — final HEAD on push, fires `pull_request` synchronize |
+
+**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `[skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject.
+
+<!-- prettier-ignore -->
+| Workflow | Step | Mechanic | Why this form |
+| --- | --- | --- | --- |
+| `/bkit-build` | 17 (close-workflow) | Final commit renamed `chore({FID}): close-workflow status trigger CI`, no skip tags + `git push` | Drops `[skip ci]` from the existing status commit; final commit before push fires PR `pull_request` synchronize |
+| `/bkit-debug` | 11 (close-workflow) | Final commit renamed `chore({FID}): close-workflow status trigger CI`, no skip tags + `git push` | Same form as build — single commit doubles as status update + CI trigger |
+| `/bkit-ship` | 3 (merge-pr) | `gh pr merge --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `[skip ci]` from the squash subject. Followed by CI-trigger verification gate (`gh run list` captures `RUN_ID`) |
+| `/bkit-ship` | 8 (archive) | Keeps `[skip build] [skip ci]` on archive push to `dev` | Post-merge docs-only; PR is already merged, dev's CI was already fired by Step 3, no re-trigger needed |
+
+All intermediate workflow commits (start-workflow, summary, create-pr, etc.) retain `[skip build] [skip ci]` — only the trailing `close-workflow status trigger CI` commit is unmarked, and it is the LAST commit before the final `git push`. This also fixes the prior latent bug where build Step 17 / debug Step 11 commits were never explicitly pushed.
 
 ## Permissions (`.claude/settings.json`)
 
@@ -845,7 +865,7 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 | Verifier / checker | Remediator | Max attempts | Escalation |
 | --- | --- | --- | --- |
 | `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` = 3 | Failure Path |
-| `@bkit-build-challenge` | `@bkit-build-challenge-remediate` | (single pass; no retry loop) | Failure Path on `FAIL` |
+| `@bkit-build-challenge` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 10; one remediation max; `FAIL` triggers re-Challenge for verification, `CONCERNS` falls through without re-Challenge) | Failure Path on `FAIL` after remediate (covers both unrecoverable remediation and architectural-class findings) |
 | Build test loop (`pnpm turbo`) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 per debug attempt; `MAX_DEBUG_ATTEMPT` = 3 outer | Failure Path with `@bkit-debug-abort-handover` |
 | Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |

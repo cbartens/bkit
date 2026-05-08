@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "0.5.1",
+  "version": "1.0.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -11,6 +11,7 @@
     "dist",
     ".agents",
     "README.md",
+    "CHANGELOG.md",
     "!.agents/scripts/*.test.ts",
     "!.agents/scripts/*.integration.test.ts",
     "!.agents/scripts/__snapshots__"
@@ -38,16 +39,18 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale not in PATH — skipping\"; fi'",
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
     "prepare": "husky"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.4.0",
-    "vitest": "^2.1.0",
+    "@types/picomatch": "^4.0.3",
+    "husky": "^9.1.7",
+    "picomatch": "^4.0.4",
     "prettier": "^3.5.3",
     "slop-scan": "^0.3.0",
-    "husky": "^9.1.7"
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.0",
+    "vitest": "^2.1.0"
   }
 }
