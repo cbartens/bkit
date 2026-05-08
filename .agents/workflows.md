@@ -17,7 +17,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 
 ```
 .agents/workflows/
-├── bkit-design.md         # Workflow 1/5 — 9 steps; hard stop after summary
+├── bkit-design.md         # Workflow 1/5 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/5 — 11 steps; hard stop after summary
 ├── bkit-build.md          # Workflow 3/5 — 17 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 8 steps; PR-debug or normal-debug mode
@@ -289,7 +289,10 @@ Every transformation step writes ONE new versioned file in `docs/plans/logs/{FID
 | `design-generate` | `design-v1-draft.md` | versioned draft |
 | `design-review-1`, `design-review-2` | `design-review-1.md`, `design-review-2.md` | opinion-only log |
 | `design-apply-review` | `design-v2-reviewed.md` | versioned draft |
-| `close-workflow` (copy) | `drafts/{FID}-design.md` | canonical (copy of v2) |
+| `design-organise` | `design-v3-organised.md` | versioned draft |
+| `summary` | `design-summary.md` | summary-only |
+| `design-workstream-issues` | (Linear sub-issues + `blockedBy` edges) | side-effect only — no file deliverable |
+| `close-workflow` (copy) | `drafts/{FID}-design.md` | canonical (copy of v3) |
 
 **Versioned chain — plan** (`drafts/{FID}-plan.md` is the canonical artifact; populated only at close):
 
@@ -440,7 +443,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 Each subsection below documents what command actually does — step list, subagents invoked, artifacts written, verdict routing, close behavior. For agent capability and effort details, cross-reference `.agents/prompts.md`.
 
-### `/bkit-design` — 9 steps
+### `/bkit-design` — 10 steps
 
 **Goal:** design doc only. No plan, no code. Always hard-stops after summary for human review (do NOT invoke `/bkit-plan`).
 
@@ -455,9 +458,12 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `docs({FID}): design complete [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 9 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Add `Review` label, `In Review`. |
+| 9 — Design Workstream Issues | — | `design-v3-organised.md` | Linear sub-issues + `blockedBy` edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: `list_issues({ parentId })` → existing match → `save_comment` sync (body untouched); else `save_issue({ parentId, title: "WS-N: …", description: … })` with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: `save_issue({ blockedBy })` per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
+| 10 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Add `Review` label, `In Review`. |
 
-**Hard stop in Step 9 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
+**Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
+
+**Step 9 contract:** sub-issue body carries everything `/bkit-plan` needs — no Linear labels, no `WS_ID` parameter, no parent-shape detection. The two markdown markers (`**Parent design:**`, `**Workstream:**`) are load-bearing and parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract (workstream scope). The `**Parent design:**` value is wrapped as a markdown link (`[docs/plans/drafts/{FID}-design.md](URL)`) — display text is the canonical bare path so plan's parser can extract the slug. `Requires:` translates 1:1 to Linear `blockedBy` edges so `/bkit-build` Step 1.6's existing `relations.blocked_by` gate enforces ordering — no new build-side gate needed. Re-runs are non-destructive: existing sub-issue bodies/titles are never rewritten (only sync comments appended); orphaned sub-issues stay open with a `## Workstream Delete` notification comment. Even single-workstream designs spawn one sub-issue; design and plan never share an FID.
 
 ### `/bkit-plan` — 11 steps
 
@@ -466,8 +472,8 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Set label `Plan`, `In Progress`. |
-| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` includes session prompt + Linear description + comments + `{FID}-design.md` (if exists). |
+| 1 — Start Workflow | — | Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` (sub-issue case); **else** leave empty (standalone plan run on issue input alone). |
+| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + Linear description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. |
 | 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template). Writes `plan-generate.md` log + `docs/plans/drafts/{FID}-plan.md`. |
 | 4 — Review Plan | `@bkit-plan-review-1` ‖ `@bkit-plan-review-2` (parallel) | Effort diversity; both write critique logs. |
 | 5 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. |
@@ -489,7 +495,7 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Set label `Build`, `In Progress`. Check `relations.blocked_by` — non-Done blockers → Failure Path. Plan must exist (drafts/ or active/) — else Failure Path with `Build requires plan.` |
+| 1 — Start Workflow | — | Set label `Build`, `In Progress`. Check `relations.blocked_by` — any blocker not in `{Done, Cancelled}` → Failure Path with `Blocked by {BLOCKER_ID}`. Plan must exist (drafts/ or active/) — else Failure Path with `Build requires plan.` |
 | 2 — Worktree Setup | — | `mv docs/plans/drafts/{FID}-*.md docs/plans/active/`. Init `SUB_COUNT`, `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1. `build-input.md` includes the active plan. |
 | 3 — Branch Sync | — | `git fetch origin`; if `git log HEAD..origin/dev --oneline -- docs/` non-empty → merge `origin/dev` (prefer `dev` for `docs/` conflicts). |
 | 4 — Skills | `@bkit-build-install-skills` _(skip if input contains `[skills=false]`)_ | If new skills installed → commit `chore({FID}): install skills [skip build] [skip ci]`. |
@@ -640,9 +646,10 @@ Tool names (only these are used):
 <!-- prettier-ignore -->
 | Tool | Purpose |
 | --- | --- |
-| `get_issue` | `{ id: "XXX-123" }` → `state`, `labels`, `description`, `relations` |
+| `get_issue` | `{ id: "XXX-123", includeRelations: true }` → `state`, `labels`, `description`, `relations` (`includeRelations: true` required when `relations` field is consumed — `/bkit-build` Step 1.6) |
 | `list_comments` | `{ issueId, orderBy: "createdAt desc", limit: 250 }` |
-| `save_issue` | `{ id, state, labels }` (or `{ title, description, team, assignee, state, labels }` to create) |
+| `list_issues` | `{ parentId: "XXX-123", limit: 250 }` (used by `/bkit-design` Step 9 to enumerate workstream sub-issues) |
+| `save_issue` | `{ id, state, labels, blockedBy, parentId }` (or `{ title, description, team, assignee, state, labels, parentId }` to create). `blockedBy` is append-only — re-runs are no-ops for unchanged edges. |
 | `save_comment` | `{ issueId, body }` to create, `{ id, body }` to edit |
 
 ### Phase labels (mutually exclusive)
@@ -686,7 +693,7 @@ ONE comment per workflow run; Step 1 creates it, every later step appends. See �
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` extracts `relations.blocked_by` from `get_issue`. Any blocker whose state is not `Done` or `Cancelled` → Failure Path with `Blocked by {ISSUE_ID}`.
+`/bkit-build` Step 1.6 calls `get_issue({ id, includeRelations: true })` and extracts `relations.blocked_by`. Any blocker whose state is not `Done` **and** not `Cancelled` → Failure Path with `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})` (the offending blocker's id, not the current issue's). Workstream sub-issues spawned by `/bkit-design` Step 9 set `blockedBy` per their `Requires` line, so this gate also enforces workstream ordering — no separate workstream-aware gate exists.
 
 ## GitHub Integration
 

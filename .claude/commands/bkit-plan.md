@@ -25,7 +25,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path** with `Not in worktree`.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
@@ -74,7 +74,8 @@ description: "Plan Feature — Autonomous plan generation"
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/drafts/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
-8. Update status and commit:
+8. Extract parent design `FID` from issue `DESCRIPTION` as `PARENT_FID`.
+9. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
@@ -88,19 +89,21 @@ description: "Plan Feature — Autonomous plan generation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
    ```
-9. Add `Plan` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+10. Add `Plan` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
+11. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
 
 ```comment
 ## Plan Workflow
 ### Step 1 — Start Workflow
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
 [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
+Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{PARENT_FID}-design.md)}
 ```
 
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] `PARENT_FID` extraction from issue description attempted
 - [ ] Workflow status updated (`plan` `IN_PROGRESS`, step `start-workflow` recorded with `commitSha`)
 - [ ] Issue update attempted (state `In Progress`, label `Plan`)
 - [ ] Issue comment attempted (`Step 1` section)
@@ -153,7 +156,7 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. Create: `docs/plans/logs/{FID}/plan-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/drafts/{FID}-design.md`.
+4. Create: `docs/plans/logs/{FID}/plan-input.md` = session prompt + `DESCRIPTION` + `COMMENTS`. **If** `PARENT_FID` empty → standalone, do NOT append. **Else** append `docs/plans/drafts/{PARENT_FID}-design.md`; missing file → **Failure Path** with `Parent design missing: docs/plans/drafts/{PARENT_FID}-design.md`.
 5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -175,6 +178,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Artifact written (`plan-input.md`, non-empty)
+- [ ] Parent design appended (if present)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 

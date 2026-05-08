@@ -21,7 +21,7 @@
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path** with `Not in worktree`.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
@@ -404,7 +404,75 @@
 
 ---
 
-## 🤖 Step 9 — Close Workflow
+## 🤖 Step 9 — Design Workstream Issues
+
+**Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
+
+1. Read `design-v3-organised.md` section `Design Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path** with `No workstreams in design`.
+2. `list_issues({ parentId: "{ISSUE_ID}", limit: 250 })` → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
+3. Per workstream `WS-{N}` in `WORKSTREAMS`:
+   - **If** `EXISTING[WS-{N}]` present → `save_comment({ issueId: "{EXISTING[WS-{N}].id}", body: "{BODY}"})` — `{BODY}` = fenced block:
+     ```comment
+     ## Workstream Update — {FID}
+     **Parent issue:** {ISSUE_ID}
+     **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
+     **Workstream:** WS-{N} — {NAME}
+     **Requires:** {REQUIRES}
+     ### Scope
+     {SCOPE}
+     ### Rationale
+     {RATIONALE}
+     ```
+     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
+   - **Else** → `save_issue({ parentId: "{ISSUE_ID}", team: "Bartens", title: "WS-{N}: {NAME}", description: "{DESCRIPTION}"})` — `{DESCRIPTION}` = body below verbatim:
+     ```description
+     ## Workstream Create — {FID}
+     **Parent issue:** {ISSUE_ID}
+     **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
+     **Workstream:** WS-{N} — {NAME}
+     **Requires:** {REQUIRES}
+     ### Scope
+     {SCOPE}
+     ### Rationale
+     {RATIONALE}
+     ```
+     Capture returned `id` as `WORKSTREAM_ISSUE_ID[WS-{N}]`. **If** `id` empty → **Failure Path** with `save_issue returned no id for WS-{N}`.
+4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → `save_comment({ issueId: "{EXISTING[WS-{K}].id}", body: "{BODY}"})` — `{BODY}` = fenced block:
+   ```comment
+   ## Workstream Delete — {FID}
+   **Parent issue:** {ISSUE_ID}
+   **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
+   No longer in current design. Body left unchanged.
+   ```
+5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `BLOCKED_BY` = `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path** with `Requires references unresolved workstream: WS-{N}`. `save_issue({ id: "{WORKSTREAM_ISSUE_ID[WS-{N}]}", blockedBy: BLOCKED_BY })`.
+6. Update status and commit:
+   ```bash
+   STATUS="docs/plans/logs/{FID}/status.json"
+   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues work [skip build] [skip ci]"
+   SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"design-workstream-issues", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): design-workstream-issues status [skip build] [skip ci]"
+   ```
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 9 — Design Workstream Issues
+   ```
+
+### 🔒 Gate 9 — Design Workstream Issues
+
+- [ ] Workstreams parsed (`WORKSTREAMS` non-empty)
+- [ ] Existing children listed (`list_issues` attempted)
+- [ ] Per workstream resolved (`WORKSTREAM_ISSUE_ID` populated, no empty ids)
+- [ ] Stale children commented (orphaned workstreams notified)
+- [ ] Issues BlockedBy edges attempted (per `Requires`)
+- [ ] Workflow status updated (step `design-workstream-issues` recorded with `commitSha`)
+- [ ] Issue comment attempted (`Step 9` section)
+
+---
+
+## 🤖 Step 10 — Close Workflow
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
@@ -451,11 +519,11 @@
 6. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 9 — Close Workflow
+   ### Step 10 — Close Workflow
    ```
 8. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
 
-### 🔒 Gate 9 — Close Workflow
+### 🔒 Gate 10 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
@@ -465,4 +533,4 @@
 - [ ] Worktree removed and feature branch deleted
 - [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `commitSha`)
 - [ ] Issue update attempted (state `In Review`, label `Review`)
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 10` section)
