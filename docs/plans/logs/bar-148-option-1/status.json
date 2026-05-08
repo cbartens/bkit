@@ -42,6 +42,17 @@
           "docs/plans/logs/bar-148-option-1/plan-review-1.md",
           "docs/plans/logs/bar-148-option-1/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-08T13:14:19Z",
+        "commitSha": "597213d67d6ce81c700815ce062a562ae76b3275",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
