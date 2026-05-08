@@ -88,6 +88,17 @@
         "artifacts": [
           "docs/plans/logs/bar-148-option-1/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-08T13:23:50Z",
+        "commitSha": "78f9067b65b515445d15454194c285980555b25e",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/plan-summary.md"
+        ]
       }
     ]
   }
