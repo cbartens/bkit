@@ -423,6 +423,13 @@
         "artifacts": [
           "docs/plans/logs/bar-131-related-bars-suite/ship-summary.md"
         ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-08T06:00:18Z",
+        "commitSha": "9f360236a03f67df42e90d543440fc024adbe4d0",
+        "artifacts": []
       }
     ],
     "completedAt": "2026-05-07T00:04:35Z"
