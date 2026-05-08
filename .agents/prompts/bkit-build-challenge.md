@@ -44,12 +44,14 @@ maxTurns: 50
    - Error paths: Unhandled exceptions, missing error boundaries, silent failures, retry storms, timeout gaps.
    - Edge cases: Empty states, boundaries, large payloads, unicode, timezone, null/undefined, zero-length arrays.
    - Architecture: Domain violations, circular deps, leaky abstractions, broken API contracts.
-7. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), exploit scenario, suggested fix. Incomplete findings → not counted in `Failures`.
+7. Per finding, ALL five required: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix. Incomplete findings → not counted in `Failures`.
+   - `class: mechanical` = surgical edit, NO redesign required (missing predicate, missing join, missing column in test fixture, silent-no-op test, wrong import, missing re-export, naming mismatch, missing `deleted_at` filter, swap test client).
+   - `class: architectural` = redesign required (wrong layer, wrong abstraction, scope expansion, leaks tenancy, violates principle, requires plan/design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md`.
 9. Update **Create** output - set Verdict via `Edit`; mapping:
-   - `PASS` = no issues.
-   - `FAIL` = CRITICAL findings requiring human escalation.
-   - `CONCERNS` = findings addressable by remediate.
+   - `PASS` = no findings.
+   - `CONCERNS` = findings present, max severity <= HIGH.
+   - `FAIL` = at least one CRITICAL finding.
 
 **Output format:**
 
@@ -63,7 +65,7 @@ Failures: <integer ≥ 0>
 
 ## Findings
 
-[If `CONCERNS`/`FAIL`: prioritized list — per finding: severity (CRITICAL/HIGH/MEDIUM/LOW), file:line, exploit scenario, suggested fix. If `PASS`: "No issues found."; initially set to `PENDING`]
+[If `CONCERNS`/`FAIL`: prioritized list — per finding: severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), file:line, exploit scenario, suggested fix. If `PASS`: "No issues found."; initially set to `PENDING`]
 ```
 
 > ⛔ **STOP after reviewing diff and producing output. Do NOT fix — workflow applies fixes.**

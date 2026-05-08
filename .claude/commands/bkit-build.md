@@ -181,7 +181,7 @@ description: "Build Feature — Autonomous implementation"
    SUB_COUNT=$(ls docs/plans/active/{FID}-plan-*.md 2>/dev/null | wc -l)
    [ "$SUB_COUNT" -eq 0 ] && SUB_COUNT=1 && SINGLE_PLAN=true
    ```
-6. Init counters: `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1.
+6. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
 7. Create: `docs/plans/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
    ```bash
@@ -204,7 +204,7 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Plan files in `docs/plans/active/`
-- [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1)
+- [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
 - [ ] Artifact written (`build-input.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`)
 - [ ] Issue comment attempted (`Step 2` section)
@@ -278,7 +278,7 @@ description: "Build Feature — Autonomous implementation"
 ## Sub-Plan Loop — Steps 5–7
 
 1. **If** `SINGLE_PLAN` = true → execute once using `{FID}-plan.md` with `SUB_PLAN` = 1.
-2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-${SUB_PLAN}.md`. Reset `VERIFY_ATTEMPT` = 1 at start of each `SUB_PLAN`.
+2. **If** `SUB_COUNT` >= 2 → loop `SUB_PLAN` from 1 to `SUB_COUNT` using `{FID}-plan-${SUB_PLAN}.md`. Reset `VERIFY_ATTEMPT` = 0 at start of each `SUB_PLAN`.
 
 Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMPT}.md` (e.g. `plan-verify-1-2.md` = sub-plan 1, attempt 2).
 
@@ -321,14 +321,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🧠 Step 6 — Plan Verify
 
-8. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
+8. Increment `VERIFY_ATTEMPT` + 1.
+9. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
 Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope)
 Update:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`
    Create: `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`
-9. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-10. Read `build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
-11. Update status and commit:
+10. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+11. Read `build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
+12. Update status and commit:
 
 ```bash
 STATUS="docs/plans/logs/{FID}/status.json"
@@ -340,26 +341,27 @@ t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_V
 git add "$STATUS" && git commit -m "chore({FID}): plan-verify sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} status"
 ```
 
-12. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+13. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
 
 ```comment
 ### Step 6 — Plan Verify - Verdict: {VERIFY_VERDICT} - Failures: {VERIFY_FAILURES} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT}
 ```
 
-13. **If** `VERIFY_VERDICT` = PASS:
+14. **If** `VERIFY_VERDICT` = PASS:
 
 - **If** more sub-plans remain (`SUB_PLAN` < `SUB_COUNT`) → next `SUB_PLAN` → Step 5.
 - **Else** → Step 8.
 
-14. **If** `VERIFY_VERDICT` = CONCERNS or FAIL:
+15. **If** `VERIFY_VERDICT` = CONCERNS or FAIL:
 
 - **If** `VERIFY_ATTEMPT` <= `MAX_VERIFY_ATTEMPT` → Step 7.
 - **Else** → **Failure Path**.
 
-15. **Else** → **Failure Path** with `Unexpected build plan-verify verdict: {VERIFY_VERDICT}`.
+16. **Else** → **Failure Path** with `Unexpected build plan-verify verdict: {VERIFY_VERDICT}`.
 
 ### 🔒 Gate 6 — Plan Verify
 
+- [ ] `VERIFY_ATTEMPT` incremented
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
 - [ ] Artifact written (`build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, non-empty)
 - [ ] Verdicts extracted (`VERIFY_VERDICT`, `VERIFY_FAILURES`)
@@ -374,7 +376,7 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-verify sub-plan ${SUB_PLA
 
 **Run only if** Step 6 `VERIFY_VERDICT` = FAIL.
 
-16. Read prior strategy from status.json and select next `STRATEGY`:
+17. Read prior strategy from status.json and select next `STRATEGY`:
 
 ```bash
 PRIOR_STRATEGY=$(jq -r --arg s "plan-gaps-remediate" --argjson sp "$SUB_PLAN" \
@@ -387,13 +389,13 @@ PRIOR_STRATEGY=$(jq -r --arg s "plan-gaps-remediate" --argjson sp "$SUB_PLAN" \
 - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
 - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
 
-17. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
+18. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Agent` tool:
     Context: You are a subagent in the Build phase. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
 Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`Update: source files
 Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`
-18. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-19. Read `build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
-20. Update status and commit:
+19. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+20. Read `build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+21. Update status and commit:
 
 ```bash
 STATUS="docs/plans/logs/{FID}/status.json"
@@ -405,13 +407,12 @@ t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIAT
 git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} status"
 ```
 
-21. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+22. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
 
 ```comment
 ### Step 7 — Plan Gaps Remediate - Verdict: {REMEDIATE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT} - Strategy: {STRATEGY}
 ```
 
-22. Increment `VERIFY_ATTEMPT` + 1.
 23. **Re-run Step 6**.
 
 ### 🔒 Gate 7 — Plan Gaps Remediate
@@ -420,7 +421,6 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 - [ ] Artifact written (`build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
-- [ ] `VERIFY_ATTEMPT` incremented before re-run
 - [ ] Workflow status updated (step `plan-gaps-remediate` recorded with `commitSha`, `verdict`, `attempt`, `subPlan`, `strategy`)
 - [ ] Issue comment attempted (`Step 7` section)
 
@@ -477,21 +477,23 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): challenge work"
+   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT} work"
    SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson f "$CHALLENGE_FAILURES" \
-     '.[-1].steps += [{step:"challenge", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge.md"]}]' \
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --argjson f "$CHALLENGE_FAILURES" \
+     '.[-1].steps += [{step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): challenge status"
+   git add "$STATUS" && git commit -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT} status"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 9 — Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES}
+   ### Step 9 — Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
 6. **If** `CHALLENGE_VERDICT` = PASS → Step 12.
-7. **If** `CHALLENGE_VERDICT` = CONCERNS → Step 10 (challenge-remediate).
-8. **If** `CHALLENGE_VERDICT` = FAIL → **Failure Path** (CRITICAL finding, human review required).
-9. **Else** → **Failure Path** with `Unexpected build challenge verdict: {CHALLENGE_VERDICT}`.
+7. **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10.
+8. **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12.
+9. **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10.
+10. **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → **Failure Path** with `Build challenge verdict: FAIL after remediation`.
+11. **Else** → **Failure Path** with `Unexpected build-challenge verdict: {CHALLENGE_VERDICT}`.
 
 ### 🔒 Gate 9 — Build Challenge
 
@@ -500,51 +502,55 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 - [ ] Verdicts extracted (`CHALLENGE_VERDICT`, `CHALLENGE_FAILURES`)
 - [ ] Verdict valid (`CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-challenge.md`)
-- [ ] Workflow status updated (step `challenge` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `build-challenge` recorded with `commitSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
 
 ## 🧠 Step 10 — Build Challenge Remediate
 
-**Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS.
+**Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS or FAIL **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
 
-1. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Agent` tool:
+1. Increment `CHALLENGE_REMEDIATE_ATTEMPT` + 1.
+2. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-challenge.md`
    Update: source files
    Create: `docs/plans/logs/{FID}/build-challenge-remediate-log.md`
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
-4. Update status and commit:
+3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
+5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): challenge-remediate work"
+   git add -A && git commit --allow-empty -m "fix({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT} work"
    SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" \
-     '.[-1].steps += [{step:"challenge-remediate", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" \
+     '.[-1].steps += [{step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): challenge-remediate status"
+   git add "$STATUS" && git commit -m "chore({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT} status"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 10 — Build Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT}
+   ### Step 10 — Build Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
+7. **If** `REMEDIATE_CHALLENGE_VERDICT` = FAIL → **Failure Path** with `Build challenge-remediate verdict: FAIL`.
+8. **Else** → Step 11.
 
 ### 🔒 Gate 10 — Build Challenge Remediate
 
+- [ ] `CHALLENGE_REMEDIATE_ATTEMPT` incremented
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
 - [ ] Artifact written (`build-challenge-remediate-log.md`, non-empty)
-- [ ] Source files modified
-- [ ] `REMEDIATE_CHALLENGE_VERDICT` extracted
-- [ ] Workflow status updated (step `challenge-remediate` recorded with `commitSha`, `verdict`)
+- [ ] Source files modified or classify-gate FAIL recorded
+- [ ] `REMEDIATE_CHALLENGE_VERDICT` extracted (in `PASS|CONCERNS|FAIL`)
+- [ ] Workflow status updated (step `build-challenge-remediate` recorded with `commitSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 10` section)
 
 ---
 
 ## 🧠 Step 11 — Build Challenge Tests
 
-**Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS.
+**Run only if** Step 9 `CHALLENGE_VERDICT` = CONCERNS or FAIL.
 
 1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
@@ -555,17 +561,18 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "test({FID}): generate-tests work"
+   git add -A && git commit --allow-empty -m "test({FID}): build-challenge-tests work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_TESTS_VERDICT" \
-     '.[-1].steps += [{step:"challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-tests.md"]}]' \
+     '.[-1].steps += [{step:"build-challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-tests.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): challenge-tests status"
+   git add "$STATUS" && git commit -m "chore({FID}): build-challenge-tests status"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 11 — Build Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
    ```
+6. **If** `CHALLENGE_VERDICT` = FAIL → **Re-run Step 9**. **Else** → Step 12.
 
 ### 🔒 Gate 11 — Build Challenge Tests
 
@@ -573,14 +580,16 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
 - [ ] Artifact written (`build-challenge-tests.md`, non-empty)
 - [ ] Test files created/updated
 - [ ] `CHALLENGE_TESTS_VERDICT` extracted
-- [ ] Workflow status updated (step `challenge-tests` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `build-challenge-tests` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 11` section)
+- [ ] Routing applied (re-run Step 9 if `CHALLENGE_VERDICT` = FAIL; else Step 12)
 
 ---
 
 ## 🤖 Step 12 — Run Tests
 
-1. Run verbatim — do NOT modify quoting, filter, or glob:
+1. Increment `TEST_ATTEMPT` + 1.
+2. Run verbatim — do NOT modify quoting, filter, or glob:
    ```bash
    if [ -f turbo.json ]; then
      pnpm turbo lint typecheck test --filter='...[origin/dev]'
@@ -591,8 +600,8 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
      done
    fi
    ```
-2. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-3. Update status and commit:
+3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
+4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} work"
@@ -602,18 +611,19 @@ git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan $
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} status"
    ```
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 12 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
-5. **If** all tests PASS → Step 15.
-6. **If** some tests FAIL:
+6. **If** all tests PASS → Step 15.
+7. **If** some tests FAIL:
    - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 13.
    - **Else** → **Failure Path**.
-7. **Else** → **Failure Path**.
+8. **Else** → **Failure Path**.
 
 ### 🔒 Gate 12 — Run Tests
 
+- [ ] `TEST_ATTEMPT` incremented
 - [ ] Tests executed (turbo path if `turbo.json`, else single-package script fallback)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
 - [ ] Workflow status updated (step `run-tests` recorded with `commitSha`, `verdict`)
@@ -697,8 +707,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
    ```comment
    ### Step 14 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
-6. Increment `TEST_ATTEMPT` + 1.
-7. **Re-run Step 12**.
+6. **Re-run Step 12**.
 
 ### 🔒 Gate 14 — Failure Remediate
 
@@ -706,7 +715,6 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 - [ ] Artifact written (`build-failure-remediate-${TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
-- [ ] `TEST_ATTEMPT` incremented before re-run
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 14` section)
 

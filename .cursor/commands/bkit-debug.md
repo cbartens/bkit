@@ -180,7 +180,7 @@
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
 4. **If** `DEBUG_MODE` = pr → `RUN_ID` = `$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')` → `gh run view "$RUN_ID" --log-failed` → extract `CI_LOGS`. **Else** → `RUN_ID` = "", `CI_LOGS` = "N/A".
-5. Init `TEST_ATTEMPT` = 1.
+5. Init `TEST_ATTEMPT` = 0.
 6. Create: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md` + `CI_LOGS`.
 7. Update status and commit:
    ```bash
@@ -203,7 +203,7 @@
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`TEST_ATTEMPT` = 1)
+- [ ] Counters initialised (`TEST_ATTEMPT` = 0)
 - [ ] Artifact written (`debug-input-${DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`, `debugMode`, `observeMode`)
 - [ ] Issue comment attempted (`Step 2` section)
@@ -302,7 +302,8 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 
 **Run only if** `OBSERVE_MODE` = off.
 
-1. Run verbatim:
+1. Increment `TEST_ATTEMPT` + 1.
+2. Run verbatim:
    ```bash
    if [ -f turbo.json ]; then
      if [ "$PR_DEBUG_MODE" = "1" ]; then
@@ -322,8 +323,8 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
      fi
    fi
    ```
-2. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-3. Update status and commit:
+3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
+4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} work"
@@ -333,18 +334,19 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} status"
    ```
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 5 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
-5. **If** all tests PASS → Step 6.
-6. **If** some tests FAIL:
-   - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → increment `TEST_ATTEMPT` + 1 → Step 3.
+6. **If** all tests PASS → Step 6.
+7. **If** some tests FAIL:
+   - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 3.
    - **Else** → **Failure Path**.
-7. **Else** → **Failure Path**.
+8. **Else** → **Failure Path**.
 
 ### 🔒 Gate 5 — Run Tests
 
+- [ ] `TEST_ATTEMPT` incremented
 - [ ] Tests executed (PR debug or full suite)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
 - [ ] Workflow status updated (step `run-tests` recorded with `commitSha`, `verdict`)
@@ -355,7 +357,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 
 ## 🤖 Step 6 — Push Remediation
 
-**Run only if** `OBSERVE_MODE` = off AND all Step 5 tests PASS.
+**Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. Increment `DEBUG_ATTEMPT` + 1.
 2. Update status and commit:
@@ -387,7 +389,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 
 ## 🧠 Step 7 — Summary
 
-**Run only if** `OBSERVE_MODE` = off AND all Step 5 tests PASS.
+**Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. **Subagent:** Invoke `@bkit-debug-summary` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
@@ -571,7 +573,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 
 ## 🤖 Step 11 — Close Workflow
 
-**Run only if** `OBSERVE_MODE` = off (after Step 7) OR `OBSERVE_MODE` = instrument (after Step 8). **Skip if** `OBSERVE_MODE` = analyse.
+**Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Update status and commit:

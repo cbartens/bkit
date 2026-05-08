@@ -170,7 +170,7 @@
 
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
-5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT` = 1.
+5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **if** ANY failures → **Failure Path** with `PR #{PR_NUMBER} CI failures.`
 7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
@@ -194,7 +194,7 @@
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
-- [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 1)
+- [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`)
@@ -204,7 +204,8 @@
 
 ## 🤖 Step 3 — Merge PR
 
-1. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
+1. Increment `MERGE_ATTEMPT` + 1.
+2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
@@ -213,7 +214,7 @@
      git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes [skip build] [skip ci]"
    fi
    ```
-2. Merge with empty body:
+3. Merge with empty body:
    ```bash
    gh pr merge {PR_NUMBER} --squash --delete-branch \
      --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
@@ -226,9 +227,9 @@
      --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
    [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
    ```
-3. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-4. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else `FAIL`. Set `MERGE_FAILURES` = 0 if PASS, else 1.
-5. Update status and commit:
+4. `gh pr view {PR_NUMBER} --json state` → extract `state`.
+5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else `FAIL`. Set `MERGE_FAILURES` = 0 if PASS, else 1.
+6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} work"
@@ -238,18 +239,19 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} status"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 3 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-7. **If** `state` is `MERGED` → Step 6.
-8. **If** `state` is NOT `MERGED`:
+8. **If** `state` is `MERGED` → Step 6.
+9. **If** `state` is NOT `MERGED`:
    - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 4.
    - **Else** → **Failure Path**.
-9. **Else** → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 3 — Merge PR
 
+- [ ] `MERGE_ATTEMPT` incremented
 - [ ] PR merge attempted
 - [ ] `state` extracted (MERGED or not)
 - [ ] CI run triggered on dev (`RUN_ID` captured)
@@ -337,8 +339,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
    ```comment
    ### Step 5 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-7. Increment `MERGE_ATTEMPT` + 1.
-8. **Re-run Step 3**.
+7. **Re-run Step 3**.
 
 ### 🔒 Gate 5 — Failure Remediate
 
@@ -346,7 +347,6 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 - [ ] Artifact written (`ship-failure-remediate-${MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
-- [ ] `MERGE_ATTEMPT` incremented before re-run
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`, `strategy`)
 - [ ] Issue comment attempted (`Step 5` section)
 

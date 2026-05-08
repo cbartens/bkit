@@ -214,8 +214,8 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-build-plan-execute` | Execute plan tasks sequentially; modify source; write stub artifact first then incremental `## Task Log` entries. Does NOT tick plan checkboxes (verify owns that). |
 | `bkit-build-plan-verify` | Verify implementation vs plan; writes Plan Verification log. Ticks plan `[ ]`→`[x]` for every task whose codebase artifact is verified. |
 | `bkit-build-plan-gaps-remediate` | Fix specific gaps from latest verify log; Standard/Pivot/Final escalation. |
-| `bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`; writes findings. |
-| `bkit-build-challenge-remediate` | Apply challenge fixes in priority order; runs lint/typecheck/test. |
+| `bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`; writes findings, each tagged `class: mechanical|architectural`. |
+| `bkit-build-challenge-remediate` | Classify-gate (data-driven on `class`): any architectural → `FAIL` (no fixes; BLOCKED entries logged); else apply mechanical fixes in priority order; runs lint/typecheck/test. |
 | `bkit-build-challenge-tests` | Add edge-case tests for changed files; runs lint/typecheck/test. |
 | `bkit-build-summary` | Read-only verdict on build outcome. |
 
