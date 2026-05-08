@@ -698,8 +698,11 @@ async function main() {
             dryRun: upgradeFlags.dryRun,
             cwd: process.cwd(),
         });
-        // Update canonical hashes for upgraded files (only on successful non-dry-run)
-        if (!upgradeFlags.dryRun && result.updated.length > 0) {
+        // Update canonical hashes for upgraded + skipped files (non-dry-run only).
+        // Seeding skipped files heals the missing-hash gap for consumers installed
+        // before BAR-142 / DE-12 — every disk==template file gets its canonical hash
+        // recorded so future upgrades can distinguish drift from no-drift cleanly.
+        if (!upgradeFlags.dryRun && (result.updated.length > 0 || result.skipped.length > 0)) {
             updateCanonicalHashesAfterUpgrade(result, candidates, {
                 dryRun: false,
                 cwd: process.cwd(),

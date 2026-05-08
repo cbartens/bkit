@@ -271,10 +271,10 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(parsed!.tier3Hashes).toEqual(original.tier3Hashes);
   });
 
-  it("isConsumerModified returns false when canonicalHashes has no entry for path (unknown → conservative)", () => {
+  it("isConsumerModified returns true when canonicalHashes has no entry for path (unknown → block silent overwrite)", () => {
     const filePath = path.join(tmpDir, "file.md");
     fs.writeFileSync(filePath, "content", "utf-8");
-    expect(isConsumerModified("some/path.md", filePath, {})).toBe(false);
+    expect(isConsumerModified("some/path.md", filePath, {})).toBe(true);
   });
 
   it("isConsumerModified returns false when file is absent", () => {
@@ -301,16 +301,17 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(isConsumerModified(".claude/agents/bkit-foo.md", filePath, hashes)).toBe(true);
   });
 
-  it("backward-compat: old payload without canonicalHashes → isConsumerModified returns false for all files (no silent overwrites)", () => {
-    // Simulates a consumer with v0.7.x .bkit-version (no canonicalHashes field)
+  it("backward-compat: old payload without canonicalHashes → isConsumerModified returns true for all files (blocks silent overwrites)", () => {
+    // Simulates a consumer with v0.7.x .bkit-version (no canonicalHashes field).
     const json = JSON.stringify({ pinnedVersion: "0.7.0", tier3Hashes: {} });
     const parsed = parseBkitVersion(json);
     expect(parsed).not.toBeNull();
     const filePath = path.join(tmpDir, "ci.yml");
     fs.writeFileSync(filePath, "some content\n", "utf-8");
-    // All files appear as "unknown" → conservative: not detected as drift
+    // All files appear as "unknown" → upgrade must surface a conflict for the consumer
+    // to resolve rather than silently overwriting potentially-modified content.
     expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
-      false,
+      true,
     );
   });
 });

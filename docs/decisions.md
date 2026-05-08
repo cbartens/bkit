@@ -132,3 +132,23 @@
 - **Discarded:** (1) Bundle action into sub-plan-3 — orthogonal to P3 scope; `setup-auth` depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern. (2) Remove bash fallback — external contract, not safe until v1.1.0 after consumer migration guidance shipped.
 - **Source:** phase
 - **Related:** BAR-131 §1, `.github/actions/setup-auth/action.yml`, `.agents/templates/.github/workflows/ci.yml`, `.agents/scripts/bkit-action-yaml.test.ts`
+
+## DE-12: BAR-131 follow-up — `isConsumerModified` defaults missing canonical hash to drift (2026-05-08)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Flip `isConsumerModified`'s default for unknown files: when `canonicalHashes` has no entry for `relPath`, return `true` (treat as modified) rather than `false`. `bkit upgrade`'s `diffFile` adds an idempotent `disk == template → skip` check before the drift branch so identical files are not flagged as spurious conflicts. Existing pre-v0.9.x consumers (or any managed file installed before BAR-142 introduced `canonicalHashes`) will see all-conflict on first `bkit upgrade` and must resolve each manually — this is the safe failure mode.
+- **Why:** DE-10 stated the intent as "absent field → conservative no-overwrite (safe)" but the implementation returned `false` from `isConsumerModified` for unknown files, which `bkit upgrade` interpreted as "no drift → safe to overwrite". The result was the opposite of conservative: any managed file lacking a recorded canonical hash was silently overwritten with the current template. Verified during the v1.0.0 ship cycle when running `bkit upgrade` on the bkit repo itself queued a 700-line wipe across `docs/architecture.md`, `docs/decisions.md`, `docs/knowledge.md`, and others — none of which had recorded hashes because they had not been re-written by `bkit install` since the BAR-142 schema landed.
+- **Discarded:** (1) Have `bkit install` retroactively populate `canonicalHashes` for every managed file (not just files in `ws.writes`) — larger surface change; can be added later as an opt-in `bkit install --reseed-hashes` flag. (2) Add a CLI prompt for unknown-hash files — `--non-interactive` flow has no human; conflict-by-default is the only honest answer there.
+- **Source:** human
+- **Related:** DE-10, BAR-131, `.agents/scripts/bkit-version.ts:168-181`, `.agents/scripts/bkit-upgrade.ts:79-116`, `.agents/scripts/bkit-version.test.ts`, `.agents/scripts/bkit-upgrade.test.ts`, commit 954e827
+
+## DE-13: BAR-131 follow-up — auto-seed `canonicalHashes` for `bkit upgrade` skipped files (2026-05-08)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Extend `updateCanonicalHashesAfterUpgrade` to record canonical hashes for files classified as `skip` by `diffFile` (where `disk == template`), in addition to the existing `update` path. Conflict files are explicitly NOT seeded — that would re-introduce the silent-overwrite bug DE-12 fixed. The install-side caller in `bkit-install.ts` was widened to invoke the function whenever `updated.length > 0 || skipped.length > 0`. After v1.0.1 ships, consumers running `bkit upgrade` once auto-heal the missing-hash gap; truly-customised files continue to surface as conflicts requiring manual resolution.
+- **Why:** DE-12 made `bkit upgrade` safe-by-default but left every file without a recorded canonical hash flagging as a conflict on first run — including files that exactly match the template. For pre-v0.9.x consumers (or any repo where bkit-managed files had not been re-written by `bkit install` since BAR-142), this meant an all-conflict first upgrade. Reseeding only on confirmed `disk == template` matches is provably safe — the canonical hash equals the template hash by definition — and lets the engine distinguish true drift from no-drift on the next run. Verified locally: bkit repo `.bkit-version` `canonicalHashes` grew from 4 → 31 entries after one `bkit upgrade` run; 17 genuinely-customised files remain as conflicts.
+- **Discarded:** (1) Auto-seed during `bkit install` (the option mentioned in DE-12) — install does not call `runUpgrade`, so adding it would require duplicating the candidate-enumeration logic. The upgrade-side fix covers the same consumer migration with less surface area. (2) Seed all bkit-managed files with current disk hash — re-introduces the silent-overwrite bug for any customised file (canonical=disk implies "no drift" on next upgrade, which then auto-overwrites with the new template).
+- **Source:** human
+- **Related:** DE-12, BAR-131, `.agents/scripts/bkit-upgrade.ts:209-249`, `.agents/scripts/bkit-install.ts:803-810`, `.agents/scripts/bkit-upgrade.test.ts`, commits e2889e1 (feature) + 20d63d6 (seeded `.bkit-version`)
