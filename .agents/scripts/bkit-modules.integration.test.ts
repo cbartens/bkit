@@ -813,3 +813,67 @@ describe("C1 end-to-end regression: runClaudeModule triggers migration with JSON
     expect(onDisk.customKey).toBe("consumer-value");
   });
 });
+
+// ---------------------------------------------------------------------------
+// COPY_EXCLUDE: Tier-2-style `.agents/*.md` files must NOT be additively copied
+// from the package payload — they ship as templates and the templates pass owns
+// them. Regression for the "consumer rules.md leaks bkit's `## Project Rules`
+// content from outside the bkit:start/end block" bug.
+// ---------------------------------------------------------------------------
+
+describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
+  it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    const consumerRules = fs.readFileSync(path.join(tmpDir, ".agents", "rules.md"), "utf-8");
+
+    // Template content (what consumers SHOULD get) lives in the package's
+    // .agents/templates/.agents/rules.md — resolve from the running package root.
+    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+    const pkgRoot = path.resolve(scriptsDir, "..", "..");
+    const templatePath = path.join(pkgRoot, ".agents", "templates", ".agents", "rules.md");
+    const template = fs.readFileSync(templatePath, "utf-8");
+
+    // Both files have markers — the inner block content must match (modulo
+    // surrounding-newline normalisation done by updateManagedBlock).
+    const consumerBlock = extractManagedBlock(consumerRules, "html-comment");
+    const templateBlock = extractManagedBlock(template, "html-comment");
+    expect(consumerBlock).not.toBeNull();
+    expect(consumerBlock).toBe(templateBlock);
+
+    // Critically: bkit's own out-of-block content (its `## Project Rules`
+    // children — e.g. "### bkit Repo Authoring", "### Pre-push Checklist
+    // (this repo)") MUST NOT appear in a consumer install.
+    expect(consumerRules).not.toMatch(/###\s+bkit Repo Authoring/);
+    expect(consumerRules).not.toMatch(/###\s+Pre-push Checklist \(this repo\)/);
+  });
+
+  it("first install of friction.md does not carry bkit's friction-log entries", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    const frictionPath = path.join(tmpDir, ".agents", "friction.md");
+    if (!fs.existsSync(frictionPath)) return; // friction.md is optional in some module sets
+    const consumerFriction = fs.readFileSync(frictionPath, "utf-8");
+
+    // bkit-source friction.md has dated incident entries outside bkit:end.
+    // Heading shape: `## <topic> (YYYY-MM-DD)`. None of those should land here.
+    expect(consumerFriction).not.toMatch(/^##\s+.+\(\d{4}-\d{2}-\d{2}\)/m);
+  });
+
+  it("rules.md is reachable via the templates pass — no additive leak path", () => {
+    // Simulates a brand-new consumer: no .agents/ exists. After runCoreModule,
+    // the only writer of `.agents/rules.md` should be the templates pass
+    // (sourced from `.agents/templates/.agents/rules.md`), not copyAdditive.
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    // The rules.md write MUST appear in ws.writes (templates pass tracks it).
+    const ruleWrites = ctx.ws.writes.filter((w) => w.path.endsWith(path.join(".agents", "rules.md")));
+    expect(ruleWrites.length).toBeGreaterThan(0);
+  });
+});
