@@ -103,4 +103,3 @@
 - **Related:** bar-131-related-bars-suite, BAR-131, conflicts vs commits 188b1c6 / 54805f3 / 83d69fc / 1e9f131, KN-12 / KN-13, `.husky/pre-push`
 - **Recovery:** Manually resolved all 5 conflict commits in-place during ship Step 2; renumbered feature's KN-9/KN-10 to KN-12/KN-13 (no cross-references found via `git grep`); reverted template auto-merge to keep `pnpm bkit check` outside markers (per auto-memory "bkit-repo dev pain vs consumer pain — don't conflate"); force-with-lease pushed rebased branch; CI run #25538826802 green.
 - **Status:** RECOVERED
-
