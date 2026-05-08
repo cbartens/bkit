@@ -28,13 +28,20 @@ There is no server, no database, no network service. bkit is a build-time / deve
 ```
 cbartens/bkit (this repo)
 ├── .agents/scripts/        # TypeScript source for the bkit CLI
-│   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3
-│   ├── bkit-cli.ts         # CLI verb + module-flag parsing
+│   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3 + staging primitives
+│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | uninstall | upgrade | help)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Tier 1/2/3 file-write primitives
+│   ├── bkit-tiers.ts       # Tier 1/2/3 file-write primitives + writeTier2Json deep-merge
+│   ├── bkit-tier1-defaults.ts # Versioned defaults SoT (v0.5.x–v0.7.x) for Tier-1→Tier-2 migration
 │   ├── bkit-tokens.ts      # Token resolver (node version, pnpm major, git branch, etc.)
+│   ├── bkit-version.ts     # .bkit-version JSON schema (pinnedVersion, tier3Hashes, canonicalHashes)
+│   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + key stripping)
+│   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical Tier-1/2/3 removal
+│   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
+│   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
+│   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
 │   └── bkit-status.ts      # status.json schema + invariant validator
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .agents/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
@@ -46,34 +53,49 @@ cbartens/bkit (this repo)
 ## Install Lifecycle (Three Phases)
 
 ```
-pnpm bkit install [--module-flags]
+pnpm bkit install [--module-flags] [--auto-revert]
     │
     ├─ Phase 1: Preflight (read-only)
     │   ├─ Blocker detectors  → exit 1 before any writes if triggered
     │   └─ Advisory detectors → accumulate in ctx.advisories
     │
-    ├─ Phase 2: Dispatch (writes)
+    ├─ Phase 2: Dispatch (writes — STAGED, v0.9.0+)
+    │   ├─ Each module writes to .bkit-staging/<module>/  (atomic-rename on commit)
     │   ├─ Tier 1 modules  → full overwrite (bkit fully owns file)
-    │   ├─ Tier 2 modules  → managed-block merge (bkit owns marker region; consumer owns rest)
-    │   └─ Tier 3 modules  → seed-or-print (write only if absent; print diff otherwise)
+    │   ├─ Tier 2 text     → managed-block merge (bkit owns marker region; consumer owns rest)
+    │   ├─ Tier 2 JSON     → __bkit__ envelope deep-merge (writeTier2Json; v0.8.0+)
+    │   ├─ Tier 3 modules  → seed-or-print (write only if absent; print diff otherwise)
+    │   └─ On any error    → discardAllStaging removes .bkit-staging/ — consumer files untouched
     │
-    └─ Phase 3: Post-install re-detection
+    └─ Phase 3: Post-install re-detection + commit
         ├─ Token-surface detectors (GH_BKIT_TOKEN at 4 surfaces)
         ├─ CI YAML env-var check
         ├─ Vale package sync check
         ├─ devDeps freshness check
-        └─ Render unified advisory checklist; exit 0
+        ├─ Render unified advisory checklist
+        ├─ Phase 3 blockers (v0.7.0+) → exit 1 with recovery line; --auto-revert calls runUninstall first
+        └─ Write .bkit-version JSON (pinnedVersion + canonicalHashes from this run's WriteSet)
 ```
 
-`pnpm bkit check` runs only Phase 1 (read-only); exits 1 on any drift without writes.
+CLI verbs:
+
+- `pnpm bkit install` — runs all three phases.
+- `pnpm bkit check` — runs only Phase 1 (read-only); exits 1 on any drift without writes.
+- `pnpm bkit doctor` (v0.6.0+) — runs Phase 1 + Phase 3 detection; never writes; always exits 0.
+- `pnpm bkit uninstall` (v0.7.0+) — surgical Tier-1 delete / Tier-2 managed-block strip / Tier-3 hash-guarded delete; `--dry-run`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
+- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
 ## Consumer Integration Model
 
 ```
 Consumer repo
-├── package.json            # devDependencies: { "@cbartens/bkit": "^0.5.x" }
+├── package.json            # devDependencies: { "@cbartens/bkit": "^1.0.0" }
 ├── .npmrc                  # @cbartens:registry=npm.pkg.github.com + GH_BKIT_TOKEN ref
+├── .bkitignore             # (optional, v0.7.0+) consumer escape hatch — picomatch globs
+├── .claude/settings.json   # Tier 2 JSON — { ...consumer, __bkit__: { ...bkitOwned } } (v0.8.0+)
+├── .cursor/hooks.json      # Tier 2 JSON — same __bkit__ envelope contract
 └── .agents/                # Populated by `pnpm bkit install`
+    ├── .bkit-version       # JSON: { pinnedVersion, tier3Hashes, canonicalHashes }
     ├── rules.md            # Tier 2 managed-block — bkit block + consumer Project section
     ├── workflows/          # Tier 1 — bkit owns completely (bkit-*.md files)
     ├── prompts/            # Tier 1 — bkit owns completely (bkit-*.md files)

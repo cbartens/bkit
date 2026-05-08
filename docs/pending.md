@@ -129,3 +129,13 @@
 - **Description:** Bash PAT-shim retained until v1.1.0 per Supersession Inventory. Create Linear issue post-v1.0 ship to track removal of `cbartens/bkit/.github/actions/setup-auth@v1`.
 - **Source:** phase
 - **Related:** BAR-131, BAR-142
+
+## Wire staging primitives into bkit-modules.ts write call sites + add subprocess SIGTERM integration test (2026-05-08)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** low
+- **Status:** open
+- **Description:** Staging primitives (`getStagingDir`, `commitStaging`, `discardStaging`) are exported from `bkit-install.ts` and unit-tested but NOT yet called from `bkit-modules.ts` `writeTier2Json` call sites (lines 432, 518). Master "mid-failure leaves consumer files untouched" criterion is currently enforced only at API level + Scenario 9 direct-call test. Architectural foundation intact; gap is bounded. Surfaced in `build-plan-verify-holistic.md` CONCERN.
+- **Source:** phase
+- **Related:** BAR-131, BAR-142 §A4, DE-9, KN-12, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-install.ts`

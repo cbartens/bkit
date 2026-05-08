@@ -103,3 +103,29 @@
 - **Related:** bar-131-related-bars-suite, BAR-131, BAR-139, BAR-142
 - **Recovery:** Retried with focused/incremental-write prompt (skip codebase deep-dive, write skeleton + per-phase tables, save after each section). Retry succeeded.
 - **Status:** RECOVERED
+
+## Multi-conflict rebase on long-lived feat branch — manual resolution loop (2026-05-08)
+
+- **Category:** human-confirm
+- **Workflow:** ship
+- **Step:** 2 — Worktree Setup
+- **FID:** bar-131-related-bars-suite
+- **Source:** orchestrator
+- **Description:** `git rebase origin/dev` on a 50-commit feature branch produced 5 sequential conflict commits across `docs/knowledge.md` (twice — KN-8 widening then KN-9/KN-10 collision with parallel BAR-146 entries needing renumber to KN-12/KN-13), `docs/deployments.md` (incoming "Consumer scope" bullet vs HEAD's two new sub-sections), `.agents/rules.md` (incoming Pre-push Checklist subsection vs HEAD's narrower bullets), `.husky/pre-push` + `.agents/templates/.husky/pre-push` (architectural divergence: feat branch put `pnpm bkit check` INSIDE bkit-managed block thus pushing to consumers; HEAD's recent `1e155ff` chose bkit-repo-only outside markers). Workflow Step 2 only says `git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }` — it has no semantic guidance on how to resolve, no auto-renumber for collision-prone IDs (KN-{N}), and no preference between competing template designs.
+- **Suggested fix:** Workflow Step 2 should detect conflict shape and offer guidance: (1) for `docs/knowledge.md` KN-{N} numeric collisions, auto-renumber feature branch's contested IDs by next-available-greater integer + grep for cross-references; (2) for `.agents/templates/*` vs `.agents/*` design conflicts, prefer the more recent decision direction (latest commit on either side wins, with the user-confirmed preference recorded as a one-line memory check); (3) on rebase abort, write a `ship-rebase-conflict-{N}.md` summary so the next session can pick up. Also: 50-commit feat branches should have triggered an early "rebase regularly" advisory during build, not deferred all conflicts to ship.
+- **Related:** bar-131-related-bars-suite, BAR-131, conflicts vs commits 188b1c6 / 54805f3 / 83d69fc / 1e9f131, KN-12 / KN-13, `.husky/pre-push`
+- **Recovery:** Manually resolved all 5 conflict commits in-place during ship Step 2; renumbered feature's KN-9/KN-10 to KN-12/KN-13 (no cross-references found via `git grep`); reverted template auto-merge to keep `pnpm bkit check` outside markers (per auto-memory "bkit-repo dev pain vs consumer pain — don't conflate"); force-with-lease pushed rebased branch; CI run #25538826802 green.
+- **Status:** RECOVERED
+
+## `.claude/scheduled_tasks.lock` accidentally committed by `git add -A` (2026-05-08)
+
+- **Category:** other
+- **Workflow:** ship
+- **Step:** 1 — Start Workflow / 6 — Switch to Dev
+- **FID:** bar-131-related-bars-suite
+- **Source:** orchestrator
+- **Description:** Step 1's `git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"` swept up untracked `.claude/scheduled_tasks.lock` (created by the harness's `/schedule` daemon) and made it a tracked file on parent `dev`. Same path was then modified again by the parent dev's pre-merge step. Three local-only commits accumulated on parent dev that, after Step 6's pull-rebase, would have regressed `status.json` by 262 lines AND leaked the lock file into the tree.
+- **Suggested fix:** Add `.claude/scheduled_tasks.lock` to `.gitignore` (or to `.agents/templates/.gitignore` for consumer propagation). Long-term, every workflow step that uses `git add -A` should narrow to `git add -A -- ':!.claude/scheduled_tasks.lock'` or use targeted `git add` for just the artifacts the step produced.
+- **Related:** bar-131-related-bars-suite, parent dev commits `6f76d88` / `2a97c3c` / `b3fed36` (discarded), `.claude/scheduled_tasks.lock`
+- **Recovery:** User-authorized one-time `git reset --hard origin/dev` on parent repo to drop the 3 spurious commits. `.claude/scheduled_tasks.lock` no longer present in working tree post-reset.
+- **Status:** RECOVERED

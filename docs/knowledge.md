@@ -188,7 +188,7 @@
 - **Source:** phase
 - **Related:** BAR-142 §A5, DE-10, `.agents/scripts/bkit-version.ts` (`BkitVersion` interface), `.agents/scripts/bkit-upgrade.ts`
 
-## KN-11: Helper-action additions to seeded templates are additive, not replacement (2026-05-07)
+## KN-14: Helper-action additions to seeded templates are additive, not replacement (2026-05-07)
 
 - **Category:** agentic
 - **Symptom:** Four assertions in `templates.test.ts` and `bkit-install.test.ts` fail — substring `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` not found in seeded `ci.yml` template.

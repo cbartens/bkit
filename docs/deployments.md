@@ -77,8 +77,14 @@ All other docs-only intermediate commits (start-workflow, summary, create-pr, in
 
 bkit's installer runs in three phases:
 
-1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, hooks-config overwrite risk on consumer-extended files). Advisories accumulate in `ctx.advisories`.
-2. **Phase 2 — Install (writes).** Module dispatch as before; modules append further structured advisories to `ctx.advisories`.
-3. **Phase 3 — Post-install (re-detect).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. Skipped in `bkit check` (dry-run) — only Phase 1 advisories render. See KN-4.
+1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: `detectHooksConfigOverwriteRisk` was removed in v0.8.0 — Tier-2 `__bkit__` deep-merge guarantees consumer-key survival without a preflight gate (see KN-8, DE-8).
+2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
+3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. Skipped in `bkit check` (dry-run) — only Phase 1 advisories render. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 
-`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs only Phase 1; if any drift is detected, exits 1 with Phase 1 advisories rendered.
+`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs only Phase 1; if any drift is detected, exits 1 with Phase 1 advisories rendered. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
+
+### `setup-auth@v1` composite GitHub Action
+
+`v1.0.0+` ships a composite action at `.github/actions/setup-auth/action.yml`. Consumer ci.yml templates can replace the multi-line bash PAT-shim with `uses: cbartens/bkit/.github/actions/setup-auth@v1` (inputs: `token` required, `registry` optional → defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up. Requires the `v1` annotated tag pointing at the v1.0.0 squash-merge (post-merge `git tag -a v1 -m "..." <sha> && git push origin v1`).
+
+The seeded ci.yml inline `env: GH_BKIT_TOKEN` block is **retained** (RETAIN-WITH-REASON: external contract for non-Actions CI fallbacks; kill-date v1.1.0 — see DE-11, KN-14).
