@@ -12,5 +12,82 @@
         }
       ]
     }
+  },
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Skill(*)",
+      "Bash(*)",
+      "Edit(*)",
+      "Write(*)",
+      "mcp__claude_ai_Linear__get_issue",
+      "mcp__claude_ai_Linear__list_issues",
+      "mcp__claude_ai_Linear__save_issue",
+      "mcp__claude_ai_Linear__list_comments",
+      "mcp__claude_ai_Linear__save_comment",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:linear.app)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:cursor.com)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(rm -rf $HOME/*)",
+      "Bash(chmod -R 777 /:*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./apps/*/.env)",
+      "Read(./apps/*/.env.*)",
+      "Read(./packages/*/.env)",
+      "Read(./packages/*/.env.*)",
+      "Read(./**/secrets/*.env*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.p12)",
+      "Read(./**/id_rsa)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(brew install:*)",
+      "Bash(pnpm publish:*)",
+      "Bash(npm publish:*)",
+      "Bash(bun publish:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(git clean -fdx:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(gh repo delete:*)",
+      "Bash(gh pr close:*)",
+      "Bash(gh release delete:*)",
+      "Bash(vercel rm:*)",
+      "Bash(vercel remove:*)",
+      "Bash(supabase db reset:*)",
+      "Bash(supabase projects delete:*)"
+    ],
+    "defaultMode": "default"
+  },
+  "mcpServers": {
+    "linear": {
+      "url": "https://mcp.linear.app/mcp"
+    }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/preflight.sh"
+          }
+        ]
+      }
+    ]
   }
 }
