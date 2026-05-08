@@ -6,6 +6,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.0.2] — 2026-05-08
+
+### Fixed
+
+- **Prevent bkit dogfood content from leaking into consumer `.agents/` on install.** `runCoreTemplates` now processes `.agents/` subtemplates from `templates/.agents/` (managed block sourced from the template), and `copyAdditive` excludes the Tier-2-style basenames (`rules.md`, `friction.md`, `docs.md`, `skills.md`) so it no longer additively copies bkit's own out-of-block content (e.g. `### bkit Repo Authoring`, bkit's `## Project Rules` body, friction-log entries) onto consumers. Added `bkit-modules.integration.test.ts` to lock the boundary. (commit `f6be98b`)
+
+### Changed
+
+- **`README.md` / `.agents/README.md` install docs.** Added explicit `GH_BKIT_TOKEN` export guidance for environments with restricted `.env*` access; clarified consumer-facing install flow. Trimmed redundant pre-push checklist from `.agents/rules.md`. (commit `f6be98b`)
+
+---
+
 ## [1.0.1] — 2026-05-08
 
 ### Fixed
