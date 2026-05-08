@@ -132,3 +132,13 @@
 - **Discarded:** (1) Bundle action into sub-plan-3 — orthogonal to P3 scope; `setup-auth` depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern. (2) Remove bash fallback — external contract, not safe until v1.1.0 after consumer migration guidance shipped.
 - **Source:** phase
 - **Related:** BAR-131 §1, `.github/actions/setup-auth/action.yml`, `.agents/templates/.github/workflows/ci.yml`, `.agents/scripts/bkit-action-yaml.test.ts`
+
+## DE-12: BAR-131 follow-up — `isConsumerModified` defaults missing canonical hash to drift (2026-05-08)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Flip `isConsumerModified`'s default for unknown files: when `canonicalHashes` has no entry for `relPath`, return `true` (treat as modified) rather than `false`. `bkit upgrade`'s `diffFile` adds an idempotent `disk == template → skip` check before the drift branch so identical files are not flagged as spurious conflicts. Existing pre-v0.9.x consumers (or any managed file installed before BAR-142 introduced `canonicalHashes`) will see all-conflict on first `bkit upgrade` and must resolve each manually — this is the safe failure mode.
+- **Why:** DE-10 stated the intent as "absent field → conservative no-overwrite (safe)" but the implementation returned `false` from `isConsumerModified` for unknown files, which `bkit upgrade` interpreted as "no drift → safe to overwrite". The result was the opposite of conservative: any managed file lacking a recorded canonical hash was silently overwritten with the current template. Verified during the v1.0.0 ship cycle when running `bkit upgrade` on the bkit repo itself queued a 700-line wipe across `docs/architecture.md`, `docs/decisions.md`, `docs/knowledge.md`, and others — none of which had recorded hashes because they had not been re-written by `bkit install` since the BAR-142 schema landed.
+- **Discarded:** (1) Have `bkit install` retroactively populate `canonicalHashes` for every managed file (not just files in `ws.writes`) — larger surface change; can be added later as an opt-in `bkit install --reseed-hashes` flag. (2) Add a CLI prompt for unknown-hash files — `--non-interactive` flow has no human; conflict-by-default is the only honest answer there.
+- **Source:** human
+- **Related:** DE-10, BAR-131, `.agents/scripts/bkit-version.ts:168-181`, `.agents/scripts/bkit-upgrade.ts:79-116`, `.agents/scripts/bkit-version.test.ts`, `.agents/scripts/bkit-upgrade.test.ts`, commit 954e827
