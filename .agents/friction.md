@@ -77,19 +77,6 @@
 - **Recovery:** Re-invoked `@bkit-build-plan-execute` with explicit context listing what was already done. Second invocation completed in ~4min and produced valid PASS verdict.
 - **Status:** RECOVERED
 
-## CI failure after rebase — Prettier on generated mirror files (2026-05-06)
-
-- **Category:** other
-- **Workflow:** ship
-- **Step:** 2 — Worktree Setup
-- **FID:** bar-141-preflight-checklist
-- **Source:** orchestrator
-- **Description:** After rebasing `feat/bar-141-preflight-checklist` onto `origin/dev` (which included bar-143 `bkit install` mirror regeneration), CI failed Prettier format:check on `.claude/agents/bkit-design-organise.md` and `.cursor/agents/bkit-design-organise.md`. These files were added by bar-143's `bkit install` run but not Prettier-formatted before commit. The project rules say NEVER edit `.claude/*` or `.cursor/*` directly, but the only fix was running `pnpm prettier --write` on those two files.
-- **Suggested fix:** `bkit install` should run `prettier --write` on all generated mirror files before reporting "install complete", or the install output should be checked against Prettier before the [skip ci] mirror-regen commit lands on dev. Alternatively, add `.claude/` and `.cursor/` to `.prettierignore`.
-- **Related:** bar-141-preflight-checklist, bar-143-design-organise commit `42e93b3`, CI run 25430358129
-- **Recovery:** Ran `pnpm prettier --write .claude/agents/bkit-design-organise.md .cursor/agents/bkit-design-organise.md` in worktree, committed, pushed. CI passed on retry.
-- **Status:** RECOVERED
-
 <!-- bkit:end -->
 
 ## bkit-plan-generate stream-timeout on multi-issue plan input (2026-05-06)
@@ -117,15 +104,3 @@
 - **Recovery:** Manually resolved all 5 conflict commits in-place during ship Step 2; renumbered feature's KN-9/KN-10 to KN-12/KN-13 (no cross-references found via `git grep`); reverted template auto-merge to keep `pnpm bkit check` outside markers (per auto-memory "bkit-repo dev pain vs consumer pain — don't conflate"); force-with-lease pushed rebased branch; CI run #25538826802 green.
 - **Status:** RECOVERED
 
-## `.claude/scheduled_tasks.lock` accidentally committed by `git add -A` (2026-05-08)
-
-- **Category:** other
-- **Workflow:** ship
-- **Step:** 1 — Start Workflow / 6 — Switch to Dev
-- **FID:** bar-131-related-bars-suite
-- **Source:** orchestrator
-- **Description:** Step 1's `git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"` swept up untracked `.claude/scheduled_tasks.lock` (created by the harness's `/schedule` daemon) and made it a tracked file on parent `dev`. Same path was then modified again by the parent dev's pre-merge step. Three local-only commits accumulated on parent dev that, after Step 6's pull-rebase, would have regressed `status.json` by 262 lines AND leaked the lock file into the tree.
-- **Suggested fix:** Add `.claude/scheduled_tasks.lock` to `.gitignore` (or to `.agents/templates/.gitignore` for consumer propagation). Long-term, every workflow step that uses `git add -A` should narrow to `git add -A -- ':!.claude/scheduled_tasks.lock'` or use targeted `git add` for just the artifacts the step produced.
-- **Related:** bar-131-related-bars-suite, parent dev commits `6f76d88` / `2a97c3c` / `b3fed36` (discarded), `.claude/scheduled_tasks.lock`
-- **Recovery:** User-authorized one-time `git reset --hard origin/dev` on parent repo to drop the 3 spurious commits. `.claude/scheduled_tasks.lock` no longer present in working tree post-reset.
-- **Status:** RECOVERED
