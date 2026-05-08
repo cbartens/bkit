@@ -2,7 +2,7 @@
   {
     "workflow": "plan",
     "startedAt": "2026-05-08T12:58:07Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -99,6 +99,13 @@
         "artifacts": [
           "docs/plans/logs/bar-148-option-1/plan-summary.md"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-08T13:25:29Z",
+        "commitSha": "75ade7f5e088f8e7168c5b0507b96f3ad599c31d",
+        "artifacts": []
       }
     ]
   }
