@@ -394,6 +394,41 @@
         "artifacts": [
           "https://github.com/cbartens/bkit/pull/7"
         ]
+      }
+    ],
+    "completedAt": "2026-05-07T00:04:35Z"
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-08T05:23:58Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-08T05:24:00Z",
+        "commitSha": "RESET-2024-05-08",
+        "artifacts": [],
+        "note": "original commit reset post-squash; see Linear comment Step 1"
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-08T05:35:00Z",
+        "commitSha": "04b276c",
+        "artifacts": [
+          "docs/plans/logs/bar-131-related-bars-suite/ship-input.md"
+        ]
+      },
+      {
+        "step": "merge-pr",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-08T05:36:03Z",
+        "commitSha": "47eab97",
+        "artifacts": []
       },
       {
         "step": "switch-to-dev",
@@ -445,7 +480,6 @@
         "commitSha": "9785cb7a3e2f73940cf206dcf8f11a40823d4307",
         "artifacts": []
       }
-    ],
-    "completedAt": "2026-05-07T00:04:35Z"
+    ]
   }
 ]
