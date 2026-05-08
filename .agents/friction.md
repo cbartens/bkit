@@ -29,6 +29,8 @@
 > - **Status:** `OPEN` (default) | `RECOVERED` | `FIXED-IN: {REF}`
 > ```
 
+<!-- bkit:end -->
+
 ## Canonical design copy lost on worktree teardown (2026-05-06)
 
 - **Category:** destructive-backout
@@ -76,8 +78,6 @@
 - **Suggested fix:** Add a hard timeout guard to plan-execute prompt — if the agent detects it's near context/time limits, it should immediately write a partial log with CONCERNS verdict and list remaining gaps rather than failing silently. Alternatively, split large implementation tasks into smaller sub-plans so each execute agent session is bounded.
 - **Recovery:** Re-invoked `@bkit-build-plan-execute` with explicit context listing what was already done. Second invocation completed in ~4min and produced valid PASS verdict.
 - **Status:** RECOVERED
-
-<!-- bkit:end -->
 
 ## bkit-plan-generate stream-timeout on multi-issue plan input (2026-05-06)
 
