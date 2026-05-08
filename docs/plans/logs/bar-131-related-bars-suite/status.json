@@ -437,6 +437,13 @@
         "at": "2026-05-08T06:03:47Z",
         "commitSha": "bb646b0a52e39e25f1d3431f9381c320ef5b635f",
         "artifacts": []
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-08T06:05:55Z",
+        "commitSha": "9785cb7a3e2f73940cf206dcf8f11a40823d4307",
+        "artifacts": []
       }
     ],
     "completedAt": "2026-05-07T00:04:35Z"
