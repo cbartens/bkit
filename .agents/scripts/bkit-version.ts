@@ -149,17 +149,17 @@ export function writeBkitVersion(versionFilePath: string, v: BkitVersion): void 
 /**
  * Decide whether a managed file has been modified by the consumer since install.
  *
- * Returns true (consumer-modified) when:
- *   - `canonicalHashes` has a recorded hash for `relPath`, AND
- *   - The current on-disk content hash differs from the recorded canonical hash.
+ * Returns true (treat as consumer-modified — block silent overwrite) when:
+ *   - `canonicalHashes` has a recorded hash for `relPath` and the current on-disk
+ *     content hash differs from it (true drift), OR
+ *   - `canonicalHashes` has no entry for `relPath` (unknown hash state — could be a
+ *     pre-v0.9.x install where hashes were never recorded, or a file installed before
+ *     hash-tracking applied). Defaulting to true forces upgrades to surface a conflict
+ *     for the consumer to resolve, rather than silently overwriting content.
  *
- * Returns false (no drift detected — safe to upgrade) when:
- *   - `canonicalHashes` has no entry for `relPath` (unknown hash state → returns false,
- *     treated as unmodified; upgrade will apply template). Errs on the side of applying
- *     upgrades rather than blocking — callers that installed with a version that did not
- *     populate canonicalHashes will always see false here, so upgrades proceed.
- *   - The current on-disk content matches the canonical hash
- *   - The file is absent (nothing to compare)
+ * Returns false (no drift — safe to upgrade) only when:
+ *   - The current on-disk content matches the recorded canonical hash, OR
+ *   - The file is absent (nothing to compare).
  *
  * `relPath`: consumer-relative path (e.g. ".claude/agents/bkit-foo.md")
  * `absolutePath`: absolute path to the file on disk
@@ -170,11 +170,11 @@ export function isConsumerModified(
   absolutePath: string,
   canonicalHashes: Record<string, string>,
 ): boolean {
-  const recorded = canonicalHashes[relPath];
-  if (!recorded) return false; // unknown → not detected as drift (conservative)
-
   const current = hashFile(absolutePath);
   if (!current) return false; // absent → nothing to compare
+
+  const recorded = canonicalHashes[relPath];
+  if (!recorded) return true; // unknown → treat as modified to prevent silent overwrites
 
   return current !== recorded;
 }

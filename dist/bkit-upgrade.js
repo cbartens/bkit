@@ -31,22 +31,22 @@ export function diffFile(relPath, absolutePath, templateContent, canonicalHashes
     const diskContent = fs.readFileSync(absolutePath, "utf-8");
     const templateHash = sha256(templateContent);
     const diskHash = sha256(diskContent);
-    // Template unchanged since last install → skip
+    // Disk already matches template → skip (idempotent; nothing to apply).
+    // Checked first so a missing canonical hash never produces a spurious conflict
+    // when the file content is already identical to the template.
+    if (diskHash === templateHash) {
+        return { action: "skip" };
+    }
+    // Template unchanged since last install → skip.
     const canonicalHash = canonicalHashes[relPath];
     if (canonicalHash && canonicalHash === templateHash) {
         return { action: "skip" };
     }
-    // Template has changed. Check consumer drift.
-    const hasConsumerDrift = isConsumerModified(relPath, absolutePath, canonicalHashes);
-    if (hasConsumerDrift) {
-        // Consumer modified the file — conflict
+    // Template has changed (or canonical hash unknown). Check consumer drift —
+    // when canonical hash is missing, isConsumerModified treats the file as drifted
+    // to block silent overwrites of pre-v0.9.x installs that never recorded hashes.
+    if (isConsumerModified(relPath, absolutePath, canonicalHashes)) {
         return { action: "conflict", templateContent, diskContent };
-    }
-    // No consumer drift (or no canonical hash recorded — conservative: if template changed
-    // and we have no canonical hash, treat as "update" since we can't detect drift).
-    // If disk content already equals template → skip (idempotent).
-    if (diskHash === templateHash) {
-        return { action: "skip" };
     }
     return { action: "update", templateContent };
 }

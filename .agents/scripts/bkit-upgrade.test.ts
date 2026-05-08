@@ -128,13 +128,13 @@ describe("P4.T5 — diffFile", () => {
     expect(result.action).toBe("skip");
   });
 
-  it('returns "update" when no canonicalHash recorded but template changed (conservative: update since no drift data)', () => {
+  it('returns "conflict" when no canonicalHash recorded and template differs from disk (safe default: block silent overwrite)', () => {
     const diskContent = "old content on disk\n";
     const newTemplateContent = "new template content\n";
     const absPath = writeFile(".claude/agents/bkit-foo.md", diskContent);
-    // No canonicalHash for this file — isConsumerModified returns false
+    // No canonicalHash for this file — isConsumerModified returns true (treats as modified)
     const result = diffFile(".claude/agents/bkit-foo.md", absPath, newTemplateContent, {});
-    expect(result.action).toBe("update");
+    expect(result.action).toBe("conflict");
   });
 });
 
