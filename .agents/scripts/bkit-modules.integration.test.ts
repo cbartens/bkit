@@ -873,7 +873,9 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     flushPostDispatch(ctx);
 
     // The rules.md write MUST appear in ws.writes (templates pass tracks it).
-    const ruleWrites = ctx.ws.writes.filter((w) => w.path.endsWith(path.join(".agents", "rules.md")));
+    const ruleWrites = ctx.ws.writes.filter((w) =>
+      w.path.endsWith(path.join(".agents", "rules.md")),
+    );
     expect(ruleWrites.length).toBeGreaterThan(0);
   });
 });
