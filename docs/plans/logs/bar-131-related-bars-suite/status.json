@@ -394,6 +394,13 @@
         "artifacts": [
           "https://github.com/cbartens/bkit/pull/7"
         ]
+      },
+      {
+        "step": "switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-08T05:45:24Z",
+        "commitSha": "5416f68cdb6bf3de1edba70d69cf8320ed720175",
+        "artifacts": []
       }
     ],
     "completedAt": "2026-05-07T00:04:35Z"
