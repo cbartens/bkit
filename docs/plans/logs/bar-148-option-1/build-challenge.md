@@ -7,63 +7,69 @@ Failures: 1
 
 ## Scope
 
-Post-remediation challenge of BAR-148 Option 1 implementation (`bkit-ci-router` via `claude-code-action`). Re-checked:
+Re-probe (attempt 1) of BAR-148 Option 1 implementation post-remediation. Focused on:
 
-1. C9f test fix at `release-workflow.test.ts:412-420` — two regex assertions for `MAX_DEBUG_ATTEMPT` pre-check absence.
-2. Five orchestrator `issueId` / `commentId` writes — Step 1 ordering vs `save_comment`.
-3. `bkit-ci-router.md` — stale-run guard and label-gate ordering.
-4. `bkit-ci-router.yml` — `permissions:` hardening and `cancel-in-progress: true`.
+1. FID resolution fix completeness across canonical source AND both IDE mirrors.
+2. Router orchestrator correctness (label gate, stale-run guard, concurrency, dispatch).
+3. `status.json` schema extension (`issueId` / `commentId`) — propagation in all 5 orchestrators.
+4. GHA workflow security (prompt-injection / pwn-request surface, secrets handling).
+5. Test coverage gaps for the FID fix.
 
-## Pass items
+## Pass items (verified — no further action required)
 
-- C9f fix at `release-workflow.test.ts:412-420` is correct. Two regex assertions exclude shell reads / arithmetic comparisons of `MAX_DEBUG_ATTEMPT` while permitting prose references that explain the constraint. The companion test at `:421-423` retains the positive `bkit-debug` dispatch documentation assertion. No false positives expected against the current router prose (verified — the prose contains the constant name in a "MUST NOT pre-empt" sentence, not in a `$VAR` or `VAR -ge` form).
-- `.agents/workflows/bkit-ci-router.md` step ordering is correct: Step 3 = label gate (lines 171-202), Step 4 = stale-run guard (lines 206-240). Both exit no-op (not Failure Path) when their respective preconditions fail, with explicit `rm -f .router-lock` and `exit 0`. `LATEST_SHA` / `PR_HEAD_SHA` empty cases route to Failure Path (line 219). Per-gate checklist items match the step body.
-- `.github/workflows/bkit-ci-router.yml` (and `.agents/templates/.github/workflows/bkit-ci-router.yml`, byte-identical) hardening:
-  - `permissions:` block (lines 7-11) restricts to least-privilege: `contents: read`, `pull-requests: write`, `issues: write`, `actions: read`. No `id-token`, no `write-all`. Acceptable for a router that reads PR metadata and writes Linear-bridged comments.
-  - `concurrency.cancel-in-progress: true` at line 14 matches the v4 plan revision (newer CI completion supersedes in-flight router) and the C-tier test that asserts the value.
-  - `if:` filter on `success | failure` (line 17) excludes `cancelled`. `timeout-minutes: 210` is below the upper-bound assertion (≤ 240) and above the lower-bound formula explained inline.
-  - `actions/checkout@v4` pins to `head_sha` (line 23) — required for Path A `status.json` discovery.
-  - `claude-code-action@v1` is invoked with `ANTHROPIC_API_KEY` injected via `env:` and `with:` and `--allowed-tools` restricted to the documented surface.
+- F1 from prior challenge attempt 0 (`commentId` written before `save_comment`) is correctly remediated. All 5 upstream orchestrators (`bkit-plan.md`, `bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-design.md`) follow the split pattern: status init writes `commentId:""` placeholder before `save_comment`, then a follow-up `jq '.[-1].commentId = $cid'` post-`save_comment` patches the field, with both writes committed before `start-workflow status` finalises (refs `bkit-build.md:104` placeholder + `:126` patch; mirrored in claude/cursor command directories).
+- Router step ordering (`.agents/workflows/bkit-ci-router.md`) is correct: Step 3 = label gate (lines 166-197), Step 4 = stale-run guard (lines 201-235). Both no-op exits (not Failure Path) on precondition mismatch with explicit `rm -f .router-lock` and `exit 0`. Empty-SHA edge cases route to Failure Path (line 214).
+- GHA workflow `permissions:` block (lines 7-11) restricts to least-privilege; `cancel-in-progress: true` (line 14); `if:` filter on success/failure only (line 17); `timeout-minutes: 210` ≤ 240 ceiling.
+- `runAutoModule` (`bkit-modules.ts:916`) wires the Tier-3 seed-or-print template at `.github/workflows/bkit-ci-router.yml`; dispatch order has `auto` between `ci` and `lint` (`bkit-modules.ts:1220-1228`); `--auto` CLI flag wired into `ModuleFlag` / `MODULE_FLAGS` / `ALL_MODULES`.
+- The canonical source (`.agents/workflows/bkit-ci-router.md:70-74`) and the Claude mirror (`.claude/commands/bkit-ci-router.md:70-74`) both contain the FID fix `FID=$(echo "$BRANCH" | sed 's|^feat/||')` plus the `FID empty or equals BRANCH → Failure Path` guard.
 
 ## Findings
 
-### F1 — CRITICAL — `commentId` write happens BEFORE `save_comment` captures the ID; router fails on every dispatch
+### F1 — CRITICAL — Cursor mirror still contains pre-remediation buggy FID resolution
 
 - **Severity:** CRITICAL
 - **Class:** mechanical
-- **Locations (all 5 existing orchestrators, identical pattern):**
-  - `.agents/workflows/bkit-build.md:99-115` (status init Step 9, `save_comment` Step 11)
-  - `.agents/workflows/bkit-debug.md:108-126` (status init Step 11, `save_comment` Step 13)
-  - `.agents/workflows/bkit-plan.md:79-95` (status init Step ~9, `save_comment` Step 11)
-  - `.agents/workflows/bkit-design.md:78-94` (status init Step ~9, `save_comment` Step 10)
-  - `.agents/workflows/bkit-ship.md:98-114` (status init Step ~9, `save_comment` Step 10)
-- **Contract violated:** `.agents/workflows.md:152` documents "`commentId` — Linear comment ID — written at Start Workflow by all orchestrators **after `save_comment` creates the initial comment**".
+- **Location:** `.cursor/commands/bkit-ci-router.md:66-75`
+- **Diff with canonical:** the canonical source `.agents/workflows/bkit-ci-router.md:70-74` (and Claude mirror `.claude/commands/bkit-ci-router.md:70-74`) was rewritten in remediation to:
+
+  ```bash
+  FID=$(echo "$BRANCH" | sed 's|^feat/||')
+  ```
+
+  with an `If FID empty or equals BRANCH → Failure Path` guard at line 74. The Cursor mirror at `.cursor/commands/bkit-ci-router.md:66-75` STILL contains the original buggy directory-scan:
+
+  ```bash
+  FID=$(ls docs/plans/logs/ | while read d; do
+    s="docs/plans/logs/$d/status.json"
+    [ -f "$s" ] || continue
+    last_status=$(jq -r '.[-1].status // ""' "$s")
+    [ "$last_status" = "IN_PROGRESS" ] || [ "$last_status" = "DONE" ] && echo "$d" && break
+  done | head -1)
+  ```
+
+  Verified via `Grep "FID=\$\(ls docs/plans/logs"` → only 1 match in the repo: `.cursor/commands/bkit-ci-router.md`. The `Grep "FID=\$\(echo \"\$BRANCH\""` matches canonical + Claude mirror but NOT the Cursor mirror.
 
 **Exploit / failure scenario:**
-1. `bkit-build` runs Step 9 (status init): `jq --arg cid "{COMMENT_ID}" ... commentId:$cid ...`. At this point `{COMMENT_ID}` is unresolved / empty (the comment has not been created yet) — `status.json` records `commentId: ""`.
-2. `bkit-build` runs Step 11: `save_comment({ issueId: ... })` returns the new comment ID, captured as `{COMMENT_ID}`.
-3. `{COMMENT_ID}` is never written back into `status.json`. All later same-workflow `save_comment` calls in-session have the placeholder, but the persisted `status.json` retains `""`.
-4. CI completes → `bkit-ci-router.yml` dispatches `bkit-ci-router.md`.
-5. Router Step 1 line 86 reads `COMMENT_ID=$(jq -r '.[-1].commentId // ""' "$STATUS")` → empty.
-6. Router Step 1 line 89 → **Failure Path** with `missing commentId in status.json — Path A schema not written by upstream orchestrator`.
-7. Router never dispatches ship / debug. The entire BAR-148 router is dead-on-arrival on every run.
 
-The `issueId` field has the same shape but happens to be already populated at status-init time (extracted in earlier sub-steps), so issueId works. **Only `commentId` is broken.**
+1. Consumer using Cursor IDE invokes `/bkit-ci-router` (the GHA-runner-side `claude-code-action@v1` uses the Claude mirror so this path is fine in production; but Cursor consumers running the orchestrator interactively or from CI configured to read `.cursor/commands/`-resolved markdown will hit the bug).
+2. Cursor mirror runs Step 1 sub-step 3 with the directory-scan loop. `ls` enumerates `docs/plans/logs/` ALPHABETICALLY. First directory whose latest status entry is `IN_PROGRESS` or `DONE` is selected.
+3. On any feature branch where `docs/plans/logs/` carries multiple historical FID directories from `dev` (which is common — historical features remain on disk after merge), the alphabetically-first directory wins, NOT the FID for the current branch.
+4. The router then dispatches `/bkit-ship {WRONG_FID}` or `/bkit-debug {WRONG_FID}`. Ship of the wrong feature: `gh pr merge` against the wrong PR, OR debug attempt on the wrong feature's status.json. Either is a destructive cross-feature action.
+5. This is the EXACT bug that the remediation was supposed to fix. The fix landed in 2 of 3 affected files; the Cursor mirror was orphaned because `pnpm bkit install` (which would regenerate `.cursor/commands/` via `runCursorModule` → `applyT2(applyT1(...))`) was not re-run after the canonical edit.
 
-**Why C8 tests miss this:** `release-workflow.test.ts:285-313` asserts the FIELD names `issueId` / `commentId` appear inside the Step 1 status-init block. They do — as placeholders. The tests do NOT assert ordering (i.e., `save_comment` index < status-init `commentId` write index in the file).
+**Why prior verification missed this:**
 
-**Suggested fix (mechanical):**
-- Move the `save_comment` step to BEFORE the `status.json` init in each of the 5 orchestrators, OR
-- Split the status init into two writes: (a) initial entry creation with `commentId: ""` placeholder before `save_comment`, then (b) a follow-up `jq '.[-1].commentId = $cid'` AFTER `save_comment` captures `{COMMENT_ID}`. The follow-up write must happen before the `start-workflow status` commit so the field lands in the same commit.
-- Add an authoring-conventions test asserting the source-order constraint per `.agents/workflows.md:152`: in each orchestrator, the line index of the `save_comment` that returns `{COMMENT_ID}` must be LESS than the line index of the jq write that references `--arg cid` / `commentId:$cid` (or, for the split-write approach, less than the second jq write).
+- `build-challenge-remediate-log.md` line 7 explicitly enumerates only TWO files: `.agents/workflows/bkit-ci-router.md` and `.claude/commands/bkit-ci-router.md`. The Cursor mirror is unmentioned.
+- `build-challenge-tests.md` lines 13-15 say "Both `.agents/workflows/bkit-ci-router.md` (canonical) and `.claude/commands/bkit-ci-router.md` (mirror) are covered" — the Cursor mirror is NOT in the regression test loop. The 10 added tests in `release-workflow.test.ts` iterate over only those 2 files, not 3.
+- `build-plan-verify-1-1.md` line 42 claims `pnpm bkit check` exited 0 — but this was run earlier in the build cycle, before the FID fix was applied to the canonical. The canonical edit was made WITHOUT a follow-up `pnpm bkit install` (which mirrors `runCursorModule` would have detected as drift via `installFile`'s content-equality check at `bkit-install.ts:311-314`).
+- Test coverage gap: `release-workflow.test.ts` regression tests only assert against `.agents/` and `.claude/` paths. A correct test loop would enumerate `[.agents/workflows, .claude/commands, .cursor/commands]` and assert each against the same regex set.
 
-## Notes
+**Suggested fix (mechanical, two parts):**
 
-- The router itself (Step 1 line 86) reads `COMMENT_ID` from `status.json` BEFORE its own status-init at line 106, so the router internal ordering is internally consistent; the bug is exclusively in the 5 upstream orchestrators that produce the input the router consumes.
-- Re-running router after upstream orchestrator hand-edits `status.json` is not a viable workaround — orchestrators auto-commit `status.json` and the GHA workflow_run trigger has no human-in-loop step.
-- Failure mode is loud (Failure Path posts a Linear comment) but routes to no-dispatch; combined with the v4 `cancel-in-progress: true`, every `feat/**` PR with the `Auto` label will burn one router job per CI completion to no-op.
+1. Run `pnpm bkit install --cursor` (or `pnpm bkit install` for full regen) to re-emit `.cursor/commands/bkit-ci-router.md` from the canonical source. This will re-apply the T1+T2 transform and produce the corrected FID-resolution body. Verify via `Grep "FID=\$\(echo \"\$BRANCH\""` to confirm the fixed pattern lands and `Grep "FID=\$\(ls docs/plans/logs"` returns no matches.
+2. Extend the regression test loop in `.agents/scripts/release-workflow.test.ts` to include `.cursor/commands/bkit-ci-router.md` as the third asserted file. The current `for (const file of [...])` loop covers 2 files; add the cursor mirror to make it 3 (15 total assertions instead of 10). Without this, future fixes to the canonical source could re-introduce the same divergence on the cursor mirror without test detection.
 
-<!-- verdict:start -->
-Verdict: FAIL
-Failures: 1
-<!-- verdict:end -->
+## Notes (informational, not findings)
+
+- **GHA pwn-request surface (architectural — out of mechanical scope here):** `bkit-ci-router.yml` runs on `workflow_run` of `CI`, then `actions/checkout@v4 with ref: ${{ github.event.workflow_run.head_sha }}` checks out attacker-controlled code from a fork PR's head SHA, then `pnpm install --frozen-lockfile` executes (which can run lifecycle scripts in the fork's `package.json`), all in a context with `ANTHROPIC_API_KEY` and `GH_BKIT_TOKEN` secrets exposed. Linear `Auto` label gate runs LATER (Step 3 of the orchestrator), so the secrets are exposed before the gate fires. Mitigations: `feat/**` branch filter is convention-only (forkers can name their branch `feat/x`); `frozen-lockfile` blocks dep tampering but not lifecycle scripts. Defending against this is architectural (e.g., move `actions/checkout` to AFTER label gate, or use `pull_request_target` patterns, or run `pnpm install --ignore-scripts`). Documenting here for future plan; not in current build's remediation scope.
+- **Stale-run guard semantics (LOW — informational):** Step 4 compares `gh run list --branch ... --limit 1`'s `headSha` (= most-recent run on branch, possibly NEWER than the run that triggered this router) against `gh pr view`'s `headRefOid`. The intent of the guard ("is this router invocation for a stale SHA?") would be more directly satisfied by `CI_RUN_HEAD_SHA == PR_HEAD_SHA` (env var from the triggering run vs PR head). Current logic is functionally OK given `cancel-in-progress: true` mitigates the race, but the variable choice is mismatched against intent. Out of scope for current cycle; flag for cleanup in pending docs.
