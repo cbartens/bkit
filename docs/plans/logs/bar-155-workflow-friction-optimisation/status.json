@@ -2,7 +2,7 @@
   {
     "workflow": "plan",
     "startedAt": "2026-05-09T01:35:20Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -99,6 +99,13 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-summary.md"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T02:18:44Z",
+        "commitSha": "7608da66b219e9008ab557a77a6fb686e381d191",
+        "artifacts": []
       }
     ]
   }
