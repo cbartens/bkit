@@ -169,3 +169,14 @@
 - **Description:** Today `MAX_DEBUG_ATTEMPT=3` means the operator manually re-runs `/bkit-debug` up to 3 times (implicit per-attempt circuit breaker via not re-invoking). After BAR-148 ships, the router auto-fires up to 3 times; the operator's only stop-early levers are removing the `Auto` label or pushing an empty cancel commit. Re-evaluate the default after observing the first 5–10 auto-routed feature cycles; consider adding a per-feature override field in `status.json` if 3 proves wrong empirically.
 - **Source:** phase
 - **Related:** BAR-148, DE-14, DE-15, `.agents/workflows/bkit-ci-router.md`, `.agents/workflows/bkit-debug.md`
+
+## BAR-148 build abort — commentId ordering bug in 5 orchestrators (2026-05-09)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** critical
+- **Status:** open
+- **Description:** Build workflow for bar-148-option-1 aborted at Step 9 (Build Challenge, attempt 1). Root cause: in all 5 orchestrators (`bkit-plan.md`, `bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-design.md`), the initial `status.json` write uses `--arg cid "{COMMENT_ID}"` before `save_comment` has been called, so `commentId` persists as `""`. The router reads this field at Step 1 and immediately halts with "missing commentId in status.json", meaning no ship or debug dispatch ever fires. Fix: split the status-init write into two parts — write `commentId: ""` initially, then patch the real value after `save_comment` returns — across all 5 files. Also add a C8 ordering-constraint test in `release-workflow.test.ts` to prevent regression. Resume: restart `/bkit-build bar-148` after the fix; orchestrator will pick up from the last `FAILED` build entry in `status.json`.
+- **Workaround:** None for future orchestrator invocations. Manual `status.json` patch unblocks the current run only.
+- **Source:** agent
+- **Related:** BAR-148, bar-148-option-1, `docs/plans/logs/bar-148-option-1/build-handover.md`, `docs/plans/logs/bar-148-option-1/build-challenge.md`, `.agents/workflows/bkit-build.md:103-115`, `.agents/workflows/bkit-debug.md:113-126`, `.agents/workflows/bkit-plan.md:83-95`, `.agents/workflows/bkit-design.md:82-94`, `.agents/workflows/bkit-ship.md:102-114`, `.agents/scripts/release-workflow.test.ts:285-313`
