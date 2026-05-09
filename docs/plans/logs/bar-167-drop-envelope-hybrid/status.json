@@ -176,6 +176,17 @@
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-scope-check-1.md",
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-scope-check-2.md"
         ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T13:51:02Z",
+        "commitSha": "647d2fd349db2425840d87dafd25bd7d283871cb",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"
+        ]
       }
     ]
   }
