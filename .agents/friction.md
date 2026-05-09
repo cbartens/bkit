@@ -56,4 +56,3 @@
 - **Related:** bar-155-workflow-friction-optimisation, BAR-155, prior recurrence on bar-148-option-1
 - **Recovery:** Pending — plan deliverable committed and merged into local dev; remote push deferred. Documented and STOP per `.agents/rules.md` § Pre-push.
 - **Status:** OPEN
-
