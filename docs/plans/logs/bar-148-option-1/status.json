@@ -420,6 +420,14 @@
     "workflow": "build",
     "startedAt": "2026-05-09T02:45:58Z",
     "status": "IN_PROGRESS",
-    "steps": []
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T02:46:23Z",
+        "commitSha": "b3709690343b970d4de3b32eecb0e732ae0a1281",
+        "artifacts": []
+      }
+    ]
   }
 ]
