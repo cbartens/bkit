@@ -242,6 +242,17 @@
         "at": "2026-05-09T04:54:35Z",
         "commitSha": "86de382d8b13c5aad617e3f588d28d7cd8f2769e",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T04:56:43Z",
+        "commitSha": "c337e753c443338dea00c71079b30e296c9d1651",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md"
+        ]
       }
     ]
   }
