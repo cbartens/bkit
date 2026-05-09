@@ -313,6 +313,30 @@ describe("C8 — all 5 existing orchestrators write issueId and commentId in Ste
   }
 });
 
+describe("C8b — commentId patch appears AFTER save_comment in each orchestrator (source-order constraint)", () => {
+  const orchestrators = [
+    "bkit-plan.md",
+    "bkit-build.md",
+    "bkit-ship.md",
+    "bkit-debug.md",
+    "bkit-design.md",
+  ];
+
+  for (const name of orchestrators) {
+    it(`${name} writes commentId AFTER save_comment captures it`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const saveCommentIdx = content.indexOf("save_comment(");
+      const lastCidWriteIdx = content.lastIndexOf('--arg cid "{COMMENT_ID}"');
+      expect(saveCommentIdx).toBeGreaterThan(-1);
+      expect(lastCidWriteIdx).toBeGreaterThan(-1);
+      // The last --arg cid "{COMMENT_ID}" must appear AFTER the first save_comment(
+      // (i.e. the commentId patch follows the save_comment that resolves {COMMENT_ID})
+      expect(lastCidWriteIdx).toBeGreaterThan(saveCommentIdx);
+    });
+  }
+});
+
 describe("C9a — router no-op exit when Auto label absent (matrix row 12)", () => {
   let routerContent: string;
   beforeAll(() => {

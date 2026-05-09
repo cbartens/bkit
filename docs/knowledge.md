@@ -221,3 +221,15 @@
 - **Severity:** high
 - **Source:** phase
 - **Related:** BAR-148, `.agents/scripts/release-workflow.test.ts` C9f, `.agents/workflows/bkit-ci-router.md`
+
+## KN-17: status.json field-write must follow value resolution (2026-05-09)
+
+- **Symptom:** `bkit-ci-router` reads `commentId: ""` from `status.json` and enters Failure Path with `missing commentId in status.json`. Ship and debug dispatches never fire for `feat/**` PRs carrying the `Auto` label.
+- **Root cause:** Each orchestrator's status-init `jq` block included `--arg cid "{COMMENT_ID}"` and `commentId:$cid` BEFORE the `save_comment` call that resolves `{COMMENT_ID}`. At write-time the placeholder was an empty string. The `status.json` was never re-patched after `save_comment`.
+- **Fix:** Split-write pattern — (a) initial status-init writes `commentId:""` (omit `--arg cid`); (b) immediately after `save_comment` captures `{COMMENT_ID}`, a second jq patch `'.[-1].commentId = $cid'` updates the record and commits. Applied to all 5 orchestrators: `bkit-{plan,build,ship,debug,design}.md`.
+- **Test gap:** C8 only asserted field-name presence, not source-order between `save_comment` and the write. Added C8b with `lastIndexOf('--arg cid "{COMMENT_ID}"') > indexOf('save_comment(')` constraint.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** debug
+- **Related:** BAR-148, build-challenge attempt 1 (commit `8e1c805957b3b7e607b2eb59e13e205e86a5ad0f`), debug attempt 0, `.agents/workflows/bkit-{plan,build,ship,debug,design}.md`, `.agents/scripts/release-workflow.test.ts` C8b

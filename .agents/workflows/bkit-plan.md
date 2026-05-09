@@ -80,8 +80,8 @@ description: "Plan Feature — Autonomous plan generation"
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "plan" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-     t=$(mktemp); jq --arg iid "{ISSUE_ID}" --arg cid "{COMMENT_ID}" \
-       '. + [{workflow:"plan", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:$cid, steps:[]}]' \
+     t=$(mktemp); jq --arg iid "{ISSUE_ID}" \
+       '. + [{workflow:"plan", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:"", steps:[]}]' \
        "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
    git add "$STATUS" && git commit --allow-empty -m "chore({FID}): start-workflow work"
@@ -101,6 +101,12 @@ description: "Plan Feature — Autonomous plan generation"
 [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
 Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{PARENT_FID}-design.md)}
 ```
+
+12. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+    ```bash
+    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 

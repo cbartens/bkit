@@ -79,8 +79,8 @@ description: "Design Feature — Autonomous design phase"
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "design" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-     t=$(mktemp); jq --arg iid "{ISSUE_ID}" --arg cid "{COMMENT_ID}" \
-       '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:$cid, steps:[]}]' \
+     t=$(mktemp); jq --arg iid "{ISSUE_ID}" \
+       '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:"", steps:[]}]' \
        "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
    git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
@@ -99,6 +99,12 @@ description: "Design Feature — Autonomous design phase"
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
 [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
 ```
+
+11. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+    ```bash
+    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
