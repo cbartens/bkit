@@ -542,6 +542,13 @@
         "artifacts": [
           "https://github.com/cbartens/bkit/pull/12"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T03:01:51Z",
+        "commitSha": "2b494d255d4dcb7d26868af0e0061a115bb77408",
+        "artifacts": []
       }
     ],
     "completedAt": "2026-05-09T03:01:45Z"
