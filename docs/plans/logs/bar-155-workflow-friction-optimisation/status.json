@@ -88,6 +88,17 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T02:14:21Z",
+        "commitSha": "dfc00e53e4f5094f1ae0178703672080034af154",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-summary.md"
+        ]
       }
     ]
   }
