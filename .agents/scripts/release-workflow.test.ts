@@ -41,8 +41,43 @@ describe("release.yml structural assertions (BAR-138)", () => {
     expect(content).toContain("packages: write");
   });
 
-  it("permissions.contents is read", () => {
-    expect(content).toContain("contents: read");
+  it("permissions.contents is write (sliding v{N} tag step pushes back to origin)", () => {
+    // v1.0.3+: contents was upgraded from read → write so the "Update sliding
+    // major-version tag" step can `git push origin v{N} --force` using the
+    // default GITHUB_TOKEN. See docs/deployments.md § "Sliding major-version tag".
+    expect(content).toContain("contents: write");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sliding major-version tag step (v1.0.3+)
+  // ---------------------------------------------------------------------------
+
+  it("sliding major-version tag step is present", () => {
+    expect(content).toContain("Update sliding major-version tag");
+  });
+
+  it("sliding tag step skips prereleases (tags containing '-')", () => {
+    // Prerelease tags like v1.0.3-rc.1 must not advance the v{N} sliding tag.
+    expect(content).toMatch(/!contains\(github\.ref_name,\s*'-'\)/);
+  });
+
+  it("sliding tag step extracts major from ref_name (no hard-coded major)", () => {
+    // Future-proofs for v2 / v3 — major is parsed from the tag, not hard-coded.
+    expect(content).toContain("sed -E 's/^v([0-9]+)\\..*/\\1/'");
+  });
+
+  it("sliding tag step force-pushes the major-version tag to origin", () => {
+    expect(content).toContain('git push origin "$MAJOR" --force');
+  });
+
+  it("sliding tag step appears after npm publish (failed publish must not advance the sliding tag)", () => {
+    // Anchor on `- name:` so we match the step declaration, not the prose
+    // reference in the `permissions:` comment block above.
+    const publishIdx = lineIndex("- name: Publish to GitHub Packages");
+    const slidingIdx = lineIndex("- name: Update sliding major-version tag");
+    expect(publishIdx).toBeGreaterThan(-1);
+    expect(slidingIdx).toBeGreaterThan(-1);
+    expect(slidingIdx).toBeGreaterThan(publishIdx);
   });
 
   // ---------------------------------------------------------------------------

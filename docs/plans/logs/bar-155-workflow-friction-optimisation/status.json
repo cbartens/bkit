@@ -1,0 +1,112 @@
+[
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-09T01:35:20Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T01:35:24Z",
+        "commitSha": "1197cd620977eff9b0613a36c1ffa04e347b8aad",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T01:38:42Z",
+        "commitSha": "ad16bdd0d166b0b3c780caa48097b70f20301981",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md"
+        ]
+      },
+      {
+        "step": "generate-plan",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T01:46:34Z",
+        "commitSha": "6a88a91c231e8d143b59edd9ea6ea67689826582",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v1-draft.md"
+        ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 8,
+        "at": "2026-05-09T01:50:36Z",
+        "commitSha": "7637f0c32b03c2f59c71ad0434cd56d161f0445b",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-1.md",
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-2.md"
+        ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T01:58:56Z",
+        "commitSha": "dd430b85a6ab170bbf49ab09a8f0734dadcf8c11",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v2-reviewed.md"
+        ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 4,
+        "at": "2026-05-09T02:03:27Z",
+        "commitSha": "48b508d8843e7c3b15fc3d8190deda68f940fc8f",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-scope-check-1.md",
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T02:10:17Z",
+        "commitSha": "935e575f9d390e2573793480521c485698c568c3",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v3-checked.md"
+        ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SINGLE",
+        "attempt": 1,
+        "at": "2026-05-09T02:11:31Z",
+        "commitSha": "d1de0512608afc59f288aa83796acea7d7d0b40f",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-complexity-check.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T02:14:21Z",
+        "commitSha": "dfc00e53e4f5094f1ae0178703672080034af154",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-summary.md"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T02:18:44Z",
+        "commitSha": "7608da66b219e9008ab557a77a6fb686e381d191",
+        "artifacts": []
+      }
+    ]
+  }
+]

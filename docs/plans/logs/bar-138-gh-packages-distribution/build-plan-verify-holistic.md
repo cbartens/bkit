@@ -22,7 +22,7 @@ These are out-of-scope for build-phase verification per the explicit user note.
 
 ## Sub-Plans Verified
 
-2 of 2 (`bar-138-gh-packages-distribution-plan-1.md`, `bar-138-gh-packages-distribution-plan-2.md`). Count matches the active sub-plan glob.
+2 of 2 (`bar-138-gh-packages-distribution-plan-1.md`, `bar-138-gh-packages-distribution-plan-2.md`). Count matches the archived sub-plan bundle under `docs/plans/completed/202605/`.
 
 ## Integration Gaps
 

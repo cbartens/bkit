@@ -7,7 +7,7 @@ Failures: 0
 
 ## Scope
 
-Single — sub-plan 1 (`docs/plans/active/bar-138-gh-packages-distribution-plan-1.md`).
+Single — sub-plan 1 (`docs/plans/completed/202605/bar-138-gh-packages-distribution-plan-1.md`).
 
 ## Gaps Identified
 
