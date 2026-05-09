@@ -69,3 +69,16 @@
 - **Related:** bar-148-option-1, build-challenge attempt 1
 - **Recovery:** Failure Path triggered; manual restart required (`/bkit-build bar-148 next`).
 - **Status:** OPEN
+
+## bkit-build worktree cwd drift — double-nested path from git rev-parse --show-toplevel (2026-05-09)
+
+- **Category:** tool-failure
+- **Workflow:** build
+- **Step:** 2 — Worktree Setup
+- **FID:** bar-155-workflow-friction-optimisation
+- **Source:** orchestrator
+- **Description:** Bash `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` run from INSIDE a worktree causes double-nesting: `git rev-parse --show-toplevel` returns the worktree root (not the main repo root), appending `.worktrees/{FID}` creates a non-repo path. git ls-files returned 0 results; git checkout of tracked files failed. Root cause: cwd was set to the worktree by a prior pnpm install step, so subsequent `git rev-parse --show-toplevel` evaluated inside the worktree.
+- **Suggested fix:** In bkit-build.md, replace `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` with a fixed absolute path reference or store REPO_ROOT from the main-repo context before entering the worktree.
+- **Related:** bar-155-workflow-friction-optimisation
+- **Recovery:** Used absolute path `cd /Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation` to navigate correctly. No code lost.
+- **Status:** RECOVERED
