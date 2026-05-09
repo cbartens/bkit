@@ -36,7 +36,7 @@ tools:
 3. Identify untested: Error paths, edge cases (empty/null/boundary/concurrent), security paths from challenge, integration points. Fixed bugs → write regression tests that would have caught the original bug.
 4. Write test files: Each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming style as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright) files.
 5. Co-locate with existing test files.
-6. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`. Filter output to newly-added test files. Failures in unrelated tests → record under `Bugs Discovered` as out-of-scope (do NOT block this agent's verdict).
+6. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`. Filter output to newly-added test files. Failures in unrelated tests → record under `Bugs Discovered` as out-of-scope (do NOT block this agent's verdict). For each `Bugs Discovered` entry, append via Bash `echo {finding} >> {output}` as work progresses. Update `Verdict:` line via `Edit` immediately upon any FAIL outcome — do not defer to a final pass.
 7. Verdict mapping:
    - `PASS` = tests added and newly-added pass.
    - `FAIL` = generated tests do not compile or run.
@@ -57,6 +57,10 @@ Verdict: PASS | CONCERNS | FAIL
 ## Blockers
 
 [Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+
+## Bugs Discovered
+
+[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict.]
 ```
 
 > ⛔ **STOP after generating tests and producing output. Do NOT change implementation, expand scope.**
