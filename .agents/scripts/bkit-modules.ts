@@ -633,6 +633,24 @@ export function runCursorModule(ctx: ModuleContext): void {
 // the live template content at print time.
 // ---------------------------------------------------------------------------
 
+// scanForeignBkitUses — BAR-164 installer guard. Returns every
+// `uses: cbartens/bkit/...@<ref>` line in the canonical CI template. While
+// `cbartens/bkit` stays private and consumers live in other GitHub orgs, such
+// references cannot be resolved by the runner's GITHUB_TOKEN. The env-var
+// pattern (GH_BKIT_TOKEN env on the install step) is the canonical install
+// flow — see README §"Consumer CI auth". `runCiModule` calls this and throws
+// before writing if any matches are found, so a regression is caught at
+// dev/CI time, never in a consumer repo.
+export function scanForeignBkitUses(content: string): string[] {
+  const matches: string[] = [];
+  const re = /^\s*-?\s*uses:\s*(cbartens\/bkit\/[^\s@]+@\S+)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    matches.push(m[1]!);
+  }
+  return matches;
+}
+
 const CI_YML_MERGE_INSTRUCTIONS = `[bkit] .github/workflows/ci.yml exists — bkit cannot safely YAML-merge jobs. Manual merge required.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -792,6 +810,22 @@ export function runCiModule(ctx: ModuleContext): void {
   if (!fs.existsSync(templatePath)) {
     console.warn(`${logPrefix} CI template not found at ${templatePath} — skipping CI module`);
     return;
+  }
+
+  // BAR-164 guard: refuse to seed a canonical template that contains a
+  // `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` stays
+  // private and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN
+  // cannot resolve such a reference and CI fails with "repository not found"
+  // before any install step runs. The env-var pattern (GH_BKIT_TOKEN on the
+  // install step + .npmrc substitution) is the canonical install flow — see
+  // README §"Consumer CI auth". Hard error so the regression is caught at
+  // dev/CI time, never written into a consumer repo.
+  const templateContent = fs.readFileSync(templatePath, "utf-8");
+  const foreignUses = scanForeignBkitUses(templateContent);
+  if (foreignUses.length > 0) {
+    throw new Error(
+      `${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .agents/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`,
+    );
   }
 
   const dstPath = path.join(".github", "workflows", "ci.yml");

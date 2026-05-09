@@ -5,6 +5,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { scanForeignBkitUses } from "./bkit-modules";
+
 // ---------------------------------------------------------------------------
 // Task C0 — package.json manifest field invariants
 // ---------------------------------------------------------------------------
@@ -322,5 +324,53 @@ describe("C1c — module dispatch order includes auto between ci and lint (matri
     const registryIdx = MODULES_SRC.indexOf("MODULE_REGISTRY");
     const block = MODULES_SRC.slice(registryIdx, registryIdx + 500);
     expect(block).toContain("auto: runAutoModule");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BAR-164 — installer guard: canonical CI template must not contain a
+// `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` is private
+// and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN cannot
+// resolve such references and CI fails with "repository not found" before
+// any install step runs.
+// ---------------------------------------------------------------------------
+
+describe("BAR-164 — canonical CI template has no cross-org private `uses:` references", () => {
+  it("scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines", () => {
+    const sample = `
+jobs:
+  job:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cbartens/bkit/.github/actions/setup-auth@v1
+        with:
+          token: \${{ secrets.GH_BKIT_TOKEN }}
+      - uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
+`;
+    expect(scanForeignBkitUses(sample)).toEqual([
+      "cbartens/bkit/.github/actions/setup-auth@v1",
+      "cbartens/bkit/.github/actions/setup-auth@v1.0.2",
+    ]);
+  });
+
+  it("scanForeignBkitUses returns empty for the env-var pattern (no foreign uses)", () => {
+    const sample = `
+jobs:
+  job:
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+`;
+    expect(scanForeignBkitUses(sample)).toEqual([]);
+  });
+
+  it("canonical CI template has zero foreign `cbartens/bkit/...` uses", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    expect(scanForeignBkitUses(content)).toEqual([]);
   });
 });

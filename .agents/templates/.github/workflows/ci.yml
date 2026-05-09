@@ -20,16 +20,12 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
-      # bkit setup-auth@v1: configure @cbartens npm registry auth.
-      # This composite action exports BKIT_READ_TOKEN into the job env so
-      # pnpm install picks it up via the consumer's .npmrc.
-      # RETAIN-WITH-REASON bash fallback: multi-line PAT-shim kept for
-      # non-Actions CI consumers. Kill-date: v1.1.0.
-      - uses: cbartens/bkit/.github/actions/setup-auth@v1
-        with:
-          token: ${{ secrets.GH_BKIT_TOKEN }}
-
       - name: Install Dependencies
+        # `.npmrc` references ${GH_BKIT_TOKEN} for the @cbartens scope (npm.pkg.github.com).
+        # Passing the secret as env is sufficient — no separate auth action is needed.
+        # cbartens/bkit is private and cross-org for any consumer outside cbartens/, so a
+        # `uses: cbartens/bkit/...@<ref>` reference cannot be resolved by the runner's
+        # GITHUB_TOKEN at action-resolution time. See README §"Consumer CI auth".
         run: pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}

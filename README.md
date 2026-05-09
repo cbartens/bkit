@@ -20,6 +20,22 @@ bkit is distributed via the **GitHub Packages npm registry** (`https://npm.pkg.g
 pnpm add -D @cbartens/bkit@^0.4.0
 ```
 
+### Adding a new consumer — checklist
+
+Run these in order on a brand-new consumer repo. Each step links to its detail section below.
+
+| #   | Step                                                                                                       | Detail                                          |
+| --- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 1   | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages)              | [§ Consumer CI auth](#consumer-ci-auth) step 1  |
+| 2   | Add `GH_BKIT_TOKEN` repo secret                                                                            | [§ Consumer CI auth](#consumer-ci-auth) step 2  |
+| 3   | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution)                                  | [§ Consumer CI auth](#consumer-ci-auth) step 3  |
+| 4   | Export `GH_BKIT_TOKEN` locally (`export GH_BKIT_TOKEN=…` in shell rc) and run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section)            |
+| 5   | Run `pnpm exec bkit install` to seed the full stack                                                        | [§ Install](#install) (this section)            |
+| 6   | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars                                             | [§ Consumer Vercel auth](#consumer-vercel-auth) |
+| 7   | Push to a feature branch and verify CI runs green                                                          | —                                               |
+
+The seeded `.github/workflows/ci.yml` carries the install step env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret you set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
+
 ### Then in the consumer repo
 
 Run `bkit install` once to seed the full stack (agent files, CI, lint, git-hooks). After that, re-run `install` after package updates. Use `bkit check` as a CI drift gate.
@@ -347,63 +363,6 @@ pnpm exec bkit upgrade --non-interactive
 **Mid-failure guarantee:** If install crashes or is interrupted after some modules complete but before all commit, the staging directory is discarded (`discardAllStaging`). Consumer files are left byte-identical to pre-install state — no partial writes.
 
 **Rollback:** On uninstall or install failure, `.bkit-staging/` is always cleaned up. The staging root never persists in a committed consumer repo state.
-
-## Helper action: `setup-auth@v1`
-
-A GitHub Actions composite action that configures `@cbartens` npm registry auth. Replaces the multi-line bash PAT-shim in CI workflows.
-
-```yaml
-- uses: cbartens/bkit/.github/actions/setup-auth@v1
-  with:
-    token: ${{ secrets.GH_BKIT_TOKEN }}
-```
-
-**What it does:** Exports `BKIT_READ_TOKEN` into the job environment so subsequent `pnpm install` steps pick it up via the consumer's `.npmrc`:
-
-```
-@cbartens:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}
-```
-
-**Sliding `v1` tag (v1.0.3+):** `release.yml` auto-re-points `v1` at the freshly-published `v1.x.y` after each successful publish. Pin `@v1` to receive non-breaking patches automatically — same convention as `actions/checkout@v4`. See [`docs/deployments.md` § Sliding major-version tag](docs/deployments.md#sliding-major-version-tag) for the mechanics. Verify resolution with `gh api repos/cbartens/bkit/git/refs/tags/v1`.
-
-> Note: The multi-line bash PAT-shim in seeded `ci.yml` is **retained** as a fallback for non-Actions CI consumers (RETAIN-WITH-REASON). Kill-date: v1.1.0.
-
-### Consumer migration — pin to sliding `@v1`
-
-Three steps. Adjust the workflow file path to wherever your consumer repo invokes `setup-auth` (commonly `.github/workflows/ci.yml`).
-
-**1. Unblock CI now (only if `@v1` is currently failing because the tag pre-dates v1.0.3):**
-
-```yaml
-# Before
-- uses: cbartens/bkit/.github/actions/setup-auth@v1
-# After (temporary — pinned to a specific immutable patch)
-- uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
-```
-
-Skip this step if your CI is already green.
-
-**2. After v1.0.3 ships (sliding `v1` tag is auto-created):** move every consumer repo to the floating pin.
-
-```yaml
-# Before (any v1.0.x pin)
-- uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
-# After (recommended permanent state)
-- uses: cbartens/bkit/.github/actions/setup-auth@v1
-```
-
-**3. Verify** `gh api repos/cbartens/bkit/git/refs/tags/v1 --jq .object.sha` returns the `v1.0.3` (or later) commit SHA. If it does, your `@v1` pin will pick up future `v1.x.y` patches with no further action.
-
-Pin choices summary:
-
-| Pin form  | Behaviour                                   | When to use                                              |
-| --------- | ------------------------------------------- | -------------------------------------------------------- |
-| `@v1`     | Auto-receives non-breaking `v1.x.y` patches | **Default** — every consumer should use this             |
-| `@v1.0.2` | Frozen on a specific patch                  | Reproducibility-critical pipelines, or temporary unblock |
-| `@<sha>`  | Frozen on a commit SHA                      | High-security supply-chain contexts only                 |
-
-Breaking changes ship as `v2.0.0` with a separate auto-maintained `v2` sliding tag — `@v1` consumers stay on the `v1.x.y` line until they explicitly opt in.
 
 ## Documentation
 
