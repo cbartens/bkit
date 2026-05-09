@@ -159,3 +159,43 @@
 - **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
+
+## BAR-155 deferred — `task-range` parameter for `bkit-build-plan-execute` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans legitimately exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
+- **Source:** phase
+- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
+
+## BAR-155 deferred — KN/DE auto-renumber on rebase conflicts (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Automate renumbering of `KN-{N}` / `DE-{N}` ID sequences on rebase conflict in `docs/knowledge.md` / `docs/decisions.md`. Deferred — sed regex / cross-platform fragility; manual resolution acceptable at current frequency. Revisit if rebase conflicts on these files become recurring.
+- **Source:** phase
+- **Related:** BAR-155
+
+## BAR-155 deferred — focused-brief mode for `bkit-build-challenge` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a focused-brief mode to challenge prompts that narrows reviewer attention to a specific subsystem or diff slice. Dropped from BAR-155 scope — diversity over narrowing per DE-16 (parallel pair provides cross-model coverage; focused-brief risks correlated misses in both reviewers). Revisit if reconciler findings cluster around the same file:line across multiple runs.
+- **Source:** phase
+- **Related:** BAR-155, DE-16
+
+## BAR-155 deferred — `bkit-build.md` Step 2 `git rebase || exit 1` anti-pattern carry-over (2026-05-09)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** normal
+- **Status:** deferred
+- **Description:** `bkit-build.md` Step 2 (Branch Sync) still uses the bare `git rebase origin/dev || { echo ...; exit 1; }` anti-pattern (same shape as the Fix 5 target in `bkit-ship.md` Step 2). BAR-155 Fix 5 scoped to `bkit-ship.md` only. Carry-over as a follow-up issue — replace with sentinel-file Failure Path routing identical to `bkit-ship.md` Step 2 post-fix.
+- **Source:** phase
+- **Related:** BAR-155, `.agents/workflows/bkit-build.md` Step 2, `.agents/workflows/bkit-ship.md` Step 2
