@@ -120,6 +120,15 @@
         "at": "2026-05-09T03:58:30Z",
         "commitSha": "79beefdd1e3dd0d34d105358911a42ae82bbcb27",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T04:05:05Z",
+        "commitSha": "31590e286fa3e18b3158e9afb02b6b69235c07b3",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-input.md"
+        ]
       }
     ]
   }
