@@ -86,6 +86,28 @@ bkit's installer runs in three phases:
 
 ### `setup-auth@v1` composite GitHub Action
 
-`v1.0.0+` ships a composite action at `.github/actions/setup-auth/action.yml`. Consumer ci.yml templates can replace the multi-line bash PAT-shim with `uses: cbartens/bkit/.github/actions/setup-auth@v1` (inputs: `token` required, `registry` optional → defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up. Requires the `v1` annotated tag pointing at the v1.0.0 squash-merge (post-merge `git tag -a v1 -m "..." <sha> && git push origin v1`).
+`v1.0.0+` ships a composite action at `.github/actions/setup-auth/action.yml`. Consumer ci.yml templates can replace the multi-line bash PAT-shim with `uses: cbartens/bkit/.github/actions/setup-auth@v1` (inputs: `token` required, `registry` optional → defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up. The `v1` sliding tag is maintained automatically — see "Sliding major-version tag" below.
 
 The seeded ci.yml inline `env: GH_BKIT_TOKEN` block is **retained** (RETAIN-WITH-REASON: external contract for non-Actions CI fallbacks; kill-date v1.1.0 — see DE-11, KN-14).
+
+### Sliding major-version tag
+
+`.github/workflows/release.yml` re-points the `v{N}` tag (e.g. `v1`) at the freshly-published `v{N}.x.y` immutable tag on every successful release. Matches the GitHub Actions community convention used by `actions/checkout@v4`, `actions/setup-node@v4`, etc. Reference: [actions/toolkit § action-versioning](https://github.com/actions/toolkit/blob/main/docs/action-versioning.md).
+
+**Consumer contract:**
+
+| Pin form | Behaviour | Use when |
+| --- | --- | --- |
+| `@v1` (sliding) | Auto-receives non-breaking `v1.x.y` patches | DEFAULT — every consumer should use this |
+| `@v1.0.2` (immutable) | Frozen on a specific patch | Reproducibility-critical pipelines, or temporary unblock if `v1` is broken |
+| `@<sha>` | Frozen on a specific commit | High-security supply-chain contexts only |
+
+Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` sliding tag — `v1` consumers stay on `v1.x.y` until they explicitly opt in.
+
+**Mechanics:**
+
+- Workflow step "Update sliding major-version tag" runs after `npm publish` succeeds, so a failed publish never advances `v{N}`.
+- Major number is extracted from `github.ref_name` via `sed -E 's/^v([0-9]+)\..*/\1/'`, so `v1.0.3` → `v1`, `v2.4.0` → `v2`. No hard-coded major.
+- Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
+- Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
+- Bootstrap: the first `v{N}.x.y` release after this workflow ships creates `v{N}` automatically. No manual `git tag -a v1` step is required.
