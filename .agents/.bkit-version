@@ -5,7 +5,7 @@
     "docs/deployments.md": "558e4cf9bdf763e340b49be12d45102837f25ca7d59e4a0a036a02c6fb3ce569",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
     ".claude/settings.json": "4f30254582fc690ad9eeb7a7f4ebb4aa340a5c126b730908e5c82b355871b66b",
-    ".husky/pre-push": "35a8df08d06b3ed43466cade178d1c9d6c0685f126b1b52c0c7008a62862bbd2",
+    ".husky/pre-push": "efd866b545cc1ec2e263e09d87cc58b34552c309e24e3f68b74ae79692cc6003",
     ".agents/docs.md": "0b94ce35be234519e515a60b6b633b7ceea37137555a52945712c74e9a2c50e5",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
     ".claude/hooks/preflight.sh": "768b3846a69fbc5720e51571f65277f2b7934df64aa0f3e5c7c5e26ae5693c9a",

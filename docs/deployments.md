@@ -36,8 +36,9 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 | --- | --- | --- | --- | --- |
 | 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
 | 2 | Unit + integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
-| 3 | bkit self-check | `pnpm bkit check` | bkit-managed | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
-| 4 | Dist freshness | `pnpm check:dist` | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
+| 4 | bkit self-check | `pnpm bkit check` | source-repo only (outside bkit:start..bkit:end) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. Consumers do not have this gate. |
+| 5 | Dist freshness | `pnpm check:dist` | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 
 Pre-commit (`.husky/pre-commit`) runs `pnpm lint:prose && pnpm lint:slop` — those gates fire earlier in the cycle, not at push time. CI runs them again as steps 4 + 5 of the `run-tests` job for belt-and-braces.
 
