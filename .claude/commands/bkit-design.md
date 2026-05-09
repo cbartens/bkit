@@ -94,14 +94,29 @@ description: "Design Feature — Autonomous design phase"
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Design"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/drafts/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-8. Add `Design` phase to `{LABELS}` and drop old phase → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-9. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-   ```comment
-   ## Design Workflow
-   ### Step 1 — Start Workflow
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
+8. Update status and commit:
+   ```bash
+   STATUS="docs/plans/logs/{FID}/status.json"
+   [ -f "$STATUS" ] || echo '[]' > "$STATUS"
+   if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "design" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
+     t=$(mktemp); jq --arg iid "{ISSUE_ID}" \
+       '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:"", steps:[]}]' \
+       "$STATUS" > "$t" && mv "$t" "$STATUS"
+   fi
+   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
    ```
+
+11. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+    ```bash
+    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 

@@ -120,13 +120,29 @@
    - **If** `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `OBSERVE_MODE` = instrument.
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-11. Add `Debug` to `{LABELS}` and drop `Failed` if present (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-12. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-    ```comment
-    ## Debug Workflow
-    ### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
+11. Update status and commit:
+    ```bash
+    STATUS="docs/plans/logs/{FID}/status.json"
+    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
+    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "debug" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
+      t=$(mktemp); jq --arg iid "{ISSUE_ID}" \
+        '. + [{workflow:"debug", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:"", steps:[]}]' \
+        "$STATUS" > "$t" && mv "$t" "$STATUS"
+    fi
+    git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+    SHA=$(git rev-parse HEAD)
+    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
+      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+       | .[-1] |= (. + {debugAttempt:$da})' \
+      "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
+    ```
+
+14. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+    ```bash
+    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
     ```
 
 ### 🔒 Gate 1 — Start Workflow

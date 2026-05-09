@@ -257,4 +257,330 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
       true,
     );
   });
+
+  it("tarball ships bkit-ci-router.yml template (BAR-148)", () => {
+    expect(
+      manifestFiles.some((p) => p === ".agents/templates/.github/workflows/bkit-ci-router.yml"),
+    ).toBe(true);
+  });
 });
+
+// ---------------------------------------------------------------------------
+// BAR-148 — bkit-ci-router.md authoring-conventions assertions
+// (matrix rows 10, 11, 12, 13, 14, 15, 16, 17, 18)
+// ---------------------------------------------------------------------------
+
+const ROUTER_ORCHESTRATOR_PATH = path.resolve(".agents/workflows/bkit-ci-router.md");
+
+describe("C7 — bkit-ci-router.md authoring-conventions (matrix row 10)", () => {
+  let routerContent: string;
+
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("bkit-ci-router.md exists", () => {
+    expect(fs.existsSync(ROUTER_ORCHESTRATOR_PATH)).toBe(true);
+  });
+
+  it("has YAML frontmatter with description field", () => {
+    expect(routerContent).toMatch(/^---\n/);
+    expect(routerContent).toContain("description:");
+  });
+
+  it("has Failure Path section (## 🤖 Failure Path)", () => {
+    expect(routerContent).toContain("## 🤖 Failure Path");
+  });
+
+  it("has Step 1 — Start Workflow", () => {
+    expect(routerContent).toContain("## 🤖 Step 1 — Start Workflow");
+  });
+
+  it("every step has a ### 🔒 Gate N marker", () => {
+    // Router has 7 steps → 7 gates
+    const gateCount = (routerContent.match(/### 🔒 Gate \d+/g) ?? []).length;
+    expect(gateCount).toBeGreaterThanOrEqual(7);
+  });
+
+  it("documents Worktree Setup exception (runner provides worktree — no .worktrees creation)", () => {
+    // The router legitimately omits the standard worktree creation; must be documented
+    expect(routerContent).toContain("runner");
+    expect(routerContent).toContain("worktree");
+    // Must NOT contain standard worktree-creation bash pattern
+    expect(routerContent).not.toContain("git worktree add");
+  });
+
+  it("workflow: ci-router in status.json shape", () => {
+    expect(routerContent).toContain('"ci-router"');
+  });
+});
+
+describe("C8 — all 5 existing orchestrators write issueId and commentId in Step 1 (matrix row 11)", () => {
+  const orchestrators = [
+    { name: "bkit-plan.md", workflow: "plan" },
+    { name: "bkit-build.md", workflow: "build" },
+    { name: "bkit-ship.md", workflow: "ship" },
+    { name: "bkit-debug.md", workflow: "debug" },
+    { name: "bkit-design.md", workflow: "design" },
+  ];
+
+  for (const { name, workflow } of orchestrators) {
+    it(`${name} Step 1 status.json init includes issueId field`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      // Find the status init block for this workflow
+      const initIdx = content.indexOf(`workflow:"${workflow}"`);
+      expect(initIdx).toBeGreaterThan(-1);
+      const block = content.slice(Math.max(0, initIdx - 200), initIdx + 500);
+      expect(block).toContain("issueId");
+    });
+
+    it(`${name} Step 1 status.json init includes commentId field`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const initIdx = content.indexOf(`workflow:"${workflow}"`);
+      expect(initIdx).toBeGreaterThan(-1);
+      const block = content.slice(Math.max(0, initIdx - 200), initIdx + 500);
+      expect(block).toContain("commentId");
+    });
+  }
+});
+
+describe("C8b — commentId patch appears AFTER save_comment in each orchestrator (source-order constraint)", () => {
+  const orchestrators = [
+    "bkit-plan.md",
+    "bkit-build.md",
+    "bkit-ship.md",
+    "bkit-debug.md",
+    "bkit-design.md",
+  ];
+
+  for (const name of orchestrators) {
+    it(`${name} writes commentId AFTER save_comment captures it`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const saveCommentIdx = content.indexOf("save_comment(");
+      const lastCidWriteIdx = content.lastIndexOf('--arg cid "{COMMENT_ID}"');
+      expect(saveCommentIdx).toBeGreaterThan(-1);
+      expect(lastCidWriteIdx).toBeGreaterThan(-1);
+      // The last --arg cid "{COMMENT_ID}" must appear AFTER the first save_comment(
+      // (i.e. the commentId patch follows the save_comment that resolves {COMMENT_ID})
+      expect(lastCidWriteIdx).toBeGreaterThan(saveCommentIdx);
+    });
+  }
+});
+
+describe("C9a — router no-op exit when Auto label absent (matrix row 12)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton contains label-gate decision branch (Auto label check)", () => {
+    expect(routerContent).toContain("Auto");
+    expect(routerContent).toContain("label");
+  });
+
+  it("router documents no-op exit when Auto label absent", () => {
+    expect(routerContent).toContain("Auto` absent");
+  });
+});
+
+describe("C9b — router no-op exit when stale run (head SHA mismatch) (matrix row 13)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton contains stale-run guard (headSha comparison)", () => {
+    expect(routerContent).toContain("headSha");
+    expect(routerContent).toContain("stale");
+  });
+
+  it("router documents no-op exit when run head SHA does not match PR head SHA", () => {
+    expect(routerContent).toContain("PR_HEAD_SHA");
+    expect(routerContent).toContain("LATEST_SHA");
+  });
+});
+
+describe("C9c — router failure exit when status.json missing or malformed (matrix row 14)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents failure branch for missing status.json", () => {
+    expect(routerContent).toContain("status.json missing");
+  });
+
+  it("router documents failure branch for malformed status.json", () => {
+    expect(routerContent).toContain("status.json malformed");
+  });
+});
+
+describe("C9d — router no-op exit when PR closed (matrix row 15)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents no-op exit when no open PR found", () => {
+    expect(routerContent).toContain("no open PR");
+  });
+
+  it("router checks for PR existence before dispatch", () => {
+    expect(routerContent).toContain("PR_NUMBER");
+  });
+});
+
+describe("C9e — router concurrency: newer CI run supersedes in-flight (matrix row 16)", () => {
+  it("bkit-ci-router.yml template has cancel-in-progress: true", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/bkit-ci-router.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    expect(content).toContain("cancel-in-progress: true");
+  });
+
+  it("bkit-ci-router.md router does NOT perform multi-step atomic status.json writes (no corruption window)", () => {
+    const content = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+    // Router writes status per step individually (not in a multi-step batch) — each step records itself
+    // Assert there is no combined multi-step write pattern
+    expect(content).not.toContain("steps:[step1, step2]");
+  });
+});
+
+describe("C9f — router dispatches /bkit-debug unconditionally (no MAX_DEBUG_ATTEMPT pre-check) (matrix row 17)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton has NO MAX_DEBUG_ATTEMPT pre-check", () => {
+    // Router must not read MAX_DEBUG_ATTEMPT; debug orchestrator enforces ceiling.
+    // Documentation prose may reference the constant name (to explain the constraint);
+    // only actual shell reads/comparisons are forbidden (e.g. $MAX_DEBUG_ATTEMPT or
+    // arithmetic like [ "$MAX_DEBUG_ATTEMPT" -ge … ]).
+    expect(routerContent).not.toMatch(/\$\{?MAX_DEBUG_ATTEMPT\}?/);
+    expect(routerContent).not.toMatch(/MAX_DEBUG_ATTEMPT\s*[<>=!-]/);
+  });
+
+  it("router documents dispatch of /bkit-debug unconditionally", () => {
+    expect(routerContent).toContain("bkit-debug");
+  });
+});
+
+describe("C9g — router documents ANTHROPIC_API_KEY failure path (matrix row 18)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents ANTHROPIC_API_KEY missing failure path", () => {
+    expect(routerContent).toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("router references claude-code-action failure surface", () => {
+    expect(routerContent).toContain("claude-code-action");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BAR-148 build-challenge remediation — FID resolution regression tests
+//
+// Bug: router was deriving FID by scanning docs/plans/logs/ alphabetically and
+// picking the first DONE/IN_PROGRESS directory. On any branch that inherits
+// historical FID directories from dev this returns the wrong FID.
+// Fix: FID=$(echo "$BRANCH" | sed 's|^feat/||') — branch-derived, not
+// filesystem-derived.
+//
+// Both the canonical orchestrator (.agents/workflows/bkit-ci-router.md) and
+// its mirror (.claude/commands/bkit-ci-router.md) must carry the fix.
+// ---------------------------------------------------------------------------
+
+const ROUTER_FILES = [
+  {
+    label: ".agents/workflows/bkit-ci-router.md (canonical)",
+    filePath: path.resolve(".agents/workflows/bkit-ci-router.md"),
+  },
+  {
+    label: ".claude/commands/bkit-ci-router.md (mirror)",
+    filePath: path.resolve(".claude/commands/bkit-ci-router.md"),
+  },
+  {
+    label: ".cursor/commands/bkit-ci-router.md (mirror)",
+    filePath: path.resolve(".cursor/commands/bkit-ci-router.md"),
+  },
+];
+
+for (const { label, filePath } of ROUTER_FILES) {
+  describe(`FID resolution regression (BAR-148 build-challenge) — ${label}`, () => {
+    let content: string;
+
+    beforeAll(() => {
+      content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
+    });
+
+    it("derives FID from branch name using sed prefix-strip (branch-derived, not filesystem-scan)", () => {
+      // The canonical fix: FID=$(echo "$BRANCH" | sed 's|^feat/||')
+      // Any regression to a filesystem-scan approach would drop this line.
+      expect(content).toMatch(/FID=\$\(echo "\$BRANCH"\s*\|\s*sed 's\|/);
+    });
+
+    it("sed expression strips exactly the feat/ prefix (not a broader substitution)", () => {
+      // Guard: the substitution must strip '^feat/' — no other prefix, no glob.
+      expect(content).toContain("sed 's|^feat/||'");
+    });
+
+    it("guards against FID equalling BRANCH (prefix-not-stripped safety check)", () => {
+      // If sed didn't strip anything (branch doesn't start with feat/), FID would
+      // equal BRANCH — the orchestrator must detect and reject this case via
+      // Failure Path rather than silently using a wrong FID.
+      expect(content).toContain("Cannot derive FID from branch name");
+    });
+
+    it("does NOT contain alphabetical directory-scan for FID (the regressed pattern)", () => {
+      // The old buggy approach scanned docs/plans/logs/ and picked the first
+      // DONE/IN_PROGRESS directory alphabetically. Any of these patterns indicate
+      // a regression to filesystem-derived FID resolution.
+      expect(content).not.toMatch(/ls\s+docs\/plans\/logs/);
+      expect(content).not.toMatch(/for\s+\w+\s+in\s+\$\(ls\s+docs\/plans\/logs/);
+      expect(content).not.toMatch(/readdir.*plans\/logs/);
+    });
+
+    it("does NOT contain status-json-scan loop for FID (the regressed status-scan pattern)", () => {
+      // A variant of the old bug: iterating over docs/plans/logs/ directories and
+      // checking each status.json for IN_PROGRESS/DONE to derive FID — still
+      // filesystem-derived, still wrong on branches inheriting historical dirs.
+      // The old pattern would look like: for d in $(ls docs/plans/logs/); do jq '.[-1].status' ...
+      expect(content).not.toMatch(/for\s+\w+\s+in.*plans\/logs/);
+      expect(content).not.toMatch(/while\s+.*plans\/logs.*do/s);
+      // The BRANCH env var must be the sole source of FID
+      expect(content).toContain('BRANCH="${CI_RUN_HEAD_BRANCH');
+    });
+
+    it("FID derivation uses the CI_RUN_HEAD_BRANCH env var as its sole input", () => {
+      // Belt-and-braces: confirm the derivation line explicitly sources BRANCH,
+      // which is assigned from CI_RUN_HEAD_BRANCH. A filesystem-scan approach
+      // would not reference BRANCH in the FID= assignment.
+      const lines = content.split("\n");
+      const fidLine = lines.find((l) => l.includes("FID=") && l.includes("BRANCH"));
+      expect(fidLine).toBeDefined();
+      expect(fidLine).toMatch(/BRANCH/);
+    });
+  });
+}

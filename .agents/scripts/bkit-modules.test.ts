@@ -202,6 +202,85 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// BAR-148 — runAutoModule tests (matrix rows 1, 2, 3)
+// ---------------------------------------------------------------------------
+
+describe("C1a — runAutoModule seeds bkit-ci-router.yml when absent (matrix row 1)", () => {
+  it("bkit-modules.ts exports runAutoModule function", () => {
+    expect(MODULES_SRC).toContain("export function runAutoModule");
+  });
+
+  it("runAutoModule uses writeTier3 for Tier-3 seed-or-print", () => {
+    const autoModuleIdx = MODULES_SRC.indexOf("export function runAutoModule");
+    const tier3Idx = MODULES_SRC.indexOf("writeTier3", autoModuleIdx);
+    expect(autoModuleIdx).toBeGreaterThan(-1);
+    expect(tier3Idx).toBeGreaterThan(autoModuleIdx);
+  });
+
+  it("runAutoModule targets bkit-ci-router.yml destination path", () => {
+    expect(MODULES_SRC).toContain("bkit-ci-router.yml");
+  });
+
+  it("template path resolves to .agents/templates/.github/workflows/bkit-ci-router.yml", () => {
+    const templateFile = path.resolve(".agents/templates/.github/workflows/bkit-ci-router.yml");
+    expect(fs.existsSync(templateFile)).toBe(true);
+  });
+});
+
+describe("C1b — runAutoModule prints merge instructions when file present (matrix row 2)", () => {
+  it("AUTO_YML_MERGE_INSTRUCTIONS constant is defined in bkit-modules.ts", () => {
+    expect(MODULES_SRC).toContain("AUTO_YML_MERGE_INSTRUCTIONS");
+  });
+
+  it("AUTO_YML_MERGE_INSTRUCTIONS warns about upstream workflow name", () => {
+    const matchIdx = MODULES_SRC.indexOf("AUTO_YML_MERGE_INSTRUCTIONS");
+    const block = MODULES_SRC.slice(matchIdx, matchIdx + 3000);
+    expect(block).toContain("workflow name");
+  });
+
+  it("AUTO_YML_MERGE_INSTRUCTIONS mentions ANTHROPIC_API_KEY", () => {
+    const matchIdx = MODULES_SRC.indexOf("AUTO_YML_MERGE_INSTRUCTIONS");
+    const block = MODULES_SRC.slice(matchIdx, matchIdx + 3000);
+    expect(block).toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("AUTO_YML_MERGE_INSTRUCTIONS mentions Auto Linear label requirement", () => {
+    const matchIdx = MODULES_SRC.indexOf("AUTO_YML_MERGE_INSTRUCTIONS");
+    const block = MODULES_SRC.slice(matchIdx, matchIdx + 3000);
+    expect(block).toContain("Auto");
+  });
+
+  it("runAutoModule logs '(exists; AI merge instructions printed)' when file present", () => {
+    const autoModuleIdx = MODULES_SRC.indexOf("export function runAutoModule");
+    const block = MODULES_SRC.slice(autoModuleIdx, autoModuleIdx + 2000);
+    expect(block).toContain("exists; AI merge instructions printed");
+  });
+});
+
+describe("C1c — module dispatch order includes auto between ci and lint (matrix row 3)", () => {
+  it("MODULE_DISPATCH_ORDER contains auto", () => {
+    expect(MODULES_SRC).toContain('"auto"');
+  });
+
+  it("MODULE_DISPATCH_ORDER has auto after ci and before lint", () => {
+    const dispatchOrderIdx = MODULES_SRC.indexOf("MODULE_DISPATCH_ORDER");
+    const block = MODULES_SRC.slice(dispatchOrderIdx, dispatchOrderIdx + 500);
+    const ciPos = block.indexOf('"ci"');
+    const autoPos = block.indexOf('"auto"');
+    const lintPos = block.indexOf('"lint"');
+    expect(ciPos).toBeGreaterThan(-1);
+    expect(autoPos).toBeGreaterThan(ciPos);
+    expect(lintPos).toBeGreaterThan(autoPos);
+  });
+
+  it("MODULE_REGISTRY contains auto entry", () => {
+    const registryIdx = MODULES_SRC.indexOf("MODULE_REGISTRY");
+    const block = MODULES_SRC.slice(registryIdx, registryIdx + 500);
+    expect(block).toContain("auto: runAutoModule");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // BAR-164 — installer guard: canonical CI template must not contain a
 // `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` is private
 // and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN cannot

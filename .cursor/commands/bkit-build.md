@@ -106,10 +106,19 @@
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
 2. Emit long-branch advisory:
    ```bash
-   behind=$(git rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
-   mb=$(git merge-base HEAD origin/dev 2>/dev/null)
-   age=$([ -n "$mb" ] && git show -s --format=%ar "$mb" 2>/dev/null || echo "unknown")
-   echo "[bkit-build] feature branch is ${behind} commits behind dev / ${age} since divergence"
+   STATUS="docs/plans/logs/{FID}/status.json"
+   [ -f "$STATUS" ] || echo '[]' > "$STATUS"
+   if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
+     t=$(mktemp); jq --arg iid "{ISSUE_ID}" \
+       '. + [{workflow:"build", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:"", steps:[]}]' \
+       "$STATUS" > "$t" && mv "$t" "$STATUS"
+   fi
+   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
    ```
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 4. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
@@ -124,6 +133,12 @@
     ## Build Workflow
     ### Step 1 — Start Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    ```
+
+12. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+    ```bash
+    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
     ```
 
 ### 🔒 Gate 1 — Start Workflow

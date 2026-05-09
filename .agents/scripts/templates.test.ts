@@ -6,6 +6,9 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
+const CONSUMER_ROUTER_TEMPLATE = path.resolve(
+  ".agents/templates/.github/workflows/bkit-ci-router.yml",
+);
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
 
 describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
@@ -55,6 +58,41 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
   });
 });
 
+// ---------------------------------------------------------------------------
+// C6 — BAR-148: bkit-ci-router.yml template snapshot (matrix row 8)
+// ---------------------------------------------------------------------------
+
+describe("C6 — consumer CI router template (.agents/templates/.github/workflows/bkit-ci-router.yml)", () => {
+  let routerContent: string;
+  routerContent = fs.readFileSync(CONSUMER_ROUTER_TEMPLATE, "utf-8");
+
+  it("template file exists", () => {
+    expect(fs.existsSync(CONSUMER_ROUTER_TEMPLATE)).toBe(true);
+  });
+
+  it("contains workflow_run trigger", () => {
+    expect(routerContent).toContain("workflow_run");
+  });
+
+  it("contains cancel-in-progress: true (concurrency guard)", () => {
+    expect(routerContent).toContain("cancel-in-progress: true");
+  });
+
+  it("contains anthropics/claude-code-action@v1", () => {
+    expect(routerContent).toContain("anthropics/claude-code-action@v1");
+  });
+
+  it("snapshot matches expected router template content (regression guard)", () => {
+    expect(routerContent).toMatchSnapshot();
+  });
+});
+
+// BAR-165: canonical-overwrite content must be ignored by consumer prettier.
+// bkit force-overwrites CANONICAL_OVERWRITE_RELPATHS on every install. Consumer
+// prettier may resolve a narrower printWidth (default 80 vs bkit's 100) and fail
+// pnpm format:check on width-sensitive lines that the consumer cannot edit
+// (next install reverts the rewrite). The fix: list every canonical-overwrite
+// path in the bkit-managed block of .agents/templates/.prettierignore.
 describe("consumer .prettierignore template (.agents/templates/.prettierignore)", () => {
   const content = fs.readFileSync(CONSUMER_PRETTIERIGNORE_TEMPLATE, "utf-8");
 

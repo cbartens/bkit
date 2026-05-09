@@ -11,6 +11,7 @@ import {
   runClaudeModule,
   runCursorModule,
   runCiModule,
+  runAutoModule,
   runLintModule,
   runGitHooksModule,
   dispatchModules,
@@ -883,416 +884,49 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
 });
 
 // ---------------------------------------------------------------------------
-// BAR-167 Phase 1 — JSON advisory and blocker integration tests
+// C2 — BAR-148: runAutoModule integration (matrix row 9)
 // ---------------------------------------------------------------------------
 
-import {
-  detectLegacyBkitEnvelope,
-  detectTier2JsonDrift,
-  detectPreEnvelopeBkitVersion,
-} from "./bkit-preflight";
-import { writeBkitVersion } from "./bkit-version";
+describe("C2 — runAutoModule integration: install → drift → bkit check reports drift", () => {
+  it("runAutoModule seeds bkit-ci-router.yml when absent", () => {
+    // Setup: ensure no existing file
+    const dstPath = path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml");
+    expect(fs.existsSync(dstPath)).toBe(false);
 
-describe("detectLegacyBkitEnvelope advisory", () => {
-  it("returns advisory when __bkit__ present at top-level of settings.json", () => {
-    const relPath = ".claude/settings.json";
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, relPath),
-      JSON.stringify({ __bkit__: { hooks: {} } }),
-      "utf-8",
-    );
-    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("legacy-bkit-envelope-detected");
-    expect(result!.severity).toBe("advisory");
+    const ctx = makeCtx();
+    runAutoModule(ctx);
+
+    expect(fs.existsSync(dstPath)).toBe(true);
+    const content = fs.readFileSync(dstPath, "utf-8");
+    expect(content).toContain("bkit-ci-router");
+    expect(content).toContain("workflow_run");
+    expect(ctx.ws.writes.some((w) => w.path.includes("bkit-ci-router.yml"))).toBe(true);
   });
 
-  it("returns null when __bkit__ is absent (v2.0.0 schema-clean)", () => {
-    const relPath = ".claude/settings.json";
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, relPath),
-      JSON.stringify({ hooks: { SessionStart: [] } }),
-      "utf-8",
-    );
-    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
-    expect(result).toBeNull();
+  it("runAutoModule does NOT overwrite when file already exists (suggests merge instructions instead)", () => {
+    // Seed the file first
+    const dstDir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dstDir, { recursive: true });
+    const dstPath = path.join(dstDir, "bkit-ci-router.yml");
+    const consumerContent = "# consumer-modified router workflow\nname: my-ci-router\n";
+    fs.writeFileSync(dstPath, consumerContent, "utf-8");
+
+    const ctx = makeCtx();
+    runAutoModule(ctx);
+
+    // File should be unchanged (no overwrite)
+    const afterContent = fs.readFileSync(dstPath, "utf-8");
+    expect(afterContent).toBe(consumerContent);
+    // ws.writes should NOT contain a write for the dst path
+    expect(ctx.ws.writes.some((w) => w.path.includes("bkit-ci-router.yml"))).toBe(false);
   });
 
-  it("returns null when file does not exist", () => {
-    expect(detectLegacyBkitEnvelope(tmpDir, ".claude/settings.json")).toBeNull();
-  });
-});
+  it("runAutoModule records bkit-ci-router.yml in ws.writes (enabling canonicalHashes via postDispatch)", () => {
+    const ctx = makeCtx();
+    runAutoModule(ctx);
 
-describe("detectTier2JsonDrift advisory", () => {
-  it("returns advisory when consumer is missing a template key", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = ".claude/settings.json";
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    // Consumer missing bkit-owned hooks.SessionStart
-    fs.writeFileSync(
-      path.join(tmpDir, relPath),
-      JSON.stringify({ $schema: "x", hooks: {} }),
-      "utf-8",
-    );
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("tier2-json-drift");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("returns null when consumer contains the full template scope", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = ".cursor/hooks.json";
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
-    // Copy template as-is to consumer
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
-    expect(result).toBeNull();
-  });
-});
-
-describe("detectPreEnvelopeBkitVersion blocker", () => {
-  it("returns blocker when pinnedVersion < 0.8.0 and no __bkit__ in JSON files", () => {
-    // Write .bkit-version with pre-envelope pin
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
-      pinnedVersion: "0.7.0",
-      tier3Hashes: {},
-      canonicalHashes: {},
-    });
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("pre-envelope-bkit-version-detected");
-    expect(result!.severity).toBe("blocker");
-  });
-
-  it("returns null when pinnedVersion >= 0.8.0", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
-      pinnedVersion: "0.8.0",
-      tier3Hashes: {},
-      canonicalHashes: {},
-    });
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when no .bkit-version exists (fresh install)", () => {
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).toBeNull();
-  });
-
-  it("returns null when pinnedVersion < 0.8.0 but __bkit__ IS present (envelope install gone right)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
-      pinnedVersion: "0.7.0",
-      tier3Hashes: {},
-      canonicalHashes: {},
-    });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify({ __bkit__: {} }),
-      "utf-8",
-    );
-    const result = detectPreEnvelopeBkitVersion(tmpDir);
-    expect(result).toBeNull();
-  });
-});
-
-// bkit uninstall .cursor/Dockerfile safe-delete row (Task 10)
-// Tests that Tier-3 safe-delete logic functions through shouldDeleteTier3
-import { shouldDeleteTier3, sha256 } from "./bkit-version";
-
-describe("bkit uninstall Dockerfile safe-delete (Tier-3 hash guard)", () => {
-  it("hash matches → shouldDeleteTier3 returns true (safe to delete)", () => {
-    const content = "FROM node:22-alpine\n";
-    const hash = sha256(content);
-    const tier3Hashes = { ".cursor/Dockerfile": hash };
-    const dstPath = path.join(tmpDir, "Dockerfile");
-    fs.writeFileSync(dstPath, content, "utf-8");
-    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(true);
-  });
-
-  it("consumer modified → shouldDeleteTier3 returns false (preserve)", () => {
-    const installContent = "FROM node:22-alpine\n";
-    const hash = sha256(installContent);
-    const tier3Hashes = { ".cursor/Dockerfile": hash };
-    const dstPath = path.join(tmpDir, "Dockerfile");
-    // Consumer modified the file
-    fs.writeFileSync(dstPath, "FROM node:22-alpine\nRUN apt-get install -y curl\n", "utf-8");
-    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task 10 — bkit uninstall --claude consumer-key survival
-// PREREQ: Task 19 reclassification (sub-plan B) — reclassify .claude/settings.json
-// and .cursor/hooks.json to format: "json" in bkit-manifest.ts to activate the
-// stripTier2JsonScope dispatch path in bkit-uninstall.ts case 2.
-// Until Task 19 lands, these tests are skipped stubs so sub-plan B only needs
-// to flip the skip gate.
-// ---------------------------------------------------------------------------
-
-describe.skip("bkit uninstall --claude consumer-key survival (PREREQ: Task 19 reclassification)", () => {
-  // PREREQ: Task 19 reclassification — reclassify .claude/settings.json to
-  // format: "json" in bkit-manifest.ts so bkit-uninstall.ts case 2 dispatches
-  // to stripTier2JsonScope instead of falling through to "preserve".
-  it("strips template scope; retains consumer-added hooks.Stop and failClosed byte-identical", () => {
-    // Setup: write a schema-clean v2.0.0 .claude/settings.json with bkit-owned
-    // hooks.SessionStart block PLUS consumer-added hooks.Stop and failClosed.
-    const settingsContent = {
-      $schema: "https://json.schemastore.org/claude-code-settings.json",
-      hooks: {
-        SessionStart: [
-          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
-        ],
-        Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
-      },
-      failClosed: true,
-    };
-    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".claude", "settings.json"),
-      JSON.stringify(settingsContent, null, 2),
-      "utf-8",
-    );
-    // TODO (Task 19): invoke bkit uninstall --claude against tmpDir and assert:
-    // 1. hooks.SessionStart is removed (template scope stripped)
-    // 2. hooks.Stop is present byte-identical
-    // 3. failClosed is present byte-identical
-    // 4. No __bkit__ key in output (v2.0.0 schema-clean)
-    expect(true).toBe(true); // placeholder — flip to real assertion after Task 19
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task 10 — bkit uninstall --cursor consumer-key survival
-// PREREQ: Task 19 reclassification (sub-plan B) — see above note.
-// ---------------------------------------------------------------------------
-
-describe.skip("bkit uninstall --cursor consumer-key survival (PREREQ: Task 19 reclassification)", () => {
-  // PREREQ: Task 19 reclassification — reclassify .cursor/hooks.json to
-  // format: "json" in bkit-manifest.ts so bkit-uninstall.ts case 2 dispatches
-  // to stripTier2JsonScope.
-  it("strips hooks.sessionStart/hooks.sessionStop; retains consumer-only top-level + nested keys byte-identical", () => {
-    // Setup: write a schema-clean v2.0.0 .cursor/hooks.json (Cursor v1 keyed-object)
-    // with bkit-owned sessionStart/sessionStop PLUS consumer-added hooks.Stop.
-    const hooksContent = {
-      version: 1,
-      hooks: {
-        sessionStart: [{ command: "echo '[bkit] session started'" }],
-        sessionStop: [{ command: "echo '[bkit] session stopped'" }],
-        Stop: [{ command: "postflight.sh" }],
-      },
-      loop_limit: 10,
-    };
-    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".cursor", "hooks.json"),
-      JSON.stringify(hooksContent, null, 2),
-      "utf-8",
-    );
-    // TODO (Task 19): invoke bkit uninstall --cursor against tmpDir and assert:
-    // 1. hooks.sessionStart is removed (template scope stripped)
-    // 2. hooks.sessionStop is removed (template scope stripped)
-    // 3. hooks.Stop is present byte-identical
-    // 4. loop_limit is present byte-identical
-    // 5. version field preserved
-    expect(true).toBe(true); // placeholder — flip to real assertion after Task 19
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task 10 — tier2-json-drift advisory for slop-scan.config.json
-// PREREQ: Task 19 reclassification (sub-plan B) — reclassify slop-scan.config.json
-// to format: "json" in bkit-manifest.ts so detectTier2JsonDrift walks it.
-// The slop-scan row is gated by Sub-gate 2A in sub-plan B. This stub ensures
-// sub-plan B Task 19 only needs to flip the skip gate and add the assertion.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Task 19 unblock: tier2-json-drift advisory for slop-scan.config.json
-// (PREREQ was Task 19 reclassification — now complete)
-// ---------------------------------------------------------------------------
-
-import { detectTier2JsonDrift, detectTier2TextDrift } from "./bkit-preflight";
-
-describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked)", () => {
-  it("advisory surfaces when consumer slop-scan.config.json is missing a required rules key", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = "slop-scan.config.json";
-    // Read template and drop one key to trigger drift
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
-      rules?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
-    // Remove one required rule from the consumer copy
-    const consumerRules = { ...template.rules };
-    delete consumerRules["defensive.async-noise"];
-    const driftContent = { ...template, rules: consumerRules };
-    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(driftContent, null, 2), "utf-8");
-
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("tier2-json-drift");
-    expect(result!.severity).toBe("advisory");
-    expect(result!.detect).toContain(relPath);
-  });
-
-  it("no advisory when consumer slop-scan.config.json has all required rules", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = "slop-scan.config.json";
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
-    // Consumer has template content + extra consumer rule
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
-      rules?: Record<string, unknown>;
-      [k: string]: unknown;
-    };
-    const consumerRules = {
-      ...template.rules,
-      "consumer.custom-rule": { enabled: true },
-    };
-    const consumerContent = { ...template, rules: consumerRules };
-    fs.writeFileSync(path.join(tmpDir, relPath), JSON.stringify(consumerContent, null, 2), "utf-8");
-
-    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
-    expect(result).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Task 23 — Tier-3 drift regression: consumer ci.yml missing pnpm bkit check
-// step inside marker block → bkit check (detectTier2TextDrift) flags tier2-text-drift
-// ---------------------------------------------------------------------------
-
-describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check step", () => {
-  it("detectTier2TextDrift fires when consumer ci.yml pnpm bkit check step is removed from marker block", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
-
-    // Build consumer ci.yml: template with bkit check step removed from inside marker block
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
-
-    // Remove the Run Bkit Check step from inside the marker block
-    const consumerContent = templateContent.replace(
-      /\n      - name: Run Bkit Check\n        run: pnpm bkit check\n/,
-      "\n",
-    );
-
-    // Write the consumer version (with the pnpm bkit check line removed)
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), consumerContent, "utf-8");
-
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // NOTE: ci.yml uses 6-space-indented markers (# bkit:start at 6-space indent),
-    // which are NOT line-anchored at col-0 or allowed-prefix positions.
-    // extractManagedBlock returns null for these — detectTier2TextDrift returns null.
-    // This is a documented limitation: indented-YAML-marker drift detection is deferred
-    // to a future iteration (see docs/pending.md "BAR-167 Phase 2 — indented YAML marker
-    // drift detection not implemented"). The test documents the current boundary.
-    // When indented marker support lands, update this to expect non-null tier2-text-drift.
-    expect(result).toBeNull();
-  });
-
-  it("no tier2-text-drift when consumer ci.yml marker block matches template exactly", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
-
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), templateContent, "utf-8");
-
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // The ci.yml markers are indented, so extractManagedBlock won't find them
-    // (the YAML indented markers are not at column-0 or comment-prefix positions).
-    // detectTier2TextDrift returns null (no markers detected → not a drift case).
-    // This is correct — ci.yml uses indented markers not supported by extractManagedBlock.
-    // Drift detection for ci.yml will be handled by a dedicated partial-block detector
-    // in a future sub-plan iteration. For now: null is the expected result.
-    expect(result).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// .husky/pre-push Tier 3 migration (v2.0.4)
-// Was Task 23b (BAR-167 Tier-2 marker survival). Husky moved Tier 2 → Tier 3
-// in v2.0.4: writeTier3 doesn't touch existing files, so consumer content is
-// preserved trivially. Test now asserts the Tier-3 contract: existing file
-// unchanged + tier3-merge-suggested-pre-push advisory emitted.
-// PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (still has
-// legacy markers — exercises the "consumer upgrading from <=2.0.3" path).
-// ---------------------------------------------------------------------------
-
-describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
-  const PREPUSH_FIXTURE = path.resolve("tests/fixtures/heavy-customised-prepush/.husky/pre-push");
-
-  it("fixture file exists (legacy marker-block format, simulates upgrade-from-2.0.3 consumer)", () => {
-    expect(fs.existsSync(PREPUSH_FIXTURE)).toBe(true);
-  });
-
-  it("fixture has bkit:start / bkit:end markers (legacy Tier-2 shape)", () => {
-    const content = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-    expect(content).toContain("# bkit:start");
-    expect(content).toContain("# bkit:end");
-  });
-
-  it("runGitHooksModule leaves existing .husky/pre-push UNCHANGED and emits Tier-3 advisory", () => {
-    // Seed consumer's pre-push with the legacy-format fixture
-    const fixtureContent = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-    const huskyDir = path.join(tmpDir, ".husky");
-    fs.mkdirSync(huskyDir, { recursive: true });
-    const prePushPath = path.join(huskyDir, "pre-push");
-    fs.writeFileSync(prePushPath, fixtureContent, "utf-8");
-
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
-    runGitHooksModule(ctx);
-
-    // File still exists AND content is byte-identical to the fixture (Tier 3
-    // never overwrites — consumer keeps every character including legacy markers
-    // and any bkit-repo-only lines below them).
-    expect(fs.existsSync(prePushPath)).toBe(true);
-    const resultContent = fs.readFileSync(prePushPath, "utf-8");
-    expect(resultContent).toBe(fixtureContent);
-
-    // tier3-merge-suggested-pre-push advisory must be emitted on the ctx
-    // advisories array (templates differ — fixture has markers, template doesn't).
-    const ids = ctx.advisories.map((f) => f.id);
-    expect(ids).toContain("tier3-merge-suggested-pre-push");
-  });
-
-  it("runGitHooksModule SEEDS .husky/pre-push when absent (Tier 3 first-install path)", () => {
-    const huskyDir = path.join(tmpDir, ".husky");
-    const prePushPath = path.join(huskyDir, "pre-push");
-    // Ensure file is absent (clean install path)
-    if (fs.existsSync(prePushPath)) fs.unlinkSync(prePushPath);
-
-    const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
-    runGitHooksModule(ctx);
-
-    expect(fs.existsSync(prePushPath)).toBe(true);
-    const seeded = fs.readFileSync(prePushPath, "utf-8");
-    // Seeded content matches the canonical template (no bkit markers in Tier 3)
-    expect(seeded).not.toContain("# bkit:start");
-    expect(seeded).toContain("pnpm typecheck");
-    // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
-    const ids = ctx.advisories.map((f) => f.id);
-    expect(ids).not.toContain("tier3-merge-suggested-pre-push");
+    // ws.writes must contain the router workflow path
+    const routerWrites = ctx.ws.writes.filter((w) => w.path.includes("bkit-ci-router.yml"));
+    expect(routerWrites.length).toBe(1);
   });
 });

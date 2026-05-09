@@ -23,31 +23,30 @@
 - `—` irrelevant for this workflow
 
 <!-- prettier-ignore -->
-| Doc | Design | Plan | Build | Debug | Ship |
-| --- | --- | --- | --- | --- | --- |
-| `docs/architecture.md` | ● | ● | ● | ○ | ○ |
-| `docs/technology.md` | ● | ● | ○ | ○ | ○ |
-| `docs/decisions.md` | ● | ● | ○ | ○ | ○ |
-| `docs/knowledge.md` | ○ | ● | ● | ● | ○ |
-| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ |
-| `docs/data-pipeline.md` | ○ | ○ | ○ | ○ | — |
-| `docs/data-cron-jobs.md` | ○ | ○ | ○ | ○ | — |
-| `docs/testing.md` | ○ | ● | ● | ● | — |
-| `docs/deployments.md` | ○ | ○ | ○ | ● | ● |
-| `docs/observability.md` | ○ | ○ | ● | ● | ○ |
-| `docs/security.md` | ● | ● | ● | ○ | ○ |
-| `docs/webhooks.md` | ○ | ○ | ○ | ○ | — |
-| `docs/warnings.md` | — | — | ○ | ● | — |
-| `docs/notifications.md` | ○ | ○ | ○ | — | — |
-| `docs/styles.md` | ○ | ○ | ○ | — | — |
-| `docs/completed.md` | — | — | — | — | ● |
-| `docs/pending.md` | ● | ● | ● | ● | — |
-| `.agents/skills.md` | — | — | ● | — | — |
-| `.agents/workflows.md` | — | — | — | — | — |
-| `.agents/cloud.md` | — | — | — | — | — |
-| `docs/plans/template.md` | — | ● | — | — | — |
-| `docs/audits/*.md` | ○ | ○ | — | — | — |
-| `docs/setup.md` | — | — | — | — | — |
+| Doc | Design | Plan | Build | Debug | Ship | CI-Router |
+| --- | --- | --- | --- | --- | --- | --- |
+| `docs/architecture.md` | ● | ● | ● | ○ | ○ | — |
+| `docs/technology.md` | ● | ● | ○ | ○ | ○ | — |
+| `docs/decisions.md` | ● | ● | ○ | ○ | ○ | — |
+| `docs/knowledge.md` | ○ | ● | ● | ● | ○ | ○ |
+| `docs/data-schema.md` | ○ | ○ | ● | ○ | ○ | — |
+| `docs/data-pipeline.md` | ○ | ○ | ○ | ○ | — | — |
+| `docs/data-cron-jobs.md` | ○ | ○ | ○ | ○ | — | — |
+| `docs/testing.md` | ○ | ● | ● | ● | — | — |
+| `docs/deployments.md` | ○ | ○ | ○ | ● | ● | ● |
+| `docs/observability.md` | ○ | ○ | ● | ● | ○ | — |
+| `docs/security.md` | ● | ● | ● | ○ | ○ | — |
+| `docs/webhooks.md` | ○ | ○ | ○ | ○ | — | — |
+| `docs/warnings.md` | — | — | ○ | ● | — | — |
+| `docs/notifications.md` | ○ | ○ | ○ | — | — | — |
+| `docs/styles.md` | ○ | ○ | ○ | — | — | — |
+| `docs/completed.md` | — | — | — | — | ● | — |
+| `docs/pending.md` | ● | ● | ● | ● | — | — |
+| `.agents/skills.md` | — | — | ● | — | — | — |
+| `.agents/workflows.md` | — | — | — | — | — | ● |
+| `docs/plans/template.md` | — | ● | — | — | — | — |
+| `docs/audits/*.md` | ○ | ○ | — | — | — | — |
+| `docs/setup.md` | — | — | — | — | — | — |
 
 ---
 

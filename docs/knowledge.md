@@ -308,3 +308,47 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-187, BAR-183, BAR-184, `.agents/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`
+## KN-15: Stale-CI-run dispatch hazard — router must compare head SHA before dispatching (2026-05-09)
+
+- **Symptom:** `bkit-ci-router` fires for a `workflow_run` completion whose `head_sha` is no longer the PR's current head — i.e., new commits pushed after the CI run started. Dispatching `/bkit-ship` against a stale SHA can attempt to merge an outdated branch.
+- **Root cause:** `workflow_run` events are emitted per-run, not per-PR-state. By the time the runner starts the router session, the PR may have advanced (push after the watched CI run kicked off). The `github.event.workflow_run.head_sha` exposed as `CI_RUN_HEAD_SHA` in the runner environment may not match `gh pr view --json headRefOid`.
+- **Fix:** Step 4 of `bkit-ci-router.md` (Stale-Run Guard): before any dispatch, compare `PR_HEAD_SHA=$(gh pr view "$PR_NUMBER" --json headRefOid -q .headRefOid)` against `LATEST_SHA=$(gh run list --branch "$CI_RUN_HEAD_BRANCH" --limit 1 --json headSha -q '.[0].headSha')`. If they differ, exit no-op (`echo "stale run — skipping"`). `cancel-in-progress: true` on the router concurrency group ensures the newly-dispatched router for the fresher run supersedes the in-flight stale one.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-148, `.agents/workflows/bkit-ci-router.md` § Step 4, `.github/workflows/bkit-ci-router.yml` (cancel-in-progress: true), DE-14
+
+## KN-16: Negative `.not.toContain()` assertions fail when the forbidden token is documented in prose (2026-05-09)
+
+- **Symptom:** A test asserting `expect(content).not.toContain("SOME_CONSTANT")` fails even though no shell code uses the constant — because the orchestrator markdown documents "do NOT use SOME_CONSTANT" in constraint/gate-check prose, which naturally names the token.
+- **Root cause:** `.toContain()` is a literal substring search over the entire file. Prose explanations of why a constant must NOT be used are indistinguishable from actual code usage by this assertion.
+- **Fix:** Replace the broad `.not.toContain(name)` with regex assertions that target actual code patterns: `expect(content).not.toMatch(/\$\{?SOME_CONSTANT\}?/)` (shell variable expansion) and `expect(content).not.toMatch(/SOME_CONSTANT\s*[<>=!-]/)` (arithmetic/comparison usage). Documentation prose passes; code usage fails.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-148, `.agents/scripts/release-workflow.test.ts` C9f, `.agents/workflows/bkit-ci-router.md`
+
+## KN-17: status.json field-write must follow value resolution (2026-05-09)
+
+- **Symptom:** `bkit-ci-router` reads `commentId: ""` from `status.json` and enters Failure Path with `missing commentId in status.json`. Ship and debug dispatches never fire for `feat/**` PRs carrying the `Auto` label.
+- **Root cause:** Each orchestrator's status-init `jq` block included `--arg cid "{COMMENT_ID}"` and `commentId:$cid` BEFORE the `save_comment` call that resolves `{COMMENT_ID}`. At write-time the placeholder was an empty string. The `status.json` was never re-patched after `save_comment`.
+- **Fix:** Split-write pattern — (a) initial status-init writes `commentId:""` (omit `--arg cid`); (b) immediately after `save_comment` captures `{COMMENT_ID}`, a second jq patch `'.[-1].commentId = $cid'` updates the record and commits. Applied to all 5 orchestrators: `bkit-{plan,build,ship,debug,design}.md`.
+- **Test gap:** C8 only asserted field-name presence, not source-order between `save_comment` and the write. Added C8b with `lastIndexOf('--arg cid "{COMMENT_ID}"') > indexOf('save_comment(')` constraint.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** debug
+- **Related:** BAR-148, build-challenge attempt 1 (commit `8e1c805957b3b7e607b2eb59e13e205e86a5ad0f`), debug attempt 0, `.agents/workflows/bkit-{plan,build,ship,debug,design}.md`, `.agents/scripts/release-workflow.test.ts` C8b
+
+## KN-18: bkit-ci-router FID must be derived from branch name, not directory scan (2026-05-09)
+
+- **Symptom:** On a long-lived branch that has inherited multiple historical FID directories from `dev`, `bkit-ci-router` Step 1 picks the alphabetically-first DONE/IN_PROGRESS directory instead of the branch's actual FID. The router dispatches `/bkit-ship` or `/bkit-debug` for the wrong feature, silently corrupting the wrong plan.
+- **Root cause:** FID was resolved via `ls docs/plans/logs/ | while read d; do ... done | head -1` — alphabetical sort. Any `dev`-inherited directories (e.g. `bar-100-*`) sort before the branch's own `bar-148-*`.
+- **Fix:** Derive FID directly from the branch name: `FID=$(echo "$BRANCH" | sed 's|^feat/||')`. The branch name is canonical and injected as `CI_RUN_HEAD_BRANCH` env var by the GHA trigger; no filesystem scan needed.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** build-challenge
+- **Related:** BAR-148, `.agents/workflows/bkit-ci-router.md`, `.claude/commands/bkit-ci-router.md`
