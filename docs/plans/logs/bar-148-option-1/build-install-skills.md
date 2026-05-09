@@ -2,7 +2,7 @@
 
 ## Technologies Identified
 
-- TypeScript (`.agents/scripts/*.ts` — CLI modules, test files)
+- TypeScript (`.agents/scripts/*.ts` — CLI modules, installer, test files)
 - Node.js / ESM (runtime for all CLI scripts)
 - Vitest (unit `*.test.ts` + integration `*.integration.test.ts` test runner)
 - GitHub Actions / GHA YAML (new workflow files: `.github/workflows/bkit-ci-router.yml`, template, `workflow_run` trigger, `claude-code-action@v1`)
@@ -17,6 +17,7 @@
 - `dispatching-parallel-agents`
 - `executing-plans`
 - `finishing-a-development-branch`
+- `github-actions-docs`
 - `receiving-code-review`
 - `requesting-code-review`
 - `subagent-driven-development`
@@ -25,17 +26,16 @@
 - `using-git-worktrees`
 - `using-superpowers`
 - `verification-before-completion`
+- `vitest`
 - `writing-plans`
 - `writing-skills`
 
 ## Newly Installed
 
-- `.agents/skills/vitest` — `antfu/skills@vitest` (17.2K installs). Covers Vitest 2 unit and integration test authoring patterns used across all Phase C tasks (C1a–C9g).
-- `.agents/skills/github-actions-docs` — `xixu-me/skills@github-actions-docs` (114K installs). Covers GHA workflow authoring, `workflow_run` trigger semantics, `concurrency` / `cancel-in-progress`, `permissions:` hardening, and `claude-code-action@v1` step wiring used in Phase A tasks (A1, A2).
+- `.agents/skills/typescript-advanced-types` — `wshobson/agents@typescript-advanced-types` (39.4K installs). Covers advanced TypeScript type patterns used across Phase B installer module changes (`bkit-modules.ts`, `bkit-cli.ts`) and Phase C test authoring.
 
 ## Not Found
 
-- TypeScript (no install-module-focused TypeScript skill matched; general TS authoring is covered by `test-driven-development` + `executing-plans` superpowers)
 - pnpm (package manager, not a skill gap)
 - Linear (MCP-native integration — no skill registry match relevant to `mcp__linear__*` tool usage)
 - YAML (in-process parsing via existing `js-yaml` library — no actionable skill gap)
