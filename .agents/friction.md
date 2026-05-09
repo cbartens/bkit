@@ -103,3 +103,16 @@
 - **Related:** bar-102-digital-agent-mvp, BAR-132, sub-plan 1 (31 tasks)
 - **Recovery:** 3× manual re-invocations of bkit-build-plan-execute with explicit resume-task context. Build continued successfully.
 - **Status:** RECOVERED
+
+## build-challenge-remediate skipped bkit install after editing canonical file (2026-05-09)
+
+- **Category:** agent-rework
+- **Workflow:** build
+- **Step:** 10 — Build Challenge Remediate
+- **FID:** bar-148-option-1
+- **Source:** bkit-build-challenge-remediate
+- **Description:** Remediate subagent fixed `.agents/workflows/bkit-ci-router.md` (canonical) and `.claude/commands/bkit-ci-router.md` (Claude mirror) for the FID directory-scan bug, but did NOT run `bkit install` to regenerate `.cursor/commands/bkit-ci-router.md`. Cursor mirror retained the old buggy directory-scan code. Second build-challenge (attempt 1) caught the stale mirror, triggering FAIL and Failure Path.
+- **Suggested fix:** Add explicit instruction to challenge-remediate prompt: "After editing any `.agents/workflows/*.md` canonical file, run `pnpm bkit install` to regenerate all mirrors before returning." Alternatively, remediate subagent should always check `.agents/rules.md` § bkit Repo Authoring which already states "After editing .agents/\* run bkit install".
+- **Related:** bar-148-option-1, build-challenge attempt 1
+- **Recovery:** User directed in-session fix: ran `pnpm bkit install` in worktree to regenerate cursor mirror; continued build workflow from fresh start-workflow step without full restart.
+- **Status:** RECOVERED
