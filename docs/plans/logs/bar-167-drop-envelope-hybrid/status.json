@@ -29,6 +29,19 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"
         ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-09T12:07:18Z",
+        "commitSha": "47514bf783fddf4208e540e9b904092f2e9cbec4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-review-1.md",
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-review-2.md"
+        ]
       }
     ]
   }
