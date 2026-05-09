@@ -158,6 +158,19 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-execute-1-log.md"
         ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-09T04:28:20Z",
+        "commitSha": "a3fbdc8cdd75a94a2319c755334b4ae979710557",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-verify-1-1.md"
+        ]
       }
     ]
   }
