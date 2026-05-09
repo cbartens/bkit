@@ -231,6 +231,17 @@
         "at": "2026-05-09T01:26:23Z",
         "commitSha": "7d96710fc46c14d61ff1435659b1d5e0dc58d96a",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T01:28:16Z",
+        "commitSha": "2a3832b53aea44b0351d400360a06046df1f8754",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/debug-input-0.md"
+        ],
+        "debugMode": "local",
+        "observeMode": "off"
       }
     ],
     "debugAttempt": 0
