@@ -88,6 +88,17 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T12:32:07Z",
+        "commitSha": "3c8d1abeb6a054da6b267ac9467005a14be4c55a",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"
+        ]
       }
     ]
   }
