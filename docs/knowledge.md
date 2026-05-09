@@ -210,3 +210,14 @@
 - **Severity:** high
 - **Source:** phase
 - **Related:** BAR-148, `.agents/workflows/bkit-ci-router.md` § Step 4, `.github/workflows/bkit-ci-router.yml` (cancel-in-progress: true), DE-14
+
+## KN-16: Negative `.not.toContain()` assertions fail when the forbidden token is documented in prose (2026-05-09)
+
+- **Symptom:** A test asserting `expect(content).not.toContain("SOME_CONSTANT")` fails even though no shell code uses the constant — because the orchestrator markdown documents "do NOT use SOME_CONSTANT" in constraint/gate-check prose, which naturally names the token.
+- **Root cause:** `.toContain()` is a literal substring search over the entire file. Prose explanations of why a constant must NOT be used are indistinguishable from actual code usage by this assertion.
+- **Fix:** Replace the broad `.not.toContain(name)` with regex assertions that target actual code patterns: `expect(content).not.toMatch(/\$\{?SOME_CONSTANT\}?/)` (shell variable expansion) and `expect(content).not.toMatch(/SOME_CONSTANT\s*[<>=!-]/)` (arithmetic/comparison usage). Documentation prose passes; code usage fails.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-148, `.agents/scripts/release-workflow.test.ts` C9f, `.agents/workflows/bkit-ci-router.md`

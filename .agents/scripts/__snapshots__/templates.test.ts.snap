@@ -1,5 +1,54 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`C6 — consumer CI router template (.agents/templates/.github/workflows/bkit-ci-router.yml) > snapshot matches expected router template content (regression guard) 1`] = `
+"name: bkit-ci-router
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [feat/**]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  actions: read
+concurrency:
+  group: bkit-ci-router-\${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+jobs:
+  route:
+    if: \${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 210 # formula: MAX_DEBUG_ATTEMPT (3) × per-attempt ceiling (60min) + 30min margin (checkout/setup/Claude warmup); strictly < runner 6h cap (360); upper assertion in bkit-action-yaml.test.ts is ≤ 240.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/action-setup@v4
+      - uses: cbartens/bkit/.github/actions/setup-auth@v1
+        with:
+          token: \${{ secrets.GH_BKIT_TOKEN }}
+      - run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+      - uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_CONCLUSION: \${{ github.event.workflow_run.conclusion }}
+          CI_RUN_HEAD_SHA: \${{ github.event.workflow_run.head_sha }}
+          CI_RUN_HEAD_BRANCH: \${{ github.event.workflow_run.head_branch }}
+          CI_RUN_URL: \${{ github.event.workflow_run.html_url }}
+        with:
+          anthropic_api_key: \${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: "/bkit-ci-router"
+          claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__linear__*"
+"
+`;
+
 exports[`consumer CI template (.agents/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
 "name: CI
 

@@ -410,8 +410,12 @@ describe("C9f — router dispatches /bkit-debug unconditionally (no MAX_DEBUG_AT
   });
 
   it("router step skeleton has NO MAX_DEBUG_ATTEMPT pre-check", () => {
-    // Router must not read MAX_DEBUG_ATTEMPT; debug orchestrator enforces ceiling
-    expect(routerContent).not.toContain("MAX_DEBUG_ATTEMPT");
+    // Router must not read MAX_DEBUG_ATTEMPT; debug orchestrator enforces ceiling.
+    // Documentation prose may reference the constant name (to explain the constraint);
+    // only actual shell reads/comparisons are forbidden (e.g. $MAX_DEBUG_ATTEMPT or
+    // arithmetic like [ "$MAX_DEBUG_ATTEMPT" -ge … ]).
+    expect(routerContent).not.toMatch(/\$\{?MAX_DEBUG_ATTEMPT\}?/);
+    expect(routerContent).not.toMatch(/MAX_DEBUG_ATTEMPT\s*[<>=!-]/);
   });
 
   it("router documents dispatch of /bkit-debug unconditionally", () => {
