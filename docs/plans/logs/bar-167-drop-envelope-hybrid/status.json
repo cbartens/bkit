@@ -163,6 +163,19 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 9,
+        "at": "2026-05-09T13:37:45Z",
+        "commitSha": "5072f7352c8bcbf7427d14192c75fa948852736a",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-scope-check-1.md",
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-scope-check-2.md"
+        ]
       }
     ]
   }
