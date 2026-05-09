@@ -77,6 +77,17 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"
         ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SINGLE",
+        "attempt": 1,
+        "at": "2026-05-09T12:29:15Z",
+        "commitSha": "7194745815424b1d6c9ad88a50d64c2b3e77e484",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"
+        ]
       }
     ]
   }
