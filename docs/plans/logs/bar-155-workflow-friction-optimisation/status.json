@@ -10,6 +10,15 @@
         "at": "2026-05-09T01:35:24Z",
         "commitSha": "1197cd620977eff9b0613a36c1ffa04e347b8aad",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T01:38:42Z",
+        "commitSha": "ad16bdd0d166b0b3c780caa48097b70f20301981",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md"
+        ]
       }
     ]
   }
