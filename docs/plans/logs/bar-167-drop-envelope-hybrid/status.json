@@ -19,6 +19,16 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"
         ]
+      },
+      {
+        "step": "generate-plan",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T12:03:25Z",
+        "commitSha": "265694d537618ca154418d7f7f0918579c50c118",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"
+        ]
       }
     ]
   }
