@@ -283,6 +283,17 @@
         "at": "2026-05-09T01:39:24Z",
         "commitSha": "948dfa01ef30c2047bddce4c627c45e418d9d0ad",
         "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T01:41:14Z",
+        "commitSha": "35adffd2e5f9dcebb8b5b4381fa7c9f40abeec3f",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/debug-summary.md"
+        ]
       }
     ],
     "debugAttempt": 1
