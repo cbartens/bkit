@@ -6,6 +6,28 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.1.0] — 2026-05-09
+
+### Removed (breaking, but no consumer was usefully relying on it)
+
+- **`setup-auth@v1` composite GitHub Action** (`.github/actions/setup-auth/`) and its meta-test workflow (`.github/workflows/test-action.yml`). The composite was unreachable from any consumer outside the `cbartens/` GitHub namespace while `bkit` stayed private — the runner's `GITHUB_TOKEN` cannot resolve cross-org private `uses:` references at action-resolution time, so `cbartens/bkit/.github/actions/setup-auth@<ref>` failed with "repository not found" before the install step ran. Both real consumers are on the env-var pattern and unaffected. (BAR-164)
+
+### Changed
+
+- **Canonical `ci.yml` template now uses the env-var pattern only.** `.agents/templates/.github/workflows/ci.yml` no longer references the deleted composite. The install step continues to receive `GH_BKIT_TOKEN` as env — the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) authenticates the registry directly. New consumers seeded after this release get the working template. (BAR-164)
+- **README "Adding a new consumer — checklist"** added at the top of §Install — threads the existing §"Consumer CI auth" + §"Consumer Vercel auth" sections into a 7-step trail (PAT → secret → `.npmrc` → install → bkit install → Vercel → push). The §"Helper action: `setup-auth@v1`" and §"Consumer migration — pin to sliding `@v1`" sections were removed (composite no longer ships). (BAR-164)
+- **`docs/deployments.md` § "`setup-auth@v1` composite GitHub Action"** removed; replaced by § "Consumer CI auth — env-var pattern (canonical)". § "Sliding major-version tag" retained — internal release-pipeline mechanics, orthogonal to the composite. (BAR-164)
+
+### Added
+
+- **Installer guard `scanForeignBkitUses`** (`bkit-modules.ts`). `runCiModule` now scans the canonical CI template for `uses: cbartens/bkit/...@<ref>` references before writing and throws if any are present. Catches BAR-164-class regressions at dev/CI time so a broken template can never reach a consumer repo. (BAR-164 AC #6)
+
+### Notes
+
+- Sliding `v1` git tag and the `release.yml` job that maintains it are kept untouched. Consumers transitioning to in-namespace tooling will pin to it later.
+
+---
+
 ## [1.0.2] — 2026-05-08
 
 ### Fixed

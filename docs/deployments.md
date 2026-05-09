@@ -84,11 +84,9 @@ bkit's installer runs in three phases:
 
 `pnpm bkit install` always runs all three phases. `pnpm bkit check` runs only Phase 1; if any drift is detected, exits 1 with Phase 1 advisories rendered. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
-### `setup-auth@v1` composite GitHub Action
+### Consumer CI auth — env-var pattern (canonical)
 
-`v1.0.0+` ships a composite action at `.github/actions/setup-auth/action.yml`. Consumer ci.yml templates can replace the multi-line bash PAT-shim with `uses: cbartens/bkit/.github/actions/setup-auth@v1` (inputs: `token` required, `registry` optional → defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up. The `v1` sliding tag is maintained automatically — see "Sliding major-version tag" below.
-
-The seeded ci.yml inline `env: GH_BKIT_TOKEN` block is **retained** (RETAIN-WITH-REASON: external contract for non-Actions CI fallbacks; kill-date v1.1.0 — see DE-11, KN-14).
+Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env var on the `pnpm install` step. The consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) picks it up at registry-resolution time. No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape (BAR-164).
 
 ### Sliding major-version tag
 
