@@ -152,6 +152,17 @@
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-review-1.md",
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T13:33:50Z",
+        "commitSha": "88fbe3784d9e34444a8ae7ce488fdd005240de9f",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
