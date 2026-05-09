@@ -10,6 +10,15 @@
         "at": "2026-05-09T11:51:45Z",
         "commitSha": "9cbafeeae6606fe43375093fd53794335772212f",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T11:55:30Z",
+        "commitSha": "c433879306fa898f7ad11d48e0b6bdf7fc2cdde8",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"
+        ]
       }
     ]
   }
