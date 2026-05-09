@@ -38,7 +38,7 @@
 - **Status:** open
 - **Description:** `app-gether-life` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
 - **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
+- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
 
 ## Consumer migration to @cbartens/bkit registry path — www-visitfrasercoast-com (2026-05-06)
 
@@ -48,7 +48,7 @@
 - **Status:** open
 - **Description:** `www-visitfrasercoast-com` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
 - **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
+- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
 
 ## bkit doctor verb — standalone preflight CLI subcommand (2026-05-06)
 

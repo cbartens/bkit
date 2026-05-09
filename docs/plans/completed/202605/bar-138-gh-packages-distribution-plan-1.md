@@ -1,18 +1,18 @@
 # bkit v0.4.0 — Sub-Plan 1: Pipeline Foundation + Installer Print Constants + CI YAML Edits + Vitest Tests
 
-**Parent Plan:** [bar-138-plan.md](./bar-138-plan.md)
+**Parent Plan:** [bar-138-gh-packages-distribution-plan.md](./bar-138-gh-packages-distribution-plan.md)
 
 > [!CAUTION]
 > **CRITICAL:** Do not hallucinate plan execution state.
 >
-> 1. ALWAYS read this `bar-138-plan-1.md` file natively via the `read_file` tool _before_ executing any steps.
+> 1. ALWAYS read this `bar-138-gh-packages-distribution-plan-1.md` file natively via the `read_file` tool _before_ executing any steps.
 > 2. NEVER trust system-generated session summaries or previous conversation history to determine what has been completed.
 > 3. Your source of truth is EXCLUSIVELY the literal `[x]` vs `[ ]` checkboxes in this physical document. If a box is `[ ]`, it is NOT DONE, regardless of what the conversation context implies.
 
 > [!IMPORTANT]
-> **This is the first half of a two-part runbook split for token-budget reasons.** The parent plan ([bar-138-plan.md](./bar-138-plan.md)) holds the full Acceptance Scenario, Breaking Changes, Supersession Inventory, and rollback context. Re-read it before starting if any context is missing here.
+> **This is the first half of a two-part runbook split for token-budget reasons.** The parent plan ([bar-138-gh-packages-distribution-plan.md](./bar-138-gh-packages-distribution-plan.md)) holds the full Acceptance Scenario, Breaking Changes, Supersession Inventory, and rollback context. Re-read it before starting if any context is missing here.
 >
-> When this sub-plan completes successfully, hand off to [bar-138-plan-2.md](./bar-138-plan-2.md) — do NOT start the docs/dist/smoke/ship work yourself.
+> When this sub-plan completes successfully, hand off to [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md) — do NOT start the docs/dist/smoke/ship work yourself.
 
 ## Scope of This Sub-Plan
 
@@ -31,7 +31,7 @@
 
 ## Acceptance & Edge Cases
 
-Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario](./bar-138-plan.md#acceptance-scenario--human-review-required)). Tests created in this sub-plan map to the following Derived Test Matrix rows:
+Inherited verbatim from the parent plan ([bar-138-gh-packages-distribution-plan.md § Acceptance Scenario](./bar-138-gh-packages-distribution-plan.md#acceptance-scenario--human-review-required)). Tests created in this sub-plan map to the following Derived Test Matrix rows:
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
@@ -72,7 +72,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to `Agent Execution Runbook → Phase A`.
 
 > [!CAUTION]
-> **Gate 1 wiring rule:** The two upstream human-gate checkboxes — `👤 ✅ Human Confirmation → Acceptance Scenario confirmed` and `👤 ✅ Human Confirmation → Breaking Changes confirmed` — live in the parent plan ([bar-138-plan.md](./bar-138-plan.md)). They are the source of truth. The two echo checkboxes immediately below are mirrors for Gate 1's machine-readability. Gate 1 stays unchecked, AND `Gate 1 - Verified` MUST remain `[ ]`, until BOTH upstream `👤 ✅` boxes in the parent plan are `[x]`. If either upstream box is unchecked, the summary subagent MUST issue `REVISE` per the `docs/plans/template.md` contract.
+> **Gate 1 wiring rule:** The two upstream human-gate checkboxes — `👤 ✅ Human Confirmation → Acceptance Scenario confirmed` and `👤 ✅ Human Confirmation → Breaking Changes confirmed` — live in the parent plan ([bar-138-gh-packages-distribution-plan.md](./bar-138-gh-packages-distribution-plan.md)). They are the source of truth. The two echo checkboxes immediately below are mirrors for Gate 1's machine-readability. Gate 1 stays unchecked, AND `Gate 1 - Verified` MUST remain `[ ]`, until BOTH upstream `👤 ✅` boxes in the parent plan are `[x]`. If either upstream box is unchecked, the summary subagent MUST issue `REVISE` per the `docs/plans/template.md` contract.
 
 - [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section in the parent plan (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
 - [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section in the parent plan (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
@@ -165,7 +165,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
 > **Blockers:** If a task cannot be completed, **DO NOT fail silently**. Create a Linear issue (label `blocker`) with context before stopping.
 > **Step Isolation:** Do NOT jump ahead. Complete each task fully (including its specific verification and checking its box) before starting the exact next task in the list.
 > **Progress Updates:** After checking off each major task, post a structured summary as a Linear comment on the issue per `.claude/workflows/conventions.md`.
-> **Hand-off:** When all tasks below are checked, do NOT continue to docs/dist/smoke/ship work yourself — switch to [bar-138-plan-2.md](./bar-138-plan-2.md) instead.
+> **Hand-off:** When all tasks below are checked, do NOT continue to docs/dist/smoke/ship work yourself — switch to [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md) instead.
 
 ### Phase A — Pipeline foundation (validates publishing path before touching prints)
 
@@ -198,7 +198,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
 
 ### Phase B (partial) — Installer print constants + consumer/bkit-self CI YAML edits
 
-> Tasks B8–B15 (docs, dist rebuild, pre.2 tag/publish, pre.2 gate) live in [bar-138-plan-2.md](./bar-138-plan-2.md).
+> Tasks B8–B15 (docs, dist rebuild, pre.2 tag/publish, pre.2 gate) live in [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md).
 
 - [x] **Task B1: Rewrite `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` constant in `.agents/scripts/bkit-modules.ts`.**
   - Scope: Replace body verbatim with the `.npmrc`-based AI-actionable block. MUST include: (a) `.npmrc` snippet (registry + `_authToken=${GH_BKIT_TOKEN}`), (b) `GH_BKIT_TOKEN` GHA secret instructions with `read:packages` (classic) / Packages: read (fine-grained) PAT scope, (c) verbatim pnpm v7.20+ silent-ignore-on-unset-env warning so an AI agent can map symptom → cause.
@@ -237,7 +237,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
 
 ### Phase C (partial) — Tests for code edits made above
 
-> Tasks C3–C5 (scratch-consumer smoke + gate) live in [bar-138-plan-2.md](./bar-138-plan-2.md).
+> Tasks C3–C5 (scratch-consumer smoke + gate) live in [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md).
 
 - [x] **Task C0: Extend Vitest unit tests for `package.json` manifest fields.**
   - Scope: In `.agents/scripts/bkit-modules.test.ts` (extend) — match the existing test conventions for that source file by inspecting the dir before deciding (a sibling `.agents/scripts/package-manifest.test.ts` is acceptable if the existing file's scope makes extension awkward). Add tests asserting the manifest invariants set up by Task A2:
@@ -278,7 +278,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
 
 ## Hand-off State to Sub-Plan 2
 
-Confirm ALL of the following are true before marking this sub-plan complete and switching to [bar-138-plan-2.md](./bar-138-plan-2.md):
+Confirm ALL of the following are true before marking this sub-plan complete and switching to [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md):
 
 - [x] **Branch:** `feat/bar-138-gh-packages-distribution` is checked out and pushed to origin.
 - [x] **Manifest:** `package.json` has `private: false`, the new `publishConfig`, bare HTTPS `repository.url`, refreshed `description`, and `version` = `0.4.0-pre.1`.
