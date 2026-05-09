@@ -5,12 +5,13 @@ const MODULE_FLAGS = new Set([
     "claude",
     "cursor",
     "ci",
+    "auto",
     "lint",
     "git-hooks",
     "full",
 ]);
 // ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core
-const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
+const ALL_MODULES = ["core", "claude", "cursor", "ci", "auto", "lint", "git-hooks"];
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
     "dry-run",
@@ -159,6 +160,7 @@ Module flags (composable — same for install and uninstall):
   --claude        .claude/commands/ + .claude/agents/ (byte-identical mirror).
   --cursor        .cursor/commands/ + .cursor/agents/ (T1/T2/T3 transforms).
   --ci            .github/workflows/ci.yml (Tier 2 managed-block, tokens substituted).
+  --auto          .github/workflows/bkit-ci-router.yml (Tier 3 seed-or-print; requires ANTHROPIC_API_KEY secret + Auto Linear label).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 2 managed-block).
 
@@ -183,6 +185,7 @@ Examples:
   bkit install                  Full stack install (all modules).
   bkit install --claude         Only .claude/** + core.
   bkit install --ci --lint      CI + lint stack + core; nothing else.
+  bkit install --auto           CI router workflow + core; requires ANTHROPIC_API_KEY + Auto Linear label.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).
   bkit uninstall                Full stack uninstall (all modules).

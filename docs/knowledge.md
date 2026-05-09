@@ -199,3 +199,14 @@
 - **Severity:** critical
 - **Source:** phase
 - **Related:** BAR-131, BAR-138, `.agents/templates/.github/workflows/ci.yml`, `bar-131-related-bars-suite-plan-4.md` §P4.T8, `build-failure-diagnose-1.md`
+
+## KN-15: Stale-CI-run dispatch hazard — router must compare head SHA before dispatching (2026-05-09)
+
+- **Symptom:** `bkit-ci-router` fires for a `workflow_run` completion whose `head_sha` is no longer the PR's current head — i.e., new commits pushed after the CI run started. Dispatching `/bkit-ship` against a stale SHA can attempt to merge an outdated branch.
+- **Root cause:** `workflow_run` events are emitted per-run, not per-PR-state. By the time the runner starts the router session, the PR may have advanced (push after the watched CI run kicked off). The `github.event.workflow_run.head_sha` exposed as `CI_RUN_HEAD_SHA` in the runner environment may not match `gh pr view --json headRefOid`.
+- **Fix:** Step 4 of `bkit-ci-router.md` (Stale-Run Guard): before any dispatch, compare `PR_HEAD_SHA=$(gh pr view "$PR_NUMBER" --json headRefOid -q .headRefOid)` against `LATEST_SHA=$(gh run list --branch "$CI_RUN_HEAD_BRANCH" --limit 1 --json headSha -q '.[0].headSha')`. If they differ, exit no-op (`echo "stale run — skipping"`). `cancel-in-progress: true` on the router concurrency group ensures the newly-dispatched router for the fresher run supersedes the in-flight stale one.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-148, `.agents/workflows/bkit-ci-router.md` § Step 4, `.github/workflows/bkit-ci-router.yml` (cancel-in-progress: true), DE-14

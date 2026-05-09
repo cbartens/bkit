@@ -862,6 +862,95 @@ export function runCiModule(ctx: ModuleContext): void {
 }
 
 // ---------------------------------------------------------------------------
+// runAutoModule — .github/workflows/bkit-ci-router.yml (Tier 3 seed-or-print)
+//
+// Switched from the start as Tier-3: appending a complete workflow to an
+// existing bkit-ci-router.yml would produce duplicate top-level keys (invalid
+// GHA YAML). Bkit can't safely YAML-merge, so we seed when absent and print
+// AI-actionable merge instructions when present.
+// ---------------------------------------------------------------------------
+
+const AUTO_YML_MERGE_INSTRUCTIONS = `[bkit] .github/workflows/bkit-ci-router.yml exists — bkit cannot safely YAML-merge jobs. Manual merge required.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .github/workflows/bkit-ci-router.yml. Compare it to the bkit reference workflow
+  below (which represents the recommended CI-router for any bkit consumer).
+
+  Required merge actions:
+  1. Ensure the top-level keys exactly match: name, on, permissions, concurrency, jobs.
+     YAML allows only one of each per file.
+
+  2. Ensure the \`on.workflow_run.workflows\` value matches your CI workflow's \`name:\`
+     field (NOT the filename). The default is \`[CI]\` — if your workflow uses a different
+     name (e.g. \`[Tests]\` or \`[Build and Test]\`), update the bkit-ci-router.yml to match.
+
+  WARNING: bkit-ci-router upstream workflow name — the \`workflows: [CI]\` value must
+  match your CI workflow's \`name:\` field exactly. Consumers who rename their CI
+  workflow MUST update this value or the router will never wake.
+
+  3. Ensure \`concurrency.cancel-in-progress: true\` is set. Newer CI completions on the
+     same branch should supersede in-flight router runs. Ship squash-merge is a single
+     GitHub-atomic API call, so mid-cancel during ship cannot corrupt PR state.
+
+  4. Ensure the \`jobs.route.timeout-minutes\` is ≤ 240 (formula: MAX_DEBUG_ATTEMPT × 60min
+     + 30min margin; strictly under the runner 6h cap).
+
+  5. Ensure \`ANTHROPIC_API_KEY\` is set in both the job-level \`env:\` block and under the
+     \`anthropics/claude-code-action@v1\` step's \`with:\` block. Add it to your GitHub
+     Actions repository secrets:
+       gh secret set ANTHROPIC_API_KEY --body=<your-key>
+
+  6. Ensure the Linear issue carrying each feature has the \`Auto\` label before the
+     router can dispatch. Without the label, the router exits no-op at Step 3.
+     Create the \`Auto\` label in your Linear workspace if it does not already exist.
+
+  --- begin bkit reference workflow ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference workflow ---
+
+  After merging, push to a feature branch and verify the workflow appears in the
+  GitHub Actions tab before merging to your default branch.
+`;
+
+export function runAutoModule(ctx: ModuleContext): void {
+  const { dryRun, ws, advisories, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+  const PKG_ROOT = getPkgRoot();
+
+  const templatePath = path.join(
+    PKG_ROOT,
+    ".agents",
+    "templates",
+    ".github",
+    "workflows",
+    "bkit-ci-router.yml",
+  );
+  if (!fs.existsSync(templatePath)) {
+    console.warn(
+      `${logPrefix} auto (ci-router) template not found at ${templatePath} — skipping auto module`,
+    );
+    return;
+  }
+
+  const dstPath = path.join(".github", "workflows", "bkit-ci-router.yml");
+  const prevLen = ws.writes.length;
+  const result = writeTier3(
+    templatePath,
+    dstPath,
+    dryRun,
+    advisories,
+    ws,
+    AUTO_YML_MERGE_INSTRUCTIONS,
+  );
+  if (ws.writes.length > prevLen) {
+    console.log(`${logPrefix} ${tag}auto: ${dstPath}`);
+  } else if (result.suggested) {
+    console.log(`${logPrefix} ${tag}auto: ${dstPath} (exists; AI merge instructions printed)`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // runLintModule — vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore
 // ---------------------------------------------------------------------------
 
@@ -1121,6 +1210,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   claude: runClaudeModule,
   cursor: runCursorModule,
   ci: runCiModule,
+  auto: runAutoModule,
   lint: runLintModule,
   "git-hooks": runGitHooksModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
@@ -1132,6 +1222,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "claude",
   "cursor",
   "ci",
+  "auto",
   "lint",
   "git-hooks",
 ];

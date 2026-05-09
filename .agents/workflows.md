@@ -22,6 +22,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 ├── bkit-build.md          # Workflow 3/5 — 17 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 8 steps; PR-debug or normal-debug mode
 ├── bkit-ship.md           # Workflow 5/5 — 10 steps; merge → archive → close
+├── bkit-ci-router.md      # Router — 7 steps; leaf orchestrator; GHA runner provides worktree
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
 └── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
 ```
@@ -34,6 +35,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 | `/bkit-build` | yes | no — CI continues | PR to `dev` with plan-link URL |
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans moved to `docs/plans/completed/{YYYYMM}/`; worktree gone |
+| `/bkit-ci-router` | yes (from status.json) | no — dispatches ship/debug | Linear comment append with GHA run URL; no files written |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
 
@@ -118,6 +120,8 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
     "workflow": "build",
     "startedAt": "2026-04-27T14:02:11Z",
     "status": "in_progress",
+    "issueId": "BAR-123",
+    "commentId": "cmt_abc123",
     "steps": [
       { "step": "start-workflow", "status": "done", "at": "2026-04-27T14:02:11Z", "artifacts": [] },
       {
@@ -143,9 +147,11 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 <!-- prettier-ignore -->
 | Field | Values |
 | --- | --- |
-| `workflow` | `design`, `plan`, `build`, `debug`, `ship` |
+| `workflow` | `design`, `plan`, `build`, `debug`, `ship`, `ci-router` |
+| `issueId` | Linear issue ID (e.g. `BAR-123`) — written at Start Workflow by all orchestrators; consumed by `bkit-ci-router` Step 1 to recover the issue for the label gate and comment append. |
+| `commentId` | Linear comment ID — written at Start Workflow by all orchestrators after `save_comment` creates the initial comment; consumed by `bkit-ci-router` Step 1 to append to the existing comment thread. |
 | `status` | `in_progress`, `done`, `failed` |
-| `steps[].step` | kebab-case slug of step name (e.g. `start-workflow`, `plan-verify`, `update-docs-summary`) |
+| `steps[].step` | kebab-case slug of step name (e.g. `start-workflow`, `plan-verify`, `update-docs-summary`, `label-gate`, `stale-run-guard`, `dispatch`) |
 | `steps[].status` | `done` (only `done` is appended; in-progress is implicit by absence of next step) |
 | `steps[].verdict` | optional — `PASS` / `CONCERNS` / `FAIL` for verdict-bearing steps |
 | `steps[].artifacts` | absolute `docs/plans/logs/{FID}/...` paths (or PR URL for create-pr) |
@@ -555,6 +561,27 @@ Each subsection below documents what command actually does — step list, subage
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
+### `/bkit-ci-router` — 7 steps
+
+**Goal:** Autonomous post-CI dispatch. Wakes when `bkit-ci-router.yml` GHA trigger fires on CI completion for a `feat/**` branch. Reads `status.json`, validates `Auto` label and head-SHA parity, dispatches `/bkit-ship` or `/bkit-debug` in the same runner session. **Leaf orchestrator** — runs inside a GHA runner; no `.worktrees/{FID}` is created (runner provides the worktree). Router dispatches `/bkit-debug` unconditionally — `MAX_DEBUG_ATTEMPT` ceiling is enforced by the debug orchestrator, NOT the router.
+
+**GHA Trigger Half:** `.github/workflows/bkit-ci-router.yml` fires on `workflow_run` completion of the `CI` workflow for `feat/**` branches with `conclusion ∈ {success, failure}`. Concurrency group `bkit-ci-router-{head_branch}` with `cancel-in-progress: true` — newer CI completion supersedes in-flight router runs. The workflow dispatches `anthropics/claude-code-action@v1` with `prompt: "/bkit-ci-router"`, which runs this orchestrator inside the runner.
+
+**Consumer prerequisite:** `ANTHROPIC_API_KEY` GHA secret + `Auto` label on the Linear issue. Without the `Auto` label, router exits no-op at Step 3 (opt-in safety).
+
+<!-- prettier-ignore -->
+| Step | Subagent(s) | Notes |
+| --- | --- | --- |
+| 1 — Start Workflow | — | Read `CI_RUN_HEAD_BRANCH`, `CI_RUN_CONCLUSION`, `CI_RUN_HEAD_SHA` from runner env. Assert `BRANCH` matches `feat/**`. Parse `{FID}` from `docs/plans/logs/`. Read `issueId` / `commentId` from `status.json`. Acquire `.router-lock`. Init `ci-router` entry in `status.json`. Create Linear comment. |
+| 2 — Worktree Setup | — | Runner IS the worktree — no `.worktrees/{FID}` creation (explicit exception for leaf orchestrator). Verify `docs/plans/logs/{FID}/` accessible. Resolve `PR_NUMBER` → empty → no-op exit. |
+| 3 — Label Gate | — | `get_issue({ id: ISSUE_ID })` → assert `Auto` in labels. Absent → no-op exit with comment. |
+| 4 — Stale-Run Guard | — | `gh run list --branch {BRANCH} --limit 1 --json headSha` vs `gh pr view {PR_NUMBER} --json headRefOid`. Mismatch → no-op exit with comment. |
+| 5 — Resolve PR & Conclusion | — | Assert `CONCLUSION` ∈ `success \| failure` (else no-op). Set `DISPATCH_SKILL` = `bkit-ship` (success) or `bkit-debug` (failure). |
+| 6 — Dispatch | — | Invoke `/bkit-ship {FID}` or `/bkit-debug {FID}` in runner session. No `MAX_DEBUG_ATTEMPT` pre-check. `ANTHROPIC_API_KEY` failure → Failure Path. |
+| 7 — Close Workflow | — | Mark `status.json` `DONE`. Release `.router-lock`. Append final comment block. |
+
+**Failure Path:** mark `status.json` failed, release `.router-lock`, append `### Workflow Failure` to Linear comment. No handover agent (router has no retry loop).
+
 ### `/bkit-worktree-sync` — utility
 
 Human-triggered. Pulls Claude's worktree commits into IDE's current branch. Always interactive — never auto-merges.
@@ -897,7 +924,7 @@ When writing or editing `.agents/workflows/bkit-*.md` (canonical source — `bki
 - [ ] Caution block with all Execution Protocol invariants (§ Common Workflow Anatomy → Execution Protocol).
 - [ ] **Failure Path** before Step 1; conditional handover branch when phase has retry loops.
 - [ ] **Step 1 — Start Workflow:** status init + lock acquire + Linear init + comment create + label set + state `In Progress`.
-- [ ] **Step 2 — Worktree Setup:** worktree create/resume + env file copy + `pnpm install --frozen-lockfile` + save phase input + status step + comment append.
+- [ ] **Step 2 — Worktree Setup:** worktree create/resume + env file copy + `pnpm install --frozen-lockfile` + save phase input + status step + comment append. **Exception for leaf orchestrators** (e.g. `bkit-ci-router.md`): when the GHA runner provides the worktree, Step 2 MUST document this explicitly ("Runner IS the worktree") and MUST NOT call `git worktree add`. The authoring-conventions test (`release-workflow.test.ts`) allows the absence of `git worktree add` specifically for `bkit-ci-router.md`.
 - [ ] Every step ends with `### 🔒 Gate N` and a checklist.
 - [ ] Every step appends one fenced section to workflow comment via `save_comment({ id: {COMMENT_ID}, body })`.
 - [ ] Subagent invocations use `@name` + `Context:` / `Read:` / `Update:` / `Create:` block (Update/Create as applicable); assert non-empty Update/Create artifacts.

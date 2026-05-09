@@ -88,3 +88,29 @@ bkit's installer runs in three phases:
 `v1.0.0+` ships a composite action at `.github/actions/setup-auth/action.yml`. Consumer ci.yml templates can replace the multi-line bash PAT-shim with `uses: cbartens/bkit/.github/actions/setup-auth@v1` (inputs: `token` required, `registry` optional → defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up. Requires the `v1` annotated tag pointing at the v1.0.0 squash-merge (post-merge `git tag -a v1 -m "..." <sha> && git push origin v1`).
 
 The seeded ci.yml inline `env: GH_BKIT_TOKEN` block is **retained** (RETAIN-WITH-REASON: external contract for non-Actions CI fallbacks; kill-date v1.1.0 — see DE-11, KN-14).
+
+### Required GHA secrets for bkit-ci-router (Option 1)
+
+Consumer repos that install `.github/workflows/bkit-ci-router.yml` via `bkit install` must provision one GHA repository secret:
+
+| Secret | Value | Where to set | Symptom if missing |
+| --- | --- | --- | --- |
+| `ANTHROPIC_API_KEY` | Anthropic API key with Claude access | `gh secret set ANTHROPIC_API_KEY --body=<key>` in the consumer repo | `anthropics/claude-code-action@v1` step fails with a clear auth error; GHA run ends `failure`; Failure Path mirror appends the error URL to the Linear comment. |
+
+`ANTHROPIC_API_KEY` is consumer-managed and is NOT stored in the bkit repo itself unless the bkit repo is dogfooding the router. bkit's own `.github/workflows/bkit-ci-router.yml` (dogfood copy) requires the secret if the router is ever enabled for bkit's own CI; it is harmless if the secret is absent and the `Auto` label is never applied to bkit issues.
+
+No other new secrets are required. The existing `GH_BKIT_TOKEN` (read:packages PAT) is unchanged.
+
+### Linear label `Auto` opt-in
+
+The `bkit-ci-router` workflow is guarded by a Linear label gate (Step 3 of the router orchestrator). The router only dispatches `/bkit-ship` or `/bkit-debug` when the Linear issue for the current `{FID}` carries the `Auto` label.
+
+**Consumer prerequisite:** Create the `Auto` label in the consumer's Linear workspace before enabling the router. Label properties are unconstrained (any colour); the router matches by exact name `Auto` (case-sensitive).
+
+| Step | Action |
+| --- | --- |
+| 1 | In the consumer's Linear workspace, navigate to **Settings → Labels** and create a label named `Auto`. |
+| 2 | Apply `Auto` to any Linear issue where auto-routing via the router is desired. The label persists across debug iterations on the same issue — no re-application needed after each `/bkit-debug` cycle. |
+| 3 | Without the `Auto` label, the router exits as a no-op and posts an "opt-in absent" comment to the Linear issue. Zero risk to issues that do not carry the label. |
+
+The bkit Linear workspace already has the `Auto` label (used for bkit's own dogfooding). Consumer workspaces must create it independently — Linear labels are workspace-scoped and do not inherit from bkit's workspace.

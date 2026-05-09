@@ -11,6 +11,7 @@ import {
   runClaudeModule,
   runCursorModule,
   runCiModule,
+  runAutoModule,
   runLintModule,
   runGitHooksModule,
   dispatchModules,
@@ -877,5 +878,53 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
       w.path.endsWith(path.join(".agents", "rules.md")),
     );
     expect(ruleWrites.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C2 — BAR-148: runAutoModule integration (matrix row 9)
+// ---------------------------------------------------------------------------
+
+describe("C2 — runAutoModule integration: install → drift → bkit check reports drift", () => {
+  it("runAutoModule seeds bkit-ci-router.yml when absent", () => {
+    // Setup: ensure no existing file
+    const dstPath = path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml");
+    expect(fs.existsSync(dstPath)).toBe(false);
+
+    const ctx = makeCtx();
+    runAutoModule(ctx);
+
+    expect(fs.existsSync(dstPath)).toBe(true);
+    const content = fs.readFileSync(dstPath, "utf-8");
+    expect(content).toContain("bkit-ci-router");
+    expect(content).toContain("workflow_run");
+    expect(ctx.ws.writes.some((w) => w.path.includes("bkit-ci-router.yml"))).toBe(true);
+  });
+
+  it("runAutoModule does NOT overwrite when file already exists (suggests merge instructions instead)", () => {
+    // Seed the file first
+    const dstDir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dstDir, { recursive: true });
+    const dstPath = path.join(dstDir, "bkit-ci-router.yml");
+    const consumerContent = "# consumer-modified router workflow\nname: my-ci-router\n";
+    fs.writeFileSync(dstPath, consumerContent, "utf-8");
+
+    const ctx = makeCtx();
+    runAutoModule(ctx);
+
+    // File should be unchanged (no overwrite)
+    const afterContent = fs.readFileSync(dstPath, "utf-8");
+    expect(afterContent).toBe(consumerContent);
+    // ws.writes should NOT contain a write for the dst path
+    expect(ctx.ws.writes.some((w) => w.path.includes("bkit-ci-router.yml"))).toBe(false);
+  });
+
+  it("runAutoModule records bkit-ci-router.yml in ws.writes (enabling canonicalHashes via postDispatch)", () => {
+    const ctx = makeCtx();
+    runAutoModule(ctx);
+
+    // ws.writes must contain the router workflow path
+    const routerWrites = ctx.ws.writes.filter((w) => w.path.includes("bkit-ci-router.yml"));
+    expect(routerWrites.length).toBe(1);
   });
 });

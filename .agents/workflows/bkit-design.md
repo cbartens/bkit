@@ -79,7 +79,9 @@ description: "Design Feature — Autonomous design phase"
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "design" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-     t=$(mktemp); jq '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
+     t=$(mktemp); jq --arg iid "{ISSUE_ID}" --arg cid "{COMMENT_ID}" \
+       '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", issueId:$iid, commentId:$cid, steps:[]}]' \
+       "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
    git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
    SHA=$(git rev-parse HEAD)

@@ -211,3 +211,129 @@ describe("P4.T8 — test-action.yml meta-test workflow", () => {
     expect(content).toContain("setup-auth");
   });
 });
+
+// ---------------------------------------------------------------------------
+// C5 — BAR-148: bkit-ci-router.yml template structural assertions (matrix row 6)
+// ---------------------------------------------------------------------------
+
+const ROUTER_TEMPLATE_PATH = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "../../.agents/templates/.github/workflows/bkit-ci-router.yml",
+);
+
+describe("C5 — bkit-ci-router.yml template structural assertions (BAR-148, matrix row 6)", () => {
+  it("template file exists at .agents/templates/.github/workflows/bkit-ci-router.yml", () => {
+    expect(fs.existsSync(ROUTER_TEMPLATE_PATH)).toBe(true);
+  });
+
+  it("template is non-empty and readable", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content.trim().length).toBeGreaterThan(0);
+  });
+
+  it("template has top-level `name` field", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(hasYamlKey(content, 0, "name")).toBe(true);
+  });
+
+  it("template has top-level `on` field", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(hasYamlKey(content, 0, "on")).toBe(true);
+  });
+
+  it("template has top-level `permissions` field", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(hasYamlKey(content, 0, "permissions")).toBe(true);
+  });
+
+  it("template has top-level `concurrency` field", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(hasYamlKey(content, 0, "concurrency")).toBe(true);
+  });
+
+  it("template has top-level `jobs` field", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(hasYamlKey(content, 0, "jobs")).toBe(true);
+  });
+
+  it("template does NOT have unexpected top-level keys beyond name/on/permissions/concurrency/jobs", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    const EXPECTED_TOP_KEYS = new Set(["name", "on", "permissions", "concurrency", "jobs"]);
+    for (const line of content.split("\n")) {
+      const m = line.match(/^(\w[\w-]*):/);
+      if (m) {
+        expect(EXPECTED_TOP_KEYS.has(m[1]!)).toBe(true);
+      }
+    }
+  });
+
+  it("template on.workflow_run.workflows is [CI]", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("workflows: [CI]");
+  });
+
+  it("template on.workflow_run.types is [completed]", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("types: [completed]");
+  });
+
+  it("template on.workflow_run.branches includes feat/**", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("feat/**");
+  });
+
+  it("template concurrency.cancel-in-progress is true", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("cancel-in-progress: true");
+  });
+
+  it("template jobs.route.timeout-minutes is ≤ 240", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    const m = content.match(/timeout-minutes:\s*(\d+)/);
+    expect(m).not.toBeNull();
+    const timeout = parseInt(m![1]!, 10);
+    expect(timeout).toBeLessThanOrEqual(240);
+  });
+
+  it("template jobs.route.if filters on success or failure conclusion", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("conclusion == 'success'");
+    expect(content).toContain("conclusion == 'failure'");
+  });
+
+  it("template uses anthropics/claude-code-action@v1", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("anthropics/claude-code-action@v1");
+  });
+
+  it("template passes /bkit-ci-router as prompt", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain('prompt: "/bkit-ci-router"');
+  });
+
+  it("template passes ANTHROPIC_API_KEY via secrets", () => {
+    const content = fs.readFileSync(ROUTER_TEMPLATE_PATH, "utf-8");
+    expect(content).toContain("ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C5b — BAR-148: dogfood bkit-ci-router.yml matches template byte-for-byte (matrix row 7)
+// ---------------------------------------------------------------------------
+
+const ROUTER_DOGFOOD_PATH = path.resolve(
+  path.dirname(new URL(import.meta.url).pathname),
+  "../../.github/workflows/bkit-ci-router.yml",
+);
+
+describe("C5b — dogfood bkit-ci-router.yml matches template byte-for-byte (BAR-148, matrix row 7)", () => {
+  it("dogfood file exists at .github/workflows/bkit-ci-router.yml", () => {
+    expect(fs.existsSync(ROUTER_DOGFOOD_PATH)).toBe(true);
+  });
+
+  it("dogfood and template are byte-identical (no drift between dogfood and template)", () => {
+    const templateContent = fs.readFileSync(ROUTER_TEMPLATE_PATH);
+    const dogfoodContent = fs.readFileSync(ROUTER_DOGFOOD_PATH);
+    expect(dogfoodContent.equals(templateContent)).toBe(true);
+  });
+});

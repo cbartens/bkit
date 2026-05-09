@@ -211,6 +211,8 @@ runParityCheck(new Set(["core", "claude"]), "claude");
 runParityCheck(new Set(["core", "lint"]), "lint");
 runParityCheck(new Set(["core", "git-hooks"]), "git-hooks");
 runParityCheck(new Set(["core"]), "core");
+// C4 — BAR-148: dry-run/real-run parity for auto module (matrix row 5)
+runParityCheck(new Set(["core", "auto"]), "auto");
 
 // ---------------------------------------------------------------------------
 // MED-8 — runPayload WriteSet threading (DEFERRED placeholder)

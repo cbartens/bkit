@@ -173,8 +173,11 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `/debug` | Opus 4.7 | `claude-4.7-opus-high-thinking` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
 | `/build` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge`, `bkit-build-plan-verify` are `high` effort). |
 | `/ship` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Mostly mechanical: merge + archive + parallel docs/summary. |
+| `/bkit-ci-router` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | **GHA workflow_run trigger — NOT a human slash command.** Runs inside a GitHub Actions runner via `anthropics/claude-code-action@v1`; dispatches `/bkit-ship` or `/bkit-debug` based on CI conclusion. Leaf orchestrator (runner IS the worktree — no `.worktrees/` creation). |
 
 **Rule:** Opus where the orchestrator itself resolves ambiguity; Sonnet where it executes a defined sequence. If a Sonnet orchestrator starts skipping Failure Path branches or mis-routing verify gaps, escalate to Opus.
+
+> **Note — `/bkit-ci-router` is a GHA-triggered workflow, not a human-invoked slash command.** It is dispatched automatically by `bkit-ci-router.yml` when CI completes on a `feat/**` branch PR. Do not invoke it manually from a chat session; use `/bkit-ship` or `/bkit-debug` directly for manual dispatch.
 
 ## Design Phase
 

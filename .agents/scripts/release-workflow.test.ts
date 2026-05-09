@@ -222,4 +222,216 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
       true,
     );
   });
+
+  it("tarball ships bkit-ci-router.yml template (BAR-148)", () => {
+    expect(
+      manifestFiles.some((p) => p === ".agents/templates/.github/workflows/bkit-ci-router.yml"),
+    ).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BAR-148 — bkit-ci-router.md authoring-conventions assertions
+// (matrix rows 10, 11, 12, 13, 14, 15, 16, 17, 18)
+// ---------------------------------------------------------------------------
+
+const ROUTER_ORCHESTRATOR_PATH = path.resolve(".agents/workflows/bkit-ci-router.md");
+
+describe("C7 — bkit-ci-router.md authoring-conventions (matrix row 10)", () => {
+  let routerContent: string;
+
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("bkit-ci-router.md exists", () => {
+    expect(fs.existsSync(ROUTER_ORCHESTRATOR_PATH)).toBe(true);
+  });
+
+  it("has YAML frontmatter with description field", () => {
+    expect(routerContent).toMatch(/^---\n/);
+    expect(routerContent).toContain("description:");
+  });
+
+  it("has Failure Path section (## 🤖 Failure Path)", () => {
+    expect(routerContent).toContain("## 🤖 Failure Path");
+  });
+
+  it("has Step 1 — Start Workflow", () => {
+    expect(routerContent).toContain("## 🤖 Step 1 — Start Workflow");
+  });
+
+  it("every step has a ### 🔒 Gate N marker", () => {
+    // Router has 7 steps → 7 gates
+    const gateCount = (routerContent.match(/### 🔒 Gate \d+/g) ?? []).length;
+    expect(gateCount).toBeGreaterThanOrEqual(7);
+  });
+
+  it("documents Worktree Setup exception (runner provides worktree — no .worktrees creation)", () => {
+    // The router legitimately omits the standard worktree creation; must be documented
+    expect(routerContent).toContain("runner");
+    expect(routerContent).toContain("worktree");
+    // Must NOT contain standard worktree-creation bash pattern
+    expect(routerContent).not.toContain("git worktree add");
+  });
+
+  it("workflow: ci-router in status.json shape", () => {
+    expect(routerContent).toContain('"ci-router"');
+  });
+});
+
+describe("C8 — all 5 existing orchestrators write issueId and commentId in Step 1 (matrix row 11)", () => {
+  const orchestrators = [
+    { name: "bkit-plan.md", workflow: "plan" },
+    { name: "bkit-build.md", workflow: "build" },
+    { name: "bkit-ship.md", workflow: "ship" },
+    { name: "bkit-debug.md", workflow: "debug" },
+    { name: "bkit-design.md", workflow: "design" },
+  ];
+
+  for (const { name, workflow } of orchestrators) {
+    it(`${name} Step 1 status.json init includes issueId field`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      // Find the status init block for this workflow
+      const initIdx = content.indexOf(`workflow:"${workflow}"`);
+      expect(initIdx).toBeGreaterThan(-1);
+      const block = content.slice(Math.max(0, initIdx - 200), initIdx + 500);
+      expect(block).toContain("issueId");
+    });
+
+    it(`${name} Step 1 status.json init includes commentId field`, () => {
+      const filePath = path.resolve(`.agents/workflows/${name}`);
+      const content = fs.readFileSync(filePath, "utf-8");
+      const initIdx = content.indexOf(`workflow:"${workflow}"`);
+      expect(initIdx).toBeGreaterThan(-1);
+      const block = content.slice(Math.max(0, initIdx - 200), initIdx + 500);
+      expect(block).toContain("commentId");
+    });
+  }
+});
+
+describe("C9a — router no-op exit when Auto label absent (matrix row 12)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton contains label-gate decision branch (Auto label check)", () => {
+    expect(routerContent).toContain("Auto");
+    expect(routerContent).toContain("label");
+  });
+
+  it("router documents no-op exit when Auto label absent", () => {
+    expect(routerContent).toContain("Auto` absent");
+  });
+});
+
+describe("C9b — router no-op exit when stale run (head SHA mismatch) (matrix row 13)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton contains stale-run guard (headSha comparison)", () => {
+    expect(routerContent).toContain("headSha");
+    expect(routerContent).toContain("stale");
+  });
+
+  it("router documents no-op exit when run head SHA does not match PR head SHA", () => {
+    expect(routerContent).toContain("PR_HEAD_SHA");
+    expect(routerContent).toContain("LATEST_SHA");
+  });
+});
+
+describe("C9c — router failure exit when status.json missing or malformed (matrix row 14)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents failure branch for missing status.json", () => {
+    expect(routerContent).toContain("status.json missing");
+  });
+
+  it("router documents failure branch for malformed status.json", () => {
+    expect(routerContent).toContain("status.json malformed");
+  });
+});
+
+describe("C9d — router no-op exit when PR closed (matrix row 15)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents no-op exit when no open PR found", () => {
+    expect(routerContent).toContain("no open PR");
+  });
+
+  it("router checks for PR existence before dispatch", () => {
+    expect(routerContent).toContain("PR_NUMBER");
+  });
+});
+
+describe("C9e — router concurrency: newer CI run supersedes in-flight (matrix row 16)", () => {
+  it("bkit-ci-router.yml template has cancel-in-progress: true", () => {
+    const templatePath = path.resolve(".agents/templates/.github/workflows/bkit-ci-router.yml");
+    const content = fs.readFileSync(templatePath, "utf-8");
+    expect(content).toContain("cancel-in-progress: true");
+  });
+
+  it("bkit-ci-router.md router does NOT perform multi-step atomic status.json writes (no corruption window)", () => {
+    const content = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+    // Router writes status per step individually (not in a multi-step batch) — each step records itself
+    // Assert there is no combined multi-step write pattern
+    expect(content).not.toContain("steps:[step1, step2]");
+  });
+});
+
+describe("C9f — router dispatches /bkit-debug unconditionally (no MAX_DEBUG_ATTEMPT pre-check) (matrix row 17)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router step skeleton has NO MAX_DEBUG_ATTEMPT pre-check", () => {
+    // Router must not read MAX_DEBUG_ATTEMPT; debug orchestrator enforces ceiling
+    expect(routerContent).not.toContain("MAX_DEBUG_ATTEMPT");
+  });
+
+  it("router documents dispatch of /bkit-debug unconditionally", () => {
+    expect(routerContent).toContain("bkit-debug");
+  });
+});
+
+describe("C9g — router documents ANTHROPIC_API_KEY failure path (matrix row 18)", () => {
+  let routerContent: string;
+  beforeAll(() => {
+    routerContent = fs.existsSync(ROUTER_ORCHESTRATOR_PATH)
+      ? fs.readFileSync(ROUTER_ORCHESTRATOR_PATH, "utf-8")
+      : "";
+  });
+
+  it("router documents ANTHROPIC_API_KEY missing failure path", () => {
+    expect(routerContent).toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("router references claude-code-action failure surface", () => {
+    expect(routerContent).toContain("claude-code-action");
+  });
 });

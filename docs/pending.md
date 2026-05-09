@@ -159,3 +159,13 @@
 - **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
+
+## MAX_DEBUG_ATTEMPT default reconsideration in light of auto-routing (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Today `MAX_DEBUG_ATTEMPT=3` means the operator manually re-runs `/bkit-debug` up to 3 times (implicit per-attempt circuit breaker via not re-invoking). After BAR-148 ships, the router auto-fires up to 3 times; the operator's only stop-early levers are removing the `Auto` label or pushing an empty cancel commit. Re-evaluate the default after observing the first 5–10 auto-routed feature cycles; consider adding a per-feature override field in `status.json` if 3 proves wrong empirically.
+- **Source:** phase
+- **Related:** BAR-148, DE-14, DE-15, `.agents/workflows/bkit-ci-router.md`, `.agents/workflows/bkit-debug.md`
