@@ -224,6 +224,15 @@
     "workflow": "debug",
     "startedAt": "2026-05-09T01:26:21Z",
     "status": "IN_PROGRESS",
-    "steps": []
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T01:26:23Z",
+        "commitSha": "7d96710fc46c14d61ff1435659b1d5e0dc58d96a",
+        "artifacts": []
+      }
+    ],
+    "debugAttempt": 0
   }
 ]
