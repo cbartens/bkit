@@ -244,7 +244,12 @@ const COPY_EXCLUDE = new Set([
 // downstream lookups (e.g. parseModelLookup) to crash mid-install when the
 // release adds a new prompt. Force-overwrite keeps the on-disk index in sync
 // with the installed package version.
-const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([
+//
+// BAR-165: every path here MUST also be listed in .agents/templates/.prettierignore
+// (the bkit:start/end block) so consumer prettier — which may resolve a different
+// printWidth than bkit's 100 — does not lint canonical content that the consumer
+// cannot edit. The invariant is asserted by templates.test.ts.
+export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([
   ".agents/prompts.md",
   ".agents/workflows.md",
   ".agents/IDEs.md",

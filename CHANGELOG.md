@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.1.1] — 2026-05-09
+
+### Fixed
+
+- **Canonical-overwrite content (`.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`) added to bkit-managed block of `.agents/templates/.prettierignore`.** These files are force-overwritten by `bkit install` (`CANONICAL_OVERWRITE_RELPATHS` in `bkit-modules.ts`), and v1.1.0 added `pnpm format:check` to the pre-push hook template. A consumer whose prettier config resolved to a narrower `printWidth` than bkit's 100 (e.g. prettier defaults at 80) saw `format:check` fail on width-sensitive lines in the canonical content, with no consumer-side fix that survived the next install. Now consumer prettier no longer lints bkit-owned content — same precedent as the existing `.agents/skills/` exclusion. Test guard: `templates.test.ts` asserts every path in `CANONICAL_OVERWRITE_RELPATHS` is listed inside the bkit-managed block. (BAR-165)
+
+---
+
 ## [1.1.0] — 2026-05-09
 
 ### Removed (breaking, but no consumer was usefully relying on it)
