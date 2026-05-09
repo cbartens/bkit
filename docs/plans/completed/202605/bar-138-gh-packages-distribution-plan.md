@@ -16,8 +16,8 @@
 <!-- prettier-ignore -->
 | # | File | Scope | Estimated tokens |
 | --- | --- | --- | --- |
-| 1 | [bar-138-plan-1.md](./bar-138-plan-1.md) | Phase A (pipeline foundation, pre.1 publish smoke) + Phase B Tasks B1–B7 (installer print constants + consumer/bkit-self CI YAML edits) + Phase C Tasks C0, C1, C1.5, C2 (Vitest manifest, print, release-workflow structural, template snapshot tests) | ~70K |
-| 2 | [bar-138-plan-2.md](./bar-138-plan-2.md) | Phase B Tasks B8–B11.5 (docs rewrites/appends) + Tasks B12–B15 (dist rebuild, full local check, pre.2 publish + gate) + Phase C Tasks C3–C5 (scratch-consumer smoke + gate) + Phase D (PR, squash-merge, dev→main promotion, v0.4.0 production tag, BAR-131 resolution) + Gates 2/3/4 + final Verification Plan | ~55K |
+| 1 | [bar-138-gh-packages-distribution-plan-1.md](./bar-138-gh-packages-distribution-plan-1.md) | Phase A (pipeline foundation, pre.1 publish smoke) + Phase B Tasks B1–B7 (installer print constants + consumer/bkit-self CI YAML edits) + Phase C Tasks C0, C1, C1.5, C2 (Vitest manifest, print, release-workflow structural, template snapshot tests) | ~70K |
+| 2 | [bar-138-gh-packages-distribution-plan-2.md](./bar-138-gh-packages-distribution-plan-2.md) | Phase B Tasks B8–B11.5 (docs rewrites/appends) + Tasks B12–B15 (dist rebuild, full local check, pre.2 publish + gate) + Phase C Tasks C3–C5 (scratch-consumer smoke + gate) + Phase D (PR, squash-merge, dev→main promotion, v0.4.0 production tag, BAR-131 resolution) + Gates 2/3/4 + final Verification Plan | ~55K |
 
 **Total tasks across sub-plans:** 30 named tasks (A1–A5, B1–B15 incl. B11.5, C0–C5 incl. C1.5, D1–D5) + 5 mandatory testing/doc checklist items + 4 hard 🔒 Gates (Gate 1, Gate 2, Gate 3, Gate 4) + the inline gates within tasks (A5, B15, C5).
 
@@ -33,7 +33,7 @@ Sub-plan 1 ends green when all of the following are true (verified via captured 
 6. Vitest tests — Task C0 (manifest), Task C1 (installer print constants), Task C1.5 (`release.yml` structural), Task C2 (consumer ci.yml template snapshot) — are written and `pnpm test` passes.
 7. **`dist/` has NOT yet been regenerated** — that intentionally happens in sub-plan 2 (Task B12) so the rebuild reflects the print-constant edits and is committed alongside the pre.2 tag commit.
 
-Sub-plan 2 starts by re-reading `bar-138-plan-1.md` to confirm the above hand-off state is genuinely green before continuing with B8 (docs rewrites). Sub-plan 2 then drives the plan to ship: docs, dist rebuild, pre.2 tag + smoke, scratch-consumer smoke gate, PR open, squash-merge, dev→main promotion, production `v0.4.0` tag, and BAR-131 #2 resolution.
+Sub-plan 2 starts by re-reading `bar-138-gh-packages-distribution-plan-1.md` to confirm the above hand-off state is genuinely green before continuing with B8 (docs rewrites). Sub-plan 2 then drives the plan to ship: docs, dist rebuild, pre.2 tag + smoke, scratch-consumer smoke gate, PR open, squash-merge, dev→main promotion, production `v0.4.0` tag, and BAR-131 #2 resolution.
 
 ## Context & Goals
 
@@ -171,7 +171,7 @@ As a bkit consumer (e.g. `app-gether-life`), I add a single `.npmrc` and the `GH
 
 ## Alternative Approaches & Recommendations
 
-Full rationale lives in the design document (`docs/plans/drafts/bar-138-gh-packages-distribution-design.md` § Approaches Considered). Summary of rejected alternatives:
+Full rationale lives in the design document (`docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md` § Approaches Considered). Summary of rejected alternatives:
 
 - **Dual-publish (git + registry) transition window** — REJECTED. Design-input forbids; v0.3.x staying consumable from git is sufficient backward-compat.
 - **Feature-flag gated dual-phase rollout** — REJECTED. Dead code, contradictory-instruction window between phases.
@@ -267,5 +267,5 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
 
 > The runbook is split across the two sub-plan files below. Execute them sequentially.
 
-1. [`bar-138-plan-1.md`](./bar-138-plan-1.md) — Phase A (A1–A5) + Phase B Tasks B1–B7 + Phase C Tasks C0–C2 (incl. C1.5).
-2. [`bar-138-plan-2.md`](./bar-138-plan-2.md) — Phase B Tasks B8–B15 (incl. B11.5) + Phase C Tasks C3–C5 + Phase D (D1–D5) + Gates 2/3/4 + Verification Plan + Manual Verification.
+1. [`bar-138-gh-packages-distribution-plan-1.md`](./bar-138-gh-packages-distribution-plan-1.md) — Phase A (A1–A5) + Phase B Tasks B1–B7 + Phase C Tasks C0–C2 (incl. C1.5).
+2. [`bar-138-gh-packages-distribution-plan-2.md`](./bar-138-gh-packages-distribution-plan-2.md) — Phase B Tasks B8–B15 (incl. B11.5) + Phase C Tasks C3–C5 + Phase D (D1–D5) + Gates 2/3/4 + Verification Plan + Manual Verification.

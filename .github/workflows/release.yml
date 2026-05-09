@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write # required to push the sliding v{N} major-version tag (see step "Update sliding major-version tag")
   packages: write
 
 # Prevent two publish runs racing against the same tag. cancel-in-progress: false
@@ -61,3 +61,19 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Slides v{N} (e.g. `v1`) to point at the latest v{N}.x.y after a successful publish.
+      # Matches the GitHub Actions community convention (actions/checkout@v4 etc.) so
+      # consumers pin @v1 and receive non-breaking patches automatically. See
+      # docs/deployments.md § "Sliding major-version tag" for the rationale.
+      # Skipped for prerelease tags (anything containing `-`, e.g. v1.0.3-rc.1) — those
+      # remain immutable and never re-point a sliding tag.
+      - name: Update sliding major-version tag
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          MAJOR="v$(echo '${{ github.ref_name }}' | sed -E 's/^v([0-9]+)\..*/\1/')"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$MAJOR" "${{ github.ref_name }}"
+          git push origin "$MAJOR" --force
+          echo "Sliding tag $MAJOR now points at ${{ github.ref_name }}"

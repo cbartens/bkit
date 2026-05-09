@@ -97,13 +97,7 @@
 
 - **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
 - **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Template sync:** Edits inside `.agents/rules.md` bkit:start..bkit:end block must be mirrored to `.agents/templates/.agents/rules.md` (and vice versa) — `bkit install` is a no-op for `.agents/` in the source repo (source = destination).
+- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
 - **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
 - **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
-
-### Pre-push Checklist (this repo)
-
-- Authoritative gate list lives in `docs/deployments.md` § "Pre-push checklist".
-- Pre-push hook (`.husky/pre-push`) enforces the source-repo gates mechanically: `typecheck`, `test`, `bkit check`, `check:dist`. Running `--no-verify` is a violation.
-- bkit-repo-only gates (`pnpm bkit check`, `pnpm check:dist`) live OUTSIDE the bkit:start..bkit:end block in `.husky/pre-push` so `bkit install` does not strip them and they do NOT propagate to consumers via the template.
 - **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.

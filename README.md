@@ -365,9 +365,45 @@ A GitHub Actions composite action that configures `@cbartens` npm registry auth.
 //npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}
 ```
 
-**Requires:** `v1` tag pointing to the merge commit of sub-plan-4. Verify resolution with `gh api repos/cbartens/bkit/git/refs/tags/v1`.
+**Sliding `v1` tag (v1.0.3+):** `release.yml` auto-re-points `v1` at the freshly-published `v1.x.y` after each successful publish. Pin `@v1` to receive non-breaking patches automatically — same convention as `actions/checkout@v4`. See [`docs/deployments.md` § Sliding major-version tag](docs/deployments.md#sliding-major-version-tag) for the mechanics. Verify resolution with `gh api repos/cbartens/bkit/git/refs/tags/v1`.
 
 > Note: The multi-line bash PAT-shim in seeded `ci.yml` is **retained** as a fallback for non-Actions CI consumers (RETAIN-WITH-REASON). Kill-date: v1.1.0.
+
+### Consumer migration — pin to sliding `@v1`
+
+Three steps. Adjust the workflow file path to wherever your consumer repo invokes `setup-auth` (commonly `.github/workflows/ci.yml`).
+
+**1. Unblock CI now (only if `@v1` is currently failing because the tag pre-dates v1.0.3):**
+
+```yaml
+# Before
+- uses: cbartens/bkit/.github/actions/setup-auth@v1
+# After (temporary — pinned to a specific immutable patch)
+- uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
+```
+
+Skip this step if your CI is already green.
+
+**2. After v1.0.3 ships (sliding `v1` tag is auto-created):** move every consumer repo to the floating pin.
+
+```yaml
+# Before (any v1.0.x pin)
+- uses: cbartens/bkit/.github/actions/setup-auth@v1.0.2
+# After (recommended permanent state)
+- uses: cbartens/bkit/.github/actions/setup-auth@v1
+```
+
+**3. Verify** `gh api repos/cbartens/bkit/git/refs/tags/v1 --jq .object.sha` returns the `v1.0.3` (or later) commit SHA. If it does, your `@v1` pin will pick up future `v1.x.y` patches with no further action.
+
+Pin choices summary:
+
+| Pin form  | Behaviour                                   | When to use                                              |
+| --------- | ------------------------------------------- | -------------------------------------------------------- |
+| `@v1`     | Auto-receives non-breaking `v1.x.y` patches | **Default** — every consumer should use this             |
+| `@v1.0.2` | Frozen on a specific patch                  | Reproducibility-critical pipelines, or temporary unblock |
+| `@<sha>`  | Frozen on a commit SHA                      | High-security supply-chain contexts only                 |
+
+Breaking changes ship as `v2.0.0` with a separate auto-maintained `v2` sliding tag — `@v1` consumers stay on the `v1.x.y` line until they explicitly opt in.
 
 ## Documentation
 

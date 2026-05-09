@@ -38,7 +38,7 @@
 - **Status:** open
 - **Description:** `app-gether-life` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
 - **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
+- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
 
 ## Consumer migration to @cbartens/bkit registry path — www-visitfrasercoast-com (2026-05-06)
 
@@ -48,7 +48,7 @@
 - **Status:** open
 - **Description:** `www-visitfrasercoast-com` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
 - **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
+- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
 
 ## bkit doctor verb — standalone preflight CLI subcommand (2026-05-06)
 
@@ -139,3 +139,23 @@
 - **Description:** Staging primitives (`getStagingDir`, `commitStaging`, `discardStaging`) are exported from `bkit-install.ts` and unit-tested but NOT yet called from `bkit-modules.ts` `writeTier2Json` call sites (lines 432, 518). Master "mid-failure leaves consumer files untouched" criterion is currently enforced only at API level + Scenario 9 direct-call test. Architectural foundation intact; gap is bounded. Surfaced in `build-plan-verify-holistic.md` CONCERN.
 - **Source:** phase
 - **Related:** BAR-131, BAR-142 §A4, DE-9, KN-12, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-install.ts`
+
+## Per-PR opt-in alternative to `bkit:auto-route` Linear label (2026-05-08)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** BAR-148 ships per-issue Linear label `bkit:auto-route` as the router opt-in (label survives across debug iterations on the same issue). Per-PR opt-in (e.g. PR-body marker, GHA repo variable, separate label) is deferred — revisit if the per-issue label proves too coarse during ship cycles where multiple PRs land per issue.
+- **Source:** phase
+- **Related:** BAR-148, DE-14, DE-15
+
+## Router dead-letter / retry policy if `claude-code-action@v1` crashes mid-step (2026-05-08)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
+- **Source:** phase
+- **Related:** BAR-148, DE-14

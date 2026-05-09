@@ -41,7 +41,7 @@
 - **Note:** `publishConfig.access: restricted` in `package.json` is silently ignored by GitHub Packages — package visibility tracks the linked repository's visibility (private repo = private package), not the npm `access` field. The field is kept for documentation intent but has no enforcement effect. If `cbartens/bkit` is ever made public the package becomes public regardless of this setting.
 - **Note:** The `release.yml` publish job has no `environment:` protection by design (single-maintainer; no secondary approval needed). If a second maintainer is onboarded, gate the publish step behind `environment: production` with required-reviewer protection in GitHub repo settings.
 - **Source:** phase
-- **Related:** BAR-138, BAR-130, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
+- **Related:** BAR-138, BAR-130, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
 
 ## DE-5: BAR-139 — .bkit-version schema extension: tier3Hashes (2026-05-07)
 
@@ -152,3 +152,23 @@
 - **Discarded:** (1) Auto-seed during `bkit install` (the option mentioned in DE-12) — install does not call `runUpgrade`, so adding it would require duplicating the candidate-enumeration logic. The upgrade-side fix covers the same consumer migration with less surface area. (2) Seed all bkit-managed files with current disk hash — re-introduces the silent-overwrite bug for any customised file (canonical=disk implies "no drift" on next upgrade, which then auto-overwrites with the new template).
 - **Source:** human
 - **Related:** DE-12, BAR-131, `.agents/scripts/bkit-upgrade.ts:209-249`, `.agents/scripts/bkit-install.ts:803-810`, `.agents/scripts/bkit-upgrade.test.ts`, commits e2889e1 (feature) + 20d63d6 (seeded `.bkit-version`)
+
+## DE-14: BAR-148 — bkit-ci-router via `claude-code-action@v1` (Option 1) (2026-05-08)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Adopt Anthropic's `claude-code-action@v1` GHA action as the dispatch surface for the `bkit-ci-router` post-CI workflow. Trigger half is a `workflow_run`-on-completed GHA workflow shipped as `.github/workflows/bkit-ci-router.yml`. The action runs Claude Code inside the GHA runner and invokes the leaf orchestrator `/bkit-ci-router {FID}`, which decides ship vs debug from PR `statusCheckRollup` and dispatches `/bkit-ship` or `/bkit-debug`. Consumer adds `ANTHROPIC_API_KEY` GHA secret; bkit installer ships the router workflow as Tier-3 seed-or-print.
+- **Why:** Self-contained, no webhook bridge, no claude.ai dependency. Consumer needs only one new secret + one workflow file. Anthropic actively maintains the action — survives runtime / model changes. Gether's `ci-complete.yml` already proved the surrounding scaffold (PR lookup, branch filter, Linear comment-back); only the dispatch step changes.
+- **Discarded:** (1) Anthropic Managed Agents Sessions API (Option 2) — gether attempted, decommissioned in `7475b499` as never functional. (2) `RemoteTrigger` to operator's claude.ai (Option 3) — couples to operator presence; not autonomous. (3) `schedule` skill cron poll (Option 4) — same operator-presence coupling. (4) Manual gate (Option 5) — defeats the purpose. (5) Step 18 in `bkit-build` — separate workflow chosen, see DE-15.
+- **Source:** phase
+- **Related:** BAR-148, BAR-120 (gether prior art `03b0c502`), BAR-124/125 (gether decommission `7475b499`), `.agents/workflows/bkit-ci-router.md`, `.github/workflows/bkit-ci-router.yml`, `.agents/templates/.github/workflows/bkit-ci-router.yml`, `.agents/scripts/bkit-modules.ts` (`runCiRouterModule`)
+
+## DE-15: BAR-148 — Router as separate workflow, not Step 18 of `bkit-build` (2026-05-08)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** `bkit-build` closes at Step 17 unchanged. The post-CI router runs as a fresh orchestrator (`/bkit-ci-router`) in a brand-new Claude Code session dispatched by GHA. State handoff is via canonical disk artifacts (`status.json`, plan files, Linear comment-id) — already the documented contract. Router context is small by design: read `status.json`, head-SHA stale-run guard, label gate, dispatch.
+- **Why:** Chaining `bkit-ship` (~12 steps) or `bkit-debug` (loop bounded by `MAX_DEBUG_ATTEMPT`) into the same orchestrator session compounds context-window pressure: cumulative `COMMENT_BODY` per step, repeated `status.json` re-reads, gate verifications quoting earlier SHAs / PR numbers verbatim. The fresh-session split keeps every orchestrator's context bounded; downstream skills already implement Resume from `status.json`.
+- **Discarded:** (1) Step 18 in `bkit-build` (chained orchestrator). Re-evaluate only if context budget grows materially and Resume contract is no longer canonical. (2) Embedded sub-agent inside `bkit-build` Failure Path — same context-window concern; Failure Path is for handover, not happy-path routing.
+- **Source:** phase
+- **Related:** BAR-148, DE-14, `.agents/workflows/bkit-build.md` (Step 17 unchanged), `.agents/workflows.md` § "Resume" / § "status.json"

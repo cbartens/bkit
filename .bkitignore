@@ -1,0 +1,11 @@
+# .bkitignore — suppress `bkit check` drift findings for specific Tier-3 files
+# or JSON keys. See README.md § .bkitignore for syntax + examples.
+#
+# Scope: filters Tier-3 advisory drift only. Does NOT skip Tier-2 core template
+# writes or payload copies — those always reflect `.agents/templates/`.
+#
+# Example patterns (uncomment to use):
+#
+#   .github/workflows/ci.yml                  # consumer has custom CI jobs
+#   .vale/**                                  # custom prose style overrides
+#   .claude/settings.json:hooks.Stop          # per-key (BKIT_BKITIGNORE_PER_KEY=1)

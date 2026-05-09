@@ -1,20 +1,20 @@
 # bkit v0.4.0 — Sub-Plan 2: Docs + Dist Rebuild + Pre.2 Smoke + Scratch Consumer Smoke + Production Ship
 
-**Parent Plan:** [bar-138-plan.md](./bar-138-plan.md)
+**Parent Plan:** [bar-138-gh-packages-distribution-plan.md](./bar-138-gh-packages-distribution-plan.md)
 
 > [!CAUTION]
 > **CRITICAL:** Do not hallucinate plan execution state.
 >
-> 1. ALWAYS read this `bar-138-plan-2.md` file natively via the `read_file` tool _before_ executing any steps.
+> 1. ALWAYS read this `bar-138-gh-packages-distribution-plan-2.md` file natively via the `read_file` tool _before_ executing any steps.
 > 2. NEVER trust system-generated session summaries or previous conversation history to determine what has been completed.
 > 3. Your source of truth is EXCLUSIVELY the literal `[x]` vs `[ ]` checkboxes in this physical document. If a box is `[ ]`, it is NOT DONE, regardless of what the conversation context implies.
 
 > [!IMPORTANT]
-> **This is the second half of a two-part runbook split for token-budget reasons.** Sub-plan 1 ([bar-138-plan-1.md](./bar-138-plan-1.md)) MUST be complete and green before this sub-plan starts. The parent plan ([bar-138-plan.md](./bar-138-plan.md)) holds the full Acceptance Scenario, Breaking Changes, Supersession Inventory, and rollback context. Re-read both before starting if any context is missing here.
+> **This is the second half of a two-part runbook split for token-budget reasons.** Sub-plan 1 ([bar-138-gh-packages-distribution-plan-1.md](./bar-138-gh-packages-distribution-plan-1.md)) MUST be complete and green before this sub-plan starts. The parent plan ([bar-138-gh-packages-distribution-plan.md](./bar-138-gh-packages-distribution-plan.md)) holds the full Acceptance Scenario, Breaking Changes, Supersession Inventory, and rollback context. Re-read both before starting if any context is missing here.
 
 ## Pre-flight Re-read of Sub-Plan 1
 
-Before executing any task below, re-open [bar-138-plan-1.md](./bar-138-plan-1.md) and confirm every checkbox in its **"Hand-off State to Sub-Plan 2"** section is `[x]`. If any item is `[ ]`, return to sub-plan 1 to close it out — do NOT proceed.
+Before executing any task below, re-open [bar-138-gh-packages-distribution-plan-1.md](./bar-138-gh-packages-distribution-plan-1.md) and confirm every checkbox in its **"Hand-off State to Sub-Plan 2"** section is `[x]`. If any item is `[ ]`, return to sub-plan 1 to close it out — do NOT proceed.
 
 The expected entry state for this sub-plan is:
 
@@ -41,7 +41,7 @@ The expected entry state for this sub-plan is:
 
 ## Acceptance & Edge Cases
 
-Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario](./bar-138-plan.md#acceptance-scenario--human-review-required)). Tests/smoke executed in this sub-plan map to the following Derived Test Matrix rows:
+Inherited verbatim from the parent plan ([bar-138-gh-packages-distribution-plan.md § Acceptance Scenario](./bar-138-gh-packages-distribution-plan.md#acceptance-scenario--human-review-required)). Tests/smoke executed in this sub-plan map to the following Derived Test Matrix rows:
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file | Task |
@@ -82,7 +82,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
   - **Why:** Eliminates four classes of friction inherited from git-dep (private-repo clone needs git auth → consumer auth-shim; two surfaces — Actions + Vercel; lifecycle-hook OOM trap; pnpm tag-drop). Registry path is standard scoped-package semantics with one auth file (`.npmrc`) and one env var.
   - **Discarded:** (1) npmjs.org public registry — package is private; private-org plan adds cost. (2) Continue git-dep — all four friction classes persist. (3) GitHub Releases tarball URL — clunky version pinning, no semver resolution. (4) Vendor bkit per-consumer — N×duplication; manual sync. (5) Dual-publish git+registry — code-path drift; contradictory installer guidance.
   - **Source:** phase
-  - **Related:** BAR-138, BAR-130 (#5 lifecycle-hook OOM), `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`
+  - **Related:** BAR-138, BAR-130 (#5 lifecycle-hook OOM), `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`
 
 #### [MODIFY] `docs/knowledge.md`
 
@@ -105,7 +105,7 @@ Inherited verbatim from the parent plan ([bar-138-plan.md § Acceptance Scenario
   - **Status:** open
   - **Description:** {consumer-name} still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` shim.
   - **Source:** phase
-  - **Related:** BAR-138, DE-3, `docs/plans/drafts/bar-138-gh-packages-distribution-design.md`
+  - **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
 - Known consumers to enumerate: `app-gether-life`, `www-visitfrasercoast-com`. (Add others if discovered during build.)
 
 ### Cron Jobs & Scheduled Tasks
