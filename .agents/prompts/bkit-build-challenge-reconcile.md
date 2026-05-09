@@ -34,6 +34,7 @@ maxTurns: 30
 **Process:**
 
 1. Write a fresh skeleton to **Create** path (do NOT `cp` an input — `cp` would carry the input's existing `Verdict:` line and produce a duplicate header):
+
    ```bash
    cat > <Create> <<'EOF'
    Verdict: PENDING
@@ -48,6 +49,7 @@ maxTurns: 30
    PENDING
    EOF
    ```
+
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Read both `build-challenge-1.md` and `build-challenge-2.md` (full content). Extract all findings from each.

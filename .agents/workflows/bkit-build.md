@@ -88,7 +88,7 @@ description: "Build Feature — Autonomous implementation"
    ```
    **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path** with `{FID} workflow already running`.
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
-1a. Emit long-branch advisory:
+   1a. Emit long-branch advisory:
    ```bash
    behind=$(git rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
    mb=$(git merge-base HEAD origin/dev 2>/dev/null)

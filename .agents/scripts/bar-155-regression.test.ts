@@ -48,9 +48,7 @@ describe("bkit-ship.md — HIGH-1: mkdir-p precedes touch .rebase-failed (BAR-15
     const mkdirLine = lines.findIndex(
       (l) => l.includes("mkdir -p") && l.includes("docs/plans/logs/{FID}") && l.includes("/"),
     );
-    const touchLine = lines.findIndex(
-      (l) => l.includes("touch") && l.includes(".rebase-failed"),
-    );
+    const touchLine = lines.findIndex((l) => l.includes("touch") && l.includes(".rebase-failed"));
     expect(mkdirLine, "mkdir -p line not found in bkit-ship.md").toBeGreaterThan(-1);
     expect(touchLine, "touch .rebase-failed line not found in bkit-ship.md").toBeGreaterThan(-1);
     // mkdir must come BEFORE touch — this is the regression guard
@@ -60,9 +58,7 @@ describe("bkit-ship.md — HIGH-1: mkdir-p precedes touch .rebase-failed (BAR-15
   it("mkdir -p and touch are in the rebase-failure branch (mkdir is the line immediately before touch)", () => {
     // The fix landed mkdir -p and touch as consecutive lines inside the rebase-failure if-block.
     // Find the touch line, then assert the line immediately before it (or very close) contains mkdir -p.
-    const touchIdx = lines.findIndex(
-      (l) => l.includes("touch") && l.includes(".rebase-failed"),
-    );
+    const touchIdx = lines.findIndex((l) => l.includes("touch") && l.includes(".rebase-failed"));
     expect(touchIdx).toBeGreaterThan(-1);
     // Check lines within 2 lines before touch for the mkdir -p
     const nearbyLines = lines.slice(Math.max(0, touchIdx - 3), touchIdx);
@@ -88,14 +84,18 @@ describe("bkit-build-plan-verify.md — HIGH-2: ## Gaps Identified is last secti
   it("## Gaps Identified appears AFTER ## Notes in the Output format", () => {
     const lines = content.split("\n");
     // Find the last occurrence of each section header (they appear in the Output format block)
-    const notesIdx = lines.map((l, i) => ({ l, i }))
-      .filter(({ l }) => l.trim() === "## Notes")
-      .map(({ i }) => i)
-      .pop() ?? -1;
-    const gapsIdx = lines.map((l, i) => ({ l, i }))
-      .filter(({ l }) => l.trim() === "## Gaps Identified")
-      .map(({ i }) => i)
-      .pop() ?? -1;
+    const notesIdx =
+      lines
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => l.trim() === "## Notes")
+        .map(({ i }) => i)
+        .pop() ?? -1;
+    const gapsIdx =
+      lines
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => l.trim() === "## Gaps Identified")
+        .map(({ i }) => i)
+        .pop() ?? -1;
 
     expect(notesIdx, "## Notes not found in bkit-build-plan-verify.md").toBeGreaterThan(-1);
     expect(gapsIdx, "## Gaps Identified not found in bkit-build-plan-verify.md").toBeGreaterThan(
@@ -109,10 +109,12 @@ describe("bkit-build-plan-verify.md — HIGH-2: ## Gaps Identified is last secti
   it("no ## section header appears after ## Gaps Identified in the Output format block", () => {
     const lines = content.split("\n");
     // Find the last ## Gaps Identified
-    const gapsIdx = lines.map((l, i) => ({ l, i }))
-      .filter(({ l }) => l.trim() === "## Gaps Identified")
-      .map(({ i }) => i)
-      .pop() ?? -1;
+    const gapsIdx =
+      lines
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => l.trim() === "## Gaps Identified")
+        .map(({ i }) => i)
+        .pop() ?? -1;
     expect(gapsIdx).toBeGreaterThan(-1);
 
     // After the last ## Gaps Identified there must be no other ## section header
@@ -172,9 +174,7 @@ describe("bkit-build.md — HIGH-3: gate checkpoint step refs match step headers
   it("step inventory is monotonic 1..18 (all 18 step headers present)", () => {
     // Verify Steps 1 through 18 all have a top-level ## Step N header
     for (let n = 1; n <= 18; n++) {
-      expect(content, `Step ${n} header missing`).toMatch(
-        new RegExp(`## [^#]*Step ${n} —`),
-      );
+      expect(content, `Step ${n} header missing`).toMatch(new RegExp(`## [^#]*Step ${n} —`));
     }
   });
 
@@ -230,12 +230,8 @@ describe("bkit-ship.md — MEDIUM-7: sentinel cleanup in resume and Failure Path
 
   it("rm -f .rebase-failed appears in the worktree-resume path (before touch)", () => {
     const lines = content.split("\n");
-    const rmLine = lines.findIndex(
-      (l) => l.includes("rm -f") && l.includes(".rebase-failed"),
-    );
-    const touchLine = lines.findIndex(
-      (l) => l.includes("touch") && l.includes(".rebase-failed"),
-    );
+    const rmLine = lines.findIndex((l) => l.includes("rm -f") && l.includes(".rebase-failed"));
+    const touchLine = lines.findIndex((l) => l.includes("touch") && l.includes(".rebase-failed"));
     // The cleanup rm must appear BEFORE the touch (clears stale sentinel before writing new one)
     expect(rmLine).toBeGreaterThan(-1);
     expect(touchLine).toBeGreaterThan(-1);
