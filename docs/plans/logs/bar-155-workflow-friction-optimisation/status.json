@@ -42,6 +42,17 @@
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-1.md",
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-2.md"
         ]
+      },
+      {
+        "step": "apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T01:58:56Z",
+        "commitSha": "dd430b85a6ab170bbf49ab09a8f0734dadcf8c11",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v2-reviewed.md"
+        ]
       }
     ]
   }
