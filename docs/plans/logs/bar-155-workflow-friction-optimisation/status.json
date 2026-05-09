@@ -220,6 +220,18 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge-remediate-log.md"
         ]
+      },
+      {
+        "step": "build-challenge-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T04:53:04Z",
+        "commitSha": "91269ead94baca5cbe159640234def7bde8e37d7",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge-tests.md",
+          ".agents/scripts/bar-155-regression.test.ts"
+        ]
       }
     ]
   }
