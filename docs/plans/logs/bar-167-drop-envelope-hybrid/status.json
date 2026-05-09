@@ -3,6 +3,14 @@
     "workflow": "plan",
     "startedAt": "2026-05-09T11:51:43Z",
     "status": "IN_PROGRESS",
-    "steps": []
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T11:51:45Z",
+        "commitSha": "9cbafeeae6606fe43375093fd53794335772212f",
+        "artifacts": []
+      }
+    ]
   }
 ]
