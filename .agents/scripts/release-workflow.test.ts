@@ -463,3 +463,85 @@ describe("C9g — router documents ANTHROPIC_API_KEY failure path (matrix row 18
     expect(routerContent).toContain("claude-code-action");
   });
 });
+
+// ---------------------------------------------------------------------------
+// BAR-148 build-challenge remediation — FID resolution regression tests
+//
+// Bug: router was deriving FID by scanning docs/plans/logs/ alphabetically and
+// picking the first DONE/IN_PROGRESS directory. On any branch that inherits
+// historical FID directories from dev this returns the wrong FID.
+// Fix: FID=$(echo "$BRANCH" | sed 's|^feat/||') — branch-derived, not
+// filesystem-derived.
+//
+// Both the canonical orchestrator (.agents/workflows/bkit-ci-router.md) and
+// its mirror (.claude/commands/bkit-ci-router.md) must carry the fix.
+// ---------------------------------------------------------------------------
+
+const ROUTER_FILES = [
+  {
+    label: ".agents/workflows/bkit-ci-router.md (canonical)",
+    filePath: path.resolve(".agents/workflows/bkit-ci-router.md"),
+  },
+  {
+    label: ".claude/commands/bkit-ci-router.md (mirror)",
+    filePath: path.resolve(".claude/commands/bkit-ci-router.md"),
+  },
+];
+
+for (const { label, filePath } of ROUTER_FILES) {
+  describe(`FID resolution regression (BAR-148 build-challenge) — ${label}`, () => {
+    let content: string;
+
+    beforeAll(() => {
+      content = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf-8") : "";
+    });
+
+    it("derives FID from branch name using sed prefix-strip (branch-derived, not filesystem-scan)", () => {
+      // The canonical fix: FID=$(echo "$BRANCH" | sed 's|^feat/||')
+      // Any regression to a filesystem-scan approach would drop this line.
+      expect(content).toMatch(/FID=\$\(echo "\$BRANCH"\s*\|\s*sed 's\|/);
+    });
+
+    it("sed expression strips exactly the feat/ prefix (not a broader substitution)", () => {
+      // Guard: the substitution must strip '^feat/' — no other prefix, no glob.
+      expect(content).toContain("sed 's|^feat/||'");
+    });
+
+    it("guards against FID equalling BRANCH (prefix-not-stripped safety check)", () => {
+      // If sed didn't strip anything (branch doesn't start with feat/), FID would
+      // equal BRANCH — the orchestrator must detect and reject this case via
+      // Failure Path rather than silently using a wrong FID.
+      expect(content).toContain("Cannot derive FID from branch name");
+    });
+
+    it("does NOT contain alphabetical directory-scan for FID (the regressed pattern)", () => {
+      // The old buggy approach scanned docs/plans/logs/ and picked the first
+      // DONE/IN_PROGRESS directory alphabetically. Any of these patterns indicate
+      // a regression to filesystem-derived FID resolution.
+      expect(content).not.toMatch(/ls\s+docs\/plans\/logs/);
+      expect(content).not.toMatch(/for\s+\w+\s+in\s+\$\(ls\s+docs\/plans\/logs/);
+      expect(content).not.toMatch(/readdir.*plans\/logs/);
+    });
+
+    it("does NOT contain status-json-scan loop for FID (the regressed status-scan pattern)", () => {
+      // A variant of the old bug: iterating over docs/plans/logs/ directories and
+      // checking each status.json for IN_PROGRESS/DONE to derive FID — still
+      // filesystem-derived, still wrong on branches inheriting historical dirs.
+      // The old pattern would look like: for d in $(ls docs/plans/logs/); do jq '.[-1].status' ...
+      expect(content).not.toMatch(/for\s+\w+\s+in.*plans\/logs/);
+      expect(content).not.toMatch(/while\s+.*plans\/logs.*do/s);
+      // The BRANCH env var must be the sole source of FID
+      expect(content).toContain('BRANCH="${CI_RUN_HEAD_BRANCH');
+    });
+
+    it("FID derivation uses the CI_RUN_HEAD_BRANCH env var as its sole input", () => {
+      // Belt-and-braces: confirm the derivation line explicitly sources BRANCH,
+      // which is assigned from CI_RUN_HEAD_BRANCH. A filesystem-scan approach
+      // would not reference BRANCH in the FID= assignment.
+      const lines = content.split("\n");
+      const fidLine = lines.find((l) => l.includes("FID=") && l.includes("BRANCH"));
+      expect(fidLine).toBeDefined();
+      expect(fidLine).toMatch(/BRANCH/);
+    });
+  });
+}
