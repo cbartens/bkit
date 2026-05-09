@@ -53,6 +53,19 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v2-reviewed.md"
         ]
+      },
+      {
+        "step": "scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 4,
+        "at": "2026-05-09T02:03:27Z",
+        "commitSha": "48b508d8843e7c3b15fc3d8190deda68f940fc8f",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-scope-check-1.md",
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-scope-check-2.md"
+        ]
       }
     ]
   }
