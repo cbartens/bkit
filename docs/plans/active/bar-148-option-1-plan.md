@@ -531,59 +531,59 @@ None.
 
 ### Phase A — Templates and source artifacts
 
-- [ ] **A1:** Create `.agents/templates/.github/workflows/bkit-ci-router.yml` with the body in Architecture § GHA Workflow. Run `pnpm prettier --check .agents/templates/.github/workflows/bkit-ci-router.yml` to confirm no formatting drift.
-- [ ] **A2:** Create `.github/workflows/bkit-ci-router.yml` in this repo (dogfood). Mirror template byte-for-byte except for any consumer-specific tokens (none currently). Verified for parity by C5b.
-- [ ] **A3:** Create `.agents/workflows/bkit-ci-router.md` per Architecture § Bkit Orchestrator. Steps 1–7 (concrete count, not literal `N`) implemented per `.agents/workflows.md` § Common Workflow Anatomy. Frontmatter, Caution block, Failure Path, every step gate, all `save_comment` append fenced sections, status.json shape (new `workflow: "ci-router"` array element). Step 2 explicitly omits the Worktree Setup creation logic (runner provides the worktree); document this in the step body so the C7 test exception is grounded in the orchestrator text.
-- [ ] **A4:** Edit `.agents/workflows/bkit-plan.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload (Path A schema propagation).
-- [ ] **A5:** Edit `.agents/workflows/bkit-build.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
-- [ ] **A6:** Edit `.agents/workflows/bkit-ship.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
-- [ ] **A7:** Edit `.agents/workflows/bkit-debug.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
-- [ ] **A8:** Edit `.agents/workflows/bkit-review.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
-- [ ] **A9:** ~~Create the `Auto` label in the bkit Linear workspace~~ — **NOT REQUIRED**: label already exists in bkit Linear workspace (verified 2026-05-09). Consumer-side label creation still documented in `docs/deployments.md` (covered by D6) — consumers must create their own `Auto` label before dogfood.
+- [x] **A1:** Create `.agents/templates/.github/workflows/bkit-ci-router.yml` with the body in Architecture § GHA Workflow. Run `pnpm prettier --check .agents/templates/.github/workflows/bkit-ci-router.yml` to confirm no formatting drift.
+- [x] **A2:** Create `.github/workflows/bkit-ci-router.yml` in this repo (dogfood). Mirror template byte-for-byte except for any consumer-specific tokens (none currently). Verified for parity by C5b.
+- [x] **A3:** Create `.agents/workflows/bkit-ci-router.md` per Architecture § Bkit Orchestrator. Steps 1–7 (concrete count, not literal `N`) implemented per `.agents/workflows.md` § Common Workflow Anatomy. Frontmatter, Caution block, Failure Path, every step gate, all `save_comment` append fenced sections, status.json shape (new `workflow: "ci-router"` array element). Step 2 explicitly omits the Worktree Setup creation logic (runner provides the worktree); document this in the step body so the C7 test exception is grounded in the orchestrator text.
+- [x] **A4:** Edit `.agents/workflows/bkit-plan.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload (Path A schema propagation).
+- [x] **A5:** Edit `.agents/workflows/bkit-build.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
+- [x] **A6:** Edit `.agents/workflows/bkit-ship.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
+- [x] **A7:** Edit `.agents/workflows/bkit-debug.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload.
+- [x] **A8:** Edit `.agents/workflows/bkit-review.md` Step 1 (Start Workflow) to write `issueId` and `commentId` into the initial `status.json` payload. _(Implementer substituted `bkit-design.md` — `bkit-review.md` does not exist in this repo; `bkit-design.md` is the 5th orchestrator.)_
+- [x] **A9:** ~~Create the `Auto` label in the bkit Linear workspace~~ — **NOT REQUIRED**: label already exists in bkit Linear workspace (verified 2026-05-09). Consumer-side label creation still documented in `docs/deployments.md` (covered by D6) — consumers must create their own `Auto` label before dogfood.
 
 ### Phase B — Installer module wiring
 
-- [ ] **B1:** In `.agents/scripts/bkit-modules.ts`, add `runAutoModule(ctx)` mirroring `runCiModule`. Define `AUTO_YML_MERGE_INSTRUCTIONS` constant.
-- [ ] **B2:** Insert `runAutoModule` into the module-dispatch list (`core → claude → cursor → ci → auto → lint → git-hooks`).
-- [ ] **B3:** In `.agents/scripts/bkit-cli.ts`, add `--auto` ModuleFlag, update help text, update default-all flag if applicable.
-- [ ] **B4:** Wire installer to record `canonicalHashes` entry for `.github/workflows/bkit-ci-router.yml` per DE-10. Verify by reading `.agents/scripts/bkit-version.ts` `recordCanonicalHash` helper signature; no schema change.
+- [x] **B1:** In `.agents/scripts/bkit-modules.ts`, add `runAutoModule(ctx)` mirroring `runCiModule`. Define `AUTO_YML_MERGE_INSTRUCTIONS` constant.
+- [x] **B2:** Insert `runAutoModule` into the module-dispatch list (`core → claude → cursor → ci → auto → lint → git-hooks`).
+- [x] **B3:** In `.agents/scripts/bkit-cli.ts`, add `--auto` ModuleFlag, update help text, update default-all flag if applicable.
+- [x] **B4:** Wire installer to record `canonicalHashes` entry for `.github/workflows/bkit-ci-router.yml` per DE-10. Verify by reading `.agents/scripts/bkit-version.ts` `recordCanonicalHash` helper signature; no schema change.
 
 ### Phase C — Tests (Derived Test Matrix coverage)
 
-- [ ] **C1a:** `.agents/scripts/bkit-modules.test.ts` — add seed-when-absent case (matrix row 1).
-- [ ] **C1b:** `.agents/scripts/bkit-modules.test.ts` — add print-when-present (no overwrite) case (matrix row 2).
-- [ ] **C1c:** `.agents/scripts/bkit-modules.test.ts` — add dispatch-order-includes-auto assertion (matrix row 3).
-- [ ] **C2:** `.agents/scripts/bkit-modules.integration.test.ts` — add `bkit install --auto` integration test (write → drift → `bkit check` reports drift) (matrix row 9).
-- [ ] **C3:** `.agents/scripts/bkit-install.integration.test.ts` — assert `.bkit-version#canonicalHashes` records the new path post-install (matrix row 4).
-- [ ] **C4:** `.agents/scripts/bkit-dry-run-parity.integration.test.ts` — extend parity coverage to the new template (matrix row 5).
-- [ ] **C5:** `.agents/scripts/bkit-action-yaml.test.ts` — add YAML structural tests against `templates/.github/workflows/bkit-ci-router.yml` (top-level keys, `cancel-in-progress: true`, branch filter, `timeout-minutes ≤ 240`) (matrix row 6).
-- [ ] **C5b:** `.agents/scripts/bkit-action-yaml.test.ts` — assert `.github/workflows/bkit-ci-router.yml` (dogfood) matches `templates/.github/workflows/bkit-ci-router.yml` byte-for-byte (drift detection between dogfood and template) (matrix row 7).
-- [ ] **C6:** `.agents/scripts/templates.test.ts` — extend the snapshot to include the new template path (matrix row 8).
-- [ ] **C7:** `.agents/scripts/release-workflow.test.ts` — add authoring-conventions check for `bkit-ci-router.md` (frontmatter, Failure Path section, every step has `### 🔒 Gate N`). EXPLICIT EXCEPTION: the router orchestrator legitimately omits the Worktree Setup creation step (the runner provides the worktree). The authoring-conventions test MUST be amended to allow this absence specifically for the router; without the amendment the test will produce a false failure asserting the router is non-conformant. Mirror the existing 5 workflows' assertions only where applicable (matrix row 10).
-- [ ] **C8:** `.agents/scripts/release-workflow.test.ts` — assert all 5 existing orchestrators (`bkit-plan.md`, `bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-review.md`) write `issueId` and `commentId` into `status.json` at Step 1 (grep for both field names within the Step 1 body) (matrix row 11).
-- [ ] **C9a:** `.agents/scripts/release-workflow.test.ts` — assert `bkit-ci-router.md` step skeleton contains the label-gate decision branch contract (no-op exit when `Auto` absent) (matrix row 12).
-- [ ] **C9b:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the stale-run-guard branch (no-op when `gh run` head SHA ≠ PR head SHA) (matrix row 13).
-- [ ] **C9c:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the malformed-status.json failure branch (matrix row 14).
-- [ ] **C9d:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the PR-closed no-op branch (matrix row 15).
-- [ ] **C9e:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton tolerates mid-step cancellation (no critical multi-step state writes that would leave `status.json` mid-update); concurrency `cancel-in-progress: true` enforced at YAML layer (row 6/7) (matrix row 16).
-- [ ] **C9f:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton has no MAX_DEBUG_ATTEMPT pre-check (router dispatches `/bkit-debug` unconditionally; debug skill enforces ceiling) (matrix row 17).
-- [ ] **C9g:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton documents the `ANTHROPIC_API_KEY`-missing failure path (claude-code-action@v1 step fails with explicit error) (matrix row 18).
+- [x] **C1a:** `.agents/scripts/bkit-modules.test.ts` — add seed-when-absent case (matrix row 1).
+- [x] **C1b:** `.agents/scripts/bkit-modules.test.ts` — add print-when-present (no overwrite) case (matrix row 2).
+- [x] **C1c:** `.agents/scripts/bkit-modules.test.ts` — add dispatch-order-includes-auto assertion (matrix row 3).
+- [x] **C2:** `.agents/scripts/bkit-modules.integration.test.ts` — add `bkit install --auto` integration test (write → drift → `bkit check` reports drift) (matrix row 9).
+- [x] **C3:** `.agents/scripts/bkit-install.integration.test.ts` — assert `.bkit-version#canonicalHashes` records the new path post-install (matrix row 4).
+- [x] **C4:** `.agents/scripts/bkit-dry-run-parity.integration.test.ts` — extend parity coverage to the new template (matrix row 5).
+- [x] **C5:** `.agents/scripts/bkit-action-yaml.test.ts` — add YAML structural tests against `templates/.github/workflows/bkit-ci-router.yml` (top-level keys, `cancel-in-progress: true`, branch filter, `timeout-minutes ≤ 240`) (matrix row 6).
+- [x] **C5b:** `.agents/scripts/bkit-action-yaml.test.ts` — assert `.github/workflows/bkit-ci-router.yml` (dogfood) matches `templates/.github/workflows/bkit-ci-router.yml` byte-for-byte (drift detection between dogfood and template) (matrix row 7).
+- [x] **C6:** `.agents/scripts/templates.test.ts` — extend the snapshot to include the new template path (matrix row 8).
+- [x] **C7:** `.agents/scripts/release-workflow.test.ts` — add authoring-conventions check for `bkit-ci-router.md` (frontmatter, Failure Path section, every step has `### 🔒 Gate N`). EXPLICIT EXCEPTION: the router orchestrator legitimately omits the Worktree Setup creation step (the runner provides the worktree). The authoring-conventions test MUST be amended to allow this absence specifically for the router; without the amendment the test will produce a false failure asserting the router is non-conformant. Mirror the existing 5 workflows' assertions only where applicable (matrix row 10).
+- [x] **C8:** `.agents/scripts/release-workflow.test.ts` — assert all 5 existing orchestrators (`bkit-plan.md`, `bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-review.md`) write `issueId` and `commentId` into `status.json` at Step 1 (grep for both field names within the Step 1 body) (matrix row 11). _(Implementer substituted `bkit-design.md` — see A8.)_
+- [x] **C9a:** `.agents/scripts/release-workflow.test.ts` — assert `bkit-ci-router.md` step skeleton contains the label-gate decision branch contract (no-op exit when `Auto` absent) (matrix row 12).
+- [x] **C9b:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the stale-run-guard branch (no-op when `gh run` head SHA ≠ PR head SHA) (matrix row 13).
+- [x] **C9c:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the malformed-status.json failure branch (matrix row 14).
+- [x] **C9d:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton contains the PR-closed no-op branch (matrix row 15).
+- [x] **C9e:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton tolerates mid-step cancellation (no critical multi-step state writes that would leave `status.json` mid-update); concurrency `cancel-in-progress: true` enforced at YAML layer (row 6/7) (matrix row 16).
+- [x] **C9f:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton has no MAX_DEBUG_ATTEMPT pre-check (router dispatches `/bkit-debug` unconditionally; debug skill enforces ceiling) (matrix row 17).
+- [x] **C9g:** `.agents/scripts/release-workflow.test.ts` — assert step skeleton documents the `ANTHROPIC_API_KEY`-missing failure path (claude-code-action@v1 step fails with explicit error) (matrix row 18).
 
 ### Phase D — Documentation (per `.agents/docs.md` index)
 
-- [ ] **D1:** Update `.agents/workflows.md`: add file-layout row, per-phase `### /bkit-ci-router` subsection (table form: Step | Subagent(s) | Notes), GHA trigger subsection, authoring-checklist note for leaf orchestrators with no Worktree Setup.
-- [ ] **D2:** Update `.agents/docs.md` (and template mirror `.agents/templates/.agents/docs.md`) with new workflow matrix column (or row, depending on existing shape) and full-catalog row.
-- [ ] **D3:** Update `.agents/prompts.md` with the "no per-prompt file" note.
-- [ ] **D4:** Verify `DE-14` and `DE-15` already present at `docs/decisions.md` lines 156–174. No append required (decisions.md is append-only — duplicate entries corrupt the ADR ledger). Only append a follow-on `DE-N` if material divergence between the existing text and this plan's choices is identified.
-- [ ] **D5:** Append `KN-N` (stale-run dispatch) to `docs/knowledge.md`.
-- [ ] **D6:** Update `docs/deployments.md` with `ANTHROPIC_API_KEY` and `Auto` label sections. Document the consumer-side prerequisite of creating the `Auto` label in their Linear workspace before the router can dispatch (without it, all router runs no-op exit at the label gate).
-- [ ] **D7:** Verify both existing deferral entries present at `docs/pending.md` lines 143–161 ("Per-PR opt-in alternative" and "Router dead-letter / retry policy"). **APPEND** new entry: `MAX_DEBUG_ATTEMPT default reconsideration in light of auto-routing` — body: "Today `MAX_DEBUG_ATTEMPT=3` means operator manually re-runs `/bkit-debug` up to 3 times (implicit per-attempt circuit breaker via not re-invoking). After BAR-148 ships, the router auto-fires up to 3 times; operator's only stop-early levers are removing the `Auto` label or pushing an empty cancel commit. Re-evaluate the default after observing first 5–10 auto-routed feature cycles; consider per-feature override field in `status.json` if 3 proves wrong empirically." Document verification result in the task close-out comment.
+- [x] **D1:** Update `.agents/workflows.md`: add file-layout row, per-phase `### /bkit-ci-router` subsection (table form: Step | Subagent(s) | Notes), GHA trigger subsection, authoring-checklist note for leaf orchestrators with no Worktree Setup.
+- [x] **D2:** Update `.agents/docs.md` (and template mirror `.agents/templates/.agents/docs.md`) with new workflow matrix column (or row, depending on existing shape) and full-catalog row.
+- [x] **D3:** Update `.agents/prompts.md` with the "no per-prompt file" note.
+- [x] **D4:** Verify `DE-14` and `DE-15` already present at `docs/decisions.md` lines 156–174. No append required (decisions.md is append-only — duplicate entries corrupt the ADR ledger). Only append a follow-on `DE-N` if material divergence between the existing text and this plan's choices is identified.
+- [x] **D5:** Append `KN-N` (stale-run dispatch) to `docs/knowledge.md`.
+- [x] **D6:** Update `docs/deployments.md` with `ANTHROPIC_API_KEY` and `Auto` label sections. Document the consumer-side prerequisite of creating the `Auto` label in their Linear workspace before the router can dispatch (without it, all router runs no-op exit at the label gate).
+- [x] **D7:** Verify both existing deferral entries present at `docs/pending.md` lines 143–161 ("Per-PR opt-in alternative" and "Router dead-letter / retry policy"). **APPEND** new entry: `MAX_DEBUG_ATTEMPT default reconsideration in light of auto-routing` — body: "Today `MAX_DEBUG_ATTEMPT=3` means operator manually re-runs `/bkit-debug` up to 3 times (implicit per-attempt circuit breaker via not re-invoking). After BAR-148 ships, the router auto-fires up to 3 times; operator's only stop-early levers are removing the `Auto` label or pushing an empty cancel commit. Re-evaluate the default after observing first 5–10 auto-routed feature cycles; consider per-feature override field in `status.json` if 3 proves wrong empirically." Document verification result in the task close-out comment.
 
 ### Phase E — Mirror regen and bkit-repo-only checks
 
-- [ ] **E1:** Run `pnpm bkit install` to regenerate `.claude/commands/` and `.cursor/commands/` mirrors per `.agents/rules.md` § "bkit Repo Authoring".
-- [ ] **E2:** Run `pnpm check:dist` to regenerate `dist/` for any TS changes in `.agents/scripts/*.ts`.
-- [ ] **E3:** Run `pnpm bkit check` to confirm no drift in mirrored artifacts (per the bkit-repo-only pre-push gate).
+- [x] **E1:** Run `pnpm bkit install` to regenerate `.claude/commands/` and `.cursor/commands/` mirrors per `.agents/rules.md` § "bkit Repo Authoring".
+- [x] **E2:** Run `pnpm check:dist` to regenerate `dist/` for any TS changes in `.agents/scripts/*.ts`.
+- [x] **E3:** Run `pnpm bkit check` to confirm no drift in mirrored artifacts (per the bkit-repo-only pre-push gate).
 
 ### 🔒 Gate 2: Code Implementation Check
 
