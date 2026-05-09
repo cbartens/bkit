@@ -136,6 +136,16 @@
         "at": "2026-05-09T04:05:54Z",
         "commitSha": "fd4cd5f2f27c735c6c632b722888afb903dcb603",
         "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T04:07:13Z",
+        "commitSha": "5b162ba1fced6f37366a7b5f681caf622545e761",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-install-skills.md"
+        ]
       }
     ]
   }
