@@ -223,7 +223,7 @@
   {
     "workflow": "debug",
     "startedAt": "2026-05-09T01:26:21Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -294,6 +294,13 @@
         "artifacts": [
           "docs/plans/logs/bar-148-option-1/debug-summary.md"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T01:42:10Z",
+        "commitSha": "ff67955e111b05f8eb9dc3f549519b8ee99da47e",
+        "artifacts": []
       }
     ],
     "debugAttempt": 1
