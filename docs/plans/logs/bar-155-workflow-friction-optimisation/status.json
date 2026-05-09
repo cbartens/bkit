@@ -253,6 +253,15 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md"
         ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-09T04:58:17Z",
+        "commitSha": "f7746f8dba7ba1384af7c36ec4cb5b478eb281ba",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/17"
+        ]
       }
     ]
   }
