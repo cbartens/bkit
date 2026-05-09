@@ -78,6 +78,19 @@
 - **Status:** Workaround applied; Step 10 (challenge-remediate) will address the 4 CRITICAL/HIGH findings.
 - **Pattern:** Independent-review subagents on diffs > ~2k lines may need a more focused brief (probe specific risk areas, not full freeform review) to fit within budget.
 
+## Build failure-path leaves stale lock in main repo (2026-05-09)
+
+- **Category:** other
+- **Workflow:** build → debug
+- **Step:** orchestrator (lock cleanup in Failure Path)
+- **FID:** bar-148-option-1
+- **Source:** orchestrator
+- **Description:** Build Step 1 acquires lock in main repo working directory (`docs/plans/logs/{FID}/.lock`). Build Failure Path runs from worktree context; `rm -f "docs/plans/logs/{FID}/.lock"` resolves to the worktree's lock, not the main repo's. Main repo lock is never removed. Debug workflow blocked with "lock <2h old" on next invocation. Additionally, if debug Step 1 commits status.json to dev and Step 2 rebases worktree on dev, a status.json conflict arises (dev has partial build steps + debug entry; feature branch has full build steps). To avoid both issues, all debug steps should run from inside the worktree, not the main repo.
+- **Suggested fix:** Failure Path should delete the lock at an absolute path (`$(git rev-parse --show-toplevel)/docs/plans/logs/{FID}/.lock`) so it works regardless of cwd. Alternatively, Step 1 should always run from the worktree, not the main repo, so lock and status.json paths are consistent.
+- **Related:** bar-148-option-1, build lock `2026-05-09T00:25:04Z`
+- **Recovery:** Manually removed stale lock; debug workflow runs entirely from worktree to avoid rebase conflict.
+- **Status:** RECOVERED
+
 ## Subagent context exhaustion on large plan-execute (2026-05-06)
 
 - **Category:** agent-rework
