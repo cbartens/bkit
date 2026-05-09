@@ -19,6 +19,16 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md"
         ]
+      },
+      {
+        "step": "generate-plan",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T01:46:34Z",
+        "commitSha": "6a88a91c231e8d143b59edd9ea6ea67689826582",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v1-draft.md"
+        ]
       }
     ]
   }
