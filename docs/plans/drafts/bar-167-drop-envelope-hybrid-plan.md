@@ -128,7 +128,7 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0. On
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like. *(2026-05-09 — superseded by re-run; see issue addendum)*
 
 > [!NOTE]
 > The header verdict at the top of this file (`PASS|CONCERNS|FAIL`) is the **plan-review** verdict, set by the auto-review pipeline. It is **independent** from this human-confirmation checkbox. A build agent must verify both: (a) the header is `PASS`, AND (b) this checkbox is `[x]`. The header `PASS` does NOT auto-tick this box.
@@ -172,7 +172,7 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0. On
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above. *(2026-05-09 — superseded by re-run; see issue addendum)*
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
