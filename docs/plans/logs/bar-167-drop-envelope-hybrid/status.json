@@ -187,6 +187,17 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"
         ]
+      },
+      {
+        "step": "complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-09T13:53:23Z",
+        "commitSha": "dc53cb46eaccfdc26fb6788fa3d972e35ecc55a4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"
+        ]
       }
     ]
   }
