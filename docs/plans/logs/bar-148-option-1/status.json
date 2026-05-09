@@ -275,8 +275,16 @@
         "at": "2026-05-09T01:38:58Z",
         "commitSha": "b700ca0606ccaf6f175febf0ff58f3de6cf21eaa",
         "artifacts": []
+      },
+      {
+        "step": "push-remediation",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T01:39:24Z",
+        "commitSha": "948dfa01ef30c2047bddce4c627c45e418d9d0ad",
+        "artifacts": []
       }
     ],
-    "debugAttempt": 0
+    "debugAttempt": 1
   }
 ]
