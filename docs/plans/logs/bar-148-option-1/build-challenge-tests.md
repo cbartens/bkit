@@ -6,25 +6,42 @@ Verdict: PASS
 
 ## Summary
 
-Regression tests added to `.agents/scripts/release-workflow.test.ts` to prevent reintroduction of the FID resolution bug fixed in the BAR-148 build-challenge remediation.
+No new test files were added this cycle. The two findings (F1, F2) from the previous build-challenge run were fixed by the remediate agent and verified here.
 
-**Bug fixed:** `bkit-ci-router.md` was deriving FID by scanning `docs/plans/logs/` alphabetically and picking the first DONE/IN_PROGRESS directory. On any branch that inherits historical FID directories from `dev`, this returns the wrong FID and dispatches ship/debug for the wrong feature. The fix replaced the filesystem scan with `FID=$(echo "$BRANCH" | sed 's|^feat/||')`.
+### F1 — ROUTER_FILES cursor mirror added to regression loop
 
-**Tests added (10 new `it` blocks in a `for...of` loop over 2 files):**
+**Fix location:** `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-148-option-1/.agents/scripts/release-workflow.test.ts` lines 480–493
 
-Both `.agents/workflows/bkit-ci-router.md` (canonical) and `.claude/commands/bkit-ci-router.md` (mirror) are covered. Each produces a `describe` block named `FID resolution regression (BAR-148 build-challenge) — {label}` with 5 assertions:
+The `ROUTER_FILES` array now contains all three mirror files:
 
-| Test | What it catches |
-| --- | --- |
-| derives FID from branch name using sed prefix-strip | Regression to any non-`sed`-based FID derivation |
-| sed expression strips exactly the feat/ prefix | Drift to wrong prefix or glob expression |
-| guards against FID equalling BRANCH | Missing safety check — would silently accept non-`feat/` branches |
-| does NOT contain alphabetical directory-scan for FID | Reintroduction of `ls docs/plans/logs` or `for d in $(ls ...)` scan |
-| does NOT contain status-json-scan loop for FID | Reintroduction of directory-iteration + status.json read to pick FID |
-| FID derivation uses CI_RUN_HEAD_BRANCH env var as sole input | Drift to any approach that does not source BRANCH from the runner env |
+- `.agents/workflows/bkit-ci-router.md` (canonical)
+- `.claude/commands/bkit-ci-router.md` (mirror)
+- `.cursor/commands/bkit-ci-router.md` (mirror) — this was the missing entry
 
-Test file count before: 66 tests in `release-workflow.test.ts`. After: 76 tests (10 added).
-Full suite result: 808 tests (807 passing + 1 todo) — no regressions.
+The `for...of` loop over `ROUTER_FILES` produces 7 assertions per file, totalling 21 assertions (up from 14). This closes the gap that would have allowed the cursor mirror to silently drift from the canonical FID derivation fix.
+
+### F2 — C3 integration test unconditional assertions
+
+**Fix location:** `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-148-option-1/.agents/scripts/bkit-install.integration.test.ts` lines 815–855
+
+Both silent-skip branches removed. The test now asserts unconditionally:
+
+- `expect(fs.existsSync(versionFile)).toBe(true)` — `.bkit-version` must be written
+- `expect(routerKey).toBeDefined()` — `canonicalHashes` must contain a `bkit-ci-router.yml` key
+- `expect(bkitVersion?.canonicalHashes?.[routerKey!]).toMatch(/^[0-9a-f]{64}$/)` — sha256 entry must be valid
+- `expect(fs.existsSync(routerFile)).toBe(true)` — destination file must exist
+
+Any regression in `runAutoModule` (e.g., wrong templatePath, missing registry wiring, `postDispatch` not firing) will now cause the test to fail rather than pass silently.
+
+### Verification run
+
+`pnpm test` result:
+
+- Test Files: 27 passed (27)
+- Tests: 813 passed | 1 todo (814)
+- No failures in newly-targeted tests or anywhere else in the suite.
+
+`pnpm typecheck`: clean (no output, zero errors).
 
 ## Blockers
 
