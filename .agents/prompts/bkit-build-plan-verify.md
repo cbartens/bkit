@@ -60,10 +60,6 @@ Failures: <integer ≥ 0>
 
 [`Single` (one sub-plan) or `Holistic` (master + all sub-plans); initially set to `PENDING`]
 
-## Gaps Identified
-
-[Count + brief description per gap, or "None"; initially set to `PENDING`]
-
 ## Sub-Plans Verified
 
 [Count, or "N/A" for Single scope. Holistic: count MUST match number of `docs/plans/active/{FID}-plan-*.md` files; mismatch → `CONCERNS`; initially set to `PENDING`]
@@ -79,6 +75,10 @@ Failures: <integer ≥ 0>
 ## Notes
 
 [Brief summary; initially set to `PENDING`]
+
+## Gaps Identified
+
+[Count + brief description per gap, or "None"; initially set to `PENDING`]
 ```
 
 > ⛔ **STOP after verifying plan and producing output. Do NOT fix.**

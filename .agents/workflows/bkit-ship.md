@@ -41,6 +41,7 @@ description: "Ship Feature — Autonomous merge and archive"
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    rm -f "docs/plans/logs/{FID}/.lock"
+   rm -f "docs/plans/logs/{FID}/.rebase-failed"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
 2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
@@ -51,7 +52,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2 do NOT false-evaluate as exceeded) OR rebase failure (`[ -e "docs/plans/logs/{FID}/.rebase-failed" ]` sentinel exists) → step 5. **Else** → step 12.
+4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2 do NOT false-evaluate as exceeded) OR rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**)
@@ -146,11 +147,14 @@ description: "Ship Feature — Autonomous merge and archive"
 
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
+     # Clear any stale sentinel from a prior failed rebase attempt before retrying
+     rm -f "docs/plans/logs/{FID}/.rebase-failed"
      # Rebase on latest dev to keep feature branch current
      git fetch origin dev
      if ! git rebase origin/dev; then
        git rebase --abort 2>/dev/null || true
        echo "Rebase conflict — routing to Failure Path" >&2
+       mkdir -p "docs/plans/logs/{FID}/"
        touch "docs/plans/logs/{FID}/.rebase-failed"
      fi
    else

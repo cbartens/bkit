@@ -199,3 +199,27 @@
 - **Severity:** critical
 - **Source:** phase
 - **Related:** BAR-131, BAR-138, `.agents/templates/.github/workflows/ci.yml`, `bar-131-related-bars-suite-plan-4.md` §P4.T8, `build-failure-diagnose-1.md`
+
+## KN-15: Sentinel-file cleanup must bracket the write — stale sentinels cause false Failure Path (2026-05-09)
+
+- **Category:** agentic
+- **Symptom:** After manually resolving a `git rebase` conflict outside the workflow, re-invoking `/bkit-ship` immediately routes to the Failure Path even though the rebase is complete.
+- **Root cause:** `bkit-ship.md` Step 2 `touch .rebase-failed` sentinel is never removed on success or retry. The sub-step 3a existence check fires on the stale file from the prior failed run, not the current run.
+- **Fix or rule:** Bracket every sentinel with an explicit cleanup: (1) `rm -f` at the START of the bash block that writes the sentinel (clears stale-from-prior-run before any new attempt), and (2) `rm -f` in the Failure Path step that runs after the sentinel is no longer needed. Pattern: create-write only inside the failure branch; delete-unconditionally at start of each attempt and at Failure Path exit. See `bkit-ship.md` Step 2 revised bash block.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** build-challenge
+- **Related:** BAR-155, `.agents/workflows/bkit-ship.md`
+
+## KN-16: Multi-section output format — EOF-append landing section must be last (2026-05-09)
+
+- **Category:** agentic
+- **Symptom:** Agent appends gap findings at EOF of output file; entries land inside `## Notes` instead of `## Gaps Identified`, breaking downstream consumer parsing.
+- **Root cause:** `bkit-build-plan-verify.md` Output format had `## Gaps Identified` in the middle of a six-section skeleton. The Fix 1b `echo {finding} >> {output}` directive appends at EOF, which is after `## Notes` (the last section). Downstream gap-remediate consumers grep for `## Gaps Identified` and find gaps mixed into Notes.
+- **Fix or rule:** When an agent uses the flat-append-at-EOF pattern for a specific section, that section MUST be the last section in the Output format skeleton. Reorder sections so the append-target section is last. This is the same reason `bkit-build-challenge-tests.md`'s `## Bugs Discovered` must come after `## Blockers`.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** build-challenge
+- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-verify.md`, `.agents/prompts/bkit-build-challenge-tests.md`

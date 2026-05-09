@@ -60,6 +60,10 @@ Verdict: PASS | CONCERNS | FAIL
 ## Blockers
 
 [Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+
+## Bugs Discovered
+
+[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict.]
 ```
 
 > ⛔ **STOP after generating tests and producing output. Do NOT change implementation, expand scope.**

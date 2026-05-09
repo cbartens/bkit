@@ -91,10 +91,11 @@ description: "Build Feature — Autonomous implementation"
 1a. Emit long-branch advisory:
    ```bash
    behind=$(git rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
-   age=$(git show -s --format=%ar $(git merge-base HEAD origin/dev 2>/dev/null) 2>/dev/null || echo "unknown")
+   mb=$(git merge-base HEAD origin/dev 2>/dev/null)
+   age=$([ -n "$mb" ] && git show -s --format=%ar "$mb" 2>/dev/null || echo "unknown")
    echo "[bkit-build] feature branch is ${behind} commits behind dev / ${age} since divergence"
    ```
-   Always-on; no thresholds; no Failure Path — purely advisory stdout.
+   Always-on; no thresholds; no Failure Path — purely advisory stdout. **Note:** runs before the fetch in Step 3, so `behind` and `age` reflect the last-fetched state of `origin/dev` (may be stale on a fresh clone or after a long gap without fetching).
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Build"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path** with `save_issue returned no id`.
@@ -725,7 +726,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-failure-diagnose-${TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`, `strategy`)
-- [ ] Issue comment attempted (`Step 13` section)
+- [ ] Issue comment attempted (`Step 14` section)
 
 ---
 
@@ -763,7 +764,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 14` section)
+- [ ] Issue comment attempted (`Step 15` section)
 
 ---
 
@@ -806,7 +807,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `summary` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 15` section)
+- [ ] Issue comment attempted (`Step 16` section)
 
 ---
 
@@ -848,7 +849,7 @@ Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `do
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] PR body contains plan-link URL (wrapped in `<!-- bkit:start -->` / `<!-- bkit:end -->` markers)
 - [ ] Workflow status updated (step `create-pr` recorded with `commitSha`)
-- [ ] Issue comment attempted (`Step 16` section)
+- [ ] Issue comment attempted (`Step 17` section)
 
 ---
 
