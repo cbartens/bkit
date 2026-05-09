@@ -212,6 +212,17 @@
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v4-2.md",
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v4-3.md"
         ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-09T14:09:59Z",
+        "commitSha": "74d1f2281586412633254cc52843c60194d19c49",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"
+        ]
       }
     ]
   }
