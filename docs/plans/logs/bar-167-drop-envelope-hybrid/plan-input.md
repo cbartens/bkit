@@ -1,16 +1,25 @@
-# Plan input — BAR-167 (bar-167-drop-envelope-hybrid)
+# Plan input — BAR-167 (bar-167-drop-envelope-hybrid) — RE-RUN
 
 ## Session prompt
 
-User invoked `/bkit-plan bar-167` after a Design-phase conversation in which:
+User invoked `/bkit-plan bar-167` for a SECOND time after the first run produced plan-v3-checked.md (verdict CONCERNS, build-ready under "Phase 1 only" scope).
 
-1. A bkit-consumer audit (app-gether-life + visitfrasercoast-com against v1.1.1 templates) surfaced two real issues — app-gether-life had lost the `pnpm bkit check` step from its heavily-customised `.github/workflows/ci.yml`, and `.cursor/hooks.json` had drifted from the template's top-level `hooks` array. Both were manually patched in app-gether-life during the audit.
-2. While restoring the `.cursor/hooks.json` top-level array, the user questioned why bkit's template ships duplicated content — once inside `__bkit__`, once at top level — and pushed back across multiple turns until the design weakness was acknowledged.
-3. Three architectural alternatives were evaluated (markers everywhere, containment everywhere, three-way merge, hybrid). The user reframed the problem: every file has a bkit-owned scope and a consumer-owned remainder; the size of bkit's scope can be 0%–100%; the Tier 1/2/3 distinction is artificial.
-4. The decision was made to adopt the **hybrid model** — `bkit:start..bkit:end` markers for text formats + deep-tree containment for JSON. This drops the `__bkit__` envelope (introduced v0.8.0 under DE-7/DE-8) and unifies all template files under one rule: *"the template's bkit-owned scope must be intact in the consumer file."*
-5. The user instructed that this redesign be documented as a Linear issue (BAR-167) and then planned via `/bkit-plan`.
+Between runs, the user reviewed the plan summary and supplied four binding scope decisions via Linear comment (`Plan-Phase Clarifications`). The decisions materially expand scope:
 
-This plan must implement the redesign in the bkit repo per the phased approach in BAR-167's description (Phase 1 — drop envelope; Phase 2 — extend marker coverage; Phase 3 — terminology cleanup), shipping as bkit v2.0.0 (Major-Change per DE-8 contract reversal).
+1. **Phase scope:** Bundle Phase 1 + Phase 2 + Phase 3 into a single v2.0.0 ship. (plan-v3 had Phase 1 only with Phase 2/3 deferred — those deferrals are now reversed.)
+2. **Cursor v1 spike (Task 0a):** SKIP. Trust DE-7 / current Cursor docs. Remove Task 0a entirely.
+3. **Decorative `.cursor/hooks.json` echoes:** KEEP (no change vs plan-v3).
+4. **Pre-push duplicate-work in `app-gether-life`:** Defer to v2.0.0 Phase 2 markers (no plan task change needed; Phase 2 marker addition to `.husky/pre-push` resolves it naturally).
+5. **Manual fixes in `app-gether-life`:** Left uncommitted in consumer repo for human review. Not part of plan scope.
+
+This re-run must produce a `plan-v1-draft.md` that:
+- Bundles all of Phase 1 + Phase 2 + Phase 3 into v2.0.0.
+- Carries forward all plan-v3 critical fixes (deepContains semantics, manifest reclassification, JSON-aware uninstall strip-merge via `stripTier2JsonScope`, static fixture for upgrade chain at `tests/fixtures/heavy-customised-consumer-v1-envelope/`, atomic-write pattern in migration call sites, schema-flip handling).
+- Removes Task 0a (Cursor spike).
+- Removes the parking-lot `docs/pending.md` entries that were Phase 2/3 deferrals (those are no longer valid).
+- Anticipates that complexity-check may flip from `SINGLE` to `SPLIT` given the expanded scope; sub-plans are acceptable as long as the overall v2.0.0 cut bundles all three phases.
+
+The current `docs/plans/drafts/bar-167-drop-envelope-hybrid-plan.md` (which is the previous plan-v3) remains in place as historical record but will be superseded by the v4 plan from this re-run.
 
 ## Issue description (BAR-167)
 
@@ -24,90 +33,32 @@ This reverses DE-7 and DE-8.
 
 ## 1. Debug — how this surfaced
 
-Triggered during a routine bkit-consumer audit (app-gether-life + visitfrasercoast-com against the v1.1.1 template). Both consumers passed `pnpm bkit check` with `Done. 0 write(s).`. While reviewing the surface I'd just edited, the user inspected `.cursor/hooks.json` and asked why it contained the same hook content twice — once inside `__bkit__`, once at the top level:
+Triggered during a routine bkit-consumer audit (app-gether-life + visitfrasercoast-com against the v1.1.1 template). Both consumers passed `pnpm bkit check` with `Done. 0 write(s).`. While reviewing the surface I'd just edited, the user inspected `.cursor/hooks.json` and asked why it contained the same hook content twice — once inside `__bkit__`, once at the top level.
 
-```json
-{
-  "__bkit__": {
-    "hooks": [ { "event": "sessionStart", "command": "echo '[bkit] session started'" }, ... ]
-  },
-  "hooks": [ { "event": "sessionStart", "command": "echo '[bkit] session started'" }, ... ],
-  "version": 1
-}
-```
-
-Initial response defended the duplication as "two readers, two purposes" (Cursor reads top-level, `bkit check` reads `__bkit__`). The user pushed back across multiple turns:
-
-1. *"if cursor does not read it then why add it?"*
-2. *"what is the purpose of having the below block in cursor hooks if they are not read?"*
-3. *"so what we add that to a file to show the install script ran???"*
-4. *"why have non-functional code in files that nothing reads?"*
-
-The pushback was correct. The envelope's job is bkit-CLI bookkeeping (drift detection + safe upgrade), but the value it adds is disproportionate to the in-file noise it creates — especially for `.cursor/hooks.json` where the bkit-owned content (two `echo` statements) is itself decorative.
+Initial response defended the duplication as "two readers, two purposes" (Cursor reads top-level, `bkit check` reads `__bkit__`). The user pushed back across multiple turns. The pushback was correct. The envelope's job is bkit-CLI bookkeeping (drift detection + safe upgrade), but the value it adds is disproportionate to the in-file noise it creates.
 
 ## 2. Discussion — what the audit covered
 
-### 2.1 Today's three ownership shapes
+### 2.1 Today's three ownership shapes (now reframed as one)
 
-The bkit template surface has files in three apparent categories:
-
-| Category | Examples | Today's mechanism |
-| -- | -- | -- |
-| **A. Bkit fully owns** | `AGENTS.md`, `CLAUDE.md`, `.vale/styles/House/*.yml`, preflight scripts, agent prompts, `.cursor/rules/00-shared-rules.mdc`, `.agents/{rules,docs,friction,skills}.md` | Tier-1 byte-equal mirror |
-| **B. Bkit owns a portion, consumer extends** | `.husky/{pre-commit,pre-push}`, `.gitignore`, `.prettierignore`, `docs/*.md` | Tier-2 `bkit:start..bkit:end` markers (text) |
-| **B'. Bkit owns a portion (JSON)** | `.claude/settings.json`, `.cursor/hooks.json` | Tier-2 `__bkit__` envelope wrapper key |
-| **C. Bkit seeds, consumer takes ownership** | `.github/workflows/ci.yml`, `.cursor/{settings,environment}.json`, `.cursor/Dockerfile`, `.vale.ini`, `slop-scan.config.json` | Tier-3 seed, advisory only on drift |
-
-The user observed this is artificial: even Group A files are extensible by the consumer (e.g. add project-specific guidance below `AGENTS.md`), and Group C files all started life as bkit content the consumer is now free to override. Reframed:
-
-> **Every file has a bkit-owned scope and a consumer-owned remainder. The size of bkit's scope can be anywhere from 100% (whole file) to 0% (consumer fully owns post-seed). One model — only the scope size varies.**
+Reframed: **Every file has a bkit-owned scope and a consumer-owned remainder. The size of bkit's scope can be anywhere from 100% (whole file) to 0% (consumer fully owns post-seed). One model — only the scope size varies.**
 
 ### 2.2 Concrete cost the current model is paying
 
-* **Visible duplication** in `.cursor/hooks.json` and `.claude/settings.json` (template ships both `__bkit__` envelope and top-level mirror; first install copies both verbatim → identical content under two keys).
-* **Confusion** — eight conversation turns to explain what `__bkit__` is for. That's the opposite of self-documenting.
-* **Schema pollution** — `__bkit__` is a custom top-level key. DE-7 verified Cursor and Claude don't reserve it, but it doesn't belong in either tool's documented schema.
-* **Tier-3 drift not caught** — app-gether-life's `.github/workflows/ci.yml` was heavily customised post-seed and lost the `pnpm bkit check` step. Tier-3's "advisory only" model meant this was never gated. (Fixed manually in this session by re-adding the step.) Under a unified containment model, a small `bkit:start..bkit:end` block around `setup-auth + bkit check` would have made the gate non-removable without explicit `.bkitignore` opt-out.
-* **Maintenance surface** — `bkit-tier1-defaults.ts` snapshots historical envelope shapes per shipped version (v0.5.0 → v0.7.x). Maintenance burden grows with each version.
-* **Asymmetric drift detection** — Tier-1 uses `canonicalHashes`, Tier-2 text uses marker-block extraction, Tier-2 JSON uses `__bkit__` hash. Three code paths, one purpose.
+* **Visible duplication** in `.cursor/hooks.json` and `.claude/settings.json`.
+* **Confusion** — eight conversation turns to explain `__bkit__`. Opposite of self-documenting.
+* **Schema pollution** — `__bkit__` is a custom top-level key.
+* **Tier-3 drift not caught** — app-gether-life's `.github/workflows/ci.yml` was heavily customised post-seed and lost the `pnpm bkit check` step. Tier-3's "advisory only" model meant this was never gated. Under a unified containment model, a small `bkit:start..bkit:end` block around `setup-auth + bkit check` would have made the gate non-removable without explicit `.bkitignore` opt-out.
+* **Maintenance surface** — `bkit-tier1-defaults.ts` snapshots historical envelope shapes per shipped version. Maintenance burden grows with each version.
+* **Asymmetric drift detection** — Tier-1 `canonicalHashes`, Tier-2 text marker-block extraction, Tier-2 JSON `__bkit__` hash. Three code paths, one purpose.
 
-### 2.3 Four candidate redesigns evaluated
+### 2.3 Decision
 
-| Option | Mechanism | Verdict |
-| -- | -- | -- |
-| **A. Markers everywhere** | `bkit:start..bkit:end` in every file | ❌ JSON has no comments — falls back to a wrapper key (i.e. `__bkit__`). Not actually one mechanism. |
-| **B. Containment everywhere** | "Template content present in consumer file" universally | ❌ Free-form text loses ordering and contiguity meaning under set/subset semantics. `pnpm typecheck && pnpm test` ≠ `pnpm test && pnpm typecheck`. Needs markers anyway to delimit bkit's region. |
-| **C. Three-way merge everywhere** (`diff3`-style) | base (template at recorded version) + theirs (current template) + ours (consumer); algorithmic merge per format | 🟡 Genuinely uniform, no in-file metadata, but 3-5× hybrid LOC, requires bundled historical templates, conflict-resolution UX, silent-corruption risk on overlapping edits. |
-| **D. Hybrid — markers (text) + containment (JSON)** | Two mechanisms, one mental model: "bkit's scope must be intact" | ✅ Recommended. Uses each format's native ownership signals. |
+**Adopted: hybrid (markers for text + deep containment for JSON).** Replaces and supersedes DE-7 and DE-8.
 
-### 2.4 Why hybrid (D) over three-way merge (C)
+**Single rule:** Every template file in `.agents/templates/` declares a **bkit-owned scope**. The consumer file must contain that scope intact. Everything outside is consumer territory.
 
-1. **Three-way merge has a hidden tax that compounds.** Every shipped bkit version requires its template snapshot kept in code. `bkit-tier1-defaults.ts` already shows this is annoying for two files across four versions; multiply by ~50 template files and a multi-year version history.
-2. **Text and JSON have natural ownership signals; respect them.** Comment markers ARE how text declares regions. Deep object structure IS how JSON declares regions. Forcing both through one merge algorithm satisfies conceptual purity but loses pragmatic clarity.
-3. **Hybrid keeps almost everything already built.** Markers exist and work. JSON containment is ~50 LOC of recursive walk. Net code goes *down* (delete `applyBkitNamespace`, `extractBkitNamespace`, `migrateTier1JsonToTier2`, `BKIT_TIER1_DEFAULTS_BY_VERSION`).
-4. **Three-way merge silent-corruption risk is real.** Overlapping edits produce conflict markers in the consumer file that ship into their repo. Hybrid + `.bkitignore` per-key opt-out (already exists, DE-6) gives the consumer an explicit, ergonomic override mechanism without inline conflict markers.
-5. **Migration is cheap.** Only `.claude/settings.json` and `.cursor/hooks.json` need envelope removal; markers in text files don't change at all.
-
-### 2.5 One real wrinkle: JSON arrays
-
-Object containment is straightforward (every key + value recursively present). Array containment is ambiguous — `template.hooks: [echoStart, echoStop]` vs `consumer.hooks: [echoStart, echoStop, customStop]` could mean set-membership, ordered subsequence, or exact equality.
-
-**Resolution per file:**
-
-* `.cursor/hooks.json` — migrate template to Cursor v1 schema (`hooks: { eventName: [...commands] }`) — keyed object instead of flat array. Plain deep-object containment then works. DE-7 already verified Cursor accepts both shapes.
-* `.claude/settings.json` — `hooks.SessionStart` is an array of objects. Define containment rule: "every element in template's array exists as a deep-equal element in consumer's array, order-insensitive." Implementable in ~15 LOC.
-
----
-
-## 3. Decision
-
-**Adopted: Option D (hybrid — markers for text + deep containment for JSON).** Replaces and supersedes DE-7 and DE-8.
-
-### Single rule
-
-> Every template file in `.agents/templates/` declares a **bkit-owned scope**. The consumer file must contain that scope intact. Everything outside is consumer territory.
-
-### Format mapping
+**Format mapping:**
 
 | Format | Bkit scope = | Drift check |
 | -- | -- | -- |
@@ -116,100 +67,73 @@ Object containment is straightforward (every key + value recursively present). A
 | JSON | Entire template's deep tree | Deep containment (template ⊆ consumer) |
 | Empty scope | Nothing (consumer fully owns) | No check (advisory only) |
 
-### Override mechanism
+**Override mechanism:** `.bkitignore` (already exists, DE-6) retained as the explicit per-file / per-key opt-out.
 
-`.bkitignore` (already exists, DE-6) retained as the explicit per-file / per-key opt-out for consumers who want to override a bkit-shipped scope.
+### 2.4 One real wrinkle: JSON arrays
 
-### What changes per current file class
-
-| File class today | Action |
-| -- | -- |
-| Group A (Tier-1 byte-equal whole files) | No change. Optionally add markers around current content if extensibility is wanted (Phase 2). |
-| Group B text (Tier-2 markers) | No change. |
-| Group B JSON (Tier-2 envelope) | **Drop** `__bkit__`. Template becomes schema-clean. Containment check on consumer. |
-| Group C (Tier-3 seed) | Add a small marker block around the genuinely-required portion (e.g. `setup-auth + bkit check` in `ci.yml`). Everything else stays consumer territory. (Phase 2.) |
-
-### Rationale
-
-1. Eliminates the visible-duplication confusion that triggered this issue.
-2. Templates match their tools' documented schemas exactly (Cursor v1 hooks, Claude Code `settings.json`).
-3. One mental model across all formats; two mechanisms (markers / containment) instead of today's three (`canonicalHashes` / marker-extract / envelope-extract).
-4. `.github/workflows/ci.yml` and other Tier-3 files gain a real drift gate where bkit needs one (e.g. `bkit check` step preservation), while keeping consumer customisation freedom.
-5. Net code reduction: delete `applyBkitNamespace`, `extractBkitNamespace`, `migrateTier1JsonToTier2`, `writeTier2Json` envelope branch, `BKIT_TIER1_DEFAULTS_BY_VERSION`. Replace with one `deepContains(template, consumer)` primitive plus marker logic that already exists.
-6. Major-Change → bkit v2.0.0 (`__bkit__` was a v0.8.0 public contract per DE-8).
-
-### Trade-offs accepted
-
-* Stale-orphan scenario: if a future bkit version drops a key it used to ship, the consumer's file keeps the old key (bkit can't tell if it was a consumer addition or a leftover). **Acceptable.** Harmless; cleanup via explicit `bkit upgrade --prune` if it ever matters.
-* Two mechanisms (markers + containment) instead of one. **Acceptable.** They share one mental model and one rule.
-* Loses the "envelope as visible boundary marker" benefit. **Acceptable.** The benefit was illusory — eight-turn confusion proves it wasn't self-documenting.
+* `.cursor/hooks.json` — migrate template to Cursor v1 schema (`hooks: { eventName: [...commands] }`) — keyed object instead of flat array. Plain deep-object containment then works. **Per re-run Decision 2: SKIP runtime spike (Task 0a removed).** DE-7 already verified Cursor accepts both shapes.
+* `.claude/settings.json` — `hooks.SessionStart` is an array of objects. Containment rule: "every element in template's array exists as a deep-equal element in consumer's array, order-insensitive."
 
 ---
 
-## 4. Final solution — implementation plan
+## 3. Plan-Phase Clarifications (binding for plan-v4 re-run)
 
-### Phase 1 — Drop the JSON envelope (small, contained, no Tier-3 changes yet)
+### Decision 1 — Phase scope: BUNDLE Phase 1 + Phase 2 + Phase 3 into v2.0.0
 
-**Templates:**
+**Phase 1 scope to retain:** drop `__bkit__` JSON envelope, introduce `deepContains`, swap `writeTier2Json` envelope branch for `writeTier2JsonContained`, add `migrateLegacyBkitEnvelope`, reclassify `.claude/settings.json` and `.cursor/hooks.json` from manifest tier-1 to tier-2, extend `bkit-uninstall.ts` with `stripTier2JsonScope`, delete `applyBkitNamespace`/`extractBkitNamespace`/`migrateTier1JsonToTier2`/`bkit-tier1-defaults.ts`/`BKIT_TIER1_DEFAULTS_BY_VERSION`.
 
-* `.agents/templates/.cursor/hooks.json`: rewrite as Cursor v1 schema — `{ "version": 1, "hooks": { "sessionStart": [...], "sessionStop": [...] } }`. No `__bkit__`, no top-level/inner duplication. (Optional decision: drop the decorative echoes entirely if they have no real purpose. See follow-up.)
-* `.agents/templates/.claude/settings.json`: rewrite without `__bkit__`. Top-level keys only.
+**Phase 2 scope to ADD into v2.0.0:**
 
-**Code:**
+- Add `bkit:start..bkit:end` markers around current content in: `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-shared-rules.mdc`, `.vale/styles/House/*.yml` (4 files: Filler.yml, Hedging.yml, LLMSlop.yml, Verbose.yml), `.agents/{rules,docs,friction,skills}.md` (4 files), `docs/plans/template.md`.
+- Add small marker blocks around required portions in:
+  - `.github/workflows/ci.yml` — `setup-auth` step + `pnpm bkit check` step (would have caught the app-gether-life regression)
+  - `.vale.ini` — `StylesPath`, `Packages`, `MinAlertLevel`, House style enable
+  - `slop-scan.config.json` — bkit's required core rules
+- Keep `.cursor/{settings,environment}.json`, `.cursor/Dockerfile` as advisory-only (no required portion worth gating).
+- Add markers to `.husky/pre-push` (already markered today; verify the block expands or stays as-is) so the `app-gether-life` consumer's pre-push duplicate-work resolves naturally.
+- Simplify `bkit-manifest.ts` to `{ path, format }` — Tier number gone; format determines scope-extraction mechanism.
+- `bkit check` becomes single dispatch on format → markers extract / JSON containment / byte-equal.
+- New tests: marker presence enforcement on Group-A migrations; Tier-3 drift detection regression (would `app-gether-life`'s missing `bkit check` step now be caught?).
 
-* New: `deepContains(template, consumer): { ok: boolean; missing: string[]; mismatched: string[] }` in `bkit-tiers.ts`. Recursive object walk; arrays handled per type (primitive arrays = subset; object arrays = element-wise deep-contain by identity).
-* New: `writeTier2JsonContained(templatePath, destPath, dryRun, ws)` replacing the envelope branch of `writeTier2Json`. Deep-merges template into consumer: template values win at template paths; consumer keys outside template stay.
-* `bkit check`: switch JSON drift detection from `extractBkitNamespace + hash` to `deepContains`.
-* `bkit upgrade`: deep-merge per above.
-* `bkit upgrade` migration step: if consumer JSON has `__bkit__` key, strip it on next upgrade and verify post-strip containment. One-shot. Log: `[bkit] migrated .cursor/hooks.json — stripped __bkit__ envelope (v2.0.0)`.
+**Phase 3 scope to ADD into v2.0.0:**
 
-**Delete:**
+- Remove `tier3Hashes` from `.bkit-version` schema if no longer used.
+- Remove "Tier 1/2/3" terminology from docs (`docs/architecture.md`, `docs/knowledge.md`, `docs/deployments.md`, etc.).
+- Update `bkit-tiers.ts` doc-block to reflect single-model semantics.
+- Update `docs/architecture.md` ASCII tree comments showing Tier numbers.
 
-* `applyBkitNamespace`, `extractBkitNamespace` (`bkit-tiers.ts`)
-* `migrateTier1JsonToTier2` (`bkit-tiers.ts`)
-* `BKIT_TIER1_DEFAULTS_BY_VERSION` and `bkit-tier1-defaults.ts` if no other consumer
-* Envelope branch of `writeTier2Json` (rename remaining branch to `writeTier2JsonContained`)
+### Decision 2 — Cursor v1 spike (Task 0a): SKIP
 
-**Tests:**
+DE-7 already verified Cursor's v1 keyed-object schema acceptance. No runtime spike required. The plan-v4 should proceed directly to the keyed-object migration without a runtime confirmation step. **Remove Task 0a entirely from the runbook.**
 
-* Update `bkit-tiers.test.ts` for `deepContains` semantics
-* Update `bkit-modules.upgrade.integration.test.ts` two-version regression — confirm consumer `Stop` hook + `failClosed` + `loop_limit` keys still survive byte-identical under containment + deep-merge
-* New: array-containment edge cases (extra elements, reorder, missing required element)
+### Decision 3 — Decorative `.cursor/hooks.json` echoes: KEEP
 
-**Docs:**
+(matches plan-v3 — no change). Drop the `__bkit__` wrapper but keep the echo statements.
 
-* New decision entry replacing DE-7/DE-8 — record the reversal, reasoning, and migration mechanic.
-* Update `docs/architecture.md` Tier-2 JSON section.
-* Update `docs/knowledge.md` KN-8 with the supersession.
-* `CHANGELOG.md` v2.0.0 entry: BREAKING — `__bkit__` envelope removed; consumer files auto-migrated on first upgrade.
+### Decision 4 — Pre-push duplicate-work in `app-gether-life`: defer to v2.0.0 Phase 2 markers
 
-### Phase 2 — Collapse Tier 1/2/3 into one model (optional, can ship later)
+(no plan-v4 task change needed beyond Phase 2 marker addition to `.husky/pre-push`).
 
-**Templates:**
+### Decision 5 — Manual audit fixes in `app-gether-life`: LEAVE UNCOMMITTED
 
-* Add `bkit:start..bkit:end` markers around current content in:
-  * `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-shared-rules.mdc`, `.vale/styles/House/*.yml`, `.agents/{rules,docs,friction,skills}.md`, `docs/plans/template.md` (where extensibility is wanted)
-* Add small marker blocks around required portions in:
-  * `.github/workflows/ci.yml` — `setup-auth` step + `pnpm bkit check` step (would have caught the app-gether-life drift)
-  * `.vale.ini` — `StylesPath`, `Packages`, `MinAlertLevel`, House style enable
-  * `slop-scan.config.json` — bkit's required core rules
-  * `.cursor/{settings,environment}.json`, `.cursor/Dockerfile` — keep as advisory-only (no required portion worth gating)
+Two consumer-side edits left uncommitted in the consumer repo for human review. Not part of v2.0.0 plan scope.
 
-**Code:**
+---
 
-* `bkit-manifest.ts` simplifies to `{ path, format }` — Tier number gone. Format determines scope-extraction mechanism.
-* `bkit check`: single dispatch on format → markers extract / JSON containment / byte-equal.
+## 4. plan-v3 critical fixes to carry forward into plan-v4
 
-**Tests:**
+The previous plan-v3-checked.md addressed eight critical fixes during review/scope-check. plan-v4 must retain ALL of them:
 
-* Marker presence enforcement on Group-A migrations
-* Tier-3 drift detection regression (would `app-gether-life`'s missing `bkit check` step now be caught?)
+1. **Deep-containment semantics (deepContains):** order-insensitive deep-equal for object-arrays; subset semantics for primitive arrays; null-input boundaries. Implementation target: ~60 LOC.
+2. **Manifest reclassification:** `.claude/settings.json` and `.cursor/hooks.json` flipped from `tier: 1` to `tier: 2` (or under Phase 2 Tier collapse: just `format: "json"`).
+3. **JSON-aware uninstall strip-merge:** new helper `stripTier2JsonScope(consumerDoc, templateDoc) → trimmedDoc`. Walks template tree, deletes matching leaves from consumer, preserves consumer-only siblings, prunes empty intermediates only where the template populated them.
+4. **`bkit-uninstall.ts` extend `case 2`:** detect JSON-format files (by `.json` extension or manifest `format` field) and dispatch to `stripTier2JsonScope`.
+5. **`bkit-preflight.ts` imports + advisories:** extended allow-list (`readBkitVersion`, `deepContains`, `getPkgRoot` from `bkit-paths.ts`); three new advisories: `legacy-bkit-envelope-detected` (advisory), `tier2-json-drift` (advisory, runs deepContains per Tier-2 JSON file), `pre-envelope-bkit-version-detected` (blocker; pre-v0.8.0 + no envelope → route through v1.x).
+6. **Static fixture approach for upgrade chain:** Task commits `tests/fixtures/heavy-customised-consumer-v1-envelope/` (pre-v2.0.0 state with envelope + mirror + consumer keys). Used for v0.8.x → v2.0.0 leg of the regression.
+7. **`bkit-modules.ts` migration call sites:** `runClaudeModule` and `runCursorModule` call `migrateLegacyBkitEnvelope(parsedDoc, parsedTemplate)` with atomic-write pattern (write to temp, rename). Logs migration on success; logs schema-flip variant if type-mismatch detected.
+8. **Cursor v1 schema template migration:** `.cursor/hooks.json` rewritten from flat-array `hooks: [...]` to keyed-object `hooks: { sessionStart: [...], sessionStop: [...] }`. Resolves the array-containment ambiguity.
 
-### Phase 3 — Cleanup
-
-* Remove `tier3Hashes` from `.bkit-version` schema if no longer used
-* Remove "Tier 1/2/3" terminology from docs
-* Update `bkit-tiers.ts` doc-block to reflect single-model semantics
+The detailed task breakdown of plan-v3 (24 tasks for Phase 1 alone) is at `docs/plans/drafts/bar-167-drop-envelope-hybrid-plan.md` for reference. plan-v4 should expand this with Phase 2 + Phase 3 tasks while keeping Phase 1's task structure intact.
 
 ---
 
@@ -219,47 +143,54 @@ On next `bkit upgrade` after v2.0.0 ships:
 
 1. **Detect:** parse `.cursor/hooks.json` and `.claude/settings.json`; check for top-level `__bkit__` key.
 2. **Strip:** remove `__bkit__` from consumer file.
-3. **Verify:** run `deepContains(currentTemplate, postStripConsumerFile)`. If template content is present in top-level keys (which is the normal case — the template was seeded at top-level on first install), pass. If absent, run a deep-merge to inject template content.
+3. **Verify:** run `deepContains(currentTemplate, postStripConsumerFile)`. Run deep-merge to inject template content if absent.
 4. **Log:** `[bkit] migrated <file> — __bkit__ envelope stripped (v2.0.0 contract change)`.
 5. **Commit:** as part of upgrade write-pass.
+6. **Phase 2 markers** for `AGENTS.md`, `CLAUDE.md`, `.vale.ini`, etc. — bkit upgrade adds the marker-wrapped content; existing consumer content above/below the markers is preserved.
 
-Pre-v2.0.0 consumers running `bkit check` against v2.0.0 will see one-time advisory `legacy-bkit-envelope-detected — run \`pnpm bkit upgrade\` to migrate to v2.0.0 ownership model`. No blocker.
-
----
-
-## 6. Open questions / follow-ups (not blocking decision)
-
-* Drop the decorative `.cursor/hooks.json` echo statements entirely? They were 0.1.2-era scaffolding placeholder content that was never replaced with real functionality. Under v2.0.0 the envelope's gone but the template still ships them as Cursor's working hooks. If they have no real purpose, ship `.cursor/hooks.json` with an empty `hooks` object as the canonical "bkit reserves this file for future hook injection."
-* `.cursor/hooks.json` template adopts Cursor v1 keyed-object schema as part of Phase 1 — confirm via spike that current Cursor builds still accept the keyed form (DE-7 noted v1 schema uses it; verify before shipping).
-* Should `bkit upgrade --prune` flag for orphan-key cleanup be included in v2.0.0 or deferred? Probably defer — not needed unless we drop a key in a future minor.
-* `app-gether-life`-style heavy `ci.yml` customisation: under Phase 2, the auth+check marker block lives inside the consumer's customised file. Confirm marker survival under typical consumer ci.yml restructuring. Add an integration test fixture for this.
+Pre-v2.0.0 consumers running `bkit check` against v2.0.0 will see one-time advisory `legacy-bkit-envelope-detected — run pnpm bkit upgrade to migrate to v2.0.0 ownership model`. No blocker.
 
 ---
 
-## 7. Conversation context (for posterity)
+## 6. Conversation context (for posterity)
 
 This issue documents a real-time discovery during a consumer audit on 2026-05-09. The full conversation arc:
 
 1. Initial audit flagged that `app-gether-life/.github/workflows/ci.yml` had lost its `pnpm bkit check` step (Tier-3 drift, not gated). Fixed manually.
 2. While restoring `.cursor/hooks.json` top-level `hooks` array (also drifted from template), user questioned why the file contained duplicated content under `__bkit__` and at top level.
-3. Eight-turn discussion exposed that `__bkit__` exists for bkit-CLI bookkeeping (drift detection + safe upgrade) but that the architecture is overweight relative to the value delivered, especially given `.cursor/hooks.json`'s decorative payload.
+3. Eight-turn discussion exposed that `__bkit__` exists for bkit-CLI bookkeeping but the architecture is overweight relative to value delivered.
 4. User proposed: "template should be the intended working file; compare consumer to template; no non-functional code in working files." This was the right insight.
 5. Refined to: "every file has a bkit-owned scope; size can be 0% to 100%." Collapses Tier 1/2/3 into one model.
 6. Evaluated four mechanism candidates; selected hybrid.
-7. This issue.
+7. BAR-167 issue created.
+8. First /bkit-plan run produced plan-v3-checked.md (Phase 1 only, SINGLE complexity, summary CONCERNS — build-ready).
+9. Human review supplied four scope decisions via Linear comment (Phase 1+2+3 bundled, skip spike, etc.).
+10. This re-run produces plan-v4 incorporating all decisions.
 
-**Related decisions superseded:** DE-7 (cursor `__bkit__` schema spike), DE-8 (`__bkit__` envelope contract). Both should be marked "superseded by [this BAR-ID] (2026-05-09)."
-
+**Related decisions superseded:** DE-7, DE-8. Both should be marked "superseded by [BAR-167]".
 **Related knowledge:** KN-8 (Tier-2 deep-merge canonical) — supersede with new KN entry once v2.0.0 ships.
 
-**Manual fixes applied during the audit (not part of this redesign):**
+**Manual fixes applied during the audit (not part of v2.0.0 plan):**
+- `app-gether-life/.github/workflows/ci.yml` — added `Run Bkit Check` step
+- `app-gether-life/.cursor/hooks.json` — restored top-level `hooks` array
 
-* `app-gether-life/.github/workflows/ci.yml` — added `Run Bkit Check` step
-* `app-gether-life/.cursor/hooks.json` — restored top-level `hooks` array (will be schema-clean once v2.0.0 ships and `__bkit__` is stripped via migration)
+---
 
-## Comments
+## 7. Linear comments at re-run start
 
-(none)
+### Comment 1 (older) — Plan Workflow log from first /bkit-plan run
+
+The first run produced plan-v3-checked.md with summary verdict CONCERNS, complexity SINGLE, build-ready under Phase 1 scope. Full verdict trail and 24-task runbook captured in `docs/plans/drafts/bar-167-drop-envelope-hybrid-plan.md` (still on disk as historical reference).
+
+### Comment 2 (newer) — Plan-Phase Clarifications
+
+The four binding scope decisions for plan-v4 (see Section 3 above).
+
+### Comment 3 (newest) — Plan Workflow (re-run) Step 1
+
+This run's start-workflow header. Same comment will accumulate Step 2..11 sections as the re-run proceeds.
+
+---
 
 ## Parent design
 
