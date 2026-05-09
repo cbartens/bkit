@@ -120,6 +120,15 @@
         "at": "2026-05-09T00:25:40Z",
         "commitSha": "0a9d7cf4bb87e4d085c3fa4b500b7eeee9e91779",
         "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T00:26:59Z",
+        "commitSha": "5b76764e94ed406ec86143a53de372d535cc39dc",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/build-input.md"
+        ]
       }
     ]
   }
