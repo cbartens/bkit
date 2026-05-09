@@ -2,7 +2,7 @@
   {
     "workflow": "plan",
     "startedAt": "2026-05-09T11:51:43Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -99,6 +99,13 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"
         ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T12:36:30Z",
+        "commitSha": "6a28fa22951619a6dc8c3787c4414f08aecc31eb",
+        "artifacts": []
       }
     ]
   }
