@@ -29,6 +29,19 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v1-draft.md"
         ]
+      },
+      {
+        "step": "review-plan",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 8,
+        "at": "2026-05-09T01:50:36Z",
+        "commitSha": "7637f0c32b03c2f59c71ad0434cd56d161f0445b",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-1.md",
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-review-2.md"
+        ]
       }
     ]
   }
