@@ -233,3 +233,14 @@
 - **Severity:** critical
 - **Source:** debug
 - **Related:** BAR-148, build-challenge attempt 1 (commit `8e1c805957b3b7e607b2eb59e13e205e86a5ad0f`), debug attempt 0, `.agents/workflows/bkit-{plan,build,ship,debug,design}.md`, `.agents/scripts/release-workflow.test.ts` C8b
+
+## KN-18: bkit-ci-router FID must be derived from branch name, not directory scan (2026-05-09)
+
+- **Symptom:** On a long-lived branch that has inherited multiple historical FID directories from `dev`, `bkit-ci-router` Step 1 picks the alphabetically-first DONE/IN_PROGRESS directory instead of the branch's actual FID. The router dispatches `/bkit-ship` or `/bkit-debug` for the wrong feature, silently corrupting the wrong plan.
+- **Root cause:** FID was resolved via `ls docs/plans/logs/ | while read d; do ... done | head -1` — alphabetical sort. Any `dev`-inherited directories (e.g. `bar-100-*`) sort before the branch's own `bar-148-*`.
+- **Fix:** Derive FID directly from the branch name: `FID=$(echo "$BRANCH" | sed 's|^feat/||')`. The branch name is canonical and injected as `CI_RUN_HEAD_BRANCH` env var by the GHA trigger; no filesystem scan needed.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** build-challenge
+- **Related:** BAR-148, `.agents/workflows/bkit-ci-router.md`, `.claude/commands/bkit-ci-router.md`

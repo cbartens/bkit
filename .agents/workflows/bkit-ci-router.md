@@ -67,16 +67,11 @@ description: "CI Router — Autonomous post-CI ship/debug dispatch"
    [[ "$BRANCH" =~ ^feat/ ]] || { echo "Branch $BRANCH is not feat/**; no-op exit." >&2; exit 0; }
    ```
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
-3. Parse `{FID}` from `docs/plans/logs/` — find the directory whose most-recent `status.json` entry has `status` = `IN_PROGRESS` or most-recent `DONE` on branch `{BRANCH}`:
+3. Derive `{FID}` from branch name by stripping the `feat/` prefix:
    ```bash
-   FID=$(ls docs/plans/logs/ | while read d; do
-     s="docs/plans/logs/$d/status.json"
-     [ -f "$s" ] || continue
-     last_status=$(jq -r '.[-1].status // ""' "$s")
-     [ "$last_status" = "IN_PROGRESS" ] || [ "$last_status" = "DONE" ] && echo "$d" && break
-   done | head -1)
+   FID=$(echo "$BRANCH" | sed 's|^feat/||')
    ```
-   **If** `FID` empty → **Failure Path** with `Cannot resolve FID from docs/plans/logs/`.
+   **If** `FID` empty or equals `BRANCH` (i.e. prefix was not stripped) → **Failure Path** with `Cannot derive FID from branch name: {BRANCH}`.
 4. Read `status.json`:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"

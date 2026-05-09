@@ -1,7 +1,7 @@
-<!-- verdict:start -->
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Build Challenge Remediation Log
 
-DONE — Finding C9f: MAX_DEBUG_ATTEMPT negative assertion wrong — replaced .not.toContain("MAX_DEBUG_ATTEMPT") with two regex assertions that forbid actual shell reads/comparisons ($\{?MAX_DEBUG_ATTEMPT\}? and MAX_DEBUG_ATTEMPT\s*[<>=!-]) while permitting documentation prose (.agents/scripts/release-workflow.test.ts:412-416)
+DONE — Finding F1: bkit-ci-router FID derived from directory scan instead of branch name — replaced ls/while alphabetical scan with FID=$(echo "$BRANCH" | sed 's|^feat/||') in .agents/workflows/bkit-ci-router.md and .claude/commands/bkit-ci-router.md
