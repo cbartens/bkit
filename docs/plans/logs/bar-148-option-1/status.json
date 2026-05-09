@@ -112,7 +112,7 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-09T00:25:38Z",
-    "status": "IN_PROGRESS",
+    "status": "FAILED",
     "steps": [
       {
         "step": "start-workflow",
@@ -204,6 +204,18 @@
         "commitSha": "4dd07d8b8247483cdcfdcb67ad70a8f01fe971a1",
         "artifacts": [
           "docs/plans/logs/bar-148-option-1/build-challenge-tests.md"
+        ]
+      },
+      {
+        "step": "build-challenge",
+        "status": "DONE",
+        "verdict": "FAIL",
+        "attempt": 1,
+        "failures": 1,
+        "at": "2026-05-09T01:12:03Z",
+        "commitSha": "8e1c805957b3b7e607b2eb59e13e205e86a5ad0f",
+        "artifacts": [
+          "docs/plans/logs/bar-148-option-1/build-challenge.md"
         ]
       }
     ]
