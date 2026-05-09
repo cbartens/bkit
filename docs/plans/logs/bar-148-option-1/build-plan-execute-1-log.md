@@ -29,11 +29,8 @@ DONE — Task C7-C9g: Add all release-workflow.test.ts authoring-conventions + s
 DONE — Task D2: Update .agents/docs.md and template mirror with CI-Router column in workflow matrix — added CI-Router column to both .agents/docs.md and .agents/templates/.agents/docs.md
 DONE — Task D3: Update .agents/prompts.md with /bkit-ci-router entry in orchestrators table and GHA-trigger note — added row and note clarifying it is a GHA-triggered workflow not a human slash command (.agents/prompts.md)
 DONE — Task D5: Append KN-15 (stale-CI-run dispatch hazard) to docs/knowledge.md — appended after KN-14 (docs/knowledge.md)
-DONE — Task D4: Verified DE-14 and DE-15 in docs/decisions.md — both entries present at lines 156–174; no duplicates appended (docs/decisions.md)
+DONE — Task D4: Verified DE-14 and DE-15 in docs/decisions.md — both entries present at lines 156-174; no duplicates appended (docs/decisions.md)
 DONE — Task D6: Updated docs/deployments.md with ANTHROPIC_API_KEY and Auto label sections — added "Required GHA secrets for bkit-ci-router (Option 1)" and "Linear label Auto opt-in" subsections (docs/deployments.md)
-DONE — Task D7: Verified existing entries; appended MAX_DEBUG_ATTEMPT reconsideration entry to docs/pending.md — "Per-PR opt-in alternative" at lines 143–151 and "Router dead-letter / retry policy" at lines 153–161 confirmed present; new entry appended (docs/pending.md)
+DONE — Task D7: Verified existing entries; appended MAX_DEBUG_ATTEMPT reconsideration entry to docs/pending.md — "Per-PR opt-in alternative" at lines 143-151 and "Router dead-letter / retry policy" at lines 153-161 confirmed present; new entry appended (docs/pending.md)
 DONE — Phase E: Mirror regen complete via pnpm bkit install; pnpm check:dist ran (dist rebuilt + formatted); pnpm bkit check exited 0 (0 writes); all lint/typecheck gates pass
-
-<!-- verdict:start -->
-Verdict: PASS
-<!-- verdict:end -->
+DONE — Fresh build cycle review (2026-05-09): all plan tasks verified complete against physical file state; lint/typecheck/format all pass (0 errors)
