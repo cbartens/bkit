@@ -159,3 +159,13 @@
 - **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
+
+## Cursor v1 keyed-object schema deeper validation if Task 0a spike surfaces issues (2026-05-09)
+
+- **Type:** issue
+- **Category:** infra
+- **Severity:** low
+- **Status:** deferred
+- **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
+- **Source:** phase
+- **Related:** BAR-167, DE-7, DE-16
