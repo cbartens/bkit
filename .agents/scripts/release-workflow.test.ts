@@ -486,6 +486,10 @@ const ROUTER_FILES = [
     label: ".claude/commands/bkit-ci-router.md (mirror)",
     filePath: path.resolve(".claude/commands/bkit-ci-router.md"),
   },
+  {
+    label: ".cursor/commands/bkit-ci-router.md (mirror)",
+    filePath: path.resolve(".cursor/commands/bkit-ci-router.md"),
+  },
 ];
 
 for (const { label, filePath } of ROUTER_FILES) {

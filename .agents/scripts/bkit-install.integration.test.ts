@@ -840,19 +840,16 @@ describe("C3 — canonicalHashes records bkit-ci-router.yml path after auto modu
     for (const cb of postDispatch) cb();
 
     const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
-    if (!fs.existsSync(versionFile)) {
-      // .bkit-version may not be written if template dirs are missing in test env; skip gracefully
-      return;
-    }
+    expect(fs.existsSync(versionFile)).toBe(true);
+
     const bkitVersion = readBkitVersion(versionFile);
     const routerKey = Object.keys(bkitVersion?.canonicalHashes ?? {}).find((k) =>
       k.includes("bkit-ci-router.yml"),
     );
-    // If the auto module wrote the file, the canonicalHash must be recorded
+    expect(routerKey).toBeDefined();
+    expect(bkitVersion?.canonicalHashes?.[routerKey!]).toMatch(/^[0-9a-f]{64}$/);
+
     const routerFile = path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml");
-    if (fs.existsSync(routerFile)) {
-      expect(routerKey).toBeDefined();
-      expect(bkitVersion?.canonicalHashes?.[routerKey!]).toMatch(/^[0-9a-f]{64}$/);
-    }
+    expect(fs.existsSync(routerFile)).toBe(true);
   });
 });
