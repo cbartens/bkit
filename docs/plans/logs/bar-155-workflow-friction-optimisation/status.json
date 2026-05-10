@@ -292,6 +292,16 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-input.md"
         ]
+      },
+      {
+        "step": "merge-pr",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-10T11:04:24Z",
+        "commitSha": "3a8f5b22b5800d438997faf50452c294d54a9606",
+        "artifacts": []
       }
     ]
   }
