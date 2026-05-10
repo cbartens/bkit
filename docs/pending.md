@@ -199,3 +199,13 @@
 - **Description:** `bkit-build.md` Step 2 (Branch Sync) still uses the bare `git rebase origin/dev || { echo ...; exit 1; }` anti-pattern (same shape as the Fix 5 target in `bkit-ship.md` Step 2). BAR-155 Fix 5 scoped to `bkit-ship.md` only. Carry-over as a follow-up issue — replace with sentinel-file Failure Path routing identical to `bkit-ship.md` Step 2 post-fix.
 - **Source:** phase
 - **Related:** BAR-155, `.agents/workflows/bkit-build.md` Step 2, `.agents/workflows/bkit-ship.md` Step 2
+
+## Cursor v1 keyed-object schema deeper validation if Task 0a spike surfaces issues (2026-05-09)
+
+- **Type:** issue
+- **Category:** infra
+- **Severity:** low
+- **Status:** deferred
+- **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
+- **Source:** phase
+- **Related:** BAR-167, DE-7, DE-16

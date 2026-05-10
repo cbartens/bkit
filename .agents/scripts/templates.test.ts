@@ -4,8 +4,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
+import { CANONICAL_OVERWRITE_RELPATHS } from "./bkit-modules";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
+const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
 
 describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
   let content: string;
@@ -52,4 +54,37 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });
+});
+
+// BAR-165: canonical-overwrite content must be ignored by consumer prettier.
+// bkit force-overwrites CANONICAL_OVERWRITE_RELPATHS on every install. Consumer
+// prettier may resolve a narrower printWidth (default 80 vs bkit's 100) and fail
+// pnpm format:check on width-sensitive lines that the consumer cannot edit
+// (next install reverts the rewrite). The fix: list every canonical-overwrite
+// path in the bkit-managed block of .agents/templates/.prettierignore.
+describe("consumer .prettierignore template (.agents/templates/.prettierignore)", () => {
+  const content = fs.readFileSync(CONSUMER_PRETTIERIGNORE_TEMPLATE, "utf-8");
+
+  it("template file exists", () => {
+    expect(fs.existsSync(CONSUMER_PRETTIERIGNORE_TEMPLATE)).toBe(true);
+  });
+
+  it("contains the bkit-managed block markers", () => {
+    expect(content).toContain("# bkit:start");
+    expect(content).toContain("# bkit:end");
+  });
+
+  // The invariant: every canonical-overwrite path is listed inside the bkit
+  // block. Adding to CANONICAL_OVERWRITE_RELPATHS without updating this file
+  // re-introduces the BAR-165 silent-coupling bug for consumers whose prettier
+  // config diverges from bkit's printWidth.
+  const startIdx = content.indexOf("# bkit:start");
+  const endIdx = content.indexOf("# bkit:end");
+  const managedBlock = content.slice(startIdx, endIdx);
+
+  for (const relPath of CANONICAL_OVERWRITE_RELPATHS) {
+    it(`canonical-overwrite path is listed inside bkit block: ${relPath}`, () => {
+      expect(managedBlock).toContain(relPath);
+    });
+  }
 });
