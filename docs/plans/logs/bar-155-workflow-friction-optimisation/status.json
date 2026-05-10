@@ -271,5 +271,11 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-10T10:55:42Z",
+    "status": "IN_PROGRESS",
+    "steps": []
   }
 ]
