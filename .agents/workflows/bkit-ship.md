@@ -139,6 +139,7 @@ description: "Ship Feature — Autonomous merge and archive"
    fi
    ```
 2. Create/resume the worktree:
+
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    git worktree prune  # clean stale entries first
@@ -194,10 +195,11 @@ description: "Ship Feature — Autonomous merge and archive"
    git add "$STATUS" && git commit -m "chore({FID}): worktree-setup status"
    ```
 10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 2 — Worktree Setup
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   ```
+
+```comment
+### Step 2 — Worktree Setup
+[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+```
 
 ### 🔒 Gate 2 — Worktree Setup
 
