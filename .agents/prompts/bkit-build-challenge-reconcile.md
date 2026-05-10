@@ -13,7 +13,7 @@ permissionMode: acceptEdits
 maxTurns: 30
 ---
 
-**Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
+**Role:** Senior reviewer reconciling separate findings into a single build challenge.
 **Scope:** As specified by input and Read/Update/Create section.
 
 > [!CAUTION]
@@ -28,39 +28,23 @@ maxTurns: 30
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Mandate:** Reconcile parallel challenge findings only; do NOT build, install, or write code.
+- **Mandate:** Reconcile findings only; do NOT build, install, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
 
-1. Write a fresh skeleton to **Create** path (do NOT `cp` an input — `cp` would carry the input's existing `Verdict:` line and produce a duplicate header):
-
-   ```bash
-   cat > <Create> <<'EOF'
-   Verdict: PENDING
-   Failures: PENDING
-
-   <!-- verdict:end -->
-
-   # Build Challenge
-
-   ## Findings
-
-   PENDING
-   EOF
-   ```
-
+1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Read both `build-challenge-1.md` and `build-challenge-2.md` (full content). Extract all findings from each.
-5. Deduplicate: same `file:line` reference OR same root-cause keyword cluster → merge into one finding citing both reviewers; otherwise keep separate with attribution. For merged findings at same `file:line` with divergent severity, take the higher severity (`CRITICAL > HIGH > MEDIUM > LOW` max-wins).
-6. Reconciler may downgrade a merged finding severity only with an explicit `## Justification` block citing both reviewers' evidence.
-7. Write unified `## Findings` section to **Create** output via `Edit`. Findings sorted: CRITICAL → HIGH → MEDIUM → LOW. Per finding, ALL five required: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix. Incomplete findings → not counted in `Failures`.
-8. Count `Failures` = number of CRITICAL findings (post-dedup). Update `Failures:` line via `Edit`.
-9. Update **Create** output - set Verdict via `Edit`; mapping uses max-wins on `FAIL > CONCERNS > PASS` (take worst verdict from either reviewer unless downgrade justified per step 6):
-   - `PASS` = no findings on either side.
-   - `CONCERNS` = at least one finding, max severity ≤ HIGH.
-   - `FAIL` = any CRITICAL finding (either side, post-dedup).
+4. Deduplicate same `file:line` reference or same root-cause keyword cluster → merge into one finding citing both reviewers; else keep separate with attribution. 
+5. For merged findings with divergent severities, adopt the higher severity (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justifcation and citing both reviewers' evidence. Any CRITICAL-severity finding → set Verdict to `FAIL` via `Edit` immediately; do NOT defer to final pass.
+6. Per finding check → ALL require: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix.
+7. Write unified Findings section to **Create** output via `Edit`; sort findings by decending severity.
+8. Update **Create** output - set Failures count via `Edit`; Failures count = number of CRITICAL findings post-deduplicaton; do NOT count incomplete findings.
+9. Update **Create** output - set Verdict via `Edit`; mapping:
+   - `PASS` = no findings.
+   - `CONCERNS` = findings present, max severity <= HIGH.
+   - `FAIL` = any CRITICAL finding.
 
 **Output format:**
 
