@@ -39,10 +39,6 @@ tools:
 **Output format:**
 
 ```markdown
-Verdict: PASS | FAIL
-
-<!-- verdict:end -->
-
 # Debug Observe Reversion
 
 [Brief: what was reverted, post-revert state]

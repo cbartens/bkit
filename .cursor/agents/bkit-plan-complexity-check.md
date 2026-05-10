@@ -30,11 +30,11 @@ tools:
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Count tasks via `grep -cE '^- \[ \] \*\*Task'` or equivalent task marker; record `TASK_COUNT` in rationale. Count 🔒 Gates, domain areas (API, DB, web UI, mobile, infra).
+3. Count tasks via `grep -cE '^- \[ \] \*\*Task'` or equivalent task markers. Count 🔒 Gates and domain areas (API, DB, web UI, mobile, infra).
 4. Estimate total agent tokens required to execute the plan.
 5. Verdict mapping:
-   - `SINGLE` = estimated tokens ≤ 100K AND `TASK_COUNT` ≤ 15.
-   - `SPLIT` = estimated tokens > 100K OR `TASK_COUNT` > 15 (into sub-plans).
+   - `SINGLE` = estimated tokens ≤ 100K and task count ≤ 15.
+   - `SPLIT` = estimated tokens > 100K or task count > 15.
 6. Produce **Create** output.
 
 **Output format:**
@@ -48,7 +48,7 @@ Verdict: SINGLE | SPLIT
 
 ## Counts
 
-[`TASK_COUNT` = N tasks (grep `^- \[ \] \*\*Task`), 🔒 Gates, domain areas covered]
+[Tasks, 🔒 Gates, domain areas covered]
 
 ## Session Fit Estimate
 

@@ -49,10 +49,6 @@ tools:
 **Output format:**
 
 ```markdown
-Verdict: PASS | FAIL
-
-<!-- verdict:end -->
-
 # Debug Observe Instrumentation
 
 [Brief: what was instrumented + where + expected evidence]
