@@ -90,20 +90,20 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | Invariant | Rule |
 | --- | --- |
 | **Order** | Execute sequentially unless step explicitly says "in parallel". |
-| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path** with `Empty placeholder: {name}`. |
+| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. |
 | **Tools** | Verify every return; do NOT assume success. |
 | **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions ≠ compliance. |
 | **Artifacts** | `Write:` artifact IS the deliverable; always emit; assert non-empty; empty → **Failure Path**. |
 | **Gates** | Verify all checkboxes before next step. Skipped gate = invalid work. |
 | **No improv** | No ad-hoc task lists, no skipping, no alternative approaches, no scope beyond the file. |
 | **Git** | Pre `add`/`commit`: log `git status --short`; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Pre `push`: assert `{BRANCH}` non-empty. |
-| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path** with `Not in worktree`. |
+| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
 | **Status** | `docs/plans/logs/{FID}/status.json` is central state file; ONE entry per step (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
 | **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) are mutually exclusive — drop old phase before adding new (see § Linear Integration). |
 | **Comments** | ONE Linear comment per workflow run; Step 1 creates, all later steps append (see § Linear Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
-| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`. |
+| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Existing lock under 2h old → Failure Path with `Workflow already running for {FID}`. Older lock → considered stale, removed and re-acquired. Released in Close Workflow and Failure Path. |
 
 ### `status.json` — workflow state SoT
@@ -238,7 +238,7 @@ After each call, capture returned `body` as new `{COMMENT_BODY}` so next step ap
 
 ```comment
 ### Workflow Failure
-Step: {N} — {Step Name}
+Step: {N} — {Step Name}; Sub-step: {M}
 Error: {error message / tool response}
 Stderr: {last 20 lines if shell}
 ```
@@ -334,7 +334,7 @@ If the agent terminates mid-stream after the verdict line is written, the orches
 4. **If invalid** (missing, empty, `PENDING`, or any other value):
    - Re-issue the same subagent with a tightening prompt: "Your prior output `{file}` is missing/invalid verdict. Re-emit ONLY the verdict header (`Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`) at the top of that file. Do NOT redo the work; the body is already in place."
    - Increment a local `VERDICT_RETRY` = 1.
-5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path** with `Subagent {name}: verdict invalid after retry`.
+5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
 6. Orchestrator NEVER synthesizes a verdict itself — that would mask truncation/budget signals that humans need to see.
 
 **Per-step gate item (universal for verdict-bearing steps):**

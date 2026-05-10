@@ -37,7 +37,7 @@ maxTurns: 50
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Update **Create** output after each finding — append finding entry at EOF via Bash `echo {log entry} >> {output}` as work progresses. Any CRITICAL-severity finding → set Verdict to `FAIL` via `Edit` immediately; do NOT defer to final pass.
+4. Update **Create** output after each finding — append finding entry at EOF via Bash `echo {finding} >> {output}` (heredoc form for multi-line findings) as work progresses. Any CRITICAL-severity finding → set Verdict to `FAIL` via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. Input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to scope of provided content.
 6. Explore ALL attack vectors:
    - Security: RLS bypasses, auth holes, injection, secret exposure, `NEXT_PUBLIC_*` leaks, missing validation.
