@@ -36,7 +36,7 @@ maxTurns: 30
 1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Deduplicate same `file:line` reference or same root-cause keyword cluster → merge into one finding citing both reviewers; else keep separate with attribution. 
+4. Deduplicate same `file:line` reference or same root-cause keyword cluster → merge into one finding citing both reviewers; else keep separate with attribution.
 5. For merged findings with divergent severities, adopt the higher severity (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justifcation and citing both reviewers' evidence. Any CRITICAL-severity finding → set Verdict to `FAIL` via `Edit` immediately; do NOT defer to final pass.
 6. Per finding check → ALL require: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix.
 7. Write unified Findings section to **Create** output via `Edit`; sort findings by decending severity.
