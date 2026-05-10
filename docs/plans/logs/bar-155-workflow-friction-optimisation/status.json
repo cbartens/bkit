@@ -331,6 +331,13 @@
         "artifacts": [
           "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-summary.md"
         ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-10T11:12:23Z",
+        "commitSha": "8570b1178da8ade74344352d4a78ddb2964e20b5",
+        "artifacts": []
       }
     ]
   }
