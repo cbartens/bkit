@@ -108,5 +108,191 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "build",
+    "startedAt": "2026-05-09T03:58:28Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T03:58:30Z",
+        "commitSha": "79beefdd1e3dd0d34d105358911a42ae82bbcb27",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-09T04:05:05Z",
+        "commitSha": "31590e286fa3e18b3158e9afb02b6b69235c07b3",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-input.md"
+        ]
+      },
+      {
+        "step": "branch-sync",
+        "status": "DONE",
+        "at": "2026-05-09T04:05:54Z",
+        "commitSha": "fd4cd5f2f27c735c6c632b722888afb903dcb603",
+        "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-09T04:07:13Z",
+        "commitSha": "5b162ba1fced6f37366a7b5f681caf622545e761",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-install-skills.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "at": "2026-05-09T04:23:07Z",
+        "commitSha": "f87f2d5edaffb05fe7b9cb1b35b44a76f80b92b0",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-execute-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-09T04:28:20Z",
+        "commitSha": "a3fbdc8cdd75a94a2319c755334b4ae979710557",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-verify-1-1.md"
+        ]
+      },
+      {
+        "step": "plan-gaps-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "strategy": "STANDARD",
+        "at": "2026-05-09T04:31:40Z",
+        "commitSha": "880921cfb16ae96361eb75c7881d8e53b376b244",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-gaps-remediate-1-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 2,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-09T04:34:21Z",
+        "commitSha": "63dfa18a4327db147d2c33a6ce52b55b728550ce",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-plan-verify-1-2.md"
+        ]
+      },
+      {
+        "step": "build-challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 0,
+        "failures": 0,
+        "at": "2026-05-09T04:41:47Z",
+        "commitSha": "fca048e55b22f7e470a0d1ad6cfb694ce6d2825f",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge.md"
+        ]
+      },
+      {
+        "step": "build-challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T04:46:19Z",
+        "commitSha": "6e587831f4b49e86ea685f64d95bea136f7d4877",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge-remediate-log.md"
+        ]
+      },
+      {
+        "step": "build-challenge-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T04:53:04Z",
+        "commitSha": "91269ead94baca5cbe159640234def7bde8e37d7",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge-tests.md",
+          ".agents/scripts/bar-155-regression.test.ts"
+        ]
+      },
+      {
+        "step": "run-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-09T04:54:35Z",
+        "commitSha": "86de382d8b13c5aad617e3f588d28d7cd8f2769e",
+        "artifacts": []
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-09T04:56:43Z",
+        "commitSha": "c337e753c443338dea00c71079b30e296c9d1651",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md"
+        ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-09T04:58:17Z",
+        "commitSha": "f7746f8dba7ba1384af7c36ec4cb5b478eb281ba",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/17"
+        ]
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-09T04:59:32Z",
+        "commitSha": "896247a2275a8101bd4461adc9e759aea66b685b",
+        "artifacts": []
+      }
+    ]
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-10T10:55:42Z",
+    "status": "IN_PROGRESS",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-10T10:55:43Z",
+        "commitSha": "4a5a8db723884887d8fa16d5a4c56a80f7fa01f1",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-10T11:01:07Z",
+        "commitSha": "31bcaa6049e3e8fe9c1a41fa63a568c52cff8a22",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-input.md"
+        ]
+      }
+    ]
   }
 ]

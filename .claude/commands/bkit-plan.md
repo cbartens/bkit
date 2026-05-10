@@ -186,6 +186,16 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
 
 ## 🧠 Step 3 — Generate Plan
 
+0. Assert `plan-input.md` exists:
+   ```bash
+   [ -e "docs/plans/logs/{FID}/plan-input.md" ] || { echo "plan-input.md missing — run /bkit-plan first or recreate from Linear issue body" >&2; exit 1; }
+   ```
+   **If** file missing → **Failure Path** with `plan-input.md missing`.
+   Count distinct `BAR-N` tokens inside `## Linear Issue:` heading section only (NOT anywhere in prose):
+   ```bash
+   BAR_COUNT=$(awk '/^## Linear Issue:/{flag=1; next} /^## /{flag=0} flag' "docs/plans/logs/{FID}/plan-input.md" | grep -oE 'BAR-[0-9]+' | sort -u | wc -l | tr -d ' ')
+   ```
+   **If** `BAR_COUNT` > 1 → **Failure Path** with `Multi-issue plan-input not supported. Split into one plan-input per Linear issue.`
 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-input.md`
@@ -209,6 +219,7 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
 
 ### 🔒 Gate 3 — Generate Plan
 
+- [ ] Multi-issue gate passed (`BAR_COUNT` ≤ 1, scoped to `## Linear Issue:` section)
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
 - [ ] Workflow status updated (step `generate-plan` recorded with `commitSha`)
@@ -376,6 +387,11 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
    Create: `docs/plans/logs/{FID}/plan-complexity-check.md`
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `plan-complexity-check.md` until `<!-- verdict:end -->` → extract `Verdict` as `COMPLEXITY_VERDICT` (`SINGLE` = no split, `SPLIT` = partition required).
+   3a. Deterministic task-count override:
+   ```bash
+   TASK_COUNT=$(grep -cE '^- \[ \] \*\*Task' "docs/plans/logs/{FID}/plan-v3-checked.md" || echo 0)
+   ```
+   **If** `TASK_COUNT` > 15 → override `COMPLEXITY_VERDICT` to `SPLIT` regardless of subagent verdict.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -396,6 +412,7 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
 - [ ] `COMPLEXITY_VERDICT` extracted
+- [ ] Task-count gate evaluated (`TASK_COUNT` ≤ 15 → `SINGLE` candidate; > 15 → forced `SPLIT`)
 - [ ] Workflow status updated (step `complexity-check` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 

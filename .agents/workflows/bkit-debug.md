@@ -17,18 +17,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Failures:** Any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls → else **Failure Path** with `Empty placeholder: {name}`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls → else **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; When `failures` field present cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. Existing lock <2h old → **Failure Path** with `{FID} workflow already running`. Older lock → consider stale, remove and re-acquire.
+> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. Existing lock <2h old → **Failure Path**. Older lock → consider stale, remove and re-acquire.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path** with `Not in worktree`.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
-> - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
+> - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
@@ -47,7 +47,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
-   Step: {N} — {Step Name}
+   Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
@@ -86,11 +86,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
-   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path** with `{FID} workflow already running`.
+   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path**.
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Debug"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path** with `save_issue returned no id`.
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Debug"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. Set `DEBUG_MODE` = pr if `PR_NUMBER` non-empty, **Else** `DEBUG_MODE` = local.
 7. Extract `DEBUG_ATTEMPT` and `PRIOR_OBSERVE_MODE` from most recent `workflow == "debug"` entry:
@@ -104,7 +104,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `OBSERVE_MODE` = instrument.
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
+10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
 11. Update status and commit:
     ```bash
     STATUS="docs/plans/logs/{FID}/status.json"
@@ -182,7 +182,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-3. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
+3. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**
 4. **If** `DEBUG_MODE` = pr → `RUN_ID` = `$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')` → `gh run view "$RUN_ID" --log-failed` → extract `CI_LOGS`. **Else** → `RUN_ID` = "", `CI_LOGS` = "N/A".
 5. Init `TEST_ATTEMPT` = 0.
 6. Create: `docs/plans/logs/{FID}/debug-input-${DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md` + `CI_LOGS`.
@@ -229,7 +229,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-   - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
+   - **Else** → **Failure Path**.
 
 2. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Debug: ${DEBUG_MODE}. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
@@ -419,8 +419,8 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
    {FID-debug-summary.md content verbatim}
    ```
 7. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-8. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path** with `Debug summary verdict: FAIL`.
-9. **Else** → **Failure Path** with `Unexpected debug summary verdict: {SUMMARY_VERDICT}`.
+8. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+9. **Else** → **Failure Path**.
 
 ### 🔒 Gate 7 — Summary
 
@@ -455,7 +455,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
      done
    fi
    ```
-   **If** pass → `OBSERVE_INSTRUMENT_VERDICT` = PASS. **Else** `OBSERVE_INSTRUMENT_VERDICT` = FAIL → **Failure Path** with `Observe instrumentation failed`.
+   **If** pass → `OBSERVE_INSTRUMENT_VERDICT` = PASS. **Else** `OBSERVE_INSTRUMENT_VERDICT` = FAIL → **Failure Path**.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -546,7 +546,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
    fi
    [ "$GREP_HITS" = "0" ] && [ "$TEST_OK" = "1" ] && OBSERVE_REVERT_VERDICT=PASS || OBSERVE_REVERT_VERDICT=FAIL
    ```
-   `FAIL` → **Failure Path** with `Observe revert incomplete, $GREP_HITS grep hits`.
+   `FAIL` → **Failure Path**.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -561,7 +561,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
    ```comment
    ### Step 10 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
    ```
-6. → **Failure Path** with `Observe complete — handover ready`. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `[skip ci]`, posts handover content to Linear, and terminates the workflow.
+6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `[skip ci]`, posts handover content to Linear, and terminates the workflow.
 
 ### 🔒 Gate 10 — Observe Revert
 
@@ -571,7 +571,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-d
 - [ ] `OBSERVE_REVERT_VERDICT` extracted
 - [ ] Workflow status updated (step `observe-revert` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 10` section)
-- [ ] Routed to **Failure Path** with `Observe complete — handover ready`
+- [ ] Routed to **Failure Path**
 
 ---
 

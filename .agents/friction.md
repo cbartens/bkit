@@ -69,3 +69,29 @@
 - **Related:** bar-148-option-1, build-challenge attempt 1
 - **Recovery:** Failure Path triggered; manual restart required (`/bkit-build bar-148 next`).
 - **Status:** OPEN
+
+## bkit-build worktree cwd drift — double-nested path from git rev-parse --show-toplevel (2026-05-09)
+
+- **Category:** tool-failure
+- **Workflow:** build
+- **Step:** 2 — Worktree Setup
+- **FID:** bar-155-workflow-friction-optimisation
+- **Source:** orchestrator
+- **Description:** Bash `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` run from INSIDE a worktree causes double-nesting: `git rev-parse --show-toplevel` returns the worktree root (not the main repo root), appending `.worktrees/{FID}` creates a non-repo path. git ls-files returned 0 results; git checkout of tracked files failed. Root cause: cwd was set to the worktree by a prior pnpm install step, so subsequent `git rev-parse --show-toplevel` evaluated inside the worktree.
+- **Suggested fix:** In bkit-build.md, replace `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` with a fixed absolute path reference or store REPO_ROOT from the main-repo context before entering the worktree.
+- **Related:** bar-155-workflow-friction-optimisation
+- **Recovery:** Used absolute path `cd /Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation` to navigate correctly. No code lost.
+- **Status:** RECOVERED
+
+## bkit-ship Step 2 bare `git rebase` fails on branches with merge commits (2026-05-10)
+
+- **Category:** tool-failure
+- **Workflow:** ship
+- **Step:** 2 — Worktree Setup
+- **FID:** bar-155-workflow-friction-optimisation
+- **Source:** orchestrator
+- **Description:** `git rebase origin/dev` (bare) failed with `docs/pending.md` conflict at commit `880921c` (plan-gaps-remediate sub-plan 1 attempt 1 work — 13 of 42 replays in). The branch already contained the full origin/dev history via an explicit merge commit (`4725094`), so the integration was complete and the PR (#17) was MERGEABLE on GitHub. Bare rebase replays each pre-merge bar-155 commit individually onto dev, re-introducing the additive `docs/pending.md` conflict that the prior merge had already resolved holistically. `git rebase --rebase-merges origin/dev` succeeded immediately (50/50 commits) by preserving the merge structure rather than linearising it.
+- **Suggested fix:** Two options — (a) replace `git rebase origin/dev` with `git rebase --rebase-merges origin/dev` in `bkit-ship.md` Step 2 so merge-integrated branches don't replay redundantly; (b) detect the "branch already contains origin/dev" case (`git merge-base HEAD origin/dev` == `git rev-parse origin/dev`) and skip rebase entirely. Either compatible with the Fix 5 sentinel-routing pattern landed in this PR.
+- **Related:** bar-155-workflow-friction-optimisation, BAR-155, BAR-169 (rebase-conflict gap), PR #17, merge commit `4725094`
+- **Recovery:** Switched to `git rebase --rebase-merges origin/dev` — succeeded with no conflicts. Branch state identical to merge-resolved state (HEAD `3b8f575`).
+- **Status:** OPEN

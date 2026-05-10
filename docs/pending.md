@@ -160,6 +160,36 @@
 - **Source:** phase
 - **Related:** BAR-148, DE-14
 
+## BAR-155 deferred — `task-range` parameter for `bkit-build-plan-execute` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans legitimately exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
+- **Source:** phase
+- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
+
+## BAR-155 deferred — KN/DE auto-renumber on rebase conflicts (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Automate renumbering of `KN-{N}` / `DE-{N}` ID sequences on rebase conflict in `docs/knowledge.md` / `docs/decisions.md`. Deferred — sed regex / cross-platform fragility; manual resolution acceptable at current frequency. Revisit if rebase conflicts on these files become recurring.
+- **Source:** phase
+- **Related:** BAR-155
+
+## BAR-155 deferred — focused-brief mode for `bkit-build-challenge` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a focused-brief mode to challenge prompts that narrows reviewer attention to a specific subsystem or diff slice. Dropped from BAR-155 scope — diversity over narrowing per DE-16 (parallel pair provides cross-model coverage; focused-brief risks correlated misses in both reviewers). Revisit if reconciler findings cluster around the same file:line across multiple runs.
+- **Source:** phase
+- **Related:** BAR-155, DE-16
+
 ## Cursor v1 keyed-object schema deeper validation if Task 0a spike surfaces issues (2026-05-09)
 
 - **Type:** issue

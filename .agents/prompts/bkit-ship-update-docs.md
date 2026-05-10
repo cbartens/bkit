@@ -46,10 +46,6 @@ maxTurns: 50
 **Output format:**
 
 ```markdown
-Verdict: PASS | FAIL
-
-<!-- verdict:end -->
-
 # Docs Update
 
 [Brief: which docs were updated, learnings extracted]

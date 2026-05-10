@@ -41,6 +41,7 @@ description: "Ship Feature — Autonomous merge and archive"
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    rm -f "docs/plans/logs/{FID}/.lock"
+   rm -f "docs/plans/logs/{FID}/.rebase-failed"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
 2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
@@ -51,7 +52,7 @@ description: "Ship Feature — Autonomous merge and archive"
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) → step 5. **Else** → step 12.
+4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2 do NOT false-evaluate as exceeded) OR rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**)
@@ -146,9 +147,16 @@ description: "Ship Feature — Autonomous merge and archive"
 
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
+     # Clear any stale sentinel from a prior failed rebase attempt before retrying
+     rm -f "docs/plans/logs/{FID}/.rebase-failed"
      # Rebase on latest dev to keep feature branch current
      git fetch origin dev
-     git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
+     if ! git rebase origin/dev; then
+       git rebase --abort 2>/dev/null || true
+       echo "Rebase conflict — routing to Failure Path" >&2
+       mkdir -p "docs/plans/logs/{FID}/"
+       touch "docs/plans/logs/{FID}/.rebase-failed"
+     fi
    else
      if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
        git worktree add "$WORKTREE_PATH" "feat/{FID}"
@@ -173,6 +181,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
+   3a. **If** sentinel `docs/plans/logs/{FID}/.rebase-failed` exists → **Failure Path** with `Step 2 — Worktree Setup: rebase conflict against origin/dev (manual resolution required)`.
 4. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
 5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **if** ANY failures → **Failure Path** with `PR #{PR_NUMBER} CI failures.`
@@ -197,6 +206,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
+- [ ] Rebase result captured (sentinel file `.rebase-failed` written to FID logs if rebase fails; Failure Path branched on sentinel presence)
 - [ ] On branch that passed eligibility
 - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
 - [ ] No PR CI failures confirmed

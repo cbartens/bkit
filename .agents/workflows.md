@@ -19,7 +19,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 .agents/workflows/
 ├── bkit-design.md         # Workflow 1/5 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/5 — 11 steps; hard stop after summary
-├── bkit-build.md          # Workflow 3/5 — 17 steps; CI takes over after PR
+├── bkit-build.md          # Workflow 3/5 — 18 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 8 steps; PR-debug or normal-debug mode
 ├── bkit-ship.md           # Workflow 5/5 — 10 steps; merge → archive → close
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
@@ -90,20 +90,20 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | Invariant | Rule |
 | --- | --- |
 | **Order** | Execute sequentially unless step explicitly says "in parallel". |
-| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path** with `Empty placeholder: {name}`. |
+| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. |
 | **Tools** | Verify every return; do NOT assume success. |
 | **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions ≠ compliance. |
 | **Artifacts** | `Write:` artifact IS the deliverable; always emit; assert non-empty; empty → **Failure Path**. |
 | **Gates** | Verify all checkboxes before next step. Skipped gate = invalid work. |
 | **No improv** | No ad-hoc task lists, no skipping, no alternative approaches, no scope beyond the file. |
 | **Git** | Pre `add`/`commit`: log `git status --short`; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Pre `push`: assert `{BRANCH}` non-empty. |
-| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path** with `Not in worktree`. |
+| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
 | **Status** | `docs/plans/logs/{FID}/status.json` is central state file; ONE entry per step (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
 | **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) are mutually exclusive — drop old phase before adding new (see § Linear Integration). |
 | **Comments** | ONE Linear comment per workflow run; Step 1 creates, all later steps append (see § Linear Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
-| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`. |
+| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Existing lock under 2h old → Failure Path with `Workflow already running for {FID}`. Older lock → considered stale, removed and re-acquired. Released in Close Workflow and Failure Path. |
 
 ### `status.json` — workflow state SoT
@@ -238,7 +238,7 @@ After each call, capture returned `body` as new `{COMMENT_BODY}` so next step ap
 
 ```comment
 ### Workflow Failure
-Step: {N} — {Step Name}
+Step: {N} — {Step Name}; Sub-step: {M}
 Error: {error message / tool response}
 Stderr: {last 20 lines if shell}
 ```
@@ -334,7 +334,7 @@ If the agent terminates mid-stream after the verdict line is written, the orches
 4. **If invalid** (missing, empty, `PENDING`, or any other value):
    - Re-issue the same subagent with a tightening prompt: "Your prior output `{file}` is missing/invalid verdict. Re-emit ONLY the verdict header (`Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`) at the top of that file. Do NOT redo the work; the body is already in place."
    - Increment a local `VERDICT_RETRY` = 1.
-5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path** with `Subagent {name}: verdict invalid after retry`.
+5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
 6. Orchestrator NEVER synthesizes a verdict itself — that would mask truncation/budget signals that humans need to see.
 
 **Per-step gate item (universal for verdict-bearing steps):**
@@ -398,7 +398,7 @@ Then assert each Update/Create artifact exists and is non-empty. Empty → **Fai
 | Agent | Verdict values | Routing |
 | --- | --- | --- |
 | `@bkit-build-plan-verify` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → next sub-plan or Step 8; `CONCERNS`/`FAIL` → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` = 3 → Failure Path). |
-| `@bkit-build-challenge` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → re-Step 9; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical|architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
+| `@bkit-build-challenge-reconcile` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 13; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11 → Step 12 → Step 13; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11 → Step 12 → re-Step 9; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical|architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
 | `@bkit-design-review-1` / `-2` | `PASS` / `CONCERNS` / `FAIL` | `REVIEW_VERDICT` = worst-of-two. `PASS`/`CONCERNS` → Step 6 apply-review; `FAIL` → Failure Path (design fundamentally not viable, human reframe required). |
 | `@bkit-design-update` | `PASS` / `CONCERNS` / `FAIL` | All paths continue to Step 7 design-organise; CRITICAL items applied, OPTIONAL applied on consensus, OUT-OF-SCOPE deferred. |
 | `@bkit-design-organise` | `PASS` / `CONCERNS` / `FAIL` | `PASS`/`CONCERNS` → Step 8 summary; `FAIL` → Failure Path (cycles detected, human review required). |
@@ -486,7 +486,7 @@ Each subsection below documents what command actually does — step list, subage
 
 **Hard stop in Step 11 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
 
-### `/bkit-build` — 17 steps
+### `/bkit-build` — 18 steps
 
 **Goal:** implementation + PR creation. CI takes over after PR exists. Workflow stops on PR creation; no human gate within build itself.
 
@@ -503,15 +503,16 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Verify Plan | `@bkit-build-plan-verify` | Per sub-plan N, attempt-numbered: `build-plan-verify-N-{VERIFY_ATTEMPT}.md`. Reads glob of execute attempts' `DONE —` lines to cross-reference against `git diff`; ticks plan `[ ]`→`[x]` only when codebase artifact verified (NEVER on `DONE —` claim alone). `VERIFY_VERDICT` ∈ {PASS, CONCERNS, FAIL}. `PASS` → next N or Step 8. `CONCERNS` / `FAIL` → Step 7. Reads prior verify and remediate logs to know what was already verified. |
 | 7 — Remediate Gaps | `@bkit-build-plan-gaps-remediate` _(only if Step 6 CONCERNS or FAIL)_ | Attempt-numbered: `build-plan-gaps-remediate-N-{VERIFY_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per gap fixed; `BLOCKED —` per blocked gap, appended via `Bash echo >>`); reads glob of own prior attempts to skip already-fixed gaps. Increment `VERIFY_ATTEMPT`; re-run Step 6. > `MAX_VERIFY_ATTEMPT` → Failure Path. |
 | 8 — Holistic Verification | `@bkit-build-plan-verify` (holistic mode) _(only if `SUB_COUNT` >= 2)_ | Cross-sub-plan integration check; writes `build-plan-verify-holistic.md`. `HOLISTIC_VERDICT` `FAIL` → Failure Path. |
-| 9 — Challenge Build | `@bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`. Each finding tagged `class: mechanical|architectural`. Large-diff guard: > 10 000 lines → per-file budget mode (top 20 files, 500 lines each, capped at 50 000 total; flag `partial` in report). `CHALLENGE_VERDICT`: `PASS` → Step 12. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. After Step 11 (when `CHALLENGE_VERDICT` was FAIL), re-runs Step 9. |
-| 10 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits `FAIL` (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). Verdict `PASS` / `CONCERNS` / `FAIL`. |
-| 11 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 9 (safety net; counter already incremented in Step 10); else falls through to Step 12. |
-| 12 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 15. `FAIL` → Step 13 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
-| 13 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 12 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. Add `Debug: Build` label. |
-| 14 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 12 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 12. > `MAX_TEST_ATTEMPT` → Failure Path. |
-| 15 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
-| 16 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `[force build]` → amend or empty commit with `[force build]` → push. PR body is the plan blob URL. Retry `gh pr create` once on failure. |
-| 17 — Close Workflow | — | Add `Review` label, `In Review`. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. |
+| 9 — Challenge Build (parallel) | `@bkit-build-challenge-1`, `@bkit-build-challenge-2` (parallel) | Launch parallel pair. Each reviewer gets same diff; `CHALLENGE_REMEDIATE_ATTEMPT` init 0 on first entry (persists across re-runs). Large-diff guard applied. Outputs: `build-challenge-1.md`, `build-challenge-2.md`. Both must be non-empty → Failure Path on partial (reconciler does not run on partial input). → Step 10. |
+| 10 — Reconcile Challenge | `@bkit-build-challenge-reconcile` | Merge `build-challenge-1.md` + `build-challenge-2.md` into unified `build-challenge.md`. Dedup same `file:line` or root-cause cluster; severity max-wins. Verdict max-wins (`FAIL > CONCERNS > PASS`). Extraction of `CHALLENGE_VERDICT`/`CHALLENGE_FAILURES` happens here. `PASS` → Step 13. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. |
+| 11 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 10 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits `FAIL` (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). Verdict `PASS` / `CONCERNS` / `FAIL`. → Step 12. |
+| 12 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 10 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 9 (safety net; counter persists, NOT reset); else falls through to Step 13. |
+| 13 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 16. `FAIL` → Step 14 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
+| 14 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 13 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. Add `Debug: Build` label. |
+| 15 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 13 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 13. > `MAX_TEST_ATTEMPT` → Failure Path. |
+| 16 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
+| 17 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `[force build]` → amend or empty commit with `[force build]` → push. PR body is the plan blob URL. Retry `gh pr create` once on failure. |
+| 18 — Close Workflow | — | Add `Review` label, `In Review`. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. |
 
 **Failure Path includes handover** — when triggered by exhausted retry counts, invokes `@bkit-debug-abort-handover` and posts `Workflow Handover` comment.
 
@@ -865,7 +866,7 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 | Verifier / checker | Remediator | Max attempts | Escalation |
 | --- | --- | --- | --- |
 | `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` = 3 | Failure Path |
-| `@bkit-build-challenge` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 10; one remediation max; `FAIL` triggers re-Challenge for verification, `CONCERNS` falls through without re-Challenge) | Failure Path on `FAIL` after remediate (covers both unrecoverable remediation and architectural-class findings) |
+| `@bkit-build-challenge-1` + `@bkit-build-challenge-2` (parallel pair) → `@bkit-build-challenge-reconcile` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 11; one remediation max; `FAIL` triggers re-Challenge for verification, `CONCERNS` falls through without re-Challenge) | Failure Path on `FAIL` after remediate (covers both unrecoverable remediation and architectural-class findings) |
 | Build test loop (`pnpm turbo`) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 per debug attempt; `MAX_DEBUG_ATTEMPT` = 3 outer | Failure Path with `@bkit-debug-abort-handover` |
 | Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |

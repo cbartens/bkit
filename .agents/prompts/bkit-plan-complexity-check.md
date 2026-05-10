@@ -33,11 +33,11 @@ maxTurns: 25
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Count tasks, 🔒 Gates, domain areas (API, DB, web UI, mobile, infra).
+3. Count tasks via `grep -cE '^- \[ \] \*\*Task'` or equivalent task markers. Count 🔒 Gates and domain areas (API, DB, web UI, mobile, infra).
 4. Estimate total agent tokens required to execute the plan.
 5. Verdict mapping:
-   - `SINGLE` = estimated tokens ≤ 100K.
-   - `SPLIT` = estimated tokens > 100K (into sub-plans).
+   - `SINGLE` = estimated tokens ≤ 100K and task count ≤ 15.
+   - `SPLIT` = estimated tokens > 100K or task count > 15.
 6. Produce **Create** output.
 
 **Output format:**

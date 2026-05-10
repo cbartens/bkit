@@ -172,3 +172,13 @@
 - **Discarded:** (1) Step 18 in `bkit-build` (chained orchestrator). Re-evaluate only if context budget grows materially and Resume contract is no longer canonical. (2) Embedded sub-agent inside `bkit-build` Failure Path — same context-window concern; Failure Path is for handover, not happy-path routing.
 - **Source:** phase
 - **Related:** BAR-148, DE-14, `.agents/workflows/bkit-build.md` (Step 17 unchanged), `.agents/workflows.md` § "Resume" / § "status.json"
+
+## DE-16: BAR-155 — Parallel `bkit-build-challenge` pair + reconcile (2026-05-09)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Replace single-reviewer `bkit-build-challenge.md` with a parallel pair (`bkit-build-challenge-1.md` effort:high/Opus + `bkit-build-challenge-2.md` effort:medium/Sonnet) and a new xhigh/Opus reconciler (`bkit-build-challenge-reconcile.md`). `/bkit-build` Step 9 launches the pair in parallel; new Step 10 runs the reconciler; former Steps 10–17 shift to 11–18. Severity ladder: canonical challenge `CRITICAL > HIGH > MEDIUM > LOW`; verdict ladder: `FAIL > CONCERNS > PASS` (max-wins). Dedup heuristic: same `file:line` OR same root-cause cluster → merge finding citing both reviewers; else keep separate. Downgrade only with explicit `## Justification` block citing both reviewers' evidence.
+- **Why:** Single-reviewer shape had same-model blind spots — identical to the regression that motivated `bkit-design-review-*` and `bkit-plan-review-*` parallel-pair convention. Cross-tier model diversity (Opus/high vs Sonnet/medium) reduces correlated misses without requiring focused-brief mode or sensitivity gating.
+- **Discarded:** (1) Focused-brief mode for `bkit-build-challenge` — diversity over narrowing; dropped per Linear issue Out of Scope. (2) Retrofit of existing `bkit-design-review-*` and `bkit-plan-review-*` with explicit model/thinking diversity — already verified Opus/high vs Sonnet/medium; Out of Scope. (3) Retry/backoff harness redesign — prompt/structure changes only per BAR-155 scope. (4) Diff-size or sensitivity gating for parallel launch — always-on is cheaper than threshold logic that gets ignored when it doesn't trigger.
+- **Source:** phase
+- **Related:** BAR-155, `.agents/prompts/bkit-build-challenge-1.md`, `.agents/prompts/bkit-build-challenge-2.md`, `.agents/prompts/bkit-build-challenge-reconcile.md`, `.agents/workflows/bkit-build.md`
