@@ -309,6 +309,28 @@
         "at": "2026-05-10T11:05:47Z",
         "commitSha": "165b588b6d9426a364177f512fc6df181726b268",
         "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-10T11:11:25Z",
+        "commitSha": "913cbebc2edb2d5f2a183aa5995c63d6c9bfe383",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-10T11:11:25Z",
+        "commitSha": "913cbebc2edb2d5f2a183aa5995c63d6c9bfe383",
+        "artifacts": [
+          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-summary.md"
+        ]
       }
     ]
   }
