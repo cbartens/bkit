@@ -302,6 +302,13 @@
         "at": "2026-05-10T11:04:24Z",
         "commitSha": "3a8f5b22b5800d438997faf50452c294d54a9606",
         "artifacts": []
+      },
+      {
+        "step": "switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-10T11:05:47Z",
+        "commitSha": "165b588b6d9426a364177f512fc6df181726b268",
+        "artifacts": []
       }
     ]
   }
