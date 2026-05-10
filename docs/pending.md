@@ -190,16 +190,6 @@
 - **Source:** phase
 - **Related:** BAR-155, DE-16
 
-## BAR-155 deferred — `bkit-build.md` Step 2 `git rebase || exit 1` anti-pattern carry-over (2026-05-09)
-
-- **Type:** issue
-- **Category:** agentic
-- **Severity:** normal
-- **Status:** deferred
-- **Description:** `bkit-build.md` Step 2 (Branch Sync) still uses the bare `git rebase origin/dev || { echo ...; exit 1; }` anti-pattern (same shape as the Fix 5 target in `bkit-ship.md` Step 2). BAR-155 Fix 5 scoped to `bkit-ship.md` only. Carry-over as a follow-up issue — replace with sentinel-file Failure Path routing identical to `bkit-ship.md` Step 2 post-fix.
-- **Source:** phase
-- **Related:** BAR-155, `.agents/workflows/bkit-build.md` Step 2, `.agents/workflows/bkit-ship.md` Step 2
-
 ## Cursor v1 keyed-object schema deeper validation if Task 0a spike surfaces issues (2026-05-09)
 
 - **Type:** issue
