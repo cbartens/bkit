@@ -84,6 +84,8 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 **Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and writes to same Linear comment by appending one fenced section.
 
+**Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/ .agents/friction.md` only; guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
+
 ### Execution Protocol — canonical invariants
 
 Lifted verbatim into every workflow's caution block. If you change one wording, change all five workflow files.

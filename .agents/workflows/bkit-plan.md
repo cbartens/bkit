@@ -83,7 +83,8 @@ description: "Plan Feature — Autonomous plan generation"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "plan" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"plan", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add "$STATUS" && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   git add docs/plans/ .agents/friction.md
+   git commit --allow-empty -m "chore({FID}): start-workflow work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
@@ -117,8 +118,8 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-     git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git add docs/plans/ .agents/friction.md
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
 2. Create/resume the worktree:
