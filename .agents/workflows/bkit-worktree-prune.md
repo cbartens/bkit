@@ -64,7 +64,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 6. `git worktree remove "$WORKTREE_PATH" --force`.
 7. `git worktree prune`.
 
-8. `git branch --list "{WORKTREE_BRANCH}"` → **if** local branch exists, ask:
+8. `git branch --list "{WORKTREE_BRANCH}"` → **If** local branch exists → ask:
 
    ```
    Delete local branch {WORKTREE_BRANCH}? [y/N]:
@@ -72,7 +72,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 
    **If** human says `y`:
    - `git branch -d {WORKTREE_BRANCH}` (safe delete — rejects if unmerged).
-   - **If** `-d` fails (unmerged) → ask: `Branch has unmerged changes. Force delete? [y/N]:` → **if** `y` → `git branch -D {WORKTREE_BRANCH}`.
+   - **If** `-d` fails (unmerged) → ask: `Branch has unmerged changes. Force delete? [y/N]:` → **If** `y` → `git branch -D {WORKTREE_BRANCH}`.
 
 9. Print:
 
