@@ -450,6 +450,16 @@
         "verdict": "PASS",
         "at": "2026-05-11T06:40:49Z",
         "artifacts": []
+      },
+      {
+        "step": "build-summary",
+        "status": "DONE",
+        "verdict": "SHIP",
+        "at": "2026-05-11T06:42:14Z",
+        "commitSha": "76fee502006707868a7f7706d93b787f9b248e47",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-summary.md"
+        ]
       }
     ]
   }
