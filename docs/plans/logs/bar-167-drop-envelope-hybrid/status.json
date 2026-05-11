@@ -295,6 +295,19 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-1.md"
         ]
+      },
+      {
+        "step": "plan-gaps-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "strategy": "STANDARD",
+        "at": "2026-05-11T05:24:23Z",
+        "commitSha": "874801f57583986965fb17542deef6266abc9284",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-gaps-remediate-1-1-log.md"
+        ]
       }
     ]
   }
