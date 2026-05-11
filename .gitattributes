@@ -4,9 +4,10 @@
 # Safe iff the file is strictly append-only-at-EOF (no post-write edits to existing entries).
 # Trade-off: silent duplicate KN-N / DE-N IDs if both branches allocate the same number
 # (renumbering already deferred separately, not a regression).
-docs/pending.md   merge=union
-docs/knowledge.md merge=union
-docs/decisions.md merge=union
-docs/completed.md merge=union
+docs/pending.md     merge=union
+docs/knowledge.md   merge=union
+docs/decisions.md   merge=union
+docs/completed.md   merge=union
+.agents/friction.md merge=union
 
 # <!-- bkit:end -->

@@ -136,7 +136,7 @@ description: "Ship Feature — Autonomous merge and archive"
      cd "$WORKTREE_PATH"
      rm -f "docs/plans/logs/{FID}/.rebase-failed"
      git fetch origin dev
-     if ! git rebase origin/dev; then
+     if ! git rebase --rebase-merges origin/dev; then
        CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
        if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
          git checkout --theirs pnpm-lock.yaml
@@ -414,6 +414,7 @@ description: "Ship Feature — Autonomous merge and archive"
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Manual reconciliation required." >&2; exit 1; }
    git pull --ff-only origin dev
+   pnpm install --frozen-lockfile
    ```
    **If** exit non-zero → **Failure Path**.
 2. Update status and commit:
