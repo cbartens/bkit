@@ -174,4 +174,3 @@ Root cause of the misclassification: the orchestrator's continuation prompt expl
 - **Related:** bar-133-chat-widget, BAR-133
 - **Recovery:** Ran `pnpm install --frozen-lockfile` on dev, retried `git push origin dev` — succeeded.
 - **Status:** RECOVERED
-
