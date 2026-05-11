@@ -501,6 +501,13 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-conflict-resolve.md"
         ]
+      },
+      {
+        "step": "switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-11T10:12:32Z",
+        "commitSha": "31648c1e9324a03f5c9cc6b3ae47865319da9927",
+        "artifacts": []
       }
     ]
   }
