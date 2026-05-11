@@ -5,7 +5,7 @@
 # work. Refuses the session if the issue isn't approved for automation.
 #
 # Trigger:  is_background_agent === true (received via stdin JSON).
-# Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
+# Guards:   `Auto` label present; issue state not in {Cancelled, Done}.
 # Setup:    See `.agents/README.md` § Linear setup.
 #
 # Cursor honours non-zero exit as a hard stop (failClosed: true) — non-zero
@@ -93,9 +93,9 @@ print(ident, state, labels if labels else "-")
 
 FAIL_REASON=""
 
-# Guard 1: `Automated` label must be present.
-if [[ ",${LABELS}," != *",Automated,"* ]]; then
-  FAIL_REASON="Automated label missing (labels: ${LABELS})"
+# Guard 1: `Auto` label must be present.
+if [[ ",${LABELS}," != *",Auto,"* ]]; then
+  FAIL_REASON="Auto label missing (labels: ${LABELS})"
 fi
 
 # Guard 2: Issue must not be in a terminal state.

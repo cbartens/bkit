@@ -10,9 +10,9 @@ This README covers what bkit does, how to install it, and what env / Linear setu
 
 A typical cycle for issue `BAR-123` "Add feature X":
 
-1. **Linear issue** is created with the **`Automated`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
+1. **Linear issue** is created with the **`Auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
 2. **Trigger** — either a comment in Linear (`@curspr /bkit-plan BAR-123`) or a slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
-3. **Workflow Step 1** — preflight hook checks the `Automated` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
+3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
 5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, `@bkit-plan-review-1` ‖ `@bkit-plan-review-2`, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
 6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `docs(bar-123-…): plan complete [skip build] [skip ci]` → push.
@@ -77,7 +77,7 @@ GH_TOKEN=""
 <!-- prettier-ignore -->
 | Variable | Where read | Purpose |
 | --- | --- | --- |
-| `LINEAR_API_KEY` | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for the `Automated` gate; fail-fast if absent. |
+| `LINEAR_API_KEY` | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for the `Auto` gate; fail-fast if absent. |
 | `LINEAR_WEBHOOK_SECRET` | Linear → Cursor integration backend | Verifies webhook signatures on `@curspr` mentions. Set in the Linear ↔ Cursor integration config. |
 | `CURSOR_API_KEY` | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
 | `ANTHROPIC_API_KEY` | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (e.g. cloud automation, CI runs). |
@@ -91,7 +91,7 @@ Bkit uses one custom Linear label, plus the standard Linear ↔ Cursor integrati
 
 #### Bkit custom label
 
-- **`Automated`** — present on issues approved for agent work. The preflight hooks call the Linear GraphQL API and refuse the session if the label is absent or the issue is in `Done` / `Cancelled`. Add this label to your Linear workspace before running any cloud / automation session.
+- **`Auto`** — present on issues approved for agent work. The preflight hooks call the Linear GraphQL API and refuse the session if the label is absent or the issue is in `Done` / `Cancelled`. Add this label to your Linear workspace before running any cloud / automation session.
 
 #### Linear ↔ Cursor integration labels (standard, not bkit-specific)
 
@@ -193,7 +193,7 @@ Mention `@curspr` in any Linear comment with a slash command and the issue ID:
 
 The Linear ↔ Cursor integration spawns a Cloud Agent session, posts the session URL back as a Linear comment, and the workflow runs unattended. Progress lands in subsequent comments as each step completes.
 
-**Requirements:** issue must carry the `Automated` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
+**Requirements:** issue must carry the `Auto` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
 
 ### From Claude Code (interactive — local)
 
