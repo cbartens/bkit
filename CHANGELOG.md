@@ -36,6 +36,7 @@ Format: `## [version] — YYYY-MM-DD`
 - **`bkit-paths.ts`** — new module exporting `getPkgRoot()`. Breaks `bkit-preflight ↔ bkit-modules` circular import. (BAR-167)
 - **Preflight advisories:** `legacy-bkit-envelope-detected` (advisory, fires when `__bkit__` present), `tier2-json-drift` (advisory, fires when `deepContains` fails for `.cursor/hooks.json` or `.claude/settings.json`). (BAR-167)
 - **Preflight blocker:** `pre-envelope-bkit-version-detected` (fires when `pinnedVersion < 0.8.0` AND no `__bkit__` — consumer must route through v1.x first). (BAR-167)
+- **`workflow_dispatch:` trigger added** to `.github/workflows/ci.yml` and the consumer `ci.yml` template. Allows manual CI runs on feat branches without an open PR (`gh workflow run ci.yml --ref feat/{FID}`). (BAR-167)
 
 ### Migration
 
