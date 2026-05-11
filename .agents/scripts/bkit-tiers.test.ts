@@ -912,6 +912,22 @@ describe("migrateLegacyBkitEnvelope", () => {
 });
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Phase 3 — bkit-tiers.ts doc-block terminology check (BAR-167 sub-plan C Task 26)
+// ---------------------------------------------------------------------------
+
+describe("Phase 3 — bkit-tiers.ts doc-block no Tier 1/2/3 strings", () => {
+  it("bkit-tiers.ts contains no 'Tier 1', 'Tier 2', or 'Tier 3' strings (single-model semantics)", () => {
+    const tiersPath = path.resolve(__dirname, "./bkit-tiers.ts");
+    expect(fs.existsSync(tiersPath)).toBe(true);
+    const content = fs.readFileSync(tiersPath, "utf-8");
+    // Reject any match of "Tier 1", "Tier 2", "Tier 3" (case-sensitive)
+    const matches = content.match(/Tier [123]/g);
+    expect(matches).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // cursor-v1-schema static sanity block (BAR-167 Phase 1)
 // ---------------------------------------------------------------------------
 

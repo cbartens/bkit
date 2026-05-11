@@ -131,7 +131,7 @@
 ## KN-9: .bkit-version migration reads must use readBkitVersion().pinnedVersion (2026-05-07)
 
 - **Category:** agentic
-- **Symptom:** `migrateTier1JsonToTier2` receives a full JSON string (e.g. `{"pinnedVersion":"0.8.0",...}`) instead of a semver string when `.bkit-version` is in v0.7.x+ JSON format. `semverLte` returns false for the JSON blob, silently skipping the Tier-1 → Tier-2 migration.
+- **Symptom (historical — `migrateTier1JsonToTier2` deleted in v2.0.0):** `migrateTier1JsonToTier2` received a full JSON string (e.g. `{"pinnedVersion":"0.8.0",...}`) instead of a semver string when `.bkit-version` was in v0.7.x+ JSON format. `semverLte` returned false for the JSON blob, silently skipping the legacy migration.
 - **Root cause:** The claude and cursor modules in `bkit-modules.ts` read `.bkit-version` with `fs.readFileSync(...).trim()` before the fix. This works for v0.6.x plain-text format but yields the full JSON string for v0.7.x+. `migrateTier1JsonToTier2` uses the value in a semver comparison — a JSON blob fails the comparison silently.
 - **Fix or rule:** Always read `.bkit-version` via `readBkitVersion(path).pinnedVersion` (or `parseBkitVersion(content).pinnedVersion`) — never with raw `readFileSync(...).trim()`. The helper handles all schema versions (v0.6.x plain-text, v0.7.x+ JSON) and returns null for absent/empty files.
 - **Type:** gotcha

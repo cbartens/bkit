@@ -24,6 +24,7 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import { getPkgRoot } from "./bkit-paths.js";
+import { getInstallManifest } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -358,13 +359,28 @@ export function runCoreModule(ctx: ModuleContext): void {
   postDispatch.push(() => {
     // Read existing file to check whether an update is needed.
     const existingVersion = readBkitVersion(versionFile);
-    const tier3Hashes = existingVersion?.tier3Hashes ?? {};
+    const existingTier3Hashes = existingVersion?.tier3Hashes ?? {};
     const existingCanonical = existingVersion?.canonicalHashes ?? {};
+
+    // Build the set of consumer-relative paths that have format "byte-equal-text".
+    // tier3Hashes is narrowed (v2.0.0+) to only these paths — json and markered-text
+    // formats use deepContains / marker extraction for drift detection, so they do NOT
+    // need a hash entry. ".agents/.bkit-version" is excluded (it is the version file
+    // itself, not a consumer-facing file).
+    const byteEqualPaths = new Set<string>(
+      getInstallManifest()
+        .filter(
+          (e) => e.format === "byte-equal-text" && e.path !== path.join(".agents", ".bkit-version"),
+        )
+        .map((e) => e.path),
+    );
 
     // Build new canonicalHashes entries from ws.writes (files written in this run).
     // ws.writes is fully populated by the time postDispatch runs.
     // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
     const newCanonicalEntries: Record<string, string> = {};
+    // Also record hashes for byte-equal-text files written in this run.
+    const newTier3Entries: Record<string, string> = {};
     for (const entry of ws.writes) {
       const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
       const relPath = path.relative(cwd, absPath);
@@ -372,8 +388,24 @@ export function runCoreModule(ctx: ModuleContext): void {
       if (relPath.startsWith(".agents" + path.sep)) continue;
       if (!fs.existsSync(absPath)) continue;
       const hash = hashFile(absPath);
-      if (hash) newCanonicalEntries[relPath] = hash;
+      if (hash) {
+        newCanonicalEntries[relPath] = hash;
+        // Narrow tier3Hashes to byte-equal-text format only.
+        if (byteEqualPaths.has(relPath)) {
+          newTier3Entries[relPath] = hash;
+        }
+      }
     }
+
+    // tier3Hashes: start from existing byte-equal-text entries only (drop any legacy wider entries),
+    // then merge new writes. Backward-compat: preserve existing entries for known byte-equal-text
+    // paths (uninstall safety — shouldDeleteTier3 needs the hash if the file was written before
+    // this narrowing landed).
+    const narrowedExistingTier3: Record<string, string> = {};
+    for (const [p, h] of Object.entries(existingTier3Hashes)) {
+      if (byteEqualPaths.has(p)) narrowedExistingTier3[p] = h;
+    }
+    const tier3Hashes: Record<string, string> = { ...narrowedExistingTier3, ...newTier3Entries };
 
     // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
     const canonicalHashes: Record<string, string> = {

@@ -258,7 +258,7 @@ pnpm exec bkit uninstall --ci --lint
 # Also strip managed package.json scripts/devDeps
 pnpm exec bkit uninstall --package
 
-# Force-delete Tier-3 files even if consumer modified them
+# Force-delete byte-equal-text files even if consumer modified them
 pnpm exec bkit uninstall --force
 
 # Delete ALL bkit files regardless of consumer modifications (confirm prompt)
@@ -267,13 +267,13 @@ pnpm exec bkit uninstall --nuke
 pnpm exec bkit uninstall --nuke --yes
 ```
 
-### Tier semantics during uninstall
+### Format semantics during uninstall
 
-| Tier                   | Behaviour                                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tier-1 (fully managed) | Always deleted (bkit owns 100% of the file).                                                                                                                   |
-| Tier-2 (managed-block) | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
-| Tier-3 (seed-or-print) | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
+| Format            | Behaviour                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fully-managed`   | Always deleted (bkit owns 100% of the file).                                                                                                                   |
+| `markered-text`   | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
+| `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
 
 ### Idempotency
 

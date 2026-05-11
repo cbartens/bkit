@@ -407,7 +407,7 @@ function ensureDir(dir: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Tier 1 — Fully managed (idempotent rewrite of whole file after token substitution)
+// fully-managed format — idempotent rewrite of whole file after token substitution
 //
 // Semantics: always writes the src content (with tokens applied) to dst.
 // If dst exists with identical content, no-op (no double-count in WriteSet).
@@ -440,7 +440,7 @@ export function writeTier1(
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2 — Managed-block (bkit owns content between markers; consumer owns rest)
+// markered-text format — managed-block (bkit owns content between markers; consumer owns rest)
 //
 // Semantics:
 //   - dest absent            → write whole file (with token substitution)
@@ -514,13 +514,13 @@ export function writeTier2(
 }
 
 // ---------------------------------------------------------------------------
-// Tier 3 — Seed-or-print (write if absent; if present, print suggested diff to printSink)
+// byte-equal-text format — seed-or-print (write if absent; if present, print suggested diff to printSink)
 //
 // Semantics:
 //   - dest absent  → write file; returns { wrote: true, suggested: false }
 //   - dest present → print suggested diff to printSink; returns { wrote: false, suggested: true }
 //
-// No token substitution (Tier 3 files are comment-less JSON / config — no placeholders).
+// No token substitution (byte-equal-text files are comment-less JSON / config — no placeholders).
 // dry-run: if dest absent, record in WriteSet but don't write; returns { wrote: false, suggested: false }
 // ---------------------------------------------------------------------------
 
