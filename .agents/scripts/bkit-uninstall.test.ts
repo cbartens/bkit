@@ -367,3 +367,79 @@ describe("runUninstall — nuke", () => {
     expect(fileExists(".github/workflows/ci.yml")).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// stripTier2JsonScope — pure JSON uninstall helper (BAR-167 Phase 1)
+// ---------------------------------------------------------------------------
+
+import { stripTier2JsonScope } from "./bkit-uninstall";
+import type { JsonValue } from "./bkit-tiers";
+
+describe("stripTier2JsonScope", () => {
+  it("leaf-deletion: removes template-owned leaf when equal to template", () => {
+    const template: Record<string, JsonValue> = {
+      hooks: { SessionStart: [{ command: "bash preflight.sh" }] },
+    };
+    const consumer: Record<string, JsonValue> = {
+      hooks: { SessionStart: [{ command: "bash preflight.sh" }] },
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    // hooks.SessionStart removed (equal to template); hooks is empty intermediate → pruned
+    expect(result.hooks).toBeUndefined();
+  });
+
+  it("consumer-only sibling preservation: consumer-only keys untouched", () => {
+    const template: Record<string, JsonValue> = {
+      hooks: { SessionStart: [{ command: "bash preflight.sh" }] },
+    };
+    const consumer: Record<string, JsonValue> = {
+      hooks: {
+        SessionStart: [{ command: "bash preflight.sh" }],
+        Stop: [{ command: "echo consumer" }],
+      },
+      customKey: "keep-me",
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    // SessionStart removed (template-equal); Stop preserved (consumer-only sibling)
+    expect((result.hooks as Record<string, JsonValue>).Stop).toBeDefined();
+    // customKey preserved (consumer-only top-level)
+    expect(result.customKey).toBe("keep-me");
+    // SessionStart gone
+    expect((result.hooks as Record<string, JsonValue>).SessionStart).toBeUndefined();
+  });
+
+  it("empty-intermediate pruning: prunes empty intermediate only where template populated it", () => {
+    const template: Record<string, JsonValue> = {
+      a: { b: { c: 1 } },
+    };
+    const consumer: Record<string, JsonValue> = {
+      a: { b: { c: 1 } }, // exactly matches template
+      other: "x",
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    // a.b.c removed; a.b empty → pruned; a empty → pruned
+    expect(result.a).toBeUndefined();
+    // other preserved
+    expect(result.other).toBe("x");
+  });
+
+  it("array preservation: arrays not template-equal are preserved", () => {
+    const template: Record<string, JsonValue> = {
+      permissions: { allow: ["Skill(*)"] },
+    };
+    const consumer: Record<string, JsonValue> = {
+      permissions: { allow: ["Skill(*)", "Bash(*)"] }, // consumer extended the allow list
+    };
+    const result = stripTier2JsonScope(consumer, template);
+    // Consumer permissions.allow differs from template → preserved
+    expect((result.permissions as Record<string, JsonValue>).allow).toBeDefined();
+  });
+
+  it("does not mutate consumer", () => {
+    const template: Record<string, JsonValue> = { a: 1 };
+    const consumer: Record<string, JsonValue> = { a: 1, b: 2 };
+    const consumerCopy = JSON.parse(JSON.stringify(consumer)) as Record<string, JsonValue>;
+    stripTier2JsonScope(consumer, template);
+    expect(consumer).toEqual(consumerCopy);
+  });
+});

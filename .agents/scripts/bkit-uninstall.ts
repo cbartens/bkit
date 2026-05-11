@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import { stripManagedBlock, type MarkerStyle } from "./bkit-tiers.js";
+import { stripManagedBlock, type MarkerStyle, type JsonValue } from "./bkit-tiers.js";
 import { getInstallManifest, type ManifestEntry, type ModuleName } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
@@ -95,6 +95,64 @@ function detectMarkerStyle(content: string): MarkerStyle | null {
   if (/^<!-- bkit:start -->$/m.test(content)) return "html-comment";
   if (/^# bkit:start$/m.test(content)) return "hash-comment";
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
+//
+// Pure function — no file I/O.
+//
+// Algorithm:
+//   1. Deep-clone consumer to `out`.
+//   2. Walk template; for each leaf path `p`:
+//      - If `out[p]` deep-equals template[p] → delete it from `out`.
+//      - Else leave it (consumer has customised it — preserve).
+//   3. Prune empty intermediate objects ONLY where template populated them
+//      (NOT arrays; NOT consumer-only siblings).
+//   4. Return `out`.
+//
+// Consumer-only keys at any level are preserved byte-identical.
+// ---------------------------------------------------------------------------
+
+export function stripTier2JsonScope(
+  consumerDoc: Record<string, JsonValue>,
+  templateDoc: Record<string, JsonValue>,
+): Record<string, JsonValue> {
+  const out = JSON.parse(JSON.stringify(consumerDoc)) as Record<string, JsonValue>;
+  _stripScope(out, templateDoc);
+  return out;
+}
+
+function _stripScope(consumer: Record<string, JsonValue>, template: Record<string, JsonValue>): void {
+  for (const key of Object.keys(template)) {
+    const tVal = template[key];
+    const cVal = consumer[key];
+    if (cVal === undefined) continue; // consumer doesn't have it — nothing to strip
+
+    if (
+      tVal !== null &&
+      typeof tVal === "object" &&
+      !Array.isArray(tVal) &&
+      cVal !== null &&
+      typeof cVal === "object" &&
+      !Array.isArray(cVal)
+    ) {
+      // Both plain objects — recurse into them
+      const tObj = tVal as Record<string, JsonValue>;
+      const cObj = cVal as Record<string, JsonValue>;
+      _stripScope(cObj, tObj);
+      // Prune empty intermediate only if template populated this key
+      if (Object.keys(cObj).length === 0) {
+        delete consumer[key];
+      }
+    } else {
+      // Leaf (primitive, array, null) — remove if deep-equal to template
+      if (JSON.stringify(cVal) === JSON.stringify(tVal)) {
+        delete consumer[key];
+      }
+      // else: consumer has a different value — preserve it
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

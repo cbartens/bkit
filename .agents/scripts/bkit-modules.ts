@@ -7,22 +7,23 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   writeTier1,
   writeTier2,
   writeTier3,
-  writeTier2Json,
-  migrateTier1JsonToTier2,
+  writeTier2JsonContained,
+  migrateLegacyBkitEnvelope,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
   type WriteSet,
+  type JsonValue,
 } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import type { TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
+import { getPkgRoot } from "./bkit-paths.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -86,12 +87,8 @@ function removeOrphans(
   return removed;
 }
 
-export function getPkgRoot(): string {
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  return scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)
-    ? path.resolve(scriptDir, "..", "..")
-    : path.resolve(scriptDir, "..");
-}
+// Re-export getPkgRoot from bkit-paths (lifted there to break the preflight ↔ modules cycle).
+export { getPkgRoot } from "./bkit-paths.js";
 
 // ---------------------------------------------------------------------------
 // Module context
@@ -463,29 +460,35 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const PKG_ROOT = getPkgRoot();
   const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
 
-  // Tier 2 JSON — deep-merge: settings.json (reclassified from Tier-1 in v0.8.0)
-  // Auto-migrate from Tier-1 shape (no __bkit__ envelope) before writing.
+  // Tier 2 JSON (contained) — deep-containment: settings.json
+  // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
   const settingsSrc = path.join(claudeTemplates, "settings.json");
   const settingsDst = ".claude/settings.json";
   if (fs.existsSync(settingsSrc)) {
-    // Run migration first (idempotent if already migrated)
-    const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
-    if (fs.existsSync(versionFile) && !dryRun) {
-      const parsed = readBkitVersion(versionFile);
-      const onDiskVersion = parsed?.pinnedVersion ?? "";
-      if (onDiskVersion) {
-        const migrated = migrateTier1JsonToTier2(
-          settingsDst,
-          ".claude/settings.json",
-          onDiskVersion,
-        );
-        if (migrated) {
-          console.log(`${logPrefix} ${tag}claude: ${settingsDst} (migrated Tier-1 → Tier-2)`);
+    // Run migration first (idempotent — strips __bkit__ envelope if present)
+    if (fs.existsSync(settingsDst) && !dryRun) {
+      try {
+        const raw = fs.readFileSync(settingsDst, "utf-8");
+        const doc = JSON.parse(raw) as Record<string, JsonValue>;
+        const templateRaw = fs.readFileSync(settingsSrc, "utf-8");
+        const template = JSON.parse(templateRaw) as Record<string, JsonValue>;
+        const result = migrateLegacyBkitEnvelope(doc, template);
+        if (result.stripped) {
+          // Write migrated doc atomically via temp file + rename
+          const tmpPath = `${settingsDst}.bkit-migrate-tmp`;
+          fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
+          fs.renameSync(tmpPath, settingsDst);
+          const variant = result.schemaFlipped
+            ? "schema flip applied (flat-array → keyed-object)"
+            : "stripped __bkit__ envelope";
+          console.log(`[bkit] migrated ${settingsDst} — ${variant} (v2.0.0)`);
         }
+      } catch {
+        // Malformed JSON — fall through to writeTier2JsonContained which handles it
       }
     }
     const prevLen = ws.writes.length;
-    writeTier2Json(settingsSrc, settingsDst, dryRun, ws);
+    writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
     }
@@ -553,26 +556,37 @@ export function runCursorModule(ctx: ModuleContext): void {
     }
   }
 
-  // Tier 2 JSON — deep-merge: hooks.json (reclassified from Tier-1 in v0.8.0)
+  // Tier 2 JSON (contained) — deep-containment: hooks.json
+  // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
   const PKG_ROOT = getPkgRoot();
   const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
   const hooksSrc = path.join(cursorTemplates, "hooks.json");
   const hooksDst = ".cursor/hooks.json";
   if (fs.existsSync(hooksSrc)) {
-    // Auto-migrate from Tier-1 shape before writing
-    const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
-    if (fs.existsSync(versionFile) && !dryRun) {
-      const parsed = readBkitVersion(versionFile);
-      const onDiskVersion = parsed?.pinnedVersion ?? "";
-      if (onDiskVersion) {
-        const migrated = migrateTier1JsonToTier2(hooksDst, ".cursor/hooks.json", onDiskVersion);
-        if (migrated) {
-          console.log(`${logPrefix} ${tag}cursor: ${hooksDst} (migrated Tier-1 → Tier-2)`);
+    // Run migration first (idempotent — strips __bkit__ envelope if present)
+    if (fs.existsSync(hooksDst) && !dryRun) {
+      try {
+        const raw = fs.readFileSync(hooksDst, "utf-8");
+        const doc = JSON.parse(raw) as Record<string, JsonValue>;
+        const templateRaw = fs.readFileSync(hooksSrc, "utf-8");
+        const template = JSON.parse(templateRaw) as Record<string, JsonValue>;
+        const result = migrateLegacyBkitEnvelope(doc, template);
+        if (result.stripped) {
+          // Write migrated doc atomically via temp file + rename
+          const tmpPath = `${hooksDst}.bkit-migrate-tmp`;
+          fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
+          fs.renameSync(tmpPath, hooksDst);
+          const variant = result.schemaFlipped
+            ? "schema flip applied (flat-array → keyed-object)"
+            : "stripped __bkit__ envelope";
+          console.log(`[bkit] migrated ${hooksDst} — ${variant} (v2.0.0)`);
         }
+      } catch {
+        // Malformed JSON — fall through to writeTier2JsonContained which handles it
       }
     }
     const prevLen = ws.writes.length;
-    writeTier2Json(hooksSrc, hooksDst, dryRun, ws);
+    writeTier2JsonContained(hooksSrc, hooksDst, dryRun, ws);
     if (ws.writes.length > prevLen) {
       console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
     }

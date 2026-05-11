@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# bkit:start
+
+pnpm typecheck && pnpm test && pnpm format:check
+
+# bkit:end
+# bkit-repo only: pnpm typecheck
+# bkit-repo only: pnpm test
+# bkit-repo only: pnpm format:check

@@ -879,3 +879,151 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     expect(ruleWrites.length).toBeGreaterThan(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// BAR-167 Phase 1 — JSON advisory and blocker integration tests
+// ---------------------------------------------------------------------------
+
+import {
+  detectLegacyBkitEnvelope,
+  detectTier2JsonDrift,
+  detectPreEnvelopeBkitVersion,
+} from "./bkit-preflight";
+import { writeBkitVersion } from "./bkit-version";
+
+describe("detectLegacyBkitEnvelope advisory", () => {
+  it("returns advisory when __bkit__ present at top-level of settings.json", () => {
+    const relPath = ".claude/settings.json";
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, relPath),
+      JSON.stringify({ __bkit__: { hooks: {} } }),
+      "utf-8",
+    );
+    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("legacy-bkit-envelope-detected");
+    expect(result!.severity).toBe("advisory");
+  });
+
+  it("returns null when __bkit__ is absent (v2.0.0 schema-clean)", () => {
+    const relPath = ".claude/settings.json";
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, relPath),
+      JSON.stringify({ hooks: { SessionStart: [] } }),
+      "utf-8",
+    );
+    const result = detectLegacyBkitEnvelope(tmpDir, relPath);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when file does not exist", () => {
+    expect(detectLegacyBkitEnvelope(tmpDir, ".claude/settings.json")).toBeNull();
+  });
+});
+
+describe("detectTier2JsonDrift advisory", () => {
+  it("returns advisory when consumer is missing a template key", () => {
+    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+    const pkgRoot = path.resolve(scriptsDir, "..", "..");
+    const relPath = ".claude/settings.json";
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    // Consumer missing bkit-owned hooks.SessionStart
+    fs.writeFileSync(
+      path.join(tmpDir, relPath),
+      JSON.stringify({ "$schema": "x", hooks: {} }),
+      "utf-8",
+    );
+    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("tier2-json-drift");
+    expect(result!.severity).toBe("advisory");
+  });
+
+  it("returns null when consumer contains the full template scope", () => {
+    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+    const pkgRoot = path.resolve(scriptsDir, "..", "..");
+    const relPath = ".cursor/hooks.json";
+    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    // Copy template as-is to consumer
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
+    const result = detectTier2JsonDrift(tmpDir, relPath, pkgRoot);
+    expect(result).toBeNull();
+  });
+});
+
+describe("detectPreEnvelopeBkitVersion blocker", () => {
+  it("returns blocker when pinnedVersion < 0.8.0 and no __bkit__ in JSON files", () => {
+    // Write .bkit-version with pre-envelope pin
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+      pinnedVersion: "0.7.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+    const result = detectPreEnvelopeBkitVersion(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("pre-envelope-bkit-version-detected");
+    expect(result!.severity).toBe("blocker");
+  });
+
+  it("returns null when pinnedVersion >= 0.8.0", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+      pinnedVersion: "0.8.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+    const result = detectPreEnvelopeBkitVersion(tmpDir);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when no .bkit-version exists (fresh install)", () => {
+    const result = detectPreEnvelopeBkitVersion(tmpDir);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when pinnedVersion < 0.8.0 but __bkit__ IS present (envelope install gone right)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+      pinnedVersion: "0.7.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+    });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify({ __bkit__: {} }),
+      "utf-8",
+    );
+    const result = detectPreEnvelopeBkitVersion(tmpDir);
+    expect(result).toBeNull();
+  });
+});
+
+// bkit uninstall .cursor/Dockerfile safe-delete row (Task 10)
+// Tests that Tier-3 safe-delete logic functions through shouldDeleteTier3
+import { shouldDeleteTier3, sha256 } from "./bkit-version";
+
+describe("bkit uninstall Dockerfile safe-delete (Tier-3 hash guard)", () => {
+  it("hash matches → shouldDeleteTier3 returns true (safe to delete)", () => {
+    const content = "FROM node:22-alpine\n";
+    const hash = sha256(content);
+    const tier3Hashes = { ".cursor/Dockerfile": hash };
+    const dstPath = path.join(tmpDir, "Dockerfile");
+    fs.writeFileSync(dstPath, content, "utf-8");
+    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(true);
+  });
+
+  it("consumer modified → shouldDeleteTier3 returns false (preserve)", () => {
+    const installContent = "FROM node:22-alpine\n";
+    const hash = sha256(installContent);
+    const tier3Hashes = { ".cursor/Dockerfile": hash };
+    const dstPath = path.join(tmpDir, "Dockerfile");
+    // Consumer modified the file
+    fs.writeFileSync(dstPath, "FROM node:22-alpine\nRUN apt-get install -y curl\n", "utf-8");
+    expect(shouldDeleteTier3(".cursor/Dockerfile", dstPath, tier3Hashes)).toBe(false);
+  });
+});
