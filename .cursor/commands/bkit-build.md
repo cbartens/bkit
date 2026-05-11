@@ -16,7 +16,7 @@
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. **If** existing lock <2h old → **Failure Path**. **If** existing lock older → consider stale, remove and re-acquire.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -37,7 +37,10 @@
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    git rebase --abort 2>/dev/null || true
-   rm -f "docs/plans/logs/{FID}/.lock"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
+   rm -f "$LOCK"
+   [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    rm -f "docs/plans/logs/{FID}/.rebase-failed"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
@@ -78,11 +81,24 @@
    git fetch origin dev 2>/dev/null
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
-   mkdir -p "docs/plans/logs/{FID}"
-   LOCK="docs/plans/logs/{FID}/.lock"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
+   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
+   STATUS_REL="docs/plans/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
-     LOCK_AGE=$(( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK") ))
-     [ $LOCK_AGE -lt 7200 ] && { echo "Lock held for {FID} (age ${LOCK_AGE}s): $(cat $LOCK). Stale? rm $LOCK" >&2; exit 1; }
+     LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
+     case "$LOCK_WORKFLOW" in
+       plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
+       *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
+     esac
+     LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
+     LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
+     LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
+     if [ "$LAST_STATUS" = "IN_PROGRESS" ] && [ -n "$LAST_AT" ]; then
+       LAST_EPOCH=$(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$LAST_AT" +%s 2>/dev/null || date -d "$LAST_AT" +%s)
+       IDLE=$(( $(date +%s) - LAST_EPOCH ))
+       [ "$IDLE" -lt 1800 ] && { echo "Workflow already running for {FID} (workflow=$LOCK_WORKFLOW, idle ${IDLE}s)" >&2; exit 1; }
+     fi
      rm -f "$LOCK"
    fi
    printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
@@ -115,7 +131,7 @@
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`.lock` exists in `docs/plans/logs/{FID}/`)
+- [ ] Lock acquired (`.lock` exists at `$REPO_ROOT/docs/plans/logs/{FID}/`)
 - [ ] Not blocked by any related issues
 - [ ] Long-branch advisory emitted
 - [ ] Issue update attempted (state `In Progress`, label `Build`)
@@ -858,7 +874,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): close-workflow status trigger CI"
-   rm -f "docs/plans/logs/{FID}/.lock"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
+   rm -f "$LOCK"
+   [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    ```
 3. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`— `{LABELS}` unchanged.
