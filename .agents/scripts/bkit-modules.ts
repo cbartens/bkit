@@ -86,7 +86,6 @@ function removeOrphans(
   return removed;
 }
 
-// Resolve the package root at runtime (same logic as bkit-init.ts).
 export function getPkgRoot(): string {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   return scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)

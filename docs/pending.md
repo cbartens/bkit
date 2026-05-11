@@ -30,36 +30,6 @@
 
 <!-- bkit:end -->
 
-## Consumer migration to @cbartens/bkit registry path — app-gether-life (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** normal
-- **Status:** open
-- **Description:** `app-gether-life` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
-- **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
-
-## Consumer migration to @cbartens/bkit registry path — www-visitfrasercoast-com (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** normal
-- **Status:** open
-- **Description:** `www-visitfrasercoast-com` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
-- **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
-
-## bkit doctor verb — standalone preflight CLI subcommand (2026-05-06)
-
-- **Type:** feature
-- **Category:** dx
-- **Severity:** normal
-- **Status:** open
-- **Description:** Expose `runPreflight()` (built in BAR-141) as a standalone `pnpm bkit doctor` (or similar) CLI verb. Runs Phase 1 + Phase 3 detection without touching disk, prints the unified checklist, exits 0. Lets consumers diagnose drift between `bkit install` runs (e.g. stale version pin, missing token surfaces) without re-running a full install. Architecture is already factored — preflight is a pure function — so this is a thin CLI wrapper. Out of scope for BAR-141 (new CLI surface).
-- **Source:** phase
-- **Related:** BAR-141
-
 ## pnpm tag-drop README note for `@cbartens/bkit` install snippet (2026-05-06)
 
 - **Type:** issue
@@ -109,26 +79,6 @@
 - **Description:** Stderr conflict list is sufficient for v1.0. Rich three-way merge UI (e.g. patch preview, interactive resolution) deferred post-v1.0.
 - **Source:** phase
 - **Related:** BAR-142
-
-## `bkit init` scaffolder for consumer CI variants (2026-05-06)
-
-- **Type:** feature
-- **Category:** agentic
-- **Severity:** low
-- **Status:** deferred
-- **Description:** Composite vs. reusable workflow CI templating via `bkit init` is post-v1.0. Current `bkit install --ci` covers the common case.
-- **Source:** phase
-- **Related:** BAR-131
-
-## `setup-auth@v1` bash PAT-shim removal (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** low
-- **Status:** open
-- **Description:** Bash PAT-shim retained until v1.1.0 per Supersession Inventory. Create Linear issue post-v1.0 ship to track removal of `cbartens/bkit/.github/actions/setup-auth@v1`.
-- **Source:** phase
-- **Related:** BAR-131, BAR-142
 
 ## Wire staging primitives into bkit-modules.ts write call sites + add subprocess SIGTERM integration test (2026-05-08)
 

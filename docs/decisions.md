@@ -126,12 +126,12 @@
 ## DE-11: BAR-131 — `setup-auth@v1` composite action design (2026-05-07)
 
 - **Category:** infra
-- **Status:** active
+- **Status:** superseded by BAR-164 (PR #13, commit `28f04ec`, 2026-05-09) — composite action, meta-test workflow, and YAML-parse test all deleted; canonical pattern reverted to inline `env: GH_BKIT_TOKEN` block only. Cross-org private consumers cannot resolve `cbartens/bkit/.github/actions/setup-auth@v1` via the runner-scoped `GITHUB_TOKEN`, and both real consumers were on the env-var pattern, so the composite never earned its keep.
 - **Decision:** Ship a GitHub Actions composite action at `.github/actions/setup-auth/action.yml`. Inputs: `token` (required), `registry` (optional, defaults to `https://npm.pkg.github.com`). The action exports `BKIT_READ_TOKEN` into the job env so the consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${BKIT_READ_TOKEN:-}`) picks it up automatically. The multi-line bash PAT-shim in seeded `ci.yml` is RETAINED as a fallback (RETAIN-WITH-REASON, kill-date v1.1.0). Requires a `v1` annotated tag post-merge.
 - **Why:** The composite action encapsulates the PAT-shim boilerplate so consumers can reference a single `uses:` line. The bash fallback is kept because non-Actions CI consumers (e.g. CircleCI, Buildkite) rely on the env var pattern in the seeded workflow — removing it would break them without a migration path.
 - **Discarded:** (1) Bundle action into sub-plan-3 — orthogonal to P3 scope; `setup-auth` depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern. (2) Remove bash fallback — external contract, not safe until v1.1.0 after consumer migration guidance shipped.
 - **Source:** phase
-- **Related:** BAR-131 §1, `.github/actions/setup-auth/action.yml`, `.agents/templates/.github/workflows/ci.yml`, `.agents/scripts/bkit-action-yaml.test.ts`
+- **Related:** BAR-131 §1, BAR-164, PR #13, commit `28f04ec`, `.agents/templates/.github/workflows/ci.yml`, `bkit-modules.ts` `scanForeignBkitUses` guard
 
 ## DE-12: BAR-131 follow-up — `isConsumerModified` defaults missing canonical hash to drift (2026-05-08)
 

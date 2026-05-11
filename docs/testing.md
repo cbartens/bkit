@@ -63,7 +63,6 @@ When adding new bkit-managed file types or new Tier-2 envelope keys, extend the 
 | `bkit-tier1-defaults.test.ts` | Unit | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION). |
 | `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version Tier-1 → Tier-2 migration (consumer key survival). |
 | `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-action-yaml.test.ts` | Unit | Offline YAML parse of `.github/actions/setup-auth/action.yml` (no network). |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
 
 The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
