@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
-    branches: [{{DEFAULT_BRANCH}}, dev, 'feat/**']
+    branches: [{{DEFAULT_BRANCH}}, dev]
   pull_request:
     branches: [{{DEFAULT_BRANCH}}, dev]
 
