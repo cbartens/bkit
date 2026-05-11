@@ -530,6 +530,13 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-summary.md"
         ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-11T10:16:05Z",
+        "commitSha": "15dc0b1c5d1a6d627e5fe175d6bfb2c35c39b097",
+        "artifacts": []
       }
     ]
   }
