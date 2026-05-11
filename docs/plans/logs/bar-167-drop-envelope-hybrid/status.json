@@ -491,6 +491,16 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-input.md"
         ]
+      },
+      {
+        "step": "conflict-resolve",
+        "status": "DONE",
+        "verdict": "PASS",
+        "at": "2026-05-11T10:09:21Z",
+        "commitSha": "1581a00abdfb1a273a778402d316dc5af4edf896",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-conflict-resolve.md"
+        ]
       }
     ]
   }
