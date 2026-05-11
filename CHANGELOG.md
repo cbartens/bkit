@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.2] — 2026-05-11
+
+### Added
+
+- **Claude Cowork Dispatch support** — `BKIT_PREFLIGHT_BYPASS=dispatch` env var skips the Linear `Auto`/state guards so phone-triggered sessions without a Linear issue context can run. Destruction guards remain in force. (BAR-186)
+- **`docs/dispatch.md`** documents Dispatch surfaces (Cowork bash sandbox vs computer-use), venv reproducibility (`uv` preferred, never commit `.venv/`), `direnv`/`mise` auto-activation requirement for tier-`click` terminals, keep-awake, and preflight interaction. Registered under a new "Operations" section in `.agents/docs.md` catalog + Workflow Matrix. (BAR-186)
+- **`.agents/rules.md` Dispatch & Remote Sessions subsection** (canonical + template). (BAR-186)
+- **Manual-seed templates** at `.agents/templates/.envrc.example` and `.agents/templates/.nvmrc` — copy into consumer repos when enabling Dispatch (NOT auto-installed; would otherwise overwrite consumer Node pins). Setup checklist in `docs/setup.md`. (BAR-186)
+- **Preflight test coverage** — 7 new tests in `.agents/scripts/bkit-preflight.test.ts` covering Darwin gate, bypass position, additionalContext text, and 4 subprocess scenarios. (BAR-186)
+
+### Fixed
+
+- **Brew-bin preflight check is now Darwin-gated.** Previously `gh jq vale pnpm bun` were checked unconditionally and would hard-stop any Linux session (Cowork sandbox, CI, dev containers). (BAR-186)
+- **Linear label rename `Automated` → `Auto`** propagated through preflight hooks (Claude + Cursor), rules, README, and Dispatch docs. The previous gate would have refused every cloud / Cursor Cloud Agent session against Linear workspaces using the new label name. (BAR-186)
+
+---
+
 ## [2.0.1] — 2026-05-11
 
 ### Fixed

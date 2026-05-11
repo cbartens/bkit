@@ -47,6 +47,7 @@
 | `docs/plans/template.md` | — | ● | — | — | — |
 | `docs/audits/*.md` | ○ | ○ | — | — | — |
 | `docs/setup.md` | — | — | — | — | — |
+| `docs/dispatch.md` | — | — | ○ | ○ | ○ |
 
 ---
 
@@ -125,5 +126,12 @@
 | File | Scope |
 | --- | --- |
 | `docs/setup.md` | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
+
+### Operations
+
+<!-- prettier-ignore -->
+| File | Scope |
+| --- | --- |
+| `docs/dispatch.md` | Claude Cowork Dispatch surfaces, venv handling, keep-awake, preflight interaction. |
 
 <!-- bkit:end -->

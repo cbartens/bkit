@@ -1,5 +1,6 @@
 // bkit-preflight.test.ts — Unit tests for Phase 1 preflight detectors (BAR-141).
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -732,5 +733,119 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
     expect(projectJsonGuardIdx).toBeGreaterThan(-1);
     expect(vercelEnvLsIdx).toBeGreaterThan(-1);
     expect(projectJsonGuardIdx).toBeLessThan(vercelEnvLsIdx);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BAR-186 — SessionStart hook (preflight.sh) Dispatch handling
+//
+// The bash hook at .agents/templates/.claude/hooks/preflight.sh runs as a
+// Claude SessionStart hook (a different surface from the install-time TS
+// preflight in this file). These tests cover the BAR-186 changes:
+//   - Brew-bin check is Darwin-gated (Linux sandbox / CI now pass through).
+//   - BKIT_PREFLIGHT_BYPASS=dispatch skips the Linear Auto/state guards.
+// ---------------------------------------------------------------------------
+
+const SESSIONSTART_HOOK_PATH = path.join(
+  __dirname,
+  "..",
+  "templates",
+  ".claude",
+  "hooks",
+  "preflight.sh",
+);
+
+function runSessionStartHook(env: Record<string, string | undefined>): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  // Strip undefined keys so we don't leak the parent process env back in.
+  const cleanEnv: Record<string, string> = {};
+  for (const [k, v] of Object.entries(env)) {
+    if (v !== undefined) cleanEnv[k] = v;
+  }
+  const result = spawnSync("bash", [SESSIONSTART_HOOK_PATH], {
+    env: { PATH: process.env.PATH ?? "", ...cleanEnv },
+    input: "{}",
+    encoding: "utf-8",
+    timeout: 10_000,
+  });
+  return {
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
+  it("brew-bin loop is wrapped in a Darwin OS gate", () => {
+    const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
+    // Darwin gate must precede the brew-bin loop
+    expect(src).toMatch(/\[\[\s+"\$\(uname\)"\s+==\s+"Darwin"\s+\]\]/);
+    const darwinIdx = src.search(/\[\[\s+"\$\(uname\)"\s+==\s+"Darwin"\s+\]\]/);
+    const brewBinsIdx = src.indexOf("REQUIRED_BREW_BINS=");
+    expect(darwinIdx).toBeGreaterThan(-1);
+    expect(brewBinsIdx).toBeGreaterThan(-1);
+    expect(darwinIdx).toBeLessThan(brewBinsIdx);
+  });
+
+  it("honours BKIT_PREFLIGHT_BYPASS=dispatch and exits before the Linear API call", () => {
+    const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
+    expect(src).toContain("BKIT_PREFLIGHT_BYPASS");
+    expect(src).toContain('"dispatch"');
+    // Bypass branch must come before the LINEAR_API_KEY guard so missing API
+    // key does not block a Dispatch session.
+    const bypassIdx = src.indexOf("BKIT_PREFLIGHT_BYPASS");
+    const apiKeyIdx = src.indexOf('"${LINEAR_API_KEY:-}"');
+    expect(bypassIdx).toBeGreaterThan(-1);
+    expect(apiKeyIdx).toBeGreaterThan(-1);
+    expect(bypassIdx).toBeLessThan(apiKeyIdx);
+  });
+
+  it("bypass branch emits additionalContext naming what's relaxed", () => {
+    const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
+    expect(src).toMatch(/Dispatch bypass active/);
+    expect(src).toMatch(/Destruction guards remain in force/);
+  });
+});
+
+describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
+  it("exits 0 silently when LINEAR_ISSUE_ID is empty (existing IDE-skip preserved)", () => {
+    const result = runSessionStartHook({});
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("BKIT_PREFLIGHT_BYPASS=dispatch skips the Linear gate even without LINEAR_API_KEY", () => {
+    const result = runSessionStartHook({
+      LINEAR_ISSUE_ID: "BAR-186-test",
+      BKIT_PREFLIGHT_BYPASS: "dispatch",
+      // intentionally no LINEAR_API_KEY — without bypass this would exit 1
+    });
+    expect(result.status).toBe(0);
+    // additionalContext payload is emitted on stdout as JSON
+    expect(result.stdout).toContain("Dispatch bypass active");
+    expect(result.stdout).toContain("BAR-186-test");
+  });
+
+  it("without bypass, missing LINEAR_API_KEY still hard-stops (regression guard)", () => {
+    const result = runSessionStartHook({
+      LINEAR_ISSUE_ID: "BAR-186-test",
+      // no BKIT_PREFLIGHT_BYPASS, no LINEAR_API_KEY
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("LINEAR_API_KEY not set");
+  });
+
+  it("unrelated values for BKIT_PREFLIGHT_BYPASS do NOT trigger bypass", () => {
+    // Defence in depth: only the literal "dispatch" relaxes the gate.
+    const result = runSessionStartHook({
+      LINEAR_ISSUE_ID: "BAR-186-test",
+      BKIT_PREFLIGHT_BYPASS: "yes",
+      // no LINEAR_API_KEY — should still hard-stop
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("LINEAR_API_KEY not set");
   });
 });
