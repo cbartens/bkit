@@ -585,24 +585,34 @@ describe("detectGitignoreBlockDuplicates", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectPrettierignoreScopeNarrowing", () => {
-  it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/)", () => {
+  it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/find-skills/)", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules/\n.agents/skills/\n.agents/templates/\n# bkit:end\n",
+      "# bkit:start\nnode_modules/\n.agents/skills/find-skills/\n# bkit:end\n",
       "utf-8",
     );
     const f = detectPrettierignoreScopeNarrowing(tmpDir);
     expect(f).toBeDefined();
     expect(f?.id).toBe("prettierignore-scope-narrowing");
     expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain(".agents/skills/find-skills/");
     expect(f?.detect).toContain(".agents/skills/");
-    expect(f?.detect).toContain(".agents/");
   });
 
   it("does NOT flag when on-disk block matches new bkit paths exactly", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".prettierignore"),
-      "# bkit:start\nnode_modules/\n.agents/\ndocs/\n# bkit:end\n",
+      "# bkit:start\nnode_modules/\ndist/\n.agents/skills/\n.claude/\n.cursor/\n.github/\n.husky/_/\n*.tsbuildinfo\npnpm-lock.yaml\n# bkit:end\n",
+      "utf-8",
+    );
+    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag for the canonical template's .agents/skills/ entry (regression: BKIT_PRETTIERIGNORE_PATHS must mirror .agents/templates/.prettierignore)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".prettierignore"),
+      "# bkit:start\nnode_modules/\n.agents/skills/\n# bkit:end\n",
       "utf-8",
     );
     const f = detectPrettierignoreScopeNarrowing(tmpDir);

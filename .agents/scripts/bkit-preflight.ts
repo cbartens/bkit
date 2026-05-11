@@ -303,19 +303,24 @@ export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | 
 }
 
 /**
- * Detect when bkit's installed `.prettierignore` block has narrower paths than
- * the bkit version about to be written, i.e. the new block broadens scope.
- * Example: old shipped `.agents/skills/` + `.agents/templates/`; new ships `.agents/`.
- * Consequence: consumer-owned files like `.agents/rules.md` newly stop being formatted.
+ * Detect when the consumer's installed `.prettierignore` bkit-managed block has
+ * paths narrower than the canonical bkit list (BKIT_PRETTIERIGNORE_PATHS), i.e.
+ * the new block broadens scope on this install.
+ *
+ * BKIT_PRETTIERIGNORE_PATHS MUST mirror the canonical block shipped in
+ * `.agents/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
+ * If it drifts broader, this detector fires every install with a phantom
+ * "broadening" that never actually happens.
  */
 const BKIT_PRETTIERIGNORE_PATHS = [
   "node_modules/",
   "dist/",
-  ".agents/",
+  ".agents/skills/",
+  ".claude/",
+  ".cursor/",
   ".github/",
   ".husky/_/",
   "*.tsbuildinfo",
-  "docs/",
   "pnpm-lock.yaml",
 ];
 
