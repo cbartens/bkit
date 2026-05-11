@@ -474,7 +474,7 @@
   {
     "workflow": "ship",
     "startedAt": "2026-05-11T10:00:44Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -543,6 +543,13 @@
         "status": "DONE",
         "at": "2026-05-11T10:17:03Z",
         "commitSha": "6ab5c99d3f5617c4f538220486d8634cafed97fb",
+        "artifacts": []
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-11T10:17:18Z",
+        "commitSha": "801212c8155526ad19d459df1ee2db5d6fa719f5",
         "artifacts": []
       }
     ]
