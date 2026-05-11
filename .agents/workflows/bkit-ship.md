@@ -326,9 +326,8 @@ description: "Ship Feature — Autonomous merge and archive"
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
    Create: `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Add `Debug: Ship` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
-4. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
-5. Update status and commit:
+3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
+4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} work"
@@ -338,7 +337,7 @@ description: "Ship Feature — Autonomous merge and archive"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} status"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 5 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```

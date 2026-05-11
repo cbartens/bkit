@@ -22,7 +22,7 @@
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
+> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path; phase label persists.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
@@ -38,7 +38,7 @@
    rm -f "docs/plans/logs/{FID}/.lock"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
-2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
@@ -510,7 +510,7 @@
    git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
    rm -f "docs/plans/logs/{FID}/.lock"
    ```
-6. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+6. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged so phase label `Design` persists.
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 10 — Close Workflow
@@ -526,5 +526,5 @@
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
 - [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (state `In Review`, label `Review`)
+- [ ] Issue update attempted (state `In Review`; phase label `Design` preserved)
 - [ ] Issue comment attempted (`Step 10` section)

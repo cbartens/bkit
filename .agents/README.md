@@ -16,7 +16,7 @@ A typical cycle for issue `BAR-123` "Add feature X":
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
 5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, `@bkit-plan-review-1` ‖ `@bkit-plan-review-2`, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
 6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `docs(bar-123-…): plan complete [skip build] [skip ci]` → push.
-7. **Close Workflow** — flips Linear label to `Review`, state `In Review`. For `/bkit-design` and `/bkit-plan`, the worktree is pruned and `feat/bar-123-…` deleted (changes are merged into `dev`). For `/bkit-build` / `/bkit-debug`, the worktree persists.
+7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists (so the reviewer can see which workflow finished). For `/bkit-design` and `/bkit-plan`, the worktree is pruned and `feat/bar-123-…` deleted (changes are merged into `dev`). For `/bkit-build` / `/bkit-debug`, the worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/drafts/{FID}-{design,plan}.md`. Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates the worktree, executes the plan, runs lint/typecheck/unit tests, opens a PR to `dev`.
 10. **CI** — runs on the PR. Red CI? Trigger `/bkit-debug` (PR debug mode pulls failed run logs via `gh run view --log-failed`). Green? Trigger `/bkit-ship`.
