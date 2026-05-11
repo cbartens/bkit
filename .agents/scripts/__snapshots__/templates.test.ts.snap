@@ -23,6 +23,7 @@ jobs:
       # Do NOT add \`with: version:\` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
+      # bkit:start
       - name: Install Dependencies
         # \`.npmrc\` references \${GH_BKIT_TOKEN} for the @cbartens scope (npm.pkg.github.com).
         # Passing the secret as env is sufficient — no separate auth action is needed.
@@ -50,5 +51,6 @@ jobs:
 
       - name: Run Bkit Check
         run: pnpm bkit check
+      # bkit:end
 "
 `;

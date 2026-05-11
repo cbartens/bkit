@@ -494,16 +494,19 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // Tier 1 — fully managed: preflight hook (remains Tier-1)
-  const tier1Files: Array<[string, string]> = [
-    [path.join(claudeTemplates, "hooks", "preflight.sh"), ".claude/hooks/preflight.sh"],
-  ];
-  for (const [src, dst] of tier1Files) {
-    if (!fs.existsSync(src)) continue;
-    const prevLen = ws.writes.length;
-    writeTier1(src, dst, tokens, dryRun, ws);
-    if (ws.writes.length > prevLen) {
-      console.log(`${logPrefix} ${tag}claude: ${dst}`);
+  // Markered-text — manifest format: "markered-text" — preflight hook.
+  // Uses writeTier2 (html-comment markers: # <!-- bkit:start --> / # <!-- bkit:end -->)
+  // to update only the bkit-managed block, preserving any consumer content outside markers.
+  // Changed from writeTier1 to align install dispatch with manifest format classification.
+  {
+    const src = path.join(claudeTemplates, "hooks", "preflight.sh");
+    const dst = ".claude/hooks/preflight.sh";
+    if (fs.existsSync(src)) {
+      const prevLen = ws.writes.length;
+      writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}claude: ${dst}`);
+      }
     }
   }
 }
@@ -592,24 +595,33 @@ export function runCursorModule(ctx: ModuleContext): void {
     }
   }
 
-  // Tier 1 — fully managed: preflight, shared rules (remain Tier-1)
-  const tier1Files: Array<[string, string]> = [
-    [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
-    [
-      path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
-      ".cursor/rules/00-shared-rules.mdc",
-    ],
-  ];
-  for (const [src, dst] of tier1Files) {
-    if (!fs.existsSync(src)) continue;
-    const prevLen = ws.writes.length;
-    writeTier1(src, dst, tokens, dryRun, ws);
-    if (ws.writes.length > prevLen) {
-      console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+  // Markered-text — manifest format: "markered-text" — preflight hook + shared rules.
+  // Both files use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
+  // Uses writeTier2 to update only the bkit-managed block; consumer content outside
+  // markers is preserved. Changed from writeTier1 to align dispatch with manifest format.
+  {
+    const markeredFiles: Array<[string, string]> = [
+      [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
+      [
+        path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
+        ".cursor/rules/00-shared-rules.mdc",
+      ],
+    ];
+    for (const [src, dst] of markeredFiles) {
+      if (!fs.existsSync(src)) continue;
+      const prevLen = ws.writes.length;
+      writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+      }
     }
   }
 
-  // Tier 3 — seed-or-print: settings.json + consumer infra files
+  // Byte-equal-text — manifest format: "byte-equal-text" — seed-or-print for consumer infra.
+  // Uses writeTier3 semantics: seed if absent, emit AI-actionable advisory if present and
+  // differing. These files are consumer-configurable; bkit does not force-overwrite them.
+  // The manifest classifies them "byte-equal-text" for check/uninstall dispatch; install
+  // intentionally uses seed-or-print to preserve consumer modifications on upgrade.
   const tier3Files: Array<[string, string, string]> = [
     [
       path.join(cursorTemplates, "settings.json"),

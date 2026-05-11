@@ -169,3 +169,13 @@
 - **Description:** The `.cursor/hooks.json` template ships `echo '[bkit] session started'` and `echo '[bkit] session stopped'` hook commands. These are decorative (confirm hook firing) and produce visible output in the Cursor terminal. Plan-Phase Decision 3 resolved to KEEP these echoes (they provide actionable debugging value — consumer can confirm hooks fired). This entry tracks the open question: if consumer feedback emerges that the echoes are noisy/unwanted, add a bkit-config opt-out rather than removing from the template. No work required unless that feedback arrives.
 - **Source:** phase
 - **Related:** BAR-167, DE-18, `.agents/templates/.cursor/hooks.json`
+
+## BAR-167 Phase 2 — indented YAML marker drift detection not implemented (2026-05-11)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
+- **Source:** phase
+- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`

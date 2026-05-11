@@ -236,3 +236,14 @@
 - **Severity:** critical
 - **Source:** phase
 - **Related:** BAR-167, KN-8 (superseded), DE-18, `.agents/scripts/bkit-tiers.ts` (`deepContains`, `writeTier2JsonContained`, `migrateLegacyBkitEnvelope`, `stripTier2JsonScope`), `.agents/scripts/bkit-preflight.ts` (`detectLegacyBkitEnvelope`, `detectTier2JsonDrift`), `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`
+
+## KN-16: bkit-modules.ts format dispatch alignment — writeTier2 for markered-text, not writeTier1 (BAR-167 Phase 2) (2026-05-11)
+
+- **Pattern:** Files classified as `format: "markered-text"` in `bkit-manifest.ts` MUST use `writeTier2` (marker-block update semantics) in `bkit-modules.ts`, NOT `writeTier1` (full-overwrite semantics). Using `writeTier1` on a markered-text file silently overwrites consumer content outside the markers on every `bkit upgrade`. `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, and `.cursor/rules/00-shared-rules.mdc` were incorrectly using `writeTier1` via `tier1Files` arrays prior to Phase 2 remediation.
+- **Resolution:** Remove `tier1Files` local arrays; replace with direct `writeTier2(src, dst, tokens, "html-comment", dryRun, ws)` calls. Files with `# <!-- bkit:start -->` markers (hash-comment wrapper around html-comment marker) are detected by `extractManagedBlock` with `"html-comment"` style via the `ALLOWED_PREFIXES` `"# "` logic.
+- **Corollary:** Files classified as `format: "byte-equal-text"` (e.g. `.cursor/settings.json`, `.cursor/Dockerfile`) should intentionally use `writeTier3` (seed-or-print) for install semantics — not `writeTier1` (force-overwrite). The manifest classification is for check/uninstall dispatch; install uses seed-or-print to preserve consumer modifications on upgrade. Document this explicitly in the module function.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, KN-15, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-tiers.ts` (`writeTier2`, `writeTier1`)
