@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.1] — 2026-05-11
+
+### Fixed
+
+- **Re-publish patch:** bumps version to avoid E409 conflict from 2.0.0 GitHub Packages publish attempt. No code changes from 2.0.0. (BAR-167)
+
+---
+
 ## [2.0.0] — 2026-05-11
 
 ### Removed (breaking)
