@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Sub-plan 1 — P0 + P1 (v0.6.x): Test-infra prerequisite + `bkit doctor` + polish
@@ -57,24 +58,24 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 
 ### Edge Cases
 
-| Scenario | Expected Behavior |
-| --- | --- |
-| `bkit doctor` against producer repo | Exits 0; banner printed |
-| `detectShellToken` empty (`GH_BKIT_TOKEN=""`) vs unset | Action text differentiates |
-| pnpm 10 onlyBuiltDependencies missing | Already advised — no change |
-| Prose-fenced `bkit:start` text inside markdown | NOT detected as marker (B1 anchoring) |
+| Scenario                                               | Expected Behavior                     |
+| ------------------------------------------------------ | ------------------------------------- |
+| `bkit doctor` against producer repo                    | Exits 0; banner printed               |
+| `detectShellToken` empty (`GH_BKIT_TOKEN=""`) vs unset | Action text differentiates            |
+| pnpm 10 onlyBuiltDependencies missing                  | Already advised — no change           |
+| Prose-fenced `bkit:start` text inside markdown         | NOT detected as marker (B1 anchoring) |
 
 ### Derived Test Matrix
 
-| Test description | Runbook task | Type | Target file |
-| --- | --- | --- | --- |
-| `hasBkitMarkers` line-anchored regex | P1.T2 | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
-| Cross-phase dedup position-stable | P1.T3 | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
-| `detectShellToken` empty vs unset | P1.T4 | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
-| `LOG_PREFIX` on dry-run blocker banner | P1.T5 | Unit (Vitest) | `.agents/scripts/bkit-install.test.ts` |
-| `.npmrc` inline-string action text + fallback | P1.T6 | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
-| Changelog header diff in post-install | P1.T7 | Unit (Vitest) | `.agents/scripts/bkit-postinstall.test.ts` |
-| `bkit doctor` integration on stale-pin fixture | P1.T1 | Integration (Vitest) | `.agents/scripts/bkit-doctor.integration.test.ts` |
+| Test description                               | Runbook task | Type                 | Target file                                       |
+| ---------------------------------------------- | ------------ | -------------------- | ------------------------------------------------- |
+| `hasBkitMarkers` line-anchored regex           | P1.T2        | Unit (Vitest)        | `.agents/scripts/bkit-preflight.test.ts`          |
+| Cross-phase dedup position-stable              | P1.T3        | Unit (Vitest)        | `.agents/scripts/bkit-postinstall.test.ts`        |
+| `detectShellToken` empty vs unset              | P1.T4        | Unit (Vitest)        | `.agents/scripts/bkit-preflight.test.ts`          |
+| `LOG_PREFIX` on dry-run blocker banner         | P1.T5        | Unit (Vitest)        | `.agents/scripts/bkit-install.test.ts`            |
+| `.npmrc` inline-string action text + fallback  | P1.T6        | Unit (Vitest)        | `.agents/scripts/bkit-preflight.test.ts`          |
+| Changelog header diff in post-install          | P1.T7        | Unit (Vitest)        | `.agents/scripts/bkit-postinstall.test.ts`        |
+| `bkit doctor` integration on stale-pin fixture | P1.T1        | Integration (Vitest) | `.agents/scripts/bkit-doctor.integration.test.ts` |
 
 ### 👤 Human Confirmation
 
@@ -97,11 +98,11 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
+| Rejected approach                           | Why rejected                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------------------------- |
 | Bundle `doctor` verb with Phase 2 uninstall | Loses independent ship; inflates Phase 2 risk; doctor is read-only and low-risk. |
-| Skip vitest glob extension | Integration tests would silently skip in P1+ (false-greens at gates). |
-| Hand-list `.npmrc` literal locations | `bkit-modules.ts` lines ~367-369 and ~549-552 verified — agent edits both. |
+| Skip vitest glob extension                  | Integration tests would silently skip in P1+ (false-greens at gates).            |
+| Hand-list `.npmrc` literal locations        | `bkit-modules.ts` lines ~367-369 and ~549-552 verified — agent edits both.       |
 
 ## Out of Scope
 
@@ -115,9 +116,9 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 
 ## Supersession Inventory
 
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| `hasBkitMarkers` substring impl | Anchored regex (P1.T2) | DELETE | Intra-file delete (function body replaced; `bkit-preflight.ts` survives). |
+| Existing artifact               | Replaced by            | Decision | Justification                                                             |
+| ------------------------------- | ---------------------- | -------- | ------------------------------------------------------------------------- |
+| `hasBkitMarkers` substring impl | Anchored regex (P1.T2) | DELETE   | Intra-file delete (function body replaced; `bkit-preflight.ts` survives). |
 
 ## Security & Privacy
 
@@ -170,44 +171,44 @@ Always squash. One PR for sub-plan-1 -> v0.6.x release. `gh pr merge --squash --
 
 ### Phase 0 — Test-infra prerequisite
 
-| Tag | File | Purpose |
-| --- | --- | --- |
+| Tag      | File               | Purpose                                                                                                                                    |
+| -------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | [MODIFY] | `vitest.config.ts` | Extend include glob from `.agents/scripts/**/*.test.ts` to `[".agents/scripts/**/*.test.ts", ".agents/scripts/**/*.integration.test.ts"]`. |
 
 ### Phase 1 — Quick wins + diagnostic
 
-| Tag | File | Purpose |
-| --- | --- | --- |
-| [MODIFY] | `.agents/scripts/bkit-cli.ts` | Add `doctor` to `Verb` union; arg parse; `printUsage`. |
-| [MODIFY] | `.agents/scripts/bkit-install.ts` | `main()` dispatch arm for `doctor`; LOG_PREFIX on dry-run banner (B5). |
-| [MODIFY] | `.agents/scripts/bkit-postinstall.ts` | Expose `runPostInstallCheck(modules, cwd, { dryRun: true })` read-only replay; cross-phase dedup position-stable (B2); changelog version-delta header (A7). |
-| [MODIFY] | `.agents/scripts/bkit-preflight.ts` | Anchor `hasBkitMarkers` (B1); `detectShellToken` empty vs unset (B4); update `gh-bkit-token-secret-unknown` action text (B6). |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN:-}` fallback iff pnpm supports it (B6). |
-| [NEW] | `.agents/scripts/bkit-doctor.integration.test.ts` | Stale-pin fixture; assert exit 0 + banner content. |
-| [MODIFY] | `.agents/scripts/bkit-cli.test.ts` | Verb parsing for `doctor`. |
-| [MODIFY] | `.agents/scripts/bkit-preflight.test.ts` | New fixtures for B1/B4/B6. |
-| [MODIFY] | `.agents/scripts/bkit-postinstall.test.ts` | Position-stable dedup; changelog header. |
-| [MODIFY] | `.agents/scripts/bkit-install.test.ts` | LOG_PREFIX dry-run assertion. |
-| [NEW] | `CHANGELOG.md` | Created in P1.T0 (skeleton); v0.6.x section seeded. |
-| [MODIFY] | `package.json` | Ensure `files` array includes `CHANGELOG.md`. |
-| [MODIFY] | `README.md` | Doctor usage section. |
+| Tag      | File                                              | Purpose                                                                                                                                                     |
+| -------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [MODIFY] | `.agents/scripts/bkit-cli.ts`                     | Add `doctor` to `Verb` union; arg parse; `printUsage`.                                                                                                      |
+| [MODIFY] | `.agents/scripts/bkit-install.ts`                 | `main()` dispatch arm for `doctor`; LOG_PREFIX on dry-run banner (B5).                                                                                      |
+| [MODIFY] | `.agents/scripts/bkit-postinstall.ts`             | Expose `runPostInstallCheck(modules, cwd, { dryRun: true })` read-only replay; cross-phase dedup position-stable (B2); changelog version-delta header (A7). |
+| [MODIFY] | `.agents/scripts/bkit-preflight.ts`               | Anchor `hasBkitMarkers` (B1); `detectShellToken` empty vs unset (B4); update `gh-bkit-token-secret-unknown` action text (B6).                               |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts`                 | Edit inline `.npmrc` literal (lines ~367-369 and ~549-552) to use `${GH_BKIT_TOKEN:-}` fallback iff pnpm supports it (B6).                                  |
+| [NEW]    | `.agents/scripts/bkit-doctor.integration.test.ts` | Stale-pin fixture; assert exit 0 + banner content.                                                                                                          |
+| [MODIFY] | `.agents/scripts/bkit-cli.test.ts`                | Verb parsing for `doctor`.                                                                                                                                  |
+| [MODIFY] | `.agents/scripts/bkit-preflight.test.ts`          | New fixtures for B1/B4/B6.                                                                                                                                  |
+| [MODIFY] | `.agents/scripts/bkit-postinstall.test.ts`        | Position-stable dedup; changelog header.                                                                                                                    |
+| [MODIFY] | `.agents/scripts/bkit-install.test.ts`            | LOG_PREFIX dry-run assertion.                                                                                                                               |
+| [NEW]    | `CHANGELOG.md`                                    | Created in P1.T0 (skeleton); v0.6.x section seeded.                                                                                                         |
+| [MODIFY] | `package.json`                                    | Ensure `files` array includes `CHANGELOG.md`.                                                                                                               |
+| [MODIFY] | `README.md`                                       | Doctor usage section.                                                                                                                                       |
 
 ## Documentation Updates
 
-| File | Change required |
-| --- | --- |
-| `README.md` | Doctor (P1) usage section. |
-| `CHANGELOG.md` | v0.6.x bullets per closed task. |
+| File              | Change required                         |
+| ----------------- | --------------------------------------- |
+| `README.md`       | Doctor (P1) usage section.              |
+| `CHANGELOG.md`    | v0.6.x bullets per closed task.         |
 | `.agents/docs.md` | Verify still accurate after sub-plan-1. |
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| **Code** | `git revert <sub-plan-1 squash-merge SHA>` | Single squash commit; revert is atomic. |
-| **`vitest.config.ts`** | Revert to single-glob form | Old glob still discovers `.test.ts`; integration tests silently skip but no failure. |
-| **DB** | N/A | No DB. |
-| **Risk window** | Single PR | Revert window = single PR. |
+| Axis                   | Action                                     | Notes                                                                                |
+| ---------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------ |
+| **Code**               | `git revert <sub-plan-1 squash-merge SHA>` | Single squash commit; revert is atomic.                                              |
+| **`vitest.config.ts`** | Revert to single-glob form                 | Old glob still discovers `.test.ts`; integration tests silently skip but no failure. |
+| **DB**                 | N/A                                        | No DB.                                                                               |
+| **Risk window**        | Single PR                                  | Revert window = single PR.                                                           |
 
 ## Agent Execution Runbook
 

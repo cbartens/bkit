@@ -336,11 +336,11 @@ None.
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| Code | `git revert {MERGE_COMMIT}` | Restores `__bkit__` templates + envelope helpers + Tier-1 defaults file. Consumer JSON files keep their post-strip schema-clean shape; next `bkit install` re-writes envelope on top via deep-merge. |
-| Risk window | One `bkit upgrade` cycle | No data loss; brief schema-pollution window. |
-| DB | N/A | |
+| Axis        | Action                      | Notes                                                                                                                                                                                                |
+| ----------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code        | `git revert {MERGE_COMMIT}` | Restores `__bkit__` templates + envelope helpers + Tier-1 defaults file. Consumer JSON files keep their post-strip schema-clean shape; next `bkit install` re-writes envelope on top via deep-merge. |
+| Risk window | One `bkit upgrade` cycle    | No data loss; brief schema-pollution window.                                                                                                                                                         |
+| DB          | N/A                         |                                                                                                                                                                                                      |
 
 ## Agent Execution Runbook (sub-plan A — Phase 1)
 
@@ -452,17 +452,18 @@ None.
 
 ## Open-Question Disposition (sub-plan A scope)
 
-| Question | Disposition | Where tracked |
-| --- | --- | --- |
-| Cursor v1 keyed-object schema runtime spike | **REMOVED** per Plan-Phase Decision 2 | `docs/pending.md` entry deleted (Task 16) |
-| `bkit upgrade --prune` flag | **DEFERRED** post-v2.0.0 | `docs/pending.md` |
-| Drop decorative `.cursor/hooks.json` echoes | **DEFERRED** per Plan-Phase Decision 3 (KEEP) | `docs/pending.md` |
+| Question                                    | Disposition                                   | Where tracked                             |
+| ------------------------------------------- | --------------------------------------------- | ----------------------------------------- |
+| Cursor v1 keyed-object schema runtime spike | **REMOVED** per Plan-Phase Decision 2         | `docs/pending.md` entry deleted (Task 16) |
+| `bkit upgrade --prune` flag                 | **DEFERRED** post-v2.0.0                      | `docs/pending.md`                         |
+| Drop decorative `.cursor/hooks.json` echoes | **DEFERRED** per Plan-Phase Decision 3 (KEEP) | `docs/pending.md`                         |
 
 ---
 
 ## Reviewer notes
 
 > Inherited CONCERNS verdict from `plan-v3-checked.md`. Reviewers — focus on:
+>
 > - array-containment semantics (`deepContains` for object-arrays — order-insensitive vs ordered).
 > - migration mechanic (`migrateLegacyBkitEnvelope`) idempotency.
 > - Phase 1 supersession inventory completeness.

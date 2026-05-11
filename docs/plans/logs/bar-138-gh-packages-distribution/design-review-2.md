@@ -68,12 +68,12 @@ Fully buildable with the approved stack (Node 22, pnpm 10.x, GitHub Actions, Typ
 
 No new libraries introduced. All registry/workflow mechanics use built-in GitHub Actions features:
 
-| Component | Version | Status | License |
-| --- | --- | --- | --- |
-| `actions/checkout` | v4 | Stable, widely adopted | MIT |
-| `actions/setup-node` | v4 | Stable; `registry-url` wiring confirmed working | MIT |
-| `pnpm/action-setup` | v4 | Stable; auto-reads `packageManager` from `package.json` | MIT |
-| GitHub Packages npm registry | N/A | GA, free for private packages | N/A |
+| Component                    | Version | Status                                                  | License |
+| ---------------------------- | ------- | ------------------------------------------------------- | ------- |
+| `actions/checkout`           | v4      | Stable, widely adopted                                  | MIT     |
+| `actions/setup-node`         | v4      | Stable; `registry-url` wiring confirmed working         | MIT     |
+| `pnpm/action-setup`          | v4      | Stable; auto-reads `packageManager` from `package.json` | MIT     |
+| GitHub Packages npm registry | N/A     | GA, free for private packages                           | N/A     |
 
 No bundle size impact (server-side only, no consumer runtime additions).
 
@@ -109,13 +109,13 @@ Steps 1-3 validate the entire pipeline-auth surface in isolation before any inst
 
 ## Unknowns & Blockers
 
-| Item | Risk | Resolution |
-| --- | --- | --- |
-| Node version inconsistency (release.yml 22 vs ci.yml 20) | Medium — `check:dist` may produce divergent output between the two runs | Decide before pre.1: align both workflows to the same version. The design says "pin 22 to match ci.yml" but ci.yml is 20. |
-| `GITHUB_TOKEN` `packages: write` availability for `cbartens/bkit` | Low-Medium — default for new repos but worth confirming | Resolved by pre.1 smoke tag; zero-cost if it fails. |
-| `access: "restricted"` vs `access: "public"` for GH Packages | Low — restricted is correct for consumer-gated auth, but GH Packages access semantics differ slightly from npmjs | Confirmed by pre.1; fallback is flip to `access: "public"` which is still protected by token requirement. |
-| `npm deprecate` availability on GH Packages | Low | Design explicitly flags this; no action needed pre-ship. |
-| DoD item "gated by typecheck/test/check:dist" vs design's "minimal release.yml" | Low — not a blocker but creates a DoD/design discrepancy | Design-input DoD says "gated by typecheck/test/check:dist"; design-v1-draft proposes minimal workflow (check:dist only). Needs explicit resolution — recommend updating the DoD to match the design decision. |
+| Item                                                                            | Risk                                                                                                             | Resolution                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node version inconsistency (release.yml 22 vs ci.yml 20)                        | Medium — `check:dist` may produce divergent output between the two runs                                          | Decide before pre.1: align both workflows to the same version. The design says "pin 22 to match ci.yml" but ci.yml is 20.                                                                                     |
+| `GITHUB_TOKEN` `packages: write` availability for `cbartens/bkit`               | Low-Medium — default for new repos but worth confirming                                                          | Resolved by pre.1 smoke tag; zero-cost if it fails.                                                                                                                                                           |
+| `access: "restricted"` vs `access: "public"` for GH Packages                    | Low — restricted is correct for consumer-gated auth, but GH Packages access semantics differ slightly from npmjs | Confirmed by pre.1; fallback is flip to `access: "public"` which is still protected by token requirement.                                                                                                     |
+| `npm deprecate` availability on GH Packages                                     | Low                                                                                                              | Design explicitly flags this; no action needed pre-ship.                                                                                                                                                      |
+| DoD item "gated by typecheck/test/check:dist" vs design's "minimal release.yml" | Low — not a blocker but creates a DoD/design discrepancy                                                         | Design-input DoD says "gated by typecheck/test/check:dist"; design-v1-draft proposes minimal workflow (check:dist only). Needs explicit resolution — recommend updating the DoD to match the design decision. |
 
 ---
 

@@ -24,12 +24,14 @@ Ship-phase doc-extraction subagent for BAR-167 (bkit v2.0.0 — drop `__bkit__` 
 ### 1. `docs/completed.md` — No change required
 
 The BAR-167 entry was **already present** at lines 78–83 (written during an earlier docs pass). Entry summarises:
+
 - Phase 1 envelope drop + `deepContains` / `writeTier2JsonContained` / `migrateLegacyBkitEnvelope`.
 - Phase 2 markers on 12 Group A + 3 Group B templates + manifest `tier` → `format` schema.
 - Phase 3 terminology sweep + `tier3Hashes` writer narrow + `lint:no-tier-terms`.
 - Cross-references DE-16, DE-17, DE-18, KN-15, KN-16, KN-17. New scripts (`bkit-paths.ts`, `bkit-templates.test.ts`, `lint-no-tier-terms.ts`) and deleted (`bkit-tier1-defaults.ts`) catalogued.
 
 **Note:** The existing entry pre-dates the build-challenge cycle remediation (6 MAJOR fixes) and the rebase-merge ship cycle. It does NOT mention:
+
 - CI fix `workflow_dispatch:` addition to `ci.yml` template (per ship-input.md).
 - KN-18 (manifest format must match install dispatch) and KN-19 (malformed-JSON throw) which were added post-entry.
 - The duplicate KN-16 ID collision (see Pending Items Surfaced below).
@@ -51,6 +53,7 @@ These touch docs OTHER agents own per sole-writer rule. Surfacing for the orches
 ### A. `docs/knowledge.md` — KN-16 ID collision
 
 `docs/knowledge.md` contains TWO entries numbered `KN-16`:
+
 - Line 215: `KN-16: Multi-section output format — EOF-append landing section must be last (2026-05-09)` — from BAR-155.
 - Line 240: `KN-16: bkit-modules.ts format dispatch alignment — writeTier2 for markered-text, not writeTier1 (BAR-167 Phase 2) (2026-05-11)` — from BAR-167.
 
@@ -72,6 +75,7 @@ All four are pre-existing (filed during build) and no action required at ship ti
 ### C. `docs/completed.md` — optional amendment
 
 The existing BAR-167 entry (lines 78–83) does not list:
+
 - Squash SHA `da8dcfc` (currently lists "PR #18 + sub-plan PRs" — the actual merged PR is #20).
 - CI workflow_dispatch fix (added to bkit-self `ci.yml` and consumer template).
 - 6 MAJOR build-challenge remediation findings.
@@ -83,7 +87,7 @@ Per append-only rule this would NOT be an edit of the existing entry; orchestrat
 
 ### D. `docs/decisions.md` — DE-18 already present
 
-`DE-18: BAR-167 — Drop \`__bkit__\` envelope; adopt deep-containment ownership model (2026-05-11)` is recorded (line 199). DE-17 (line 186) is currently labelled BAR-169 (rebase-conflict tiered auto-recovery), not the Cursor v1 schema ADR the completed.md entry references. Cross-check: the completed.md entry says "DE-17 (Cursor v1 schema ADR)" but the actual DE-17 in decisions.md is BAR-169's rebase-recovery ADR. The Cursor v1 schema decision lives in DE-7 (now marked superseded by DE-18). Possible mis-link in completed.md narrative — surfaced for confirmation.
+`DE-18: BAR-167 — Drop \`**bkit**\` envelope; adopt deep-containment ownership model (2026-05-11)` is recorded (line 199). DE-17 (line 186) is currently labelled BAR-169 (rebase-conflict tiered auto-recovery), not the Cursor v1 schema ADR the completed.md entry references. Cross-check: the completed.md entry says "DE-17 (Cursor v1 schema ADR)" but the actual DE-17 in decisions.md is BAR-169's rebase-recovery ADR. The Cursor v1 schema decision lives in DE-7 (now marked superseded by DE-18). Possible mis-link in completed.md narrative — surfaced for confirmation.
 
 ## Notes
 

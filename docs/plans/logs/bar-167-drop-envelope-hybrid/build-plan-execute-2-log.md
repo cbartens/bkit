@@ -6,7 +6,7 @@ Verdict: PENDING
 
 ## Execution Log
 
-DONE — Task 17: Add Group A full-ownership markers — All 12 Group A template files now have exactly one bkit:start and one bkit:end marker (.vale/styles/House/*.yml + .agents/docs.md + docs/plans/template.md added; others already present)
+DONE — Task 17: Add Group A full-ownership markers — All 12 Group A template files now have exactly one bkit:start and one bkit:end marker (.vale/styles/House/\*.yml + .agents/docs.md + docs/plans/template.md added; others already present)
 DONE — Task 17a: Verify markers already present on reclassified markered-text files — All 5 files (.claude/hooks/preflight.sh, .cursor/hooks/preflight.sh, gitignore, .prettierignore, .husky/pre-commit) confirmed bkit:start count=1
 DONE — Task 18: Add Group B partial-ownership markers — ci.yml: # bkit:start at line 23 above Install Dependencies, # bkit:end at line 51 below Run Bkit Check; .vale.ini: # bkit:start at line 1 wrapping StylesPath/Packages/MinAlertLevel/House enable (4 required keys confirmed inside block)
 DONE — Task 18a: Verify .husky/pre-push markers — markers at lines 2-6 confirmed, no expansion needed

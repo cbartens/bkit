@@ -1,5 +1,7 @@
 <!-- verdict: PASS -->
+
 PASS — Plan grounded in real file paths (`.agents/scripts/bkit-install.ts`, `.agents/templates/`, `package.json` v0.1.1), absorbs all DoD bullets from BAR-130, splits cleanly across the three scopes (A/B/C), and is single-session-executable top-to-bottom. Tests are co-located with code (Reproduce-first); no deferred verification.
+
 <!-- verdict:end -->
 
 # BAR-130 — CI lint scaffolding + module-flag CLI Implementation Plan
@@ -479,7 +481,7 @@ _Code-only — `git revert` sufficient._
 
 - [ ] **Task 6.1 — Add `.agents/templates/.github/workflows/ci.yml` (Tier 2):** Bkit-managed block only, with `# bkit:start` / `# bkit:end` markers. Job `bkit-gates`: setup-node `{{NODE_VERSION}}`, pnpm `{{PNPM_VERSION}}`, auth-shim, `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, `pnpm lint:prose`, `pnpm lint:slop`, `bkit check`. `on: pull_request: branches: [{{DEFAULT_BRANCH}}]`.
   - **Verification:** Run `bkit install --ci` against tmpdir with existing `ci.yml` containing 2 consumer jobs → bkit block appended; consumer jobs preserved.
-- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**` (Tier 1):** Slim seed to `.agents/**` + root `*.md` scopes only.
+- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**`(Tier 1):** Slim seed to`.agents/\*_`+ root`_.md` scopes only.
   - **Verification:** `bkit install --lint` writes both; rerun = no-op.
 - [ ] **Task 6.3 — Add `.agents/templates/slop-scan.config.json` (Tier 3):** Verbatim from seed.
   - **Verification:** Existing consumer file → suggested-diff to stdout; absent → file written.

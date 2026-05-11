@@ -39,6 +39,7 @@ The design shifts `@cbartens/bkit` distribution from a git-dependency (`github:c
 ## Synthesis Coverage
 
 **5 axes, all deliberated.** Brainstorm enumerated 5 orthogonal decisions:
+
 1. Trigger: A1 (tag-push) vs B1 (release UI) vs C1 (reusable composite) → **A1 kept** (smallest surface, pre-release tags reuse same pipeline)
 2. Installer prints: A2 (hard cutover) vs B2 (dual-path detect) → **A2 kept** (design-input "no dual-publish", YAGNI on conditional detection)
 3. `dist/` model: A3 (committed + check:dist) vs B3 (prepublishOnly) vs C3 (build in CI) → **A3 kept** (honors BAR-130 no-lifecycle-hooks invariant)

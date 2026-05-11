@@ -3,7 +3,7 @@ Failures: 6
 
 <!-- verdict:end -->
 
-# Build Challenge — BAR-167 (bkit v2.0.0: drop __bkit__ envelope)
+# Build Challenge — BAR-167 (bkit v2.0.0: drop **bkit** envelope)
 
 Coverage note: partial diff coverage (12768 lines > 10000 threshold). Findings limited to the
 top-20 files supplied in build-input context (and tightly coupled callers found while reading
@@ -12,6 +12,7 @@ them). Did NOT inspect every workflow / template / mirror file.
 ## Findings Log
 
 ### MAJOR-1: writeTier2JsonContained silently destroys consumer content when destination JSON is malformed
+
 - class: architectural
 - location: `.agents/scripts/bkit-tiers.ts:227-241` (try/catch around `JSON.parse(dstRaw)`).
 - scenario: A consumer hand-edits `.claude/settings.json` or `.cursor/hooks.json`, makes a typo
@@ -31,6 +32,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   errors fall through silently.
 
 ### MAJOR-2: slop-scan.config.json manifest format ("json") does not match install behaviour ("byte-equal-text" via writeTier3) — uninstall path will deep-strip a file install never touched as JSON
+
 - class: mechanical
 - location: `.agents/scripts/bkit-manifest.ts:82` declares
   `{ path: "slop-scan.config.json", format: "json", module: "lint" }`. `bkit-modules.ts:1010-1028`
@@ -52,6 +54,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   and is the surgical fix.
 
 ### MAJOR-3: ci.yml manifest format ("markered-text") does not match install behaviour (writeTier3) — uninstall always returns misleading "no bkit markers found" reason
+
 - class: mechanical
 - location: `.agents/scripts/bkit-manifest.ts:69` (`format: "markered-text"`), versus
   `bkit-modules.ts:895` `runCiModule` calls `writeTier3` (whole-file seed-or-print). The template
@@ -76,6 +79,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   install/uninstall/check semantics in three different positions for the same file.
 
 ### MAJOR-4: .vale.ini manifest format mismatch — same class as MAJOR-3
+
 - class: mechanical
 - location: `.agents/scripts/bkit-manifest.ts:81` declares `format: "markered-text"`; runLintModule
   (`bkit-modules.ts:974-991`) installs via `writeTier3` (no markers written). The template DOES
@@ -94,6 +98,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   Group B INI/YAML files are install-seed-or-skip, not install-managed-block.
 
 ### MAJOR-5: CHANGELOG 2.0.0 entry under-represents breaking changes — bkit:start/end markers added to 12 Group A + 3 Group B templates and lint-no-tier-terms regression guard are not listed
+
 - class: mechanical
 - location: `CHANGELOG.md:9-35` (2.0.0 entry).
 - scenario: A consumer reading the CHANGELOG before bumping does not learn that (a) `AGENTS.md`,
@@ -112,6 +117,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   new `tier2-text-drift` advisory, new `lint-no-tier-terms` script + invocation.
 
 ### MAJOR-6: stripBkitBlock in preflight uses unsafe greedy regex (KN-8 lesson violation) — false-negative risk in detectHuskyBlockDuplicates and detectGitignoreBlockDuplicates
+
 - class: mechanical
 - location: `.agents/scripts/bkit-preflight.ts:65-69` —
   `content.replace(/<!--\s*bkit:start\s*-->[\s\S]*?<!--\s*bkit:end\s*-->/g, "").replace(/#\s*bkit:start[\s\S]*?#\s*bkit:end/g, "")`.
@@ -130,6 +136,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   twice (once per style) and concatenate.
 
 ### MINOR-1: deepContains array-of-primitives subset semantics ignores multiplicity
+
 - class: architectural
 - location: `.agents/scripts/bkit-tiers.ts:118-126` `_deepContainsArray`.
 - scenario: Template `["a", "a", "b"]` vs consumer `["a", "b"]` — both calls to
@@ -141,6 +148,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   multiplicity via a multiset/`Map<string,number>` count.
 
 ### MINOR-2: stripTier2JsonScope leaf equality is sensitive to JSON.stringify key order — over-preserves on editor-reformatted consumer JSON
+
 - class: architectural
 - location: `.agents/scripts/bkit-uninstall.ts:152-158` —
   `JSON.stringify(cVal) === JSON.stringify(tVal)`.
@@ -151,7 +159,8 @@ them). Did NOT inspect every workflow / template / mirror file.
 - fix: Replace JSON.stringify equality with a structural deep-equal helper (or import
   `deepEqual`-style util from `deepContains` symmetric variant).
 
-### MINOR-3: migrateLegacyBkitEnvelope._detectSchemaFlip only walks first level — deeper schema flips silently report schemaFlipped=false
+### MINOR-3: migrateLegacyBkitEnvelope.\_detectSchemaFlip only walks first level — deeper schema flips silently report schemaFlipped=false
+
 - class: architectural
 - location: `.agents/scripts/bkit-tiers.ts:331-346` (annotated as "shallow first level only for
   perf" — but the only call site logs a one-line "schema flip applied" advisory, so depth-2 flips
@@ -159,12 +168,13 @@ them). Did NOT inspect every workflow / template / mirror file.
 - scenario: Template `{ a: { b: [...] } }` (b is array) vs consumer post-strip
   `{ a: { b: "string" } }`. `_detectSchemaFlip` only compares the type of `a` (object in both) →
   returns false. The migrate path then deep-merges (`template wins`), the user sees the message
-  "stripped __bkit__ envelope" instead of "schema flip applied" — they don't know to look for
+  "stripped **bkit** envelope" instead of "schema flip applied" — they don't know to look for
   data-shape changes.
 - fix: Either recurse `_detectSchemaFlip` (cheap for typical JSON sizes), or rename the field to
   `topLevelSchemaFlipped` so callers know its scope.
 
 ### MINOR-4: detectPreEnvelopeBkitVersion only inspects two JSON files for the no-envelope signal — non-envelope-style installs from v0.6.x/v0.7.x may be mis-classified
+
 - class: architectural
 - location: `.agents/scripts/bkit-preflight.ts:491-503`.
 - scenario: Consumer pinned to `0.7.0` (post-Tier-2-migration, but the `__bkit__` envelope did
@@ -178,6 +188,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   the manifest for the modules the consumer has installed.
 
 ### MINOR-5: lint-no-tier-terms scope is docs/ markdown only — `.agents/README.md` (15 hits) and `CHANGELOG.md` (consumer-shipped tarball) are not scanned, regressing into shipped artifacts
+
 - class: mechanical
 - location: `.agents/scripts/lint-no-tier-terms.ts:70-73` — `SCAN_DIRS = [path.join(ROOT, "docs")]`.
 - scenario: A future developer can add Tier-1/2/3 prose to `.agents/README.md` and the regression
@@ -190,6 +201,7 @@ them). Did NOT inspect every workflow / template / mirror file.
   `.agents/README.md` and root README/CHANGELOG are intentionally out-of-scope.
 
 ### MINOR-6: writeTier2JsonContained idempotent-guard returns `update` action even when re-write would be byte-identical to existing dst after deep-merge
+
 - class: architectural
 - location: `.agents/scripts/bkit-tiers.ts:250-257`. The guard `if (mergedStr === dstRaw) return`
   compares the re-serialised merge to the existing raw bytes. If the consumer's JSON uses a

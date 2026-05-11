@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-06T04:48:46Z",
         "commitSha": "55405dd9de7eb7ba51cbd169b6735a62fe82de2b",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -26,9 +24,7 @@
         "attempt": 1,
         "at": "2026-05-06T04:55:19Z",
         "commitSha": "013d85c3d190afbdf83366500bd27fd58179fd44",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -50,9 +46,7 @@
         "attempt": 1,
         "at": "2026-05-06T05:02:20Z",
         "commitSha": "e519c0ca9d5aa9fdfb252a0cada2427e854f38f6",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -74,9 +68,7 @@
         "attempt": 1,
         "at": "2026-05-06T05:09:05Z",
         "commitSha": "a8852fe0056438e1a8de3b056ab4a0b0828e9398",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -85,9 +77,7 @@
         "attempt": 1,
         "at": "2026-05-06T05:10:17Z",
         "commitSha": "e3108633e58199a27a1f614e0ea0823bcb14684a",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-complexity-check.md"]
       },
       {
         "step": "summary",
@@ -96,9 +86,7 @@
         "attempt": 1,
         "at": "2026-05-06T05:12:21Z",
         "commitSha": "847709d631b3e389edbf0968d2ddc1a197141eef",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -126,9 +114,7 @@
         "status": "DONE",
         "at": "2026-05-06T05:51:00Z",
         "commitSha": "8ca1b76938be7d4a62493b635037718c7f2eba87",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -143,9 +129,7 @@
         "attempt": 1,
         "at": "2026-05-06T05:53:37Z",
         "commitSha": "87b261e141d32a0069fb12f2d43082b0ba916f29",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -155,9 +139,7 @@
         "subPlan": 1,
         "at": "2026-05-06T06:19:17Z",
         "commitSha": "cec4aaa9874d6381b465c7ff42ec77227c6e14a1",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-plan-execute-1-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-plan-execute-1-log.md"]
       },
       {
         "step": "plan-verify",
@@ -168,9 +150,7 @@
         "failures": 0,
         "at": "2026-05-06T06:25:11Z",
         "commitSha": "b41eda36f1d326c3b2adab6be58f1bc5e0dc7209",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-plan-verify-1-1.md"]
       },
       {
         "step": "challenge",
@@ -180,9 +160,7 @@
         "failures": 10,
         "at": "2026-05-06T06:30:44Z",
         "commitSha": "69b46ab8a4303ee217dd255791436623aaed5149",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-challenge.md"]
       },
       {
         "step": "challenge-remediate",
@@ -202,9 +180,7 @@
         "attempt": 1,
         "at": "2026-05-06T06:38:06Z",
         "commitSha": "e68f2230f88f1c72e5ca36d290bad7b990e57795",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-challenge-tests.md"]
       },
       {
         "step": "run-tests",
@@ -223,18 +199,14 @@
         "attempt": 1,
         "at": "2026-05-06T06:40:50Z",
         "commitSha": "9db84fb304d43318c58fd08f1bff609135f264f7",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-06T06:41:16Z",
         "commitSha": "8df69d90b8498d8a80cb2605254661db4be7d4a4",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/5"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/5"]
       },
       {
         "step": "close-workflow",
@@ -262,9 +234,7 @@
         "status": "DONE",
         "at": "2026-05-06T10:40:00Z",
         "note": "retroactively recorded — lost in dev rebase",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/ship-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/ship-input.md"]
       },
       {
         "step": "merge-pr",
@@ -290,9 +260,7 @@
         "attempt": 1,
         "at": "2026-05-06T10:48:36Z",
         "commitSha": "5bd5462626e4bc9610bb870b94c28a3048d04058",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/ship-update-docs.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/ship-update-docs.md"]
       },
       {
         "step": "summary",
@@ -301,9 +269,7 @@
         "attempt": 1,
         "at": "2026-05-06T10:48:36Z",
         "commitSha": "5bd5462626e4bc9610bb870b94c28a3048d04058",
-        "artifacts": [
-          "docs/plans/logs/bar-141-preflight-checklist/ship-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-141-preflight-checklist/ship-summary.md"]
       },
       {
         "step": "archive-docs",

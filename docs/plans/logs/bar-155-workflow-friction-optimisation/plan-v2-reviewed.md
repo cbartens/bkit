@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 <!-- Note: Save draft plans in `docs/plans/drafts/`. Move to `docs/plans/active/` when approved for execution. -->
@@ -516,6 +517,7 @@ _No DB changes — `git revert` sufficient._
 - [ ] **Task 4:** Create `.agents/prompts/bkit-build-challenge-1.md` — `cp .agents/prompts/bkit-build-challenge.md` then patch frontmatter (`name: bkit-build-challenge-1`, swap `effort: xhigh` → `effort: high` per Linear-issue prescription and slot-1 convention; keep `model: claude-opus-4-7`); ADD `Parallel:` line in Contract block (verbatim from `bkit-design-review-1.md`); ADD Fix 1b freeform stub-first directive in Process step 4 / 5 area (verbatim from Phase A scratchpad). Verify by `diff` against `bkit-build-challenge.md` showing only frontmatter + parallel guard + Fix-1b deltas.
 
   > **Effort decision note:** Linear issue § Suggested fixes Fix 4a says `bkit-build-challenge-1` is `effort: high`. Existing `bkit-build-challenge.md` is `effort: xhigh`. Use `high` per Linear-issue prescription (parallel-pair convention is Opus/high vs Sonnet/medium across all `-1`/`-2` pairs; `xhigh` is reserved for top-of-pipeline single synthesizers). Reconciler will be `xhigh` instead.
+
 - [ ] **Task 5:** Create `.agents/prompts/bkit-build-challenge-2.md` (same body as `-1` with frontmatter `name: bkit-build-challenge-2`, `effort: medium`, `model: claude-sonnet-4-6`; verify body byte-identical to `-1` except frontmatter via `diff -I '^name:' -I '^effort:' -I '^model:'`) AND `.agents/prompts/bkit-build-challenge-reconcile.md` (model on `bkit-design-update.md` shape — single agent, doc-writer tools, `effort: xhigh`, `model: claude-opus-4-7`, `maxTurns: 30`. Process: `Write` fresh skeleton (NOT `cp` of input — would produce duplicate `Verdict:`); prepend `Verdict: PENDING` header; re-read both inputs; dedup (same `file:line` OR same root-cause cluster); severity tie-break on canonical challenge ladder `CRITICAL > HIGH > MEDIUM > LOW` max-wins (downgrade only with `## Justification`); verdict `PASS | CONCERNS | FAIL` max-wins on `FAIL > CONCERNS > PASS`. NO `BLOCK`/`WARN` terminology. Output format byte-identical to `bkit-build-challenge.md`'s Output format).
 - [ ] **Task 6:** Delete `.agents/prompts/bkit-build-challenge.md` (`rm` then `git status` confirms deletion staged). Atomic with Task 4–5 in the same commit.
 

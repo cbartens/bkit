@@ -27,6 +27,7 @@ Challenge phase identified 3 findings (CONCERNS, not CRITICAL). C1 (blocking bug
 ## Generated Tests
 
 2 new end-to-end regression tests added to `.agents/scripts/bkit-modules.integration.test.ts` (describe block "C1 end-to-end regression: runClaudeModule triggers migration with JSON-format .bkit-version"):
+
 1. `runClaudeModule migrates Tier-1 .claude/settings.json when .bkit-version is JSON format` — seeds JSON `.bkit-version` with v0.5.0 + Tier-1 settings; verifies `__bkit__` envelope appears and consumer Stop hook survives. Catches C1 regression if raw `.trim()` bug reintroduced.
 2. `runClaudeModule does NOT skip migration when .bkit-version pinnedVersion is extracted` — same pattern with v0.7.0 JSON payload; verifies migration executes correctly across different JSON-format `.bkit-version` states.
 

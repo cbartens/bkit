@@ -1,5 +1,7 @@
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Plan Execution Log
@@ -15,4 +17,4 @@ DONE — Task P3.T6: migrateTier1JsonToTier2 (nested split strategy) — bkit-ti
 DONE — Task P3.T7: detectHooksConfigOverwriteRisk DELETED — bkit-preflight.ts + bkit-preflight.test.ts
 DONE — Task P3.T8: Vercel CLI hang guard (.vercel/project.json pre-check) — bkit-postinstall.ts + bkit-preflight.test.ts
 DONE — Task P3.T9: two-version upgrade-survival regression test — bkit-modules.upgrade.integration.test.ts
-DONE — Task P3.T10: docs update — docs/knowledge.md KN-8, docs/decisions.md DE-7+DE-8, README.md __bkit__ section, CHANGELOG.md v0.8.0
+DONE — Task P3.T10: docs update — docs/knowledge.md KN-8, docs/decisions.md DE-7+DE-8, README.md **bkit** section, CHANGELOG.md v0.8.0

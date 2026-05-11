@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Sub-plan 4 — P4 (v0.9.x to v1.0): Transactional install + `bkit upgrade` verb + helper action
@@ -62,26 +63,26 @@ A consumer maintainer of a heavily-customised repo upgrades to `bkit@1.0`. `bkit
 
 ### Edge Cases
 
-| Scenario | Expected Behavior |
-| --- | --- |
-| Concurrent `bkit install` mid-failure | Staging dir discarded, consumer files untouched |
-| `.bkit-version` retro-fit (consumer pre-dates `canonicalHashes`) | Treat as unknown -> backward-compat read |
-| Cursor v1 schema differs from bkit's shipped shape | Sub-plan-3 P3.T0 spike already addressed; this sub-plan inherits |
-| `bkit upgrade --non-interactive` with conflicts | Auto-apply non-conflicting; emit conflict list to stderr; exit non-zero |
-| Tag `v1` not pushed | `uses: cbartens/bkit/.github/actions/setup-auth@v1` fails to resolve in consumers — sub-task in P4.T8 mandatory |
+| Scenario                                                         | Expected Behavior                                                                                               |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Concurrent `bkit install` mid-failure                            | Staging dir discarded, consumer files untouched                                                                 |
+| `.bkit-version` retro-fit (consumer pre-dates `canonicalHashes`) | Treat as unknown -> backward-compat read                                                                        |
+| Cursor v1 schema differs from bkit's shipped shape               | Sub-plan-3 P3.T0 spike already addressed; this sub-plan inherits                                                |
+| `bkit upgrade --non-interactive` with conflicts                  | Auto-apply non-conflicting; emit conflict list to stderr; exit non-zero                                         |
+| Tag `v1` not pushed                                              | `uses: cbartens/bkit/.github/actions/setup-auth@v1` fails to resolve in consumers — sub-task in P4.T8 mandatory |
 
 ### Derived Test Matrix
 
-| Test description | Runbook task | Type | Target file |
-| --- | --- | --- | --- |
-| Staging dir + atomic rename | P4.T1, P4.T2 | Unit (Vitest) | `.agents/scripts/bkit-install.test.ts` |
-| Mid-failure rollback fixture | P4.T3 | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts` |
-| `.bkit-version` `canonicalHashes` (additive) | P4.T4 | Unit (Vitest) | `.agents/scripts/bkit-version.test.ts` |
-| `bkit upgrade` diff engine | P4.T5 | Unit (Vitest) | `.agents/scripts/bkit-upgrade.test.ts` |
-| `--non-interactive` upgrade auto-apply | P4.T6 | Unit (Vitest) | `.agents/scripts/bkit-upgrade.test.ts` |
-| Upgrade integration (customised hooks scenario) | P4.T7 | Integration (Vitest) | `.agents/scripts/bkit-upgrade.integration.test.ts` |
-| `setup-auth/action.yml` schema parse (offline) | P4.T8 | Unit (Vitest) | `.agents/scripts/bkit-action-yaml.test.ts` |
-| `setup-auth@v1` composite action smoke | P4.T8 | Manual (CI) | `.github/workflows/test-action.yml` |
+| Test description                                | Runbook task | Type                 | Target file                                        |
+| ----------------------------------------------- | ------------ | -------------------- | -------------------------------------------------- |
+| Staging dir + atomic rename                     | P4.T1, P4.T2 | Unit (Vitest)        | `.agents/scripts/bkit-install.test.ts`             |
+| Mid-failure rollback fixture                    | P4.T3        | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts` |
+| `.bkit-version` `canonicalHashes` (additive)    | P4.T4        | Unit (Vitest)        | `.agents/scripts/bkit-version.test.ts`             |
+| `bkit upgrade` diff engine                      | P4.T5        | Unit (Vitest)        | `.agents/scripts/bkit-upgrade.test.ts`             |
+| `--non-interactive` upgrade auto-apply          | P4.T6        | Unit (Vitest)        | `.agents/scripts/bkit-upgrade.test.ts`             |
+| Upgrade integration (customised hooks scenario) | P4.T7        | Integration (Vitest) | `.agents/scripts/bkit-upgrade.integration.test.ts` |
+| `setup-auth/action.yml` schema parse (offline)  | P4.T8        | Unit (Vitest)        | `.agents/scripts/bkit-action-yaml.test.ts`         |
+| `setup-auth@v1` composite action smoke          | P4.T8        | Manual (CI)          | `.github/workflows/test-action.yml`                |
 
 ### 👤 Human Confirmation
 
@@ -106,11 +107,11 @@ A consumer maintainer of a heavily-customised repo upgrades to `bkit@1.0`. `bkit
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
-| Three-way merge UI for `bkit upgrade` | Out-of-scope; conflict list to stderr is sufficient for v1.0. |
-| Bundle helper action into sub-plan-3 | Architecturally orthogonal; helper action depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern; clean fit in sub-plan-4. |
-| Remove bash PAT-shim block from seeded `ci.yml` | External contract — non-Actions CI consumers rely on it. RETAIN-WITH-REASON kill-date v1.1.0. |
+| Rejected approach                               | Why rejected                                                                                                                                 |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Three-way merge UI for `bkit upgrade`           | Out-of-scope; conflict list to stderr is sufficient for v1.0.                                                                                |
+| Bundle helper action into sub-plan-3            | Architecturally orthogonal; helper action depends on `.bkit-version` schema (sub-plan-2) and consumer ship pattern; clean fit in sub-plan-4. |
+| Remove bash PAT-shim block from seeded `ci.yml` | External contract — non-Actions CI consumers rely on it. RETAIN-WITH-REASON kill-date v1.1.0.                                                |
 
 **Future recommendations:** post-v1.0, consider a `bkit init` scaffolder; npm-registry distribution; factory-reset uninstall mode.
 
@@ -127,8 +128,8 @@ Always squash. One PR for sub-plan-4 -> v0.9.x release; v1.0 tag is a sub-step i
 
 ## Supersession Inventory
 
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
+| Existing artifact                                 | Replaced by                    | Decision           | Justification                                                                                                          |
+| ------------------------------------------------- | ------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | Multi-line bash PAT-shim block in seeded `ci.yml` | `setup-auth@v1` action (P4.T8) | RETAIN-WITH-REASON | External contract — bash fallback retained for non-Actions CI. **Kill-date: v1.1.0** (follow-up issue post-v1.0 ship). |
 
 ## Security & Privacy
@@ -183,45 +184,45 @@ Sub-plan-4 is NOT independently shippable. sub-plan-2 AND sub-plan-3 MUST be mer
 
 ## Architecture & Component Changes
 
-| Tag | File | Purpose |
-| --- | --- | --- |
-| [MODIFY] | `.agents/scripts/bkit-install.ts` | Staging-aware write wrapper; `commitStaging`/`discardStaging`; record canonical-file hashes on write. |
-| [MODIFY] | `.agents/scripts/bkit-install.test.ts` | Staging + atomic-rename + error-path assertions. |
-| [MODIFY] | `.agents/scripts/bkit-install.integration.test.ts` | Mid-failure rollback fixture; SIGTERM-after-first-module fixture. |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Pass staging dir to module dispatcher. |
-| [MODIFY] | `.agents/scripts/bkit-version.ts` | Extend (already [NEW] in sub-plan-2 P2.T3) — additive `canonicalHashes` field. |
-| [MODIFY] | `.agents/scripts/bkit-version.test.ts` | Backward-compat with absent field. |
-| [MODIFY] | `.agents/scripts/bkit-cli.ts` | Register `upgrade` verb. |
-| [NEW] | `.agents/scripts/bkit-upgrade.ts` | Orchestrator + diff engine; `--non-interactive` flag. |
-| [NEW] | `.agents/scripts/bkit-upgrade.test.ts` | Diff engine; conflict abort; auto-apply. |
-| [NEW] | `.agents/scripts/bkit-upgrade.integration.test.ts` | 0.4.x -> 0.5.x customised hooks scenario. |
-| [NEW] | `.github/actions/setup-auth/action.yml` | Composite action wraps PAT-shim using `BKIT_READ_TOKEN`. |
-| [MODIFY] | `.agents/templates/.github/workflows/ci.yml` | Update step to `uses: cbartens/bkit/.github/actions/setup-auth@v1`. |
-| [NEW] | `.github/workflows/test-action.yml` | Meta-test invokes the action. Manual GitHub Actions smoke at gate. |
-| [NEW] | `.agents/scripts/bkit-action-yaml.test.ts` | Offline acceptance: parse `action.yml`, assert valid YAML schema + expected inputs (`token`, `registry`). |
-| [MODIFY] | `README.md` | Upgrade / Transactional install / Helper action sections. |
-| [MODIFY] | `docs/decisions.md` | Staging-dir architecture; `.bkit-version` schema extension. |
-| [MODIFY] | `CHANGELOG.md` | v0.9.x and v1.0 entries. |
+| Tag      | File                                               | Purpose                                                                                                   |
+| -------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| [MODIFY] | `.agents/scripts/bkit-install.ts`                  | Staging-aware write wrapper; `commitStaging`/`discardStaging`; record canonical-file hashes on write.     |
+| [MODIFY] | `.agents/scripts/bkit-install.test.ts`             | Staging + atomic-rename + error-path assertions.                                                          |
+| [MODIFY] | `.agents/scripts/bkit-install.integration.test.ts` | Mid-failure rollback fixture; SIGTERM-after-first-module fixture.                                         |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts`                  | Pass staging dir to module dispatcher.                                                                    |
+| [MODIFY] | `.agents/scripts/bkit-version.ts`                  | Extend (already [NEW] in sub-plan-2 P2.T3) — additive `canonicalHashes` field.                            |
+| [MODIFY] | `.agents/scripts/bkit-version.test.ts`             | Backward-compat with absent field.                                                                        |
+| [MODIFY] | `.agents/scripts/bkit-cli.ts`                      | Register `upgrade` verb.                                                                                  |
+| [NEW]    | `.agents/scripts/bkit-upgrade.ts`                  | Orchestrator + diff engine; `--non-interactive` flag.                                                     |
+| [NEW]    | `.agents/scripts/bkit-upgrade.test.ts`             | Diff engine; conflict abort; auto-apply.                                                                  |
+| [NEW]    | `.agents/scripts/bkit-upgrade.integration.test.ts` | 0.4.x -> 0.5.x customised hooks scenario.                                                                 |
+| [NEW]    | `.github/actions/setup-auth/action.yml`            | Composite action wraps PAT-shim using `BKIT_READ_TOKEN`.                                                  |
+| [MODIFY] | `.agents/templates/.github/workflows/ci.yml`       | Update step to `uses: cbartens/bkit/.github/actions/setup-auth@v1`.                                       |
+| [NEW]    | `.github/workflows/test-action.yml`                | Meta-test invokes the action. Manual GitHub Actions smoke at gate.                                        |
+| [NEW]    | `.agents/scripts/bkit-action-yaml.test.ts`         | Offline acceptance: parse `action.yml`, assert valid YAML schema + expected inputs (`token`, `registry`). |
+| [MODIFY] | `README.md`                                        | Upgrade / Transactional install / Helper action sections.                                                 |
+| [MODIFY] | `docs/decisions.md`                                | Staging-dir architecture; `.bkit-version` schema extension.                                               |
+| [MODIFY] | `CHANGELOG.md`                                     | v0.9.x and v1.0 entries.                                                                                  |
 
 ## Documentation Updates
 
-| File | Change required |
-| --- | --- |
-| `README.md` | Upgrade + Transactional install + Helper action sections. |
+| File                | Change required                                                        |
+| ------------------- | ---------------------------------------------------------------------- |
+| `README.md`         | Upgrade + Transactional install + Helper action sections.              |
 | `docs/decisions.md` | Staging-dir architecture; `.bkit-version` `canonicalHashes` extension. |
-| `docs/knowledge.md` | Transactional-install learnings. |
-| `CHANGELOG.md` | v0.9.x and v1.0 bullets per closed task. |
-| `.agents/docs.md` | Verify still accurate after sub-plan-4. |
+| `docs/knowledge.md` | Transactional-install learnings.                                       |
+| `CHANGELOG.md`      | v0.9.x and v1.0 bullets per closed task.                               |
+| `.agents/docs.md`   | Verify still accurate after sub-plan-4.                                |
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| **Code** | `git revert <sub-plan-4 squash-merge SHA>` | Single squash commit; revert is atomic. Note: `v1` tag must also be deleted/moved if revert post-tag. |
-| **`.bkit-version`** | `canonicalHashes` extension is additive | Old code reads new file via backward-compat reader. |
-| **Helper action** | `v1` tag deletion (`git push origin :refs/tags/v1`) | Consumers using `@v1` will fail to resolve until next ship; bash fallback retained. |
-| **DB** | N/A | No DB. |
-| **Risk window** | Single PR + tag | Per-phase revert window. |
+| Axis                | Action                                              | Notes                                                                                                 |
+| ------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Code**            | `git revert <sub-plan-4 squash-merge SHA>`          | Single squash commit; revert is atomic. Note: `v1` tag must also be deleted/moved if revert post-tag. |
+| **`.bkit-version`** | `canonicalHashes` extension is additive             | Old code reads new file via backward-compat reader.                                                   |
+| **Helper action**   | `v1` tag deletion (`git push origin :refs/tags/v1`) | Consumers using `@v1` will fail to resolve until next ship; bash fallback retained.                   |
+| **DB**              | N/A                                                 | No DB.                                                                                                |
+| **Risk window**     | Single PR + tag                                     | Per-phase revert window.                                                                              |
 
 ## Agent Execution Runbook
 

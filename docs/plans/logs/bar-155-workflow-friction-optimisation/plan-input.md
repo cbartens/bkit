@@ -18,21 +18,21 @@ This is a **follow-up to** BAR-137 — BAR-137's verdict-artifact-stub-first fix
 
 This is a bkit-repo-internal change. Before touching any file, read `.agents/rules.md` § **bkit Repo Authoring** in full and adhere to it strictly. Summary (full text wins on conflict):
 
-* **Canonical sources only** — ONLY edit `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`.
-* **Install to mirror** — After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors. Batch at end of session, not after every edit.
-* **Template sync** — Edits inside `.agents/rules.md` `bkit:start/end` block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
-* **Workflow edits** — Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
-* **Prompt/agent edits** — Any `.agents/agents/*.md` or `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
-* **Keep documentation updated** — When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/agents/*.md` or `.agents/prompts/*.md` → update the relevant index. Index drift = regression.
+- **Canonical sources only** — ONLY edit `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`.
+- **Install to mirror** — After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors. Batch at end of session, not after every edit.
+- **Template sync** — Edits inside `.agents/rules.md` `bkit:start/end` block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
+- **Workflow edits** — Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
+- **Prompt/agent edits** — Any `.agents/agents/*.md` or `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
+- **Keep documentation updated** — When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/agents/*.md` or `.agents/prompts/*.md` → update the relevant index. Index drift = regression.
 
 ## Observed failures
 
 ### plan-execute budget exhaustion at higher load (post-BAR-137)
 
-| FID | Repo | Sub-plan size | Wall time | Final state |
-| -- | -- | -- | -- | -- |
-| `bar-141-preflight-checklist` | bkit | (single plan) | ~20 min (1188887 ms) | log file: `Verdict: PENDING` only, 6 lines |
-| `bar-102-digital-agent-mvp` (sub-plan 1) | visitfrasercoast-com | 31 tasks (bootstrap monorepo) | 3× cutoffs | cut at Task 1.14, 1.19, 1.21; required 3 manual re-invocations |
+| FID                                      | Repo                 | Sub-plan size                 | Wall time            | Final state                                                    |
+| ---------------------------------------- | -------------------- | ----------------------------- | -------------------- | -------------------------------------------------------------- |
+| `bar-141-preflight-checklist`            | bkit                 | (single plan)                 | ~20 min (1188887 ms) | log file: `Verdict: PENDING` only, 6 lines                     |
+| `bar-102-digital-agent-mvp` (sub-plan 1) | visitfrasercoast-com | 31 tasks (bootstrap monorepo) | 3× cutoffs           | cut at Task 1.14, 1.19, 1.21; required 3 manual re-invocations |
 
 ### plan-generate stream-timeout on multi-issue input
 
@@ -70,10 +70,10 @@ Audit + spot-fix coverage: `bkit-build-plan-verify`, `bkit-build-challenge-1/-2`
 
 Add deterministic task-count gate alongside the existing token cap. **No LLM judgment** — the parent `bkit-plan` workflow greps `^### Task ` (or equivalent task marker) and short-circuits to **Failure Path**.
 
-| Gate | Action |
-| -- | -- |
-| Token estimate >100K (existing, in `bkit-plan-complexity-check`) | Mandatory split |
-| Task count >15 | Mandatory split (Failure Path with split-required reason) |
+| Gate                                                             | Action                                                    |
+| ---------------------------------------------------------------- | --------------------------------------------------------- |
+| Token estimate >100K (existing, in `bkit-plan-complexity-check`) | Mandatory split                                           |
+| Task count >15                                                   | Mandatory split (Failure Path with split-required reason) |
 
 **Rationale for 15 (not 20):** every observed clean single-shot pass ≤18 tasks; every cutoff or cross-session "rescue" ≥20 tasks. BAR-132 bootstrap (20 tasks → 28-31 with sub-tasks) → 3× cutoffs at T1.14, T1.19, T1.21. BAR-119 sub-plan-1 (29 tasks) "passed" only via cross-session continuation. `.agents/friction.md:88-89` already recommends ≤15 at plan-generate time. **20 is the failure boundary; 15 is the safe boundary.**
 
@@ -93,10 +93,10 @@ Replace single-reviewer challenge with the **same convention used by** `bkit-des
 
 **4a. Agent files (split existing** `bkit-build-challenge.md`):
 
-| File | Frontmatter | Body |
-| -- | -- | -- |
-| `bkit-build-challenge-1.md` | `model: claude-opus-4-7`, `effort: high` | Identical to current `bkit-build-challenge.md` body + Fix 1b freeform stub-first wording |
-| `bkit-build-challenge-2.md` | `model: claude-sonnet-4-6`, `effort: medium` | Identical body |
+| File                        | Frontmatter                                  | Body                                                                                     |
+| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `bkit-build-challenge-1.md` | `model: claude-opus-4-7`, `effort: high`     | Identical to current `bkit-build-challenge.md` body + Fix 1b freeform stub-first wording |
+| `bkit-build-challenge-2.md` | `model: claude-sonnet-4-6`, `effort: medium` | Identical body                                                                           |
 
 Matches the established `-1` = Opus/high, `-2` = Sonnet/medium pattern verbatim. Bodies are identical except for frontmatter (mirrors `bkit-design-review-1/-2`).
 
@@ -123,11 +123,11 @@ Use the verbatim template from `bkit-design.md` Step 5 (Design Review):
 
 Mirrors `bkit-design-update.md` / `bkit-plan-update.md` shape (merges multiple inputs into one canonical artifact).
 
-* Inputs (read via explicit workflow `Read:` directive): `docs/plans/logs/{FID}/build-challenge-1.md`, `docs/plans/logs/{FID}/build-challenge-2.md`
-* Output: `docs/plans/logs/{FID}/build-challenge.md` — drop-in compatible with existing `bkit-build-challenge-remediate` flow (no remediate-side change)
-* **Severity tie-break:** max-wins (BLOCK > WARN > PASS). If R1=PASS and R2=BLOCK → unified=BLOCK. Reconciler may downgrade only with explicit `## Justification` block citing both reviewers' evidence.
-* **Dedup heuristic:** same `file:line` reference OR same root-cause keyword cluster → merge into one finding, cite both reviewers; otherwise keep separate, attribute each.
-* Frontmatter: follow the convention used by `bkit-design-update.md` (single agent, no -1/-2 split needed).
+- Inputs (read via explicit workflow `Read:` directive): `docs/plans/logs/{FID}/build-challenge-1.md`, `docs/plans/logs/{FID}/build-challenge-2.md`
+- Output: `docs/plans/logs/{FID}/build-challenge.md` — drop-in compatible with existing `bkit-build-challenge-remediate` flow (no remediate-side change)
+- **Severity tie-break:** max-wins (BLOCK > WARN > PASS). If R1=PASS and R2=BLOCK → unified=BLOCK. Reconciler may downgrade only with explicit `## Justification` block citing both reviewers' evidence.
+- **Dedup heuristic:** same `file:line` reference OR same root-cause keyword cluster → merge into one finding, cite both reviewers; otherwise keep separate, attribute each.
+- Frontmatter: follow the convention used by `bkit-design-update.md` (single agent, no -1/-2 split needed).
 
 **4d. Workflow step for reconcile:**
 
@@ -199,39 +199,39 @@ Output example:
 
 ## Out of scope
 
-* **Diff-size or sensitivity gating** for parallel challenge — explicitly always-on.
-* `task-range` parameter for `bkit-build-plan-execute` — deferred fallback. Only revisit if Fix 2 proves insufficient on genuinely-atomic large phases.
-* **Focused-brief mode for** `bkit-build-challenge` — explicitly dropped. A targeted brief tells the adversarial reviewer which doors are already locked; diversity (Fix 4), not narrowing, is the right answer.
-* **Retrofit of** `bkit-design-review-1/-2` and `bkit-plan-review-1/-2` with explicit model/thinking diversity — already verified to use Opus/high vs Sonnet/medium. **No retrofit needed.**
-* **Subagent retry/backoff harness redesign** — prompt/structure changes only (same scoping as BAR-137).
-* **Adapter changes for non-pnpm package managers.**
-* **KN/DE auto-renumber on rebase conflicts** — explicitly dropped. Sed regex / cross-platform fragility (e.g. `KN-3` matching `KN-30`, prose cross-references, multi-file atomicity). Frequency too low to justify the implementation risk; Fix 6 reduces frequency further by encouraging mid-build rebases.
-* **Template-vs-canonical preference rule on rebase conflicts** — explicitly dropped. Narrow scope (bkit-repo-only — `.agents/templates/*` doesn't exist in consumer repos). Timestamp heuristic can pick the wrong winner (recent cosmetic commit beats older substantive change). Manual resolution remains acceptable for this frequency.
-* **Custom** `ship-rebase-conflict-{N}.md` artifact — explicitly dropped in favour of Fix 5 (route through existing Failure Path → existing `bkit-debug-abort-handover` produces `ship-handover.md`). No new artifact format needed.
-* **Opt-in mechanism for multi-issue plan-input** — explicitly refused via Failure Path; no flag, no marker.
+- **Diff-size or sensitivity gating** for parallel challenge — explicitly always-on.
+- `task-range` parameter for `bkit-build-plan-execute` — deferred fallback. Only revisit if Fix 2 proves insufficient on genuinely-atomic large phases.
+- **Focused-brief mode for** `bkit-build-challenge` — explicitly dropped. A targeted brief tells the adversarial reviewer which doors are already locked; diversity (Fix 4), not narrowing, is the right answer.
+- **Retrofit of** `bkit-design-review-1/-2` and `bkit-plan-review-1/-2` with explicit model/thinking diversity — already verified to use Opus/high vs Sonnet/medium. **No retrofit needed.**
+- **Subagent retry/backoff harness redesign** — prompt/structure changes only (same scoping as BAR-137).
+- **Adapter changes for non-pnpm package managers.**
+- **KN/DE auto-renumber on rebase conflicts** — explicitly dropped. Sed regex / cross-platform fragility (e.g. `KN-3` matching `KN-30`, prose cross-references, multi-file atomicity). Frequency too low to justify the implementation risk; Fix 6 reduces frequency further by encouraging mid-build rebases.
+- **Template-vs-canonical preference rule on rebase conflicts** — explicitly dropped. Narrow scope (bkit-repo-only — `.agents/templates/*` doesn't exist in consumer repos). Timestamp heuristic can pick the wrong winner (recent cosmetic commit beats older substantive change). Manual resolution remains acceptable for this frequency.
+- **Custom** `ship-rebase-conflict-{N}.md` artifact — explicitly dropped in favour of Fix 5 (route through existing Failure Path → existing `bkit-debug-abort-handover` produces `ship-handover.md`). No new artifact format needed.
+- **Opt-in mechanism for multi-issue plan-input** — explicitly refused via Failure Path; no flag, no marker.
 
 ## Convention references (verbatim sources for implementation)
 
-* **Parallel-invocation workflow template** — `.agents/workflows/bkit-design.md` Step 3 (brainstorm), Step 5 (design review); `bkit-plan.md` Step 4 (plan review). Verbatim "Launch both subagents in parallel using `Agent` tool" wording with Read/Create directives, parallel-context preamble, and Failure Path assertion.
-* **Parallel-pair frontmatter convention** — `.agents/agents/bkit-design-review-1.md` (`model: claude-opus-4-7`, `effort: high`); `bkit-design-review-2.md` (`model: claude-sonnet-4-6`, `effort: medium`). Same pattern in brainstorm-ideate-1/-2, plan-review-1/-2, plan-scope-check-1/-2. Bodies identical except frontmatter.
-* **Reconcile-agent shape** — `.agents/agents/bkit-design-update.md` (consumes `design-v1-draft.md` + `design-review-1.md` + `design-review-2.md` → `design-v2-reviewed.md`). Single agent, no -1/-2 split.
-* **Filename suffix convention** — `-1.md` / `-2.md` for parallel outputs (NOT `-r1`/`-r2`, `-a`/`-b`).
-* **Failure Path block** — top of every workflow file (see `bkit-design.md` `## 🤖 Failure Path` block: status.json update, lock removal, commit, Linear label/state update, comment append, STOP). Already wired into `bkit-ship.md` Failure Path Step 5 via `bkit-debug-abort-handover` → `ship-handover.md`.
-* **Abort-handover agent** — `.agents/agents/bkit-debug-abort-handover.md`. Produces `{phase}-handover.md` with Short Version / Attempt History / Verified Resolutions / Persistent Errors / Recommended Next Steps / Reference Docs sections. Self-contained — reads `status.json`, glob `{phase}-input-*.md`, glob `{phase}-failure-*.md`, `git diff origin/dev..HEAD`. Already invoked from `bkit-debug.md`, `bkit-ship.md`, `bkit-build.md` Failure Paths.
-* **Existing** `echo >>` pattern (Fix 1b verbatim source) — `.agents/agents/bkit-build-plan-execute.md:44, 60`; `bkit-build-plan-gaps-remediate.md:43, 66`; `bkit-build-challenge-remediate.md:43, 62`.
-* **Existing token-only complexity rule** — `.agents/prompts/bkit-plan-complexity-check.md:38-39`.
-* **No existing branch-status reporting** — searched `bkit-ship.md`, `bkit-build.md` for `git rev-list` / `commits behind` / `branch status`. None found. Fix 6 is a clean addition.
-* **Authoring rules** — `.agents/rules.md` § bkit Repo Authoring (READ FIRST).
+- **Parallel-invocation workflow template** — `.agents/workflows/bkit-design.md` Step 3 (brainstorm), Step 5 (design review); `bkit-plan.md` Step 4 (plan review). Verbatim "Launch both subagents in parallel using `Agent` tool" wording with Read/Create directives, parallel-context preamble, and Failure Path assertion.
+- **Parallel-pair frontmatter convention** — `.agents/agents/bkit-design-review-1.md` (`model: claude-opus-4-7`, `effort: high`); `bkit-design-review-2.md` (`model: claude-sonnet-4-6`, `effort: medium`). Same pattern in brainstorm-ideate-1/-2, plan-review-1/-2, plan-scope-check-1/-2. Bodies identical except frontmatter.
+- **Reconcile-agent shape** — `.agents/agents/bkit-design-update.md` (consumes `design-v1-draft.md` + `design-review-1.md` + `design-review-2.md` → `design-v2-reviewed.md`). Single agent, no -1/-2 split.
+- **Filename suffix convention** — `-1.md` / `-2.md` for parallel outputs (NOT `-r1`/`-r2`, `-a`/`-b`).
+- **Failure Path block** — top of every workflow file (see `bkit-design.md` `## 🤖 Failure Path` block: status.json update, lock removal, commit, Linear label/state update, comment append, STOP). Already wired into `bkit-ship.md` Failure Path Step 5 via `bkit-debug-abort-handover` → `ship-handover.md`.
+- **Abort-handover agent** — `.agents/agents/bkit-debug-abort-handover.md`. Produces `{phase}-handover.md` with Short Version / Attempt History / Verified Resolutions / Persistent Errors / Recommended Next Steps / Reference Docs sections. Self-contained — reads `status.json`, glob `{phase}-input-*.md`, glob `{phase}-failure-*.md`, `git diff origin/dev..HEAD`. Already invoked from `bkit-debug.md`, `bkit-ship.md`, `bkit-build.md` Failure Paths.
+- **Existing** `echo >>` pattern (Fix 1b verbatim source) — `.agents/agents/bkit-build-plan-execute.md:44, 60`; `bkit-build-plan-gaps-remediate.md:43, 66`; `bkit-build-challenge-remediate.md:43, 62`.
+- **Existing token-only complexity rule** — `.agents/prompts/bkit-plan-complexity-check.md:38-39`.
+- **No existing branch-status reporting** — searched `bkit-ship.md`, `bkit-build.md` for `git rev-list` / `commits behind` / `branch status`. None found. Fix 6 is a clean addition.
+- **Authoring rules** — `.agents/rules.md` § bkit Repo Authoring (READ FIRST).
 
 ## References
 
-* BAR-137 (parent — stub-first fix for `bkit-build-plan-execute`) — closed 2026-05-05.
-* BAR-141 build-workflow run — plan-execute PENDING after ~20min on `bkit`.
-* BAR-131 ship-workflow run — 50-commit rebase, 5 conflict commits, KN-9/KN-10 → KN-12/KN-13 renumber on `bkit`. CI run `#25538826802` green post-resolution.
-* BAR-131 / BAR-139 / BAR-142 plan-generate run — 32KB multi-issue input, stream timeout on `bkit`.
-* BAR-93 re-run — challenge subagent budget exhaustion on `gether-life/app-gether-life`.
-* BAR-132 — plan-execute 31-task sub-plan (3× cutoffs) on `fcte-com-au/visitfrasercoast-com`.
-* Friction log: `.agents/friction.md` (5 retained entries, 2026-05-06 → 2026-05-08; collection from app-gether-life and visitfrasercoast-com landed 2026-05-08). Note lines 88-89 — original `≤15 tasks` recommendation.
+- BAR-137 (parent — stub-first fix for `bkit-build-plan-execute`) — closed 2026-05-05.
+- BAR-141 build-workflow run — plan-execute PENDING after ~20min on `bkit`.
+- BAR-131 ship-workflow run — 50-commit rebase, 5 conflict commits, KN-9/KN-10 → KN-12/KN-13 renumber on `bkit`. CI run `#25538826802` green post-resolution.
+- BAR-131 / BAR-139 / BAR-142 plan-generate run — 32KB multi-issue input, stream timeout on `bkit`.
+- BAR-93 re-run — challenge subagent budget exhaustion on `gether-life/app-gether-life`.
+- BAR-132 — plan-execute 31-task sub-plan (3× cutoffs) on `fcte-com-au/visitfrasercoast-com`.
+- Friction log: `.agents/friction.md` (5 retained entries, 2026-05-06 → 2026-05-08; collection from app-gether-life and visitfrasercoast-com landed 2026-05-08). Note lines 88-89 — original `≤15 tasks` recommendation.
 
 ### Comments
 

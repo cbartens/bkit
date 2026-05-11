@@ -1,8 +1,11 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 <!-- verdict: PASS -->
+
 PASS — Plan grounded in real file paths (`.agents/scripts/bkit-install.ts`, `.agents/templates/`, `package.json` v0.1.1), absorbs all DoD bullets from BAR-130, splits cleanly across the three scopes (A/B/C), and is single-session-executable top-to-bottom. Tests are co-located with code (Reproduce-first); no deferred verification.
+
 <!-- verdict:end -->
 
 # BAR-130 — CI lint scaffolding + module-flag CLI Implementation Plan
@@ -475,7 +478,7 @@ _Code-only — `git revert` sufficient._
   - **Verification:** `pnpm test bkit-modules` green; `pnpm typecheck` green.
 - [ ] **Task 4.3 — Wire `bkit-install.ts` `main()` to module dispatcher + remove greenfield guard (Reviewer 2 C5):** Refactor `main()` — call `parseArgs` from `bkit-cli.ts`, resolve tokens, dispatch through `MODULE_REGISTRY` per parsed module set, emit print-sink at end. Preserve existing log prefix conventions (`[bkit-install]` / `[bkit-check]`).
   - **Sub-step (Reviewer 2 C5):** Remove (or relax) the existing pre-dispatch guard `if (verb !== "init" && !fs.existsSync(".agents/prompts.md"))` at `bkit-install.ts` lines ~650–653. Rationale: with the new module surface, `bkit install --ci` (and any other module) on a greenfield repo MUST work — `--core` is implicitly prepended and `runCoreModule` will create `.agents/` including `prompts.md`. Replacement behaviour:
-    - **Preferred:** Delete the guard entirely. `runCoreModule` is responsible for ensuring `.agents/prompts.md` exists (via additive payload copy from `PKG_AGENTS`). Any module that depends on `prompts.md` runs *after* `runCoreModule`.
+    - **Preferred:** Delete the guard entirely. `runCoreModule` is responsible for ensuring `.agents/prompts.md` exists (via additive payload copy from `PKG_AGENTS`). Any module that depends on `prompts.md` runs _after_ `runCoreModule`.
     - **Fallback (if deletion proves risky):** Move the guard inside any module function that actually reads `prompts.md` (e.g., agent host modules), so installing `--ci` alone on a clean repo does not get rejected.
   - **Sub-step (Reviewer 1 #7):** In `runCoreModule` ordering, ensure `.bkit-version` write is sequenced **AFTER** all other core writes (additive `.agents/` payload copy, `rules.md` Tier 2 block update, `.gitignore` Tier 2 block update). Rationale: a mid-install crash between Tier 1 and Tier 2 leaves `.bkit-version` unwritten, so `bkit install` re-run is correctly detected as upgrade-needed (per Edge Case row).
   - **Acceptance:** All existing tests still green; integration tests from Task 4.1 green; `bkit install --ci` against a clean tmpdir (no `.agents/`) succeeds; `bkit install --ci` mid-crash simulation leaves `.bkit-version` absent so re-run replays.
@@ -509,7 +512,7 @@ _Code-only — `git revert` sufficient._
 
 - [ ] **Task 6.1 — Add `.agents/templates/.github/workflows/ci.yml` (Tier 2):** Bkit-managed block only, with `# bkit:start` / `# bkit:end` markers. Job `bkit-gates`: setup-node `{{NODE_VERSION}}`, pnpm `{{PNPM_VERSION}}`, auth-shim, `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm test`, `pnpm format:check`, `pnpm lint:prose`, `pnpm lint:slop`, `bkit check`. `on: pull_request: branches: [{{DEFAULT_BRANCH}}]`.
   - **Verification:** Run `bkit install --ci` against tmpdir with existing `ci.yml` containing 2 consumer jobs → bkit block appended; consumer jobs preserved.
-- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**` (Tier 1):** Slim seed to `.agents/**` + root `*.md` scopes only.
+- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**`(Tier 1):** Slim seed to`.agents/\*_`+ root`_.md` scopes only.
   - **Verification:** `bkit install --lint` writes both; rerun = no-op.
 - [ ] **Task 6.3 — Add `.agents/templates/slop-scan.config.json` (Tier 3):** Verbatim from seed.
   - **Verification:** Existing consumer file → suggested-diff to stdout; absent → file written.
@@ -527,7 +530,7 @@ _Code-only — `git revert` sufficient._
     - **Option A (preferred):** Use `pnpm tsx` — no extra setup step, leverages existing pnpm runtime. Step: `run: pnpm tsx .agents/scripts/bkit-install.ts check`. Requires `tsx` in devDeps (already present per `package.json` — verify; if absent, add as part of this task).
     - **Option B:** Add `oven-sh/setup-bun@v2` step before the self-test, then `run: bun .agents/scripts/bkit-install.ts check`. Adds ~3s install step.
     - **Decision:** plan adopts **Option A** (`pnpm tsx`) for parity with how local devs run scripts and to avoid adding a runtime to the CI job.
-  - **Package distribution check (Reviewer 2 C7):** `.github/workflows/ci.yml` (this file, at bkit-the-repo root) must be excluded from the npm/git-dep package shipped to consumers. The `package.json` `"files"` array (currently `["dist", ".agents", "README.md"]`) does NOT include `.github/`, so this file is correctly excluded by default. **Verification (no code change):** Run `pnpm pack --dry-run` (or `npm pack --dry-run`) and confirm `.github/workflows/ci.yml` is NOT in the packed file list. Document the result in the task acceptance log. (The consumer-facing CI workflow is the *template* at `.agents/templates/.github/workflows/ci.yml` — that one ships, this one does not.)
+  - **Package distribution check (Reviewer 2 C7):** `.github/workflows/ci.yml` (this file, at bkit-the-repo root) must be excluded from the npm/git-dep package shipped to consumers. The `package.json` `"files"` array (currently `["dist", ".agents", "README.md"]`) does NOT include `.github/`, so this file is correctly excluded by default. **Verification (no code change):** Run `pnpm pack --dry-run` (or `npm pack --dry-run`) and confirm `.github/workflows/ci.yml` is NOT in the packed file list. Document the result in the task acceptance log. (The consumer-facing CI workflow is the _template_ at `.agents/templates/.github/workflows/ci.yml` — that one ships, this one does not.)
   - **Verification:** Push branch → CI runs → all gates pass on this PR; `pnpm pack --dry-run` confirms `.github/` excluded from package distribution.
 - [ ] **Task 7.2 — Add `.vale.ini` + `.vale/styles/House/` to bkit:** Same content as templates; ensure dogfood `bkit install --lint` is a no-op (already in sync).
   - **Verification:** `pnpm lint:prose` runs locally (with Vale installed) without error.
@@ -538,7 +541,7 @@ _Code-only — `git revert` sufficient._
   - `format:check: "prettier --check ."`
   - `lint:slop: "node ./node_modules/.bin/slop-scan ..."` (verbatim per seed config).
   - `lint:prose` — **two-stage guard (Reviewer 1 #6 + Reviewer 2 O6):** the v1 wording (`vale .agents/ *.md || (echo skip && exit 0)`) swallowed real Vale findings. Replace with an explicit `command -v vale` test that ONLY masks the binary-missing case; real findings still propagate. Use one of:
-    - `lint:prose: "command -v vale >/dev/null 2>&1 && vale .agents/ '*.md' || echo '[bkit] vale not in PATH — skipping'"` — quote the glob to defer expansion to vale itself; only the *missing-binary* arm reaches the `echo` (after the `||`); when vale is present and exits non-zero on real findings, the script returns vale's non-zero exit because the `&&` short-circuits and the `||` is never evaluated. (Caveat: this still falls through to the `||` on real findings — see alternative below.)
+    - `lint:prose: "command -v vale >/dev/null 2>&1 && vale .agents/ '*.md' || echo '[bkit] vale not in PATH — skipping'"` — quote the glob to defer expansion to vale itself; only the _missing-binary_ arm reaches the `echo` (after the `||`); when vale is present and exits non-zero on real findings, the script returns vale's non-zero exit because the `&&` short-circuits and the `||` is never evaluated. (Caveat: this still falls through to the `||` on real findings — see alternative below.)
     - **Preferred alternative:** split the guard into a small bash wrapper to make findings vs missing-binary unambiguous: `lint:prose: "bash -c 'if command -v vale >/dev/null 2>&1; then vale .agents/ \"*.md\"; else echo \"[bkit] vale not in PATH — skipping\"; fi'"`. Real Vale findings yield Vale's non-zero exit; missing binary yields exit 0.
     - **Decision:** adopt the **preferred alternative** (bash-wrapped if/else). Quote the `*.md` glob so it is forwarded literally to Vale (which globs internally); avoids zsh-vs-bash mis-glob across macOS/Linux.
   - Run `pnpm install` to lockfile-sync.

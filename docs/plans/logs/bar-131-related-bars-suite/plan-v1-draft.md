@@ -14,12 +14,12 @@ Resolve consumer-friction debt across `bkit install`/`check`/`uninstall` by (a) 
 
 ## Phase index
 
-| Phase | Title | Closes | Effort | Risk |
-| --- | --- | --- | --- | --- |
-| 1 | Quick wins + diagnostic (`bkit doctor`, polish batch, changelog) | BAR-142 A3/A7/B1/B2/B4/B5/B6 | M | Low |
-| 2 | Recovery primitive (`bkit uninstall` + Phase 3 exit-1 + `.bkitignore`) | BAR-139 full + BAR-142 A6 | L | Med |
-| 3 | Tier-2 deep-merge for hooks/settings JSON | BAR-142 A1 + B3 | L | High (schema + merge complexity) |
-| 4 | Architectural ergonomics (transactional install, upgrade verb, helper action) | BAR-142 A4/A5 + BAR-131 stretch | L | Med |
+| Phase | Title                                                                         | Closes                          | Effort | Risk                             |
+| ----- | ----------------------------------------------------------------------------- | ------------------------------- | ------ | -------------------------------- |
+| 1     | Quick wins + diagnostic (`bkit doctor`, polish batch, changelog)              | BAR-142 A3/A7/B1/B2/B4/B5/B6    | M      | Low                              |
+| 2     | Recovery primitive (`bkit uninstall` + Phase 3 exit-1 + `.bkitignore`)        | BAR-139 full + BAR-142 A6       | L      | Med                              |
+| 3     | Tier-2 deep-merge for hooks/settings JSON                                     | BAR-142 A1 + B3                 | L      | High (schema + merge complexity) |
+| 4     | Architectural ergonomics (transactional install, upgrade verb, helper action) | BAR-142 A4/A5 + BAR-131 stretch | L      | Med                              |
 
 ## Acceptance Scenario
 
@@ -42,16 +42,16 @@ Resolve consumer-friction debt across `bkit install`/`check`/`uninstall` by (a) 
 
 **Edge Cases:**
 
-| Scenario | Expected behaviour |
-| --- | --- |
-| `bkit uninstall` on file with NO bkit markers | Skip file (100% consumer content); never delete |
-| Tier-3 `ci.yml` modified by consumer | Skip unless `--force` |
-| `.bkitignore` lists a Tier-3 file | `bkit check` exits 0 even if drift exists |
+| Scenario                                           | Expected behaviour                                  |
+| -------------------------------------------------- | --------------------------------------------------- |
+| `bkit uninstall` on file with NO bkit markers      | Skip file (100% consumer content); never delete     |
+| Tier-3 `ci.yml` modified by consumer               | Skip unless `--force`                               |
+| `.bkitignore` lists a Tier-3 file                  | `bkit check` exits 0 even if drift exists           |
 | Cursor v1 schema differs from bkit's shipped shape | Verification gate in P3.T0 must pass before A1 work |
-| Phase 3 blocker on `--auto-revert` install | uninstall in-process, exit 1 |
-| Concurrent `bkit install` mid-failure (P4) | Staging dir discarded, consumer files untouched |
-| Empty `GH_BKIT_TOKEN=""` vs unset | Action text differentiates (B4) |
-| pnpm 10 onlyBuiltDependencies missing | Already advised — no change |
+| Phase 3 blocker on `--auto-revert` install         | uninstall in-process, exit 1                        |
+| Concurrent `bkit install` mid-failure (P4)         | Staging dir discarded, consumer files untouched     |
+| Empty `GH_BKIT_TOKEN=""` vs unset                  | Action text differentiates (B4)                     |
+| pnpm 10 onlyBuiltDependencies missing              | Already advised — no change                         |
 
 **Derived Test Matrix:** see Test strategy summary section below.
 
@@ -61,16 +61,16 @@ Resolve consumer-friction debt across `bkit install`/`check`/`uninstall` by (a) 
 
 Target version v0.6.x. Independent, low-risk, batchable. A3 leads (Fraser Coast pattern).
 
-| ID | Task | Effort | Depends |
-| --- | --- | --- | --- |
-| P1.T1 | Register `doctor` verb (BAR-142 A3) | M | none |
-| P1.T2 | Anchor `hasBkitMarkers` (B1) | S | none |
-| P1.T3 | Cross-phase dedup position-stable (B2) | S | none |
-| P1.T4 | `detectShellToken` empty vs unset (B4) | S | none |
-| P1.T5 | LOG_PREFIX on dry-run blocker banner (B5) | S | none |
-| P1.T6 | `.npmrc` token noise mitigation (B6) | S | none |
-| P1.T7 | Changelog header in post-install (A7) | M | none |
-| P1.T8 | README + help-text rollup for Phase 1 | S | T1..T7 |
+| ID    | Task                                      | Effort | Depends |
+| ----- | ----------------------------------------- | ------ | ------- |
+| P1.T1 | Register `doctor` verb (BAR-142 A3)       | M      | none    |
+| P1.T2 | Anchor `hasBkitMarkers` (B1)              | S      | none    |
+| P1.T3 | Cross-phase dedup position-stable (B2)    | S      | none    |
+| P1.T4 | `detectShellToken` empty vs unset (B4)    | S      | none    |
+| P1.T5 | LOG_PREFIX on dry-run blocker banner (B5) | S      | none    |
+| P1.T6 | `.npmrc` token noise mitigation (B6)      | S      | none    |
+| P1.T7 | Changelog header in post-install (A7)     | M      | none    |
+| P1.T8 | README + help-text rollup for Phase 1     | S      | T1..T7  |
 
 ### P1.T1 — `bkit doctor` CLI verb
 
@@ -176,20 +176,20 @@ Target version v0.6.x. Independent, low-risk, batchable. A3 leads (Fraser Coast 
 
 Target version v0.7.x. Builds the surgical-uninstall primitive, wires Phase 3 blocker exit-1, adds `--auto-revert` opt-in, and ships `.bkitignore` to keep `bkit check` green for intentional drift. Markers-as-SoT for Tier-2; hash-guard via `.bkit-version` for Tier-3; default-value-only removal for managed `package.json` keys.
 
-| ID | Task | Effort | Depends |
-| --- | --- | --- | --- |
-| P2.T1 | Build install-write manifest from modules | M | none |
-| P2.T2 | Tier-2 managed-block strip helper | M | P2.T1 |
-| P2.T3 | Tier-3 hash-guard via `.bkit-version` | M | P2.T1 |
-| P2.T4 | Managed `package.json` keys default-only stripping | M | P2.T1 |
-| P2.T5 | `runUninstallModule` per install module + `WriteSet` deletions | M | P2.T2-T4 |
-| P2.T6 | `bkit uninstall` CLI verb + flags | M | P2.T5 |
-| P2.T7 | `--dry-run` per-file decision table (DELETE/STRIP-BLOCK/PRESERVE) | S | P2.T6 |
-| P2.T8 | Idempotency + `--nuke` confirm prompt | S | P2.T6 |
-| P2.T9 | Phase 3 blocker exit-1 wiring + recovery action text | M | P2.T6 |
-| P2.T10 | `--auto-revert` install flag (in-process uninstall) | M | P2.T9 |
-| P2.T11 | `.bkitignore` parser + `bkit check` / `bkit doctor` integration (A6) | M | P1.T1 |
-| P2.T12 | README "Uninstall" + ".bkitignore" + recovery sections | S | P2.T1-T11 |
+| ID     | Task                                                                 | Effort | Depends   |
+| ------ | -------------------------------------------------------------------- | ------ | --------- |
+| P2.T1  | Build install-write manifest from modules                            | M      | none      |
+| P2.T2  | Tier-2 managed-block strip helper                                    | M      | P2.T1     |
+| P2.T3  | Tier-3 hash-guard via `.bkit-version`                                | M      | P2.T1     |
+| P2.T4  | Managed `package.json` keys default-only stripping                   | M      | P2.T1     |
+| P2.T5  | `runUninstallModule` per install module + `WriteSet` deletions       | M      | P2.T2-T4  |
+| P2.T6  | `bkit uninstall` CLI verb + flags                                    | M      | P2.T5     |
+| P2.T7  | `--dry-run` per-file decision table (DELETE/STRIP-BLOCK/PRESERVE)    | S      | P2.T6     |
+| P2.T8  | Idempotency + `--nuke` confirm prompt                                | S      | P2.T6     |
+| P2.T9  | Phase 3 blocker exit-1 wiring + recovery action text                 | M      | P2.T6     |
+| P2.T10 | `--auto-revert` install flag (in-process uninstall)                  | M      | P2.T9     |
+| P2.T11 | `.bkitignore` parser + `bkit check` / `bkit doctor` integration (A6) | M      | P1.T1     |
+| P2.T12 | README "Uninstall" + ".bkitignore" + recovery sections               | S      | P2.T1-T11 |
 
 ### P2.T1 — Install-write manifest
 
@@ -338,19 +338,19 @@ Target version v0.7.x. Builds the surgical-uninstall primitive, wires Phase 3 bl
 
 Target version v0.8.x. Reclassifies two JSON files from Tier-1 (full overwrite) to Tier-2 (managed-block deep-merge) using `__bkit__` namespace. Biggest semver pressure; ship behind a careful migration path. **HUMAN APPROVAL REQUIRED** for namespace contract + Tier-1→Tier-2 reclass per Major-Changes bar.
 
-| ID | Task | Effort | Depends |
-| --- | --- | --- | --- |
-| P3.T0 | Verify Cursor v1 hooks schema (research/spike) | S | none |
-| P3.T1 | JSON deep-merge primitive in `bkit-tiers.ts` | M | P3.T0 |
-| P3.T2 | `__bkit__` namespace contract + extractor | M | P3.T1 |
-| P3.T3 | `writeTier2Json()` helper | M | P3.T2 |
-| P3.T4 | Reclassify `.claude/settings.json` to Tier-2 | M | P3.T3 |
-| P3.T5 | Reclassify `.cursor/hooks.json` to Tier-2 (after schema fix if needed) | M | P3.T0, P3.T3 |
-| P3.T6 | Migration: detect old Tier-1 file, auto-extract to `__bkit__` shape | M | P3.T4, P3.T5 |
-| P3.T7 | Retire `detectHooksConfigOverwriteRisk` blocker | S | P3.T5 |
-| P3.T8 | B3 Vercel CLI hang guard (only if A1 touches preflight code paths) | S | P3.T1 |
-| P3.T9 | Upgrade-survival regression test (Gether scenario) | S | P3.T6 |
-| P3.T10 | KN-8 update + decisions doc + README | S | P3.T1-T9 |
+| ID     | Task                                                                   | Effort | Depends      |
+| ------ | ---------------------------------------------------------------------- | ------ | ------------ |
+| P3.T0  | Verify Cursor v1 hooks schema (research/spike)                         | S      | none         |
+| P3.T1  | JSON deep-merge primitive in `bkit-tiers.ts`                           | M      | P3.T0        |
+| P3.T2  | `__bkit__` namespace contract + extractor                              | M      | P3.T1        |
+| P3.T3  | `writeTier2Json()` helper                                              | M      | P3.T2        |
+| P3.T4  | Reclassify `.claude/settings.json` to Tier-2                           | M      | P3.T3        |
+| P3.T5  | Reclassify `.cursor/hooks.json` to Tier-2 (after schema fix if needed) | M      | P3.T0, P3.T3 |
+| P3.T6  | Migration: detect old Tier-1 file, auto-extract to `__bkit__` shape    | M      | P3.T4, P3.T5 |
+| P3.T7  | Retire `detectHooksConfigOverwriteRisk` blocker                        | S      | P3.T5        |
+| P3.T8  | B3 Vercel CLI hang guard (only if A1 touches preflight code paths)     | S      | P3.T1        |
+| P3.T9  | Upgrade-survival regression test (Gether scenario)                     | S      | P3.T6        |
+| P3.T10 | KN-8 update + decisions doc + README                                   | S      | P3.T1-T9     |
 
 ### P3.T0 — Verify Cursor v1 hooks schema
 
@@ -363,7 +363,7 @@ Target version v0.8.x. Reclassifies two JSON files from Tier-1 (full overwrite) 
 
 ### P3.T1 — JSON deep-merge primitive
 
-- **Scope:** Pure function `deepMergeJson(consumer, bkit, options)` — recursive merge; bkit-owned keys identified by `__bkit__` namespace; arrays under bkit-owned paths are *replaced* (not concatenated) to keep ownership semantics clean; consumer keys outside `__bkit__` untouched. Stable key order preserved.
+- **Scope:** Pure function `deepMergeJson(consumer, bkit, options)` — recursive merge; bkit-owned keys identified by `__bkit__` namespace; arrays under bkit-owned paths are _replaced_ (not concatenated) to keep ownership semantics clean; consumer keys outside `__bkit__` untouched. Stable key order preserved.
 - **Files touched:**
   - `.agents/scripts/bkit-tiers.ts` — `deepMergeJson` export.
   - `.agents/scripts/bkit-tiers.test.ts` — fixtures: nested objects, arrays-replaced, consumer-key preservation, deep paths.
@@ -479,17 +479,17 @@ Target version v0.8.x. Reclassifies two JSON files from Tier-1 (full overwrite) 
 
 Target version v0.9.x → v1.0. Three structural unlocks: (a) staging-dir transactional install kills mid-failure inconsistency, (b) `bkit upgrade` codifies the heavy-customised upgrade dance, (c) BAR-131 helper-action stretch reduces consumer CI ceremony.
 
-| ID | Task | Effort | Depends |
-| --- | --- | --- | --- |
-| P4.T1 | `.bkit-staging/<module>/` write path | M | P3.T3 |
-| P4.T2 | Validate-then-atomic-rename per module | M | P4.T1 |
-| P4.T3 | Mid-failure rollback test fixtures | S | P4.T2 |
-| P4.T4 | `.bkit-version` extension: canonical-file hashes | M | P2.T3 |
-| P4.T5 | `bkit upgrade` CLI verb + diff engine | L | P4.T4, P3.T6 |
-| P4.T6 | `--non-interactive` upgrade auto-apply | M | P4.T5 |
-| P4.T7 | Upgrade integration test (0.4.x → 0.5.x customised hooks) | S | P4.T5 |
-| P4.T8 | BAR-131 helper-action `setup-auth@v1` | M | none |
-| P4.T9 | README + CHANGELOG v0.9.x/v1.0 + decisions | S | P4.T1-T8 |
+| ID    | Task                                                      | Effort | Depends      |
+| ----- | --------------------------------------------------------- | ------ | ------------ |
+| P4.T1 | `.bkit-staging/<module>/` write path                      | M      | P3.T3        |
+| P4.T2 | Validate-then-atomic-rename per module                    | M      | P4.T1        |
+| P4.T3 | Mid-failure rollback test fixtures                        | S      | P4.T2        |
+| P4.T4 | `.bkit-version` extension: canonical-file hashes          | M      | P2.T3        |
+| P4.T5 | `bkit upgrade` CLI verb + diff engine                     | L      | P4.T4, P3.T6 |
+| P4.T6 | `--non-interactive` upgrade auto-apply                    | M      | P4.T5        |
+| P4.T7 | Upgrade integration test (0.4.x → 0.5.x customised hooks) | S      | P4.T5        |
+| P4.T8 | BAR-131 helper-action `setup-auth@v1`                     | M      | none         |
+| P4.T9 | README + CHANGELOG v0.9.x/v1.0 + decisions                | S      | P4.T1-T8     |
 
 ### P4.T1 — `.bkit-staging/<module>/` write path
 
@@ -596,51 +596,51 @@ Target version v0.9.x → v1.0. Three structural unlocks: (a) staging-dir transa
 
 ## Risks & cross-cutting concerns
 
-| Risk / coupling | Phase | Mitigation | Approval gate |
-| --- | --- | --- | --- |
-| Cursor v1 hooks schema unverified — bkit's shipped shape may be wrong | 3 | P3.T0 spike before P3.T5; correct schema as part of reclass | research-only, no human approval needed |
-| `__bkit__` namespace becomes a public contract → semver-major | 3 | Document in `docs/decisions.md`; bump to 0.8.0 | **YES — Major-Changes bar** |
-| Tier-1 → Tier-2 reclass for hooks/settings is a breaking change | 3 | Migration path P3.T6 auto-extracts; release notes spell out migration | **YES — Major-Changes bar** |
-| Phase 3 `process.exit(1)` is a behaviour change for consumers gating on exit-0 | 2 | Default off for advisories; only blockers exit 1; recovery line included | **YES — Major-Changes bar** |
-| `.bkit-version` schema extension (hashes) | 4 | Additive field; backward-compat read | No |
-| Markers-as-SoT for Tier-2 (BAR-138 lesson) — naive regex risks clobbering | 2 | Reuse existing line-anchored extractor; explicit fixture for whitespace-around case | No |
-| Multi-bar plan size — long-running PR risk | All | Each phase ships independently; squash-merge per phase | No |
-| Tier-3 hash storage retro-fit on already-installed consumers | 2 | First post-2.x install records hashes; absent → fallback to `--force` prompt | No |
-| `bkit upgrade` requires `bkit uninstall` semantics from Phase 2 | 4 | Hard depend; cannot start P4 until P2 lands | No |
-| BAR-131 helper-action introduces new bkit-owned surface | 4 | Defer until v0.9.x; opt-in for consumers; bash fallback retained | No |
+| Risk / coupling                                                                | Phase | Mitigation                                                                          | Approval gate                           |
+| ------------------------------------------------------------------------------ | ----- | ----------------------------------------------------------------------------------- | --------------------------------------- |
+| Cursor v1 hooks schema unverified — bkit's shipped shape may be wrong          | 3     | P3.T0 spike before P3.T5; correct schema as part of reclass                         | research-only, no human approval needed |
+| `__bkit__` namespace becomes a public contract → semver-major                  | 3     | Document in `docs/decisions.md`; bump to 0.8.0                                      | **YES — Major-Changes bar**             |
+| Tier-1 → Tier-2 reclass for hooks/settings is a breaking change                | 3     | Migration path P3.T6 auto-extracts; release notes spell out migration               | **YES — Major-Changes bar**             |
+| Phase 3 `process.exit(1)` is a behaviour change for consumers gating on exit-0 | 2     | Default off for advisories; only blockers exit 1; recovery line included            | **YES — Major-Changes bar**             |
+| `.bkit-version` schema extension (hashes)                                      | 4     | Additive field; backward-compat read                                                | No                                      |
+| Markers-as-SoT for Tier-2 (BAR-138 lesson) — naive regex risks clobbering      | 2     | Reuse existing line-anchored extractor; explicit fixture for whitespace-around case | No                                      |
+| Multi-bar plan size — long-running PR risk                                     | All   | Each phase ships independently; squash-merge per phase                              | No                                      |
+| Tier-3 hash storage retro-fit on already-installed consumers                   | 2     | First post-2.x install records hashes; absent → fallback to `--force` prompt        | No                                      |
+| `bkit upgrade` requires `bkit uninstall` semantics from Phase 2                | 4     | Hard depend; cannot start P4 until P2 lands                                         | No                                      |
+| BAR-131 helper-action introduces new bkit-owned surface                        | 4     | Defer until v0.9.x; opt-in for consumers; bash fallback retained                    | No                                      |
 
 ## Test strategy summary
 
-| Layer | Tooling | Coverage |
-| --- | --- | --- |
-| Unit | Vitest (`*.test.ts`) | Pure helpers: marker regex (P1.T2), dedup merge (P1.T3), token detection (P1.T4), manifest (P2.T1), strip helper (P2.T2), hash compare (P2.T3), package-json strip (P2.T4), JSON deep-merge (P3.T1), namespace extractor (P3.T2), `.bkitignore` parser (P2.T11), upgrade diff (P4.T5) |
-| Integration | Vitest tmp-dir fixtures (`*.integration.test.ts`) | `bkit doctor` exit-0 (P1.T1); `bkit uninstall` round-trip (P2.T5); Phase 3 blocker exit-1 + revert (P2.T9-T10); Tier-2 upgrade survival (P3.T9); transactional rollback (P4.T3); upgrade scenario (P4.T7) |
-| E2E / smoke | Manual on test consumer | Phase 2 gate, Phase 3 gate, Phase 4 gate |
-| Existing parity | `bkit-dry-run-parity.integration.test.ts` | Re-run unchanged after each phase to ensure no regression |
+| Layer           | Tooling                                           | Coverage                                                                                                                                                                                                                                                                              |
+| --------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit            | Vitest (`*.test.ts`)                              | Pure helpers: marker regex (P1.T2), dedup merge (P1.T3), token detection (P1.T4), manifest (P2.T1), strip helper (P2.T2), hash compare (P2.T3), package-json strip (P2.T4), JSON deep-merge (P3.T1), namespace extractor (P3.T2), `.bkitignore` parser (P2.T11), upgrade diff (P4.T5) |
+| Integration     | Vitest tmp-dir fixtures (`*.integration.test.ts`) | `bkit doctor` exit-0 (P1.T1); `bkit uninstall` round-trip (P2.T5); Phase 3 blocker exit-1 + revert (P2.T9-T10); Tier-2 upgrade survival (P3.T9); transactional rollback (P4.T3); upgrade scenario (P4.T7)                                                                             |
+| E2E / smoke     | Manual on test consumer                           | Phase 2 gate, Phase 3 gate, Phase 4 gate                                                                                                                                                                                                                                              |
+| Existing parity | `bkit-dry-run-parity.integration.test.ts`         | Re-run unchanged after each phase to ensure no regression                                                                                                                                                                                                                             |
 
 Derived test matrix per Acceptance Scenario rows maps 1:1 to tasks above (P1.T1, P2.T5+T9, P3.T9, P4.T7).
 
 ## Verification gates
 
-| Gate | Phase | Commands | Pass criteria |
-| --- | --- | --- | --- |
-| G1 | End of Phase 1 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose && pnpm exec bkit doctor` | All Phase 1 tests green; doctor runs clean against repo |
-| G2 | End of Phase 2 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose && pnpm lint:slop` + manual round-trip | install→uninstall→`git status` clean; surgical fixture preserves consumer files |
-| G3 | End of Phase 3 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose` + manual two-version upgrade | Consumer hooks survive; obsolete detector removed |
-| G4 | End of Phase 4 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose` + manual mid-failure smoke | Staging cleaned on error; upgrade non-destructive |
+| Gate | Phase          | Commands                                                                                     | Pass criteria                                                                   |
+| ---- | -------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| G1   | End of Phase 1 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose && pnpm exec bkit doctor`              | All Phase 1 tests green; doctor runs clean against repo                         |
+| G2   | End of Phase 2 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose && pnpm lint:slop` + manual round-trip | install→uninstall→`git status` clean; surgical fixture preserves consumer files |
+| G3   | End of Phase 3 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose` + manual two-version upgrade          | Consumer hooks survive; obsolete detector removed                               |
+| G4   | End of Phase 4 | `pnpm typecheck && pnpm vitest run && pnpm lint:prose` + manual mid-failure smoke            | Staging cleaned on error; upgrade non-destructive                               |
 
 Each gate also requires squash-merge per project Merge-method rule.
 
 ## Supersession Inventory
 
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| `detectHooksConfigOverwriteRisk` blocker in `bkit-preflight.ts` | Tier-2 deep-merge (P3.T1-T5) | DELETE | Detector becomes architecturally impossible once hooks are Tier-2; remove in P3.T7 |
-| Tier-1 classification for `.cursor/hooks.json` | `writeTier2Json` (P3.T3) | DELETE | Replaced; migration P3.T6 lifts old shape into `__bkit__` envelope |
-| Tier-1 classification for `.claude/settings.json` | `writeTier2Json` (P3.T3) | DELETE | Replaced; migration P3.T6 lifts old shape into `__bkit__` envelope |
-| Manual 10-step uninstall recipe (BAR-139 comments) | `pnpm bkit uninstall` (P2.T6) | DELETE | Replaced by CLI verb; recipe deleted from internal docs once verb ships |
-| Multi-line bash PAT-shim block in seeded `ci.yml` | `setup-auth@v1` action (P4.T8) | RETAIN-WITH-REASON | External contract — bash fallback retained for non-Actions CI; staged rollout |
-| `hasBkitMarkers` substring impl | Anchored regex (P1.T2) | DELETE | Replaced in same file; no callers retain old behaviour |
+| Existing artifact                                               | Replaced by                    | Decision           | Justification                                                                      |
+| --------------------------------------------------------------- | ------------------------------ | ------------------ | ---------------------------------------------------------------------------------- |
+| `detectHooksConfigOverwriteRisk` blocker in `bkit-preflight.ts` | Tier-2 deep-merge (P3.T1-T5)   | DELETE             | Detector becomes architecturally impossible once hooks are Tier-2; remove in P3.T7 |
+| Tier-1 classification for `.cursor/hooks.json`                  | `writeTier2Json` (P3.T3)       | DELETE             | Replaced; migration P3.T6 lifts old shape into `__bkit__` envelope                 |
+| Tier-1 classification for `.claude/settings.json`               | `writeTier2Json` (P3.T3)       | DELETE             | Replaced; migration P3.T6 lifts old shape into `__bkit__` envelope                 |
+| Manual 10-step uninstall recipe (BAR-139 comments)              | `pnpm bkit uninstall` (P2.T6)  | DELETE             | Replaced by CLI verb; recipe deleted from internal docs once verb ships            |
+| Multi-line bash PAT-shim block in seeded `ci.yml`               | `setup-auth@v1` action (P4.T8) | RETAIN-WITH-REASON | External contract — bash fallback retained for non-Actions CI; staged rollout      |
+| `hasBkitMarkers` substring impl                                 | Anchored regex (P1.T2)         | DELETE             | Replaced in same file; no callers retain old behaviour                             |
 
 ## Out-of-scope candidates (for `docs/pending.md` per Step 7)
 
@@ -659,6 +659,7 @@ Each gate also requires squash-merge per project Merge-method rule.
 Verdict: CONCERNS
 
 Concerns flagged:
+
 1. Cursor v1 hooks schema unverified — P3.T0 spike must complete before P3.T5 starts; if schema differs from bkit's shipped shape, P3.T5 absorbs the breaking-change fix (one semver bump, not two).
 2. JSON deep-merge complexity — `__bkit__` namespace contract is a public surface; once shipped, removing breaks consumers. Requires explicit human approval per Major-Changes bar before P3 PR opens.
 3. Phase 3 `process.exit(1)` change in P2.T9 is a behaviour change for consumers gating CI on bkit exit codes. Default-off for advisories mitigates; still recommend Major-Changes bar review before P2 PR.
@@ -666,4 +667,5 @@ Concerns flagged:
 5. Plan size — 39 tasks across 4 phases. Recommend `/bkit-complexity-check` consider splitting into per-phase plans if execution capacity is tight; phases are independently shippable so split is low-risk.
 
 Plan is buildable. Each task has observable acceptance criteria, file targets, and explicit verification commands. Phase boundaries align with squash-merged PRs and bkit minor-version releases.
+
 <!-- verdict:end -->

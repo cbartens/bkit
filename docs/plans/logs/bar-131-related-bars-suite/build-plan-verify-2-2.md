@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: PASS
 Failures: 0
+
 <!-- verdict:end -->
 
 # Plan Verification
@@ -41,6 +43,7 @@ N/A (Single scope).
 Per Large Diff Guard, only the three remediation-touched files were re-inspected. The 11 PASS items from attempt 1 are not re-verified. No new plan checkboxes need ticking — runbook tasks P2.T1-T12 were already `[x]` in attempt 1; gates 2-4 and Manual Verification remain `[ ]` because they require human/CI sign-off (out of scope for verifier).
 
 Files of interest (absolute paths):
+
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-postinstall.ts`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-bkitignore.integration.test.ts`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-install.integration.test.ts`

@@ -17,7 +17,7 @@ None. All four gaps from build-plan-verify-1-1.md verified resolved by build-pla
 
 2. **Gap 1 RESOLVED (vacuous)** — `Grep "2026-05-0[68]"` against `.agents/friction.md` returns zero hits; the 5 entries the plan referenced never existed in the file (current friction-log entries are 2026-05-09 only). SC-1's "5 entries marked FIXED-IN: BAR-155" is vacuously satisfied per gaps-remediate log; no edit needed.
 
-3. **Gap 2 RESOLVED** — `docs/decisions.md` line 176 contains `## DE-16: BAR-155 — Parallel \`bkit-build-challenge\` pair + reconcile (2026-05-09)` ADR with Context / Decision / Alternatives Rejected / Consequences sections. `docs/pending.md` contains 4 BAR-155 deferred entries: `task-range` (line 163), `KN/DE auto-renumber` (line 173), `focused-brief mode` (line 183), `bkit-build.md Step 2 git rebase || exit 1 anti-pattern` (line 193).
+3. **Gap 2 RESOLVED** — `docs/decisions.md` line 176 contains `## DE-16: BAR-155 — Parallel \`bkit-build-challenge\` pair + reconcile (2026-05-09)`ADR with Context / Decision / Alternatives Rejected / Consequences sections.`docs/pending.md`contains 4 BAR-155 deferred entries:`task-range`(line 163),`KN/DE auto-renumber`(line 173),`focused-brief mode`(line 183),`bkit-build.md Step 2 git rebase || exit 1 anti-pattern` (line 193).
 
 4. **Gap 3 deferred (correct)** — `bkit install` not run; `.claude/agents/bkit-build-challenge-1.md`, `-2.md`, `-reconcile.md` not yet generated; `.claude/agents/bkit-build-challenge.md` still present. This is per `bkit Repo Authoring` rules and user auto-memory: `bkit install` runs ONCE at end-of-session (Task 14 in runbook). Mirror regen is the final step before close, not part of the prompt-implementation phase.
 

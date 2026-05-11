@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Sub-plan 2 — P2 (v0.7.x): `bkit uninstall` recovery primitive + Phase 3 exit-1 + `.bkitignore`
@@ -58,35 +59,35 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 
 ### Edge Cases
 
-| Scenario | Expected Behavior |
-| --- | --- |
-| `bkit uninstall` on file with NO bkit markers | Skip file (100% consumer); never delete |
-| Tier-3 `ci.yml` modified by consumer | Preserve whole; skip unless `--force` |
-| `.bkitignore` lists a Tier-3 file | `bkit check` exits 0 even if drift exists |
-| Phase 3 blocker on `--auto-revert` install | uninstall in-process, exit 1 |
-| Empty `GH_BKIT_TOKEN=""` vs unset | Action text differentiates (B4 — already shipped in sub-plan-1) |
-| Tier-3 hash retro-fit (consumer pre-dates `tier3Hashes` field) | Treat as unknown -> preserve-default; tested in P2.T3 |
-| Removed `--module <name>` flag (P2.T6) | Not user-visible (flag never shipped); not a semver-major break |
+| Scenario                                                       | Expected Behavior                                               |
+| -------------------------------------------------------------- | --------------------------------------------------------------- |
+| `bkit uninstall` on file with NO bkit markers                  | Skip file (100% consumer); never delete                         |
+| Tier-3 `ci.yml` modified by consumer                           | Preserve whole; skip unless `--force`                           |
+| `.bkitignore` lists a Tier-3 file                              | `bkit check` exits 0 even if drift exists                       |
+| Phase 3 blocker on `--auto-revert` install                     | uninstall in-process, exit 1                                    |
+| Empty `GH_BKIT_TOKEN=""` vs unset                              | Action text differentiates (B4 — already shipped in sub-plan-1) |
+| Tier-3 hash retro-fit (consumer pre-dates `tier3Hashes` field) | Treat as unknown -> preserve-default; tested in P2.T3           |
+| Removed `--module <name>` flag (P2.T6)                         | Not user-visible (flag never shipped); not a semver-major break |
 
 ### Derived Test Matrix
 
-| Test description | Runbook task | Type | Target file |
-| --- | --- | --- | --- |
-| Install manifest snapshot | P2.T1 | Unit (Vitest) | `.agents/scripts/bkit-manifest.test.ts` |
-| Tier-2 strip-managed-block helper | P2.T2 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| Tier-3 hash-guard preserve/delete | P2.T3 | Unit (Vitest) | `.agents/scripts/bkit-uninstall.test.ts` |
-| `package.json` default-only stripping | P2.T4 | Unit (Vitest) | `.agents/scripts/bkit-package-json.test.ts` |
-| `runUninstall` round-trip clean | P2.T5 | Integration (Vitest) | `.agents/scripts/bkit-uninstall.test.ts` |
-| `bkit uninstall` CLI flag parsing | P2.T6 | Unit (Vitest) | `.agents/scripts/bkit-cli.test.ts` |
-| `--dry-run` decision-table snapshot | P2.T7 | Unit (Vitest) | `.agents/scripts/bkit-uninstall.test.ts` |
-| Idempotency + `--nuke` confirm | P2.T8 | Unit (Vitest) | `.agents/scripts/bkit-uninstall.test.ts` |
-| Phase 3 blocker exit-1 + recovery line | P2.T9 | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts` |
-| `--auto-revert` reverts on blocker | P2.T10 | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts` |
-| `.bkitignore` parser (pure) — per-file | P2.T11 | Unit (Vitest) | `.agents/scripts/bkit-bkitignore.test.ts` |
-| `.bkitignore` parser per-key (env `BKIT_BKITIGNORE_PER_KEY=1`) | P2.T11 | Unit (Vitest) | `.agents/scripts/bkit-bkitignore.test.ts` |
-| `.bkitignore` matcher (fs) | P2.T11 | Integration (Vitest) | `.agents/scripts/bkit-bkitignore.integration.test.ts` |
-| Heavily-customised surgical-uninstall snapshot | P2.T8a | Integration (Vitest) | `.agents/scripts/bkit-uninstall.surgical.integration.test.ts` |
-| `.bkit-version` schema + canonical hashes | P2.T3 | Unit (Vitest) | `.agents/scripts/bkit-version.test.ts` |
+| Test description                                               | Runbook task | Type                 | Target file                                                   |
+| -------------------------------------------------------------- | ------------ | -------------------- | ------------------------------------------------------------- |
+| Install manifest snapshot                                      | P2.T1        | Unit (Vitest)        | `.agents/scripts/bkit-manifest.test.ts`                       |
+| Tier-2 strip-managed-block helper                              | P2.T2        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                          |
+| Tier-3 hash-guard preserve/delete                              | P2.T3        | Unit (Vitest)        | `.agents/scripts/bkit-uninstall.test.ts`                      |
+| `package.json` default-only stripping                          | P2.T4        | Unit (Vitest)        | `.agents/scripts/bkit-package-json.test.ts`                   |
+| `runUninstall` round-trip clean                                | P2.T5        | Integration (Vitest) | `.agents/scripts/bkit-uninstall.test.ts`                      |
+| `bkit uninstall` CLI flag parsing                              | P2.T6        | Unit (Vitest)        | `.agents/scripts/bkit-cli.test.ts`                            |
+| `--dry-run` decision-table snapshot                            | P2.T7        | Unit (Vitest)        | `.agents/scripts/bkit-uninstall.test.ts`                      |
+| Idempotency + `--nuke` confirm                                 | P2.T8        | Unit (Vitest)        | `.agents/scripts/bkit-uninstall.test.ts`                      |
+| Phase 3 blocker exit-1 + recovery line                         | P2.T9        | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts`            |
+| `--auto-revert` reverts on blocker                             | P2.T10       | Integration (Vitest) | `.agents/scripts/bkit-install.integration.test.ts`            |
+| `.bkitignore` parser (pure) — per-file                         | P2.T11       | Unit (Vitest)        | `.agents/scripts/bkit-bkitignore.test.ts`                     |
+| `.bkitignore` parser per-key (env `BKIT_BKITIGNORE_PER_KEY=1`) | P2.T11       | Unit (Vitest)        | `.agents/scripts/bkit-bkitignore.test.ts`                     |
+| `.bkitignore` matcher (fs)                                     | P2.T11       | Integration (Vitest) | `.agents/scripts/bkit-bkitignore.integration.test.ts`         |
+| Heavily-customised surgical-uninstall snapshot                 | P2.T8a       | Integration (Vitest) | `.agents/scripts/bkit-uninstall.surgical.integration.test.ts` |
+| `.bkit-version` schema + canonical hashes                      | P2.T3        | Unit (Vitest)        | `.agents/scripts/bkit-version.test.ts`                        |
 
 ### 👤 Human Confirmation
 
@@ -118,11 +119,11 @@ This sub-plan introduces TWO Major-Changes-bar items requiring explicit human si
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
-| Manual 10-step uninstall recipe (BAR-139 comments) | Replaced by `bkit uninstall` CLI verb. |
-| `.bkitignore` per-key as required (not opt-in) | Implementation cost likely high; per-file covers gether-life scenario; per-key opt-in via env var. |
-| `--module <name>` flag for uninstall | Parse ambiguity vs install boolean module flags; REMOVE in P2.T6 (never shipped — not user-visible break). |
+| Rejected approach                                  | Why rejected                                                                                               |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Manual 10-step uninstall recipe (BAR-139 comments) | Replaced by `bkit uninstall` CLI verb.                                                                     |
+| `.bkitignore` per-key as required (not opt-in)     | Implementation cost likely high; per-file covers gether-life scenario; per-key opt-in via env var.         |
+| `--module <name>` flag for uninstall               | Parse ambiguity vs install boolean module flags; REMOVE in P2.T6 (never shipped — not user-visible break). |
 
 ## Out of Scope
 
@@ -137,9 +138,9 @@ Always squash. One PR for sub-plan-2 -> v0.7.x release. `gh pr merge --squash --
 
 ## Supersession Inventory
 
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| Manual 10-step uninstall recipe (BAR-139 comments) | `pnpm bkit uninstall` (P2.T6) | DELETE | Replaced by CLI verb. |
+| Existing artifact                                  | Replaced by                   | Decision | Justification         |
+| -------------------------------------------------- | ----------------------------- | -------- | --------------------- |
+| Manual 10-step uninstall recipe (BAR-139 comments) | `pnpm bkit uninstall` (P2.T6) | DELETE   | Replaced by CLI verb. |
 
 ## Security & Privacy
 
@@ -188,49 +189,49 @@ Always squash. One PR for sub-plan-2 -> v0.7.x release. `gh pr merge --squash --
 
 ## Architecture & Component Changes
 
-| Tag | File | Purpose |
-| --- | --- | --- |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Per-module install manifest exports; register `uninstallModule` per module. |
-| [NEW] | `.agents/scripts/bkit-manifest.ts` | `getInstallManifest(modules)` -> typed records. |
-| [NEW] | `.agents/scripts/bkit-manifest.test.ts` | Snapshot. |
-| [MODIFY] | `.agents/scripts/bkit-tiers.ts` | New export `stripManagedBlock`; reuse line-anchored regex. |
-| [MODIFY] | `.agents/scripts/bkit-tiers.test.ts` | HTML / hash markers / marker-absent / whitespace fixtures. |
-| [NEW] | `.agents/scripts/bkit-version.ts` | NEW file. Schema: `{ pinnedVersion, tier3Hashes: Record<path, sha256> }`. Backward-compat reader for old plain-text payloads. |
-| [NEW] | `.agents/scripts/bkit-version.test.ts` | Schema parse + backward-compat. |
-| [NEW] | `.agents/scripts/bkit-uninstall.ts` | `runUninstall(modules, ctx)` orchestrator; `shouldDeleteTier3(path)`; idempotent skip + `--nuke` prompt; `--dry-run` decision-table formatter. **Single owner of all uninstall logic.** |
-| [NEW] | `.agents/scripts/bkit-uninstall.test.ts` | Round-trip; hash-guard; idempotency; decision-table snapshot; retro-fit fixture. |
-| [NEW] | `.agents/scripts/bkit-uninstall.surgical.integration.test.ts` | Heavily-customised fixture -> consumer files byte-identical. |
-| [NEW] | `tests/fixtures/heavy-customised-consumer/` | Committed fixture simulating gether-life-style customisations. Consumed by P2.T8a, **and re-used by sub-plan-3 P3.T9 + sub-plan-4 P4.T7**. |
-| [NEW] | `.agents/scripts/bkit-package-json.ts` | `stripManagedKeys(pkgJson, manifest)` — keys driven from P2.T1 manifest. |
-| [NEW] | `.agents/scripts/bkit-package-json.test.ts` | Default removed; customised preserved. |
-| [MODIFY] | `.agents/scripts/bkit-install.ts` | Extend `WriteSet` with `deletes`; Phase 3 exit-1 wiring + recovery action text; `--auto-revert` flag. |
-| [MODIFY] | `.agents/scripts/bkit-install.integration.test.ts` | Phase 3 blocker + revert fixtures. |
-| [MODIFY] | `.agents/scripts/bkit-cli.ts` | `uninstall` verb; flags. **Keep boolean module flags `--ci`/`--lint`/etc. (mirrors install); REMOVE `--module <name>`.** |
-| [MODIFY] | `.agents/scripts/bkit-postinstall.ts` | Recovery action-text on Phase 3 blockers. |
-| [NEW] | `.agents/scripts/bkit-bkitignore.ts` | Pure parser. **Spec:** comment char `#`; blank lines ignored; glob library = `picomatch`; `:json.path` uses dotted-key notation (`.` delimiter, `\.` escape); per-key feature flag = `BKIT_BKITIGNORE_PER_KEY=1` env (off by default). |
-| [NEW] | `.agents/scripts/bkit-bkitignore.test.ts` | Glob match; `:json.path` parse; comment / blank-line handling. |
-| [NEW] | `.agents/scripts/bkit-bkitignore.integration.test.ts` | Fs-touching matcher; `bkit check` consults `.bkitignore`. |
-| [MODIFY] | `README.md` | Uninstall + `.bkitignore` + Recovery sections. |
-| [MODIFY] | `CHANGELOG.md` | v0.7.x entries. |
+| Tag      | File                                                          | Purpose                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts`                             | Per-module install manifest exports; register `uninstallModule` per module.                                                                                                                                                            |
+| [NEW]    | `.agents/scripts/bkit-manifest.ts`                            | `getInstallManifest(modules)` -> typed records.                                                                                                                                                                                        |
+| [NEW]    | `.agents/scripts/bkit-manifest.test.ts`                       | Snapshot.                                                                                                                                                                                                                              |
+| [MODIFY] | `.agents/scripts/bkit-tiers.ts`                               | New export `stripManagedBlock`; reuse line-anchored regex.                                                                                                                                                                             |
+| [MODIFY] | `.agents/scripts/bkit-tiers.test.ts`                          | HTML / hash markers / marker-absent / whitespace fixtures.                                                                                                                                                                             |
+| [NEW]    | `.agents/scripts/bkit-version.ts`                             | NEW file. Schema: `{ pinnedVersion, tier3Hashes: Record<path, sha256> }`. Backward-compat reader for old plain-text payloads.                                                                                                          |
+| [NEW]    | `.agents/scripts/bkit-version.test.ts`                        | Schema parse + backward-compat.                                                                                                                                                                                                        |
+| [NEW]    | `.agents/scripts/bkit-uninstall.ts`                           | `runUninstall(modules, ctx)` orchestrator; `shouldDeleteTier3(path)`; idempotent skip + `--nuke` prompt; `--dry-run` decision-table formatter. **Single owner of all uninstall logic.**                                                |
+| [NEW]    | `.agents/scripts/bkit-uninstall.test.ts`                      | Round-trip; hash-guard; idempotency; decision-table snapshot; retro-fit fixture.                                                                                                                                                       |
+| [NEW]    | `.agents/scripts/bkit-uninstall.surgical.integration.test.ts` | Heavily-customised fixture -> consumer files byte-identical.                                                                                                                                                                           |
+| [NEW]    | `tests/fixtures/heavy-customised-consumer/`                   | Committed fixture simulating gether-life-style customisations. Consumed by P2.T8a, **and re-used by sub-plan-3 P3.T9 + sub-plan-4 P4.T7**.                                                                                             |
+| [NEW]    | `.agents/scripts/bkit-package-json.ts`                        | `stripManagedKeys(pkgJson, manifest)` — keys driven from P2.T1 manifest.                                                                                                                                                               |
+| [NEW]    | `.agents/scripts/bkit-package-json.test.ts`                   | Default removed; customised preserved.                                                                                                                                                                                                 |
+| [MODIFY] | `.agents/scripts/bkit-install.ts`                             | Extend `WriteSet` with `deletes`; Phase 3 exit-1 wiring + recovery action text; `--auto-revert` flag.                                                                                                                                  |
+| [MODIFY] | `.agents/scripts/bkit-install.integration.test.ts`            | Phase 3 blocker + revert fixtures.                                                                                                                                                                                                     |
+| [MODIFY] | `.agents/scripts/bkit-cli.ts`                                 | `uninstall` verb; flags. **Keep boolean module flags `--ci`/`--lint`/etc. (mirrors install); REMOVE `--module <name>`.**                                                                                                               |
+| [MODIFY] | `.agents/scripts/bkit-postinstall.ts`                         | Recovery action-text on Phase 3 blockers.                                                                                                                                                                                              |
+| [NEW]    | `.agents/scripts/bkit-bkitignore.ts`                          | Pure parser. **Spec:** comment char `#`; blank lines ignored; glob library = `picomatch`; `:json.path` uses dotted-key notation (`.` delimiter, `\.` escape); per-key feature flag = `BKIT_BKITIGNORE_PER_KEY=1` env (off by default). |
+| [NEW]    | `.agents/scripts/bkit-bkitignore.test.ts`                     | Glob match; `:json.path` parse; comment / blank-line handling.                                                                                                                                                                         |
+| [NEW]    | `.agents/scripts/bkit-bkitignore.integration.test.ts`         | Fs-touching matcher; `bkit check` consults `.bkitignore`.                                                                                                                                                                              |
+| [MODIFY] | `README.md`                                                   | Uninstall + `.bkitignore` + Recovery sections.                                                                                                                                                                                         |
+| [MODIFY] | `CHANGELOG.md`                                                | v0.7.x entries.                                                                                                                                                                                                                        |
 
 ## Documentation Updates
 
-| File | Change required |
-| --- | --- |
-| `README.md` | Uninstall + `.bkitignore` + Recovery sections. |
-| `CHANGELOG.md` | v0.7.x bullets per closed task. |
-| `docs/decisions.md` | `.bkit-version` schema extension (`tier3Hashes`); `.bkitignore` schema decision. |
-| `docs/pending.md` | Append OOS items (per-key `.bkitignore` if not shipped per-key; factory-reset uninstall). |
-| `.agents/docs.md` | Verify still accurate after sub-plan-2. |
+| File                | Change required                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| `README.md`         | Uninstall + `.bkitignore` + Recovery sections.                                            |
+| `CHANGELOG.md`      | v0.7.x bullets per closed task.                                                           |
+| `docs/decisions.md` | `.bkit-version` schema extension (`tier3Hashes`); `.bkitignore` schema decision.          |
+| `docs/pending.md`   | Append OOS items (per-key `.bkitignore` if not shipped per-key; factory-reset uninstall). |
+| `.agents/docs.md`   | Verify still accurate after sub-plan-2.                                                   |
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| **Code** | `git revert <sub-plan-2 squash-merge SHA>` | Single squash commit; revert is atomic. |
-| **`.bkit-version`** | Schema extensions are additive | Old code reads new file via backward-compat reader; revert leaves new fields harmlessly present. |
-| **DB** | N/A | No DB. |
-| **Risk window** | Single PR | Per-phase revert window. |
+| Axis                | Action                                     | Notes                                                                                            |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| **Code**            | `git revert <sub-plan-2 squash-merge SHA>` | Single squash commit; revert is atomic.                                                          |
+| **`.bkit-version`** | Schema extensions are additive             | Old code reads new file via backward-compat reader; revert leaves new fields harmlessly present. |
+| **DB**              | N/A                                        | No DB.                                                                                           |
+| **Risk window**     | Single PR                                  | Per-phase revert window.                                                                         |
 
 ## Agent Execution Runbook
 

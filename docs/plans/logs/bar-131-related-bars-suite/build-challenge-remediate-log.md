@@ -1,5 +1,7 @@
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Build Challenge Remediation Log

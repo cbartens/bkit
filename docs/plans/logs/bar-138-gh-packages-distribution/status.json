@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-05T22:24:00Z",
         "commitSha": "b615e6d0b5c7e0b93beae3c2e22384e2fc800246",
-        "artifacts": [
-          "docs/plans/logs/bar-138/design-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/design-input.md"]
       },
       {
         "step": "brainstorm-ideate",
@@ -37,9 +35,7 @@
         "attempt": 1,
         "at": "2026-05-05T22:29:44Z",
         "commitSha": "fd387ae6f7a293e1f3a806e3efd204e2bab72dd4",
-        "artifacts": [
-          "docs/plans/logs/bar-138/design-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/design-v1-draft.md"]
       },
       {
         "step": "design-review",
@@ -60,9 +56,7 @@
         "attempt": 1,
         "at": "2026-05-05T22:37:15Z",
         "commitSha": "28890390e7ff49c8330732a5811d595fff750da7",
-        "artifacts": [
-          "docs/plans/logs/bar-138/design-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/design-v2-reviewed.md"]
       },
       {
         "step": "summary",
@@ -71,9 +65,7 @@
         "attempt": 1,
         "at": "2026-05-05T22:39:05Z",
         "commitSha": "8f6d9647fce476ac0943961e936054bb0625bce0",
-        "artifacts": [
-          "docs/plans/logs/bar-138/design-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/design-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -108,9 +100,7 @@
         "status": "DONE",
         "at": "2026-05-05T23:10:37Z",
         "commitSha": "ef64989c1584e3b2fe384976cedf97a753b6bd82",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -118,9 +108,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:18:10Z",
         "commitSha": "34dd9948a6a58337caa4f75c55fdf1b553ba9f26",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -142,9 +130,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:24:48Z",
         "commitSha": "c76eabb35163eba3e3c7e57d4586da3ec37a626a",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -166,9 +152,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:29:44Z",
         "commitSha": "b17e6e8c4bba0d556f9d6aa8fb2ad423a0b7661b",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -177,9 +161,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:31:08Z",
         "commitSha": "6cd4d9b77adc1eadf84ba93813e7b79aa2c85adc",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-complexity-check.md"]
       },
       {
         "step": "complexity-split",
@@ -188,9 +170,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:42:02Z",
         "commitSha": "f3639e7065bffb78adabd18a222f90cc38cd1335",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-v4-split.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-v4-split.md"]
       },
       {
         "step": "summary",
@@ -199,9 +179,7 @@
         "attempt": 1,
         "at": "2026-05-05T23:43:27Z",
         "commitSha": "b804e3f1df107ec320e0dd1e2e97188d6c482141",
-        "artifacts": [
-          "docs/plans/logs/bar-138/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -229,9 +207,7 @@
         "status": "DONE",
         "at": "2026-05-06T00:07:13Z",
         "commitSha": "834fcb75e6856f7ed0405158e29cdb29c623da25",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -246,9 +222,7 @@
         "attempt": 1,
         "at": "2026-05-06T00:09:14Z",
         "commitSha": "dad8ee0904e6f9b5b1491ec840383c7e83248c87",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -271,9 +245,7 @@
         "failures": 0,
         "at": "2026-05-06T00:23:16Z",
         "commitSha": "10f69d4f028f47151c5734bdf5291d558aeb0320",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-1-1.md"]
       },
       {
         "step": "plan-execute",
@@ -296,9 +268,7 @@
         "failures": 0,
         "at": "2026-05-06T01:00:53Z",
         "commitSha": "6a25b758774a070530665d45da70194b84b39282",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-2-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-plan-verify-2-1.md"]
       },
       {
         "step": "plan-verify-holistic",
@@ -320,9 +290,7 @@
         "failures": 5,
         "at": "2026-05-06T01:09:15Z",
         "commitSha": "9cdcd812dc4fdb34781e910a81a81322c4069678",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-challenge.md"]
       },
       {
         "step": "challenge-remediate",
@@ -342,9 +310,7 @@
         "attempt": 1,
         "at": "2026-05-06T01:16:31Z",
         "commitSha": "90ec98d979b00eb854077b1a7afde9185ad496b5",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-challenge-tests.md"]
       },
       {
         "step": "run-tests",
@@ -363,18 +329,14 @@
         "attempt": 1,
         "at": "2026-05-06T01:18:50Z",
         "commitSha": "f08f75a6b5181bc3d90c634d3a264c76117cb6e4",
-        "artifacts": [
-          "docs/plans/logs/bar-138-gh-packages-distribution/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-138-gh-packages-distribution/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-06T01:19:39Z",
         "commitSha": "8dcf8b9845bacde434076ddc3eedf3d291f4cd2f",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/3"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/3"]
       },
       {
         "step": "close-workflow",

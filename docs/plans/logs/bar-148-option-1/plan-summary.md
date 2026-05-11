@@ -13,7 +13,7 @@ Key tasks span five phases: (A) template and source orchestrators, (B) installer
 
 ## Plan Quality
 
-**Well-scoped:** The plan clearly delineates what is in-scope (Option 1 dispatch via `claude-code-action@v1`, new templates, new installer module, schema extension for `issueId`/`commentId`, 18-row test matrix, docs updates) vs. out-of-scope (Options 2–5, runner 6h ceiling enforcement, custom retry logic, cross-repo dispatch, Step 18 chaining). 
+**Well-scoped:** The plan clearly delineates what is in-scope (Option 1 dispatch via `claude-code-action@v1`, new templates, new installer module, schema extension for `issueId`/`commentId`, 18-row test matrix, docs updates) vs. out-of-scope (Options 2–5, runner 6h ceiling enforcement, custom retry logic, cross-repo dispatch, Step 18 chaining).
 
 **Dependencies clear:** Pre-flight section identifies all required checks (package management, dependency versions, user context, blockers, project context, testing alignment, prerequisite plans). Conditional items (secrets, schema state, architecture, observability) are listed with applicability flags. The data schema section explicitly addresses Path A (preferred minimal extension adding `issueId` and `commentId` to `status.json`), with Path B documented as fallback. All 5 existing orchestrators (`bkit-plan.md`, `bkit-build.md`, `bkit-ship.md`, `bkit-debug.md`, `bkit-review.md`) are tagged for Step 1 edits to propagate the schema extension.
 

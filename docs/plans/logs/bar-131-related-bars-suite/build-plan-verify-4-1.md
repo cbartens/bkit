@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: PASS
 Failures: 0
+
 <!-- verdict:end -->
 
 # Plan Verification

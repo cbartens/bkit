@@ -1,4 +1,5 @@
 Verdict: CONCERNS
+
 <!-- verdict:end -->
 
 # bkit v0.4.0 — GitHub Packages npm Registry Distribution Implementation Plan
@@ -489,7 +490,7 @@ _DB changes: none — code-only — `git revert` sufficient. Deprecation is a su
   - Verification: Vitest unit test (Task C1) asserts substrings.
 
 - [ ] **Task B5: Remove `onlyBuiltDependencies` line from first-install banner in `runCoreModule`.**
-  - Scope: In the `printSink.push(\`...\`)` block, delete step `3. Add to pnpm-workspace.yaml or package.json: onlyBuiltDependencies: ["@cbartens/bkit"]`. Renumber remaining steps. Update step 1 prose for `read:packages` scope (token requirement).
+  - Scope: In the `printSink.push(\`...\`)`block, delete step`3. Add to pnpm-workspace.yaml or package.json: onlyBuiltDependencies: ["@cbartens/bkit"]`. Renumber remaining steps. Update step 1 prose for `read:packages` scope (token requirement).
   - Acceptance: First-install banner string contains no `onlyBuiltDependencies` substring. Step numbering is contiguous (1, 2 only — `prepare` script note is part of step 2's `scriptEntries` JSON).
   - Verification: Vitest unit test (Task C1) asserts `onlyBuiltDependencies` is absent from the banner constant. `pnpm test` green.
 

@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: PASS
 Strategy: STANDARD
+
 <!-- verdict:end -->
 
 # Plan Gaps Remediation Log

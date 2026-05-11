@@ -14,6 +14,7 @@ Single (sub-plan 1 of bar-141-preflight-checklist).
 None. All Phase A–G runbook tasks (A1–G4) verified against codebase artefacts.
 
 Verified evidence:
+
 - `.agents/scripts/bkit-preflight.ts` — exports `PreflightFinding`, `hasBkitMarkers`, blocker detectors (`detectNoPackageJson`, `detectMalformedPackageJson`, `detectNotGitRepo`), advisory detectors (`detectHuskyNoMarkers`, `detectPrettierignoreNoMarkers`, `detectLintProseF9Vulnerable`, `detectBkitVersionMajorDowngrade`, `detectBkitVersionPinStale`), `runPreflight` with intra-phase dedupe.
 - `.agents/scripts/bkit-postinstall.ts` — exports `detectShellToken`, `detectNpmrcAuth`, `detectGhSecret`, `detectVercelProject`, `detectVercelEnv`, `detectCiYmlMissingTokenEnv`, `detectValePackageNotSynced`, `detectDevDepsNeedFetch`, `formatChecklist`, `runPostInstallCheck`. Vercel-project silent skip + npmrc-absent silent skip implemented.
 - `.agents/scripts/bkit-install.ts` — Phase 1 wired before `resolveTokens` with `process.exit(1)` on blockers; `ctx.advisories` seeded from preflight; Phase 3 invoked between `dispatchModules` and banner emit; dry-run path renders Phase 1 advisories via `formatChecklist(ctx.advisories)`.

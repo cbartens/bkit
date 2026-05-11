@@ -56,6 +56,7 @@ All gates green on first run (no rework required). 173 tests passed (65 unit + 1
 ## Generated Tests
 
 16 regression tests added during challenge-tests (MED-1 through MED-7 coverage):
+
 - MED-1: 2 tests (ci-only module prints lint suggestions; suggests `--lint` remedy)
 - MED-2: 3 tests (warns on yarn/npm, silent on absent packageManager)
 - MED-3: 2 tests (auth-shim narrowed to cbartens/bkit; both sides scoped)

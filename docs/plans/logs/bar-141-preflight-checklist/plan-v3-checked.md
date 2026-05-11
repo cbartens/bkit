@@ -1,4 +1,5 @@
 Verdict: CONCERNS
+
 <!-- verdict:end -->
 
 <!-- Note: Save draft plans in `docs/plans/drafts/`. Move to `docs/plans/active/` when approved for execution. -->
@@ -165,42 +166,42 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 **New stable identifiers (the `id` strings on findings are the public contract for downstream tooling):**
 
-| `id` | Severity | When |
-| --- | --- | --- |
-| `no-package-json` | blocker | `package.json` absent |
-| `malformed-package-json` | blocker | `JSON.parse(package.json)` throws |
-| `not-git-repo` | blocker | `--core` requested AND `.git/` absent |
-| `husky-no-markers-precommit` | advisory | `.husky/pre-commit` exists without bkit markers |
-| `husky-no-markers-prepush` | advisory | `.husky/pre-push` exists without bkit markers |
-| `prettierignore-no-markers` | advisory | `.prettierignore` exists without bkit markers |
-| `lint-prose-f9-vulnerable` | advisory | `lint:prose` script lacks write-good guard |
-| `bkit-version-major-downgrade` | advisory | `.bkit-version` major > installing major |
-| `gh-bkit-token-missing-shell` | advisory | `process.env.GH_BKIT_TOKEN` unset |
-| `npmrc-missing-gh-packages` | advisory | `.npmrc` missing registry/auth lines |
-| `gh-bkit-token-secret-missing` | advisory | `gh secret list` confirms absent |
-| `gh-bkit-token-secret-unknown` | advisory | `gh` unavailable / unauthed / not GH repo |
-| `vercel-env-missing-preview` | advisory | `vercel env ls preview` lacks token |
-| `vercel-env-missing-production` | advisory | `vercel env ls production` lacks token |
-| `ci-yml-missing-token-env` | advisory | ci.yml install step has no env mapping |
-| `vale-package-not-synced` | advisory | vale on PATH; `.vale/styles/write-good/` absent |
-| `devdeps-need-fetch` | advisory | bkit added new devDeps in this run |
+| `id`                            | Severity | When                                            |
+| ------------------------------- | -------- | ----------------------------------------------- |
+| `no-package-json`               | blocker  | `package.json` absent                           |
+| `malformed-package-json`        | blocker  | `JSON.parse(package.json)` throws               |
+| `not-git-repo`                  | blocker  | `--core` requested AND `.git/` absent           |
+| `husky-no-markers-precommit`    | advisory | `.husky/pre-commit` exists without bkit markers |
+| `husky-no-markers-prepush`      | advisory | `.husky/pre-push` exists without bkit markers   |
+| `prettierignore-no-markers`     | advisory | `.prettierignore` exists without bkit markers   |
+| `lint-prose-f9-vulnerable`      | advisory | `lint:prose` script lacks write-good guard      |
+| `bkit-version-major-downgrade`  | advisory | `.bkit-version` major > installing major        |
+| `gh-bkit-token-missing-shell`   | advisory | `process.env.GH_BKIT_TOKEN` unset               |
+| `npmrc-missing-gh-packages`     | advisory | `.npmrc` missing registry/auth lines            |
+| `gh-bkit-token-secret-missing`  | advisory | `gh secret list` confirms absent                |
+| `gh-bkit-token-secret-unknown`  | advisory | `gh` unavailable / unauthed / not GH repo       |
+| `vercel-env-missing-preview`    | advisory | `vercel env ls preview` lacks token             |
+| `vercel-env-missing-production` | advisory | `vercel env ls production` lacks token          |
+| `ci-yml-missing-token-env`      | advisory | ci.yml install step has no env mapping          |
+| `vale-package-not-synced`       | advisory | vale on PATH; `.vale/styles/write-good/` absent |
+| `devdeps-need-fetch`            | advisory | bkit added new devDeps in this run              |
 
 **Internal-only ids (NOT part of the public contract — emitted by the `printSink → advisories` migration in `bkit-modules.ts` and `bkit-tiers.ts`; treat as internal and subject to change without a major bump):**
 
-| `id` | Severity | When |
-| --- | --- | --- |
-| `first-install-postinstall-steps` | advisory | `runCoreModule` first-install message |
-| `ci-package-json-missing` | advisory | `runCiModule` cannot read `package.json` |
-| `ci-package-json-malformed` | advisory | `runCiModule` finds invalid JSON in `package.json` |
-| `ci-no-test-script` | advisory | `runCiModule` finds no `test` script |
-| `lint-package-json-missing` | advisory | `runLintModule` cannot read `package.json` |
-| `lint-package-json-malformed` | advisory | `runLintModule` finds invalid JSON in `package.json` |
-| `vale-sync-recommended` | advisory | `runLintModule` write-good package hint |
-| `git-hooks-package-json-missing` | advisory | `runGitHooksModule` cannot read `package.json` |
-| `git-hooks-package-json-malformed` | advisory | `runGitHooksModule` finds invalid JSON in `package.json` |
-| `git-hooks-package-json-preserved-prepare` | advisory | `runGitHooksModule` preserved an existing `prepare` script |
-| `git-hooks-husky-devdep-added` | advisory | `runGitHooksModule` added `husky` as a devDep |
-| `tier3-merge-suggested-{dst-basename}` | advisory | `writeTier3` family — `{dst-basename}` is the basename of the merge destination (e.g. `tier3-merge-suggested-eslint.config.js`); the parent prefix `tier3-merge-suggested-` is the stable contract surface |
+| `id`                                       | Severity | When                                                                                                                                                                                                       |
+| ------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first-install-postinstall-steps`          | advisory | `runCoreModule` first-install message                                                                                                                                                                      |
+| `ci-package-json-missing`                  | advisory | `runCiModule` cannot read `package.json`                                                                                                                                                                   |
+| `ci-package-json-malformed`                | advisory | `runCiModule` finds invalid JSON in `package.json`                                                                                                                                                         |
+| `ci-no-test-script`                        | advisory | `runCiModule` finds no `test` script                                                                                                                                                                       |
+| `lint-package-json-missing`                | advisory | `runLintModule` cannot read `package.json`                                                                                                                                                                 |
+| `lint-package-json-malformed`              | advisory | `runLintModule` finds invalid JSON in `package.json`                                                                                                                                                       |
+| `vale-sync-recommended`                    | advisory | `runLintModule` write-good package hint                                                                                                                                                                    |
+| `git-hooks-package-json-missing`           | advisory | `runGitHooksModule` cannot read `package.json`                                                                                                                                                             |
+| `git-hooks-package-json-malformed`         | advisory | `runGitHooksModule` finds invalid JSON in `package.json`                                                                                                                                                   |
+| `git-hooks-package-json-preserved-prepare` | advisory | `runGitHooksModule` preserved an existing `prepare` script                                                                                                                                                 |
+| `git-hooks-husky-devdep-added`             | advisory | `runGitHooksModule` added `husky` as a devDep                                                                                                                                                              |
+| `tier3-merge-suggested-{dst-basename}`     | advisory | `writeTier3` family — `{dst-basename}` is the basename of the merge destination (e.g. `tier3-merge-suggested-eslint.config.js`); the parent prefix `tier3-merge-suggested-` is the stable contract surface |
 
 > Internal ids are listed for human review completeness only. Downstream tooling MUST NOT depend on the exact internal id strings; only the public ids in the first table are stable.
 
@@ -222,13 +223,13 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
-| Keep `printSink: string[]`, add a parallel `findings: PreflightFinding[]` | Two parallel sinks → drift risk; downstream tooling has to merge two shapes. Migration is mechanical (one call site per push). |
-| `--strict` flag promoting advisories to blockers | Out of scope per issue body. Consumer can run `bkit check` (already exit-1-on-drift) for the same effect. |
-| Auto-apply fixes (e.g. rewrite `lint:prose` in place) | Violates consumer-value-wins. The whole point of advisories is the consumer/AI decides. |
-| Vercel env detection via `@vercel/sdk` | Heavy dep for one detector; shell-out to `vercel env ls` matches existing `gh secret list` pattern (return `present`/`missing`/`unknown`). |
-| Telemetry / opt-out registry for advisories | Out of scope. May be revisited if advisory fatigue becomes real. |
+| Rejected approach                                                         | Why rejected                                                                                                                               |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Keep `printSink: string[]`, add a parallel `findings: PreflightFinding[]` | Two parallel sinks → drift risk; downstream tooling has to merge two shapes. Migration is mechanical (one call site per push).             |
+| `--strict` flag promoting advisories to blockers                          | Out of scope per issue body. Consumer can run `bkit check` (already exit-1-on-drift) for the same effect.                                  |
+| Auto-apply fixes (e.g. rewrite `lint:prose` in place)                     | Violates consumer-value-wins. The whole point of advisories is the consumer/AI decides.                                                    |
+| Vercel env detection via `@vercel/sdk`                                    | Heavy dep for one detector; shell-out to `vercel env ls` matches existing `gh secret list` pattern (return `present`/`missing`/`unknown`). |
+| Telemetry / opt-out registry for advisories                               | Out of scope. May be revisited if advisory fatigue becomes real.                                                                           |
 
 **Future phase recommendations:**
 

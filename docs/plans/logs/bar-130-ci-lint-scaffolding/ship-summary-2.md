@@ -9,6 +9,7 @@ Verdict: PASS
 **PR #2** (hotfix for pnpm dual-SoT CI failure, merged at 2026-05-05T03:33:30Z, commit 666de7e) resolved the post-merge dev CI failure that blocked PR #1. Root cause: `.github/workflows/ci.yml` and `.agents/templates/.github/workflows/ci.yml` both declared pnpm version in two places simultaneously — `with: version: 10` (loose major) and `package.json#packageManager: pnpm@10.33.0` (strict pin) — causing `pnpm/action-setup@v4` to abort with "Multiple versions of pnpm specified" error.
 
 **Files changed:** 6 edits across 5 files:
+
 - Dropped `with: version:` clauses from both ci.yml files (bkit-self + consumer template)
 - Added KN-3 knowledge entry documenting the gotcha and fix rationale
 - Added NOTE comment in `bkit-tokens.ts` marking `{{PNPM_VERSION}}` token as deprecated post-fix

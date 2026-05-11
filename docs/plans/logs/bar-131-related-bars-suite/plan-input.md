@@ -13,11 +13,13 @@ User intent: produce a single unified plan that covers the work scoped across th
 Primary umbrella `ISSUE_ID = BAR-131` for workflow bookkeeping. Plan content addresses all three.
 
 The relatedness chain:
+
 1. BAR-139's uninstall primitive provides recovery for BAR-142 A2 (Phase 3 exit-1) — A2 was explicitly moved from BAR-142 to BAR-139.
 2. BAR-142 A1 (Tier-2 refactor of `.cursor/hooks.json` + `.claude/settings.json`) overlaps with BAR-139's Tier-2 stripping helper.
 3. BAR-131 is the original consumer-friction catch-all that surfaced the patterns now formalised in BAR-139 + BAR-142.
 
 The plan must respect:
+
 - Project conventions in `.agents/rules.md` (Universal + Project rules).
 - Plan template `docs/plans/template.md`.
 - Module-aware `bkit install` architecture and Tier-1/2/3 ownership rules in `.agents/docs.md`, `.agents/skills.md`, and `KN-8` of `docs/knowledge.md`.
@@ -31,10 +33,10 @@ Catch-all for friction observed during consumer-side adoption of `@cbartens/bkit
 
 ### Context
 
-* Producer repo: `cbartens/bkit` (private GitHub, git-dep distribution, no public npm).
-* Consumers tested so far: `www-visitfrasercoast-com` (smoke), `app-gether-life` (seed migration).
-* Distribution model: `pnpm add -D github:cbartens/bkit#vX.Y.Z`, `prepare` runs `tsc` to produce `dist/`, `bkit` bin links via `node_modules/.bin/`.
-* **2026-05-04 update:** items #1 (CI auth shim) and #3 (`check` ≠ `install` parity) absorbed into BAR-130 (v0.1.2). Stub entries retained for traceability. Helper-action stretch goal for #1 stays here for v0.2+ consideration.
+- Producer repo: `cbartens/bkit` (private GitHub, git-dep distribution, no public npm).
+- Consumers tested so far: `www-visitfrasercoast-com` (smoke), `app-gether-life` (seed migration).
+- Distribution model: `pnpm add -D github:cbartens/bkit#vX.Y.Z`, `prepare` runs `tsc` to produce `dist/`, `bkit` bin links via `node_modules/.bin/`.
+- **2026-05-04 update:** items #1 (CI auth shim) and #3 (`check` ≠ `install` parity) absorbed into BAR-130 (v0.1.2). Stub entries retained for traceability. Helper-action stretch goal for #1 stays here for v0.2+ consideration.
 
 ### 1. Private repo + GitHub-Actions runner = `pnpm install` fails — ABSORBED INTO BAR-130
 
@@ -54,7 +56,7 @@ The `#v0.1.1` tag suffix is dropped by pnpm's normalisation. The lockfile correc
 
 **Manual fix:** rewrite `package.json` to `"github:cbartens/bkit#v0.1.1"` after `pnpm add`, then `pnpm install` to re-lock.
 
-**What bkit should do:** add a one-line note to the install snippet in `bkit/README.md` saying *"after `pnpm add`, verify the tag is preserved in `package.json` — if it shows `git+https://…` without `#vX.Y.Z`, rewrite to `github:cbartens/bkit#vX.Y.Z` and re-run `pnpm install`."*
+**What bkit should do:** add a one-line note to the install snippet in `bkit/README.md` saying _"after `pnpm add`, verify the tag is preserved in `package.json` — if it shows `git+https://…` without `#vX.Y.Z`, rewrite to `github:cbartens/bkit#vX.Y.Z` and re-run `pnpm install`."_
 
 **Possible upstream fix:** investigate whether bkit's `package.json` (`name`, `version`, `repository.url`) can be tweaked so pnpm's normaliser preserves the tag. Likely an upstream pnpm bug, but worth a 5-minute look before just documenting the workaround.
 
@@ -73,17 +75,17 @@ Already covered in BAR-111; fix shipped in bkit `README.md` commit `22b4ad5`.
 
 ### Out of scope
 
-* npm-registry distribution.
-* Adding new bkit verbs / changing payload structure.
-* Per-consumer decisions about which workflows run `pnpm install`.
+- npm-registry distribution.
+- Adding new bkit verbs / changing payload structure.
+- Per-consumer decisions about which workflows run `pnpm install`.
 
 ### BAR-131 Comments — Status sync (2026-05-05)
 
-* **#1 (private-repo CI auth)** — DONE. PAT-shim baked into seeded `ci.yml` + README `## Consumer CI auth` section shipped in v0.1.2.
-* **#3 (`check` vs `install` parity)** — DONE. `WriteSet` accumulator threads dry-run + install through the same code path; regression test in `bkit-dry-run-parity.integration.test.ts`.
-* **#2 (pnpm tag-drop README note)** — pulled into BAR-130 dev follow-up.
-* **#1 stretch (helper auth action `setup-auth@v1`)** — STILL OPEN. Defer until v0.2.0 ships and we have real consumer-CI data.
-* **#4 (pnpm `onlyBuiltDependencies`)** — already documented; no action.
+- **#1 (private-repo CI auth)** — DONE. PAT-shim baked into seeded `ci.yml` + README `## Consumer CI auth` section shipped in v0.1.2.
+- **#3 (`check` vs `install` parity)** — DONE. `WriteSet` accumulator threads dry-run + install through the same code path; regression test in `bkit-dry-run-parity.integration.test.ts`.
+- **#2 (pnpm tag-drop README note)** — pulled into BAR-130 dev follow-up.
+- **#1 stretch (helper auth action `setup-auth@v1`)** — STILL OPEN. Defer until v0.2.0 ships and we have real consumer-CI data.
+- **#4 (pnpm `onlyBuiltDependencies`)** — already documented; no action.
 
 Net: BAR-131 work remaining is just the helper-action stretch (#1) and any new consumer friction surfaced post-v0.2.0.
 
@@ -101,31 +103,31 @@ Also wire `bkit install`'s Phase 3 post-install blockers (BAR-141) into the unin
 
 Currently bkit has no inverse of `bkit install`. Cleanup is manual and error-prone. Test scenarios that need a clean re-install (e.g., validating GHPR migration end-to-end on consumer repos) require the maintainer to remember the full file list and managed-block locations.
 
-A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can return `severity: "blocker"` (e.g. `ci-yml-missing-token-env` when `.npmrc` references `${GH_BKIT_TOKEN}` — the next CI run will 401). Currently the label changes but `process.exit(1)` doesn't fire, because Phase 3 runs *after* writes and halting mid-install leaves a partially-applied state. Without a recovery primitive, exit-1 is just a worse failure mode than the current visibility-only treatment. Once `bkit uninstall` exists, Phase 3 can fail-loud-and-revert: render the banner, exit 1, and the consumer's recovery is `pnpm bkit uninstall && fix-the-gap && pnpm bkit install`.
+A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can return `severity: "blocker"` (e.g. `ci-yml-missing-token-env` when `.npmrc` references `${GH_BKIT_TOKEN}` — the next CI run will 401). Currently the label changes but `process.exit(1)` doesn't fire, because Phase 3 runs _after_ writes and halting mid-install leaves a partially-applied state. Without a recovery primitive, exit-1 is just a worse failure mode than the current visibility-only treatment. Once `bkit uninstall` exists, Phase 3 can fail-loud-and-revert: render the banner, exit 1, and the consumer's recovery is `pnpm bkit uninstall && fix-the-gap && pnpm bkit install`.
 
 ### Scope — In scope
 
 1. **New CLI subcommand:** `bkit uninstall` with module flags mirroring install (`--ci`, `--lint`, `--git-hooks`, `--core`, `--claude`, `--cursor`, `--full`).
 2. Remove all Tier-1/2/3 files written by the matching modules:
-   * Tier 1 (full ownership): `.agents/`, `.claude/`, `.cursor/`, `.vale.ini`, `slop-scan.config.json`, `.vale/styles/House/`, `.prettierignore`, `.husky/pre-{commit,push}` — delete outright.
-   * Tier 2 (managed block): strip the `<!-- bkit:start --> ... <!-- bkit:end -->` region from `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `docs/*.md`. Leave consumer content outside markers untouched.
-   * Tier 3 (seed-or-print): `.github/workflows/ci.yml` — only delete if the file content matches the bkit template (hash-compare) or the user passes `--force`. Don't clobber consumer-customised CI by default.
+   - Tier 1 (full ownership): `.agents/`, `.claude/`, `.cursor/`, `.vale.ini`, `slop-scan.config.json`, `.vale/styles/House/`, `.prettierignore`, `.husky/pre-{commit,push}` — delete outright.
+   - Tier 2 (managed block): strip the `<!-- bkit:start --> ... <!-- bkit:end -->` region from `AGENTS.md`, `CLAUDE.md`, `.gitignore`, `docs/*.md`. Leave consumer content outside markers untouched.
+   - Tier 3 (seed-or-print): `.github/workflows/ci.yml` — only delete if the file content matches the bkit template (hash-compare) or the user passes `--force`. Don't clobber consumer-customised CI by default.
 3. Dry-run mode (`--dry-run`) showing what would be removed, no writes.
 4. Idempotent — safe to run twice; reports cleanly when files are already absent.
 5. Optional: also `pnpm remove @cbartens/bkit` if `--package` flag passed (default: leave the dep alone).
 6. **Phase 3 blocker auto-revert hook (BAR-141 follow-up):**
-   * `bkit-install.ts` Phase 3 path inspects `postFindings.some(f => f.severity === "blocker")` after rendering banner; if true, exit 1.
-   * Action text on every Phase 3 blocker references the partial-state and tells consumer the fix path: `pnpm bkit uninstall <module-flags-used> && <apply-the-fix> && pnpm bkit install <same-flags>`.
-   * Optional: `--auto-revert` install flag that triggers `bkit uninstall` automatically on Phase 3 blocker before exit 1 (off by default; opt-in for CI scripts that want fail-fast hygiene).
-   * Integration test: `ci.yml` gap + `.npmrc` token ref → install completes writes, renders banner, exits 1; subsequent `bkit uninstall` returns repo to pre-install state cleanly.
+   - `bkit-install.ts` Phase 3 path inspects `postFindings.some(f => f.severity === "blocker")` after rendering banner; if true, exit 1.
+   - Action text on every Phase 3 blocker references the partial-state and tells consumer the fix path: `pnpm bkit uninstall <module-flags-used> && <apply-the-fix> && pnpm bkit install <same-flags>`.
+   - Optional: `--auto-revert` install flag that triggers `bkit uninstall` automatically on Phase 3 blocker before exit 1 (off by default; opt-in for CI scripts that want fail-fast hygiene).
+   - Integration test: `ci.yml` gap + `.npmrc` token ref → install completes writes, renders banner, exits 1; subsequent `bkit uninstall` returns repo to pre-install state cleanly.
 
 ### Scope — Out of scope
 
-* Cleaning up `pnpm-lock.yaml` (consumer runs `pnpm install` after to refresh).
-* Modifying `package.json` beyond what `pnpm remove` does.
-* Restoring pre-install state of files that bkit only modified incrementally (impossible without backups).
-* A "factory reset" mode that wipes all docs templates regardless of customisation.
-* Auto-rollback as default behaviour. Default stays exit-1-with-instructions; `--auto-revert` is opt-in only.
+- Cleaning up `pnpm-lock.yaml` (consumer runs `pnpm install` after to refresh).
+- Modifying `package.json` beyond what `pnpm remove` does.
+- Restoring pre-install state of files that bkit only modified incrementally (impossible without backups).
+- A "factory reset" mode that wipes all docs templates regardless of customisation.
+- Auto-rollback as default behaviour. Default stays exit-1-with-instructions; `--auto-revert` is opt-in only.
 
 ### DoD
 
@@ -152,6 +154,7 @@ A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can 
 ### BAR-139 Comments — Manual uninstall procedure (Visit Fraser Coast reference)
 
 10-step manual sequence performed against `fcte-com-au/visitfrasercoast-com`:
+
 1. `pnpm remove @cbartens/bkit husky prettier slop-scan` (note: husky/prettier/slop-scan only listed because consumer manually added them as workarounds for Finding 5; once F5 ships bkit uninstall should remove what it added — drive list from `.bkit-version` metadata or `.bkit-installed-deps` manifest).
 2. `rm -rf .agents/ .claude/ .cursor/ .vale/ .husky/`
 3. `rm -f .vale.ini slop-scan.config.json .prettierignore .github/workflows/ci.yml docs/plans/template.md` then `rmdir .github/workflows .github 2>/dev/null`
@@ -164,6 +167,7 @@ A second pressure surfaced in BAR-141 PR #5: Phase 3 post-install detectors can 
 10. Verify with `grep -rln "bkit:start\|@cbartens/bkit\|\[bkit\]"` etc.
 
 Recommended `bkit uninstall` shape:
+
 ```
 pnpm bkit uninstall [--keep-npmrc] [--keep-tooling] [--dry-run]
 ```
@@ -224,11 +228,13 @@ Reference: BAR-141 PR #5 detection layer is 100% covered; this issue captures ev
 **Real fix:** Move to Tier-2 (managed-block) so bkit owns only its `SessionStart` entry; consumer's other hook events survive upgrades.
 
 **Complications:**
-* JSON has no native comment syntax — managed-block markers can't be inline.
-* Options: (a) wrap bkit-managed JSON segment in `__bkit__: {...}` and merge on install; (b) use a sibling `.json` fragment file and have bkit deep-merge; (c) ship as TypeScript helper.
-* Need a deep-merge primitive in `bkit-tiers.ts` that respects consumer keys.
+
+- JSON has no native comment syntax — managed-block markers can't be inline.
+- Options: (a) wrap bkit-managed JSON segment in `__bkit__: {...}` and merge on install; (b) use a sibling `.json` fragment file and have bkit deep-merge; (c) ship as TypeScript helper.
+- Need a deep-merge primitive in `bkit-tiers.ts` that respects consumer keys.
 
 **DoD:**
+
 - [ ] `.cursor/hooks.json` and `.claude/settings.json` reclassified as Tier-2 (decide on JSON-merge mechanism first)
 - [ ] `writeTier2Json()` (or equivalent) helper added with deep-merge semantics
 - [ ] Consumer-added hook events survive bkit upgrade (regression test against the Gether scenario)
@@ -237,6 +243,7 @@ Reference: BAR-141 PR #5 detection layer is 100% covered; this issue captures ev
 **Cross-link:** KN-8 in `docs/knowledge.md` documents the architectural rule.
 
 **Note from BAR-142 comments:** On `app-gether-life`, single largest source of upgrade friction (manual re-merge required 3 times across 0.4.1/0.5.0/0.5.1). Concrete deep-merge requirements:
+
 - `.claude/settings.json`: bkit owns `permissions.*`, `mcpServers`, `hooks.SessionStart`. Consumer owns `hooks.Stop`, `hooks.PostToolUse`, `hooks.UserPromptSubmit`. Per-key ownership needed — both bkit and consumer can have entries under `hooks.*` simultaneously.
 - `.cursor/hooks.json`: bkit ships `{ hooks: [{ event, command }] }` (flat array, no top-level `version`); Cursor's actual v1 schema is `{ version: 1, hooks: { sessionStart: [{ command, failClosed }], stop: [{ command, loop_limit }] } }`. **Before doing the Tier-2 work, verify which schema Cursor actually supports** — bkit's current shipped schema may be wrong outright.
 
@@ -253,6 +260,7 @@ The Phase 3 blocker exit-1 path needs `bkit uninstall` as the recovery primitive
 **Real fix:** New CLI verb `pnpm bkit doctor` — thin wrapper around `runPreflight()` that exits 0, prints the unified checklist banner. Pure read-only.
 
 **DoD:**
+
 - [ ] `bkit-cli.ts` registers `doctor` verb
 - [ ] Help text added
 - [ ] README updated with usage
@@ -271,7 +279,7 @@ case "doctor": {
 
 Plus CLI verb registration, help text, README update.
 
-**Strengthened priority from comments:** Fraser Coast 0.4.0 → 0.4.1 upgrade had two CI failures after a plain `pnpm add -D @cbartens/bkit@0.4.1` (no `bkit install` re-run). The `detectBkitVersionPinStale` advisory shipped in BAR-141 PR #5 *would* have caught both — but only fires when consumer runs `bkit install` or `bkit check`. A `pnpm bkit doctor` between dep-bump and CI gives consumer a frictionless local diagnostic.
+**Strengthened priority from comments:** Fraser Coast 0.4.0 → 0.4.1 upgrade had two CI failures after a plain `pnpm add -D @cbartens/bkit@0.4.1` (no `bkit install` re-run). The `detectBkitVersionPinStale` advisory shipped in BAR-141 PR #5 _would_ have caught both — but only fires when consumer runs `bkit install` or `bkit check`. A `pnpm bkit doctor` between dep-bump and CI gives consumer a frictionless local diagnostic.
 
 **Extension from gether-life feedback:** doctor should also re-evaluate **post-install detectors** (not just preflight). Some advisories like `gh-bkit-token-secret-unknown` and `vale-package-not-synced` describe state that drifts after install too.
 
@@ -283,9 +291,10 @@ Plus CLI verb registration, help text, README update.
 
 **Real fix:** Write each module's output to `.bkit-staging/<module>/` first, validate the whole module ran cleanly, then atomic-rename onto `.claude/` / `.cursor/` / etc. On any error: discard staging dir, leave consumer state untouched.
 
-**Cross-link:** A2 (now BAR-139) addresses the *post-install* recovery case via uninstall. A4 is the *during-install* counterpart — different code path, complementary primitive.
+**Cross-link:** A2 (now BAR-139) addresses the _post-install_ recovery case via uninstall. A4 is the _during-install_ counterpart — different code path, complementary primitive.
 
 **DoD sketch:**
+
 - [ ] `runModule()` writes through a `WriteSet`-backed staging dir
 - [ ] On unexpected error: staging dir cleaned, consumer files untouched
 - [ ] On success: atomic rename per file (or per directory subtree)
@@ -296,6 +305,7 @@ Plus CLI verb registration, help text, README update.
 **Problem:** Current upgrade flow is `pnpm add -D @cbartens/bkit@<X> && pnpm exec bkit install`. On heavily-customized consumers, became a 5-step manual dance per upgrade. Three upgrades × 5 steps = 15 manual edits in one session.
 
 **Real fix:** New verb that wraps both steps and detects upgrade-specific conditions:
+
 - Reads `.bkit-version` to know previous version.
 - Optionally runs `pnpm add` to bump.
 - Diffs canonical bkit-owned files between old/new package versions.
@@ -305,6 +315,7 @@ Plus CLI verb registration, help text, README update.
 **Structural payoff:** finding #10 from BAR-141 (the `bkit-design-organise` lookup miss caused by `copyAdditive`'s "skip if exists" logic against stale 0.4.1 `prompts.md`) becomes architecturally impossible — `bkit upgrade` would diff and force-merge canonical files.
 
 **DoD sketch:**
+
 - [ ] `bkit-cli.ts` registers `upgrade` verb
 - [ ] `.bkit-version` extended to store hashes of canonical files at install time
 - [ ] `runUpgrade()` diffs and prompts (or auto-applies in `--non-interactive`)
@@ -325,6 +336,7 @@ Plus CLI verb registration, help text, README update.
 Per-key drift exclusions are nice-to-have; per-file is must-have. **Note:** A1 (Tier-2 refactor) reduces but doesn't eliminate the need — Tier-3 wholesale-replacements still drift, and `.bkitignore` lets the gate stay green.
 
 **DoD sketch:**
+
 - [ ] `.bkitignore` parser in `bkit-tiers.ts` (gitignore-style globs + optional `:json.path` suffix)
 - [ ] `bkit check` consults `.bkitignore` before flagging drift
 - [ ] README documents file format and use case
@@ -332,7 +344,7 @@ Per-key drift exclusions are nice-to-have; per-file is must-have. **Note:** A1 (
 
 #### A7. Changelog surface in post-install output — NEW from comments
 
-**Problem:** When consumer went 0.4.1 → 0.5.1, `bkit install` didn't say *what changed*.
+**Problem:** When consumer went 0.4.1 → 0.5.1, `bkit install` didn't say _what changed_.
 
 **Real fix:** Prepend a header to the post-install banner showing version delta:
 
@@ -382,14 +394,15 @@ In dry-run mode, `LOG_PREFIX` is set to `[bkit-check]` but the blocker banner fr
 Every `pnpm` invocation in a shell without `GH_BKIT_TOKEN` exported emits warnings — fired ~30 times across various invocations in one session.
 
 Two mitigations:
+
 1. **Cheap:** existing `[advisory] gh-bkit-token-secret-unknown` could include a clear DO step: "Add `export GH_BKIT_TOKEN=<paste>` to your shell rc — silences pnpm warnings in local dev."
 2. **Long-term:** test whether pnpm supports POSIX-style `${VAR:-}` fallback syntax in `.npmrc`. If yes, ship `_authToken=${GH_BKIT_TOKEN:-}` — still works in CI when var is set, silent when unset.
 
 ### BAR-142 Out of scope
 
-* Phase 3 blocker exit-1 + auto-revert — now in BAR-139.
-* Anything that requires changes to `bkit install`'s overall phase architecture beyond what's already scoped.
-* Anything that touches the preflight detector list itself — those should be net-new issues per detector.
+- Phase 3 blocker exit-1 + auto-revert — now in BAR-139.
+- Anything that requires changes to `bkit install`'s overall phase architecture beyond what's already scoped.
+- Anything that touches the preflight detector list itself — those should be net-new issues per detector.
 
 ### BAR-142 Suggested implementation order (with comment updates)
 
@@ -407,39 +420,30 @@ Two mitigations:
 
 ### Tight couplings
 
-| From | To | Why |
-|------|-----|------|
-| BAR-139 uninstall | BAR-142 A2 (now in BAR-139) | A2 needs uninstall as recovery primitive |
-| BAR-139 Tier-2 stripping helper | BAR-142 A1 Tier-2 refactor | Both need a robust managed-block + deep-merge primitive in `bkit-tiers.ts` |
-| BAR-142 A3 doctor | BAR-141 detectors (already shipped) | A3 is a thin wrapper over `runPreflight()` |
-| BAR-142 A4/A5 | BAR-139 uninstall | A4 (staging-dir transactional install) parallel; A5 (upgrade verb) reuses uninstall + install primitives |
-| BAR-142 A6 `.bkitignore` | BAR-139 + BAR-142 A1 | A1 reduces but doesn't eliminate need; A6 sits in `bkit check`, also relevant to `bkit doctor` (A3) |
-| BAR-131 helper-action stretch | (independent) | Defer until v0.2+; lowest priority |
+| From                            | To                                  | Why                                                                                                      |
+| ------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| BAR-139 uninstall               | BAR-142 A2 (now in BAR-139)         | A2 needs uninstall as recovery primitive                                                                 |
+| BAR-139 Tier-2 stripping helper | BAR-142 A1 Tier-2 refactor          | Both need a robust managed-block + deep-merge primitive in `bkit-tiers.ts`                               |
+| BAR-142 A3 doctor               | BAR-141 detectors (already shipped) | A3 is a thin wrapper over `runPreflight()`                                                               |
+| BAR-142 A4/A5                   | BAR-139 uninstall                   | A4 (staging-dir transactional install) parallel; A5 (upgrade verb) reuses uninstall + install primitives |
+| BAR-142 A6 `.bkitignore`        | BAR-139 + BAR-142 A1                | A1 reduces but doesn't eliminate need; A6 sits in `bkit check`, also relevant to `bkit doctor` (A3)      |
+| BAR-131 helper-action stretch   | (independent)                       | Defer until v0.2+; lowest priority                                                                       |
 
 ### Recommended unified sequencing
 
 Phased rollout to ship value early and limit blast radius:
 
 **Phase 1 — Quick wins + diagnostic (lowest risk, highest near-term value)**
+
 1. BAR-142 A3: `pnpm bkit doctor` verb (Fraser Coast pattern compounds)
 2. BAR-142 B1, B2, B4, B5, B6: polish batch
 3. BAR-142 A7: changelog surface in post-install
 
-**Phase 2 — Recovery primitive (enables A2 + safe upgrade story)**
-4. BAR-139: `bkit uninstall` core (Tier-1 delete + Tier-2 surgical strip + Tier-3 hash-guard)
-5. BAR-139: `--dry-run` table output, idempotency, module flags
-6. BAR-139: Phase 3 blocker exit-1 wiring (was BAR-142 A2)
-7. BAR-139: Optional `--auto-revert` install flag
-8. BAR-142 A6: `.bkitignore` parser + `bkit check`/`bkit doctor` integration
+**Phase 2 — Recovery primitive (enables A2 + safe upgrade story)** 4. BAR-139: `bkit uninstall` core (Tier-1 delete + Tier-2 surgical strip + Tier-3 hash-guard) 5. BAR-139: `--dry-run` table output, idempotency, module flags 6. BAR-139: Phase 3 blocker exit-1 wiring (was BAR-142 A2) 7. BAR-139: Optional `--auto-revert` install flag 8. BAR-142 A6: `.bkitignore` parser + `bkit check`/`bkit doctor` integration
 
-**Phase 3 — Tier-2 deep-merge (unlocks safe-upgrade for hooks/settings)**
-9. BAR-142 A1: Tier-2 refactor for `.cursor/hooks.json` and `.claude/settings.json` (verify Cursor v1 schema first; `__bkit__` namespace + deep-merge in `bkit-tiers.ts`)
-10. BAR-142 B3: Vercel CLI guard (only if A1 work touches preflight)
+**Phase 3 — Tier-2 deep-merge (unlocks safe-upgrade for hooks/settings)** 9. BAR-142 A1: Tier-2 refactor for `.cursor/hooks.json` and `.claude/settings.json` (verify Cursor v1 schema first; `__bkit__` namespace + deep-merge in `bkit-tiers.ts`) 10. BAR-142 B3: Vercel CLI guard (only if A1 work touches preflight)
 
-**Phase 4 — Architectural ergonomics (compounds with prior phases)**
-11. BAR-142 A4: Transactional install (staging dir + atomic rename)
-12. BAR-142 A5: `pnpm bkit upgrade` verb
-13. BAR-131 helper-action stretch: evaluate `setup-auth@v1` GH Action
+**Phase 4 — Architectural ergonomics (compounds with prior phases)** 11. BAR-142 A4: Transactional install (staging dir + atomic rename) 12. BAR-142 A5: `pnpm bkit upgrade` verb 13. BAR-131 helper-action stretch: evaluate `setup-auth@v1` GH Action
 
 ### Versioning hint
 

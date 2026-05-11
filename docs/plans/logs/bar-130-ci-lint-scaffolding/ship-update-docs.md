@@ -41,6 +41,7 @@ No new pending items surfaced by the hotfix that aren't already tracked. The dia
 ## Stale Doc Check
 
 Searched `docs/**` and `.agents/**` for references to hotfix-changed files:
+
 - `.github/workflows/ci.yml` — referenced only in plan archives (immutable) + KN-3 entry (current).
 - `.agents/templates/.github/workflows/ci.yml` — referenced only in plan archives + KN-3 entry + `.agents/README.md` template-paths table (still accurate — file still exists, just with `with.version:` removed).
 - `.agents/scripts/bkit-tokens.ts` — referenced in plan archives + KN-3-adjacent pending entry. NOTE comment added inside the file is self-documenting; no external doc reference is stale.
@@ -52,12 +53,12 @@ No stale docs found.
 
 ## Learnings extracted (verification)
 
-| Learning | Persistence path | Verified status |
-| --- | --- | --- |
-| KN-3: pnpm/action-setup@v4 dual-SoT abort + fix rule (drop `with.version:`, let `packageManager` be SoT) | `docs/knowledge.md` lines 49–59 | Present and correct |
-| `{{PNPM_VERSION}}` is dead code post-hotfix; retire in v0.2 | `docs/pending.md` lines 53–61 | Present and correct |
-| Hotfix scope record (second ship cycle, no version bump) | `docs/completed.md` (appended this run) | Added |
-| Squash-merge rebase friction for hotfix branches | `.agents/friction.md` (debug log noted RECOVERED) | Out of docs subagent scope |
+| Learning                                                                                                 | Persistence path                                  | Verified status            |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------- |
+| KN-3: pnpm/action-setup@v4 dual-SoT abort + fix rule (drop `with.version:`, let `packageManager` be SoT) | `docs/knowledge.md` lines 49–59                   | Present and correct        |
+| `{{PNPM_VERSION}}` is dead code post-hotfix; retire in v0.2                                              | `docs/pending.md` lines 53–61                     | Present and correct        |
+| Hotfix scope record (second ship cycle, no version bump)                                                 | `docs/completed.md` (appended this run)           | Added                      |
+| Squash-merge rebase friction for hotfix branches                                                         | `.agents/friction.md` (debug log noted RECOVERED) | Out of docs subagent scope |
 
 ## Verification
 

@@ -35,11 +35,13 @@ Tests PASS first run (attempt 1, no retry). Per `build-challenge-tests.md` and s
 Challenge verdict: CONCERNS (remediated to PASS). Per `build-challenge.md`: 12 findings across mechanical and architectural categories.
 
 **Critical findings remediated:**
+
 - **HIGH-1** (bkit-ship.md sentinel touched before mkdir-p): Rebase-failure branch now includes `mkdir -p` before `touch .rebase-failed` to prevent silent failure. Fix verified.
 - **HIGH-2** (bkit-build-plan-verify.md echo append lands in wrong section): Output format restructured with `## Gaps Identified` moved to last section so EOF append lands correctly. Fix verified.
 - **HIGH-3** (stale gate checkpoint step references): Gates 14–17 "Issue comment attempted" checkbox text updated from Step 13–16 to Step 14–17 post-renumber. Fix verified.
 
 **Medium findings remediated:**
+
 - **MEDIUM-4** (long-branch advisory stale-ref risk): Age calculation fixed with explicit `mb=$(git merge-base ...)` variable capture; advisory reflects last-fetched state (documented).
 - **MEDIUM-5** (bkit-build-challenge-tests.md missing Bugs Discovered section): `## Bugs Discovered` section added to Output format as last section for EOF append.
 - **MEDIUM-7** (sentinel cleanup missing): Cleanup `rm -f .rebase-failed` added at start of worktree-resume path (clears stale sentinel on retry) and in Failure Path step 1.
@@ -48,6 +50,7 @@ Challenge verdict: CONCERNS (remediated to PASS). Per `build-challenge.md`: 12 f
 - **MEDIUM-11** (Plan Task 12 friction.md markers): Entries dated 2026-05-06–2026-05-08 not present in friction.md (file was pruned); Success Criteria vacuously satisfied.
 
 **Low findings remediated:**
+
 - **LOW-6** (stale `bkit-build-challenge` no-suffix reference in prompts.md): Removed bare entry from Loop context accumulation row.
 - **LOW-10** (Step 1 sub-step "1a" numbering): Accepted as convention (consistent with bkit-ship Step 2 sub-step "3a"); no functional bug.
 

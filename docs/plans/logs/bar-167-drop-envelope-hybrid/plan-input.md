@@ -13,6 +13,7 @@ Between runs, the user reviewed the plan summary and supplied four binding scope
 5. **Manual fixes in `app-gether-life`:** Left uncommitted in consumer repo for human review. Not part of plan scope.
 
 This re-run must produce a `plan-v1-draft.md` that:
+
 - Bundles all of Phase 1 + Phase 2 + Phase 3 into v2.0.0.
 - Carries forward all plan-v3 critical fixes (deepContains semantics, manifest reclassification, JSON-aware uninstall strip-merge via `stripTier2JsonScope`, static fixture for upgrade chain at `tests/fixtures/heavy-customised-consumer-v1-envelope/`, atomic-write pattern in migration call sites, schema-flip handling).
 - Removes Task 0a (Cursor spike).
@@ -25,7 +26,7 @@ The current `docs/plans/drafts/bar-167-drop-envelope-hybrid-plan.md` (which is t
 
 ## TL;DR
 
-Drop the `__bkit__` JSON envelope (introduced v0.8.0, BAR-131/142) and consolidate every template file under one ownership model: **format-aware containment** — `bkit:start..bkit:end` comment markers for text formats, deep-tree containment for JSON. The Tier 1/2/3 distinction collapses into a single mechanism with a single mental model: *"the template's bkit-owned scope must be intact in the consumer file."*
+Drop the `__bkit__` JSON envelope (introduced v0.8.0, BAR-131/142) and consolidate every template file under one ownership model: **format-aware containment** — `bkit:start..bkit:end` comment markers for text formats, deep-tree containment for JSON. The Tier 1/2/3 distinction collapses into a single mechanism with a single mental model: _"the template's bkit-owned scope must be intact in the consumer file."_
 
 This reverses DE-7 and DE-8.
 
@@ -45,12 +46,12 @@ Reframed: **Every file has a bkit-owned scope and a consumer-owned remainder. Th
 
 ### 2.2 Concrete cost the current model is paying
 
-* **Visible duplication** in `.cursor/hooks.json` and `.claude/settings.json`.
-* **Confusion** — eight conversation turns to explain `__bkit__`. Opposite of self-documenting.
-* **Schema pollution** — `__bkit__` is a custom top-level key.
-* **Tier-3 drift not caught** — app-gether-life's `.github/workflows/ci.yml` was heavily customised post-seed and lost the `pnpm bkit check` step. Tier-3's "advisory only" model meant this was never gated. Under a unified containment model, a small `bkit:start..bkit:end` block around `setup-auth + bkit check` would have made the gate non-removable without explicit `.bkitignore` opt-out.
-* **Maintenance surface** — `bkit-tier1-defaults.ts` snapshots historical envelope shapes per shipped version. Maintenance burden grows with each version.
-* **Asymmetric drift detection** — Tier-1 `canonicalHashes`, Tier-2 text marker-block extraction, Tier-2 JSON `__bkit__` hash. Three code paths, one purpose.
+- **Visible duplication** in `.cursor/hooks.json` and `.claude/settings.json`.
+- **Confusion** — eight conversation turns to explain `__bkit__`. Opposite of self-documenting.
+- **Schema pollution** — `__bkit__` is a custom top-level key.
+- **Tier-3 drift not caught** — app-gether-life's `.github/workflows/ci.yml` was heavily customised post-seed and lost the `pnpm bkit check` step. Tier-3's "advisory only" model meant this was never gated. Under a unified containment model, a small `bkit:start..bkit:end` block around `setup-auth + bkit check` would have made the gate non-removable without explicit `.bkitignore` opt-out.
+- **Maintenance surface** — `bkit-tier1-defaults.ts` snapshots historical envelope shapes per shipped version. Maintenance burden grows with each version.
+- **Asymmetric drift detection** — Tier-1 `canonicalHashes`, Tier-2 text marker-block extraction, Tier-2 JSON `__bkit__` hash. Three code paths, one purpose.
 
 ### 2.3 Decision
 
@@ -60,19 +61,19 @@ Reframed: **Every file has a bkit-owned scope and a consumer-owned remainder. Th
 
 **Format mapping:**
 
-| Format | Bkit scope = | Drift check |
-| -- | -- | -- |
-| Text with `bkit:start..bkit:end` markers | Content between markers | Block byte-equal |
-| Text without markers | Entire template | Whole-file byte-equal |
-| JSON | Entire template's deep tree | Deep containment (template ⊆ consumer) |
-| Empty scope | Nothing (consumer fully owns) | No check (advisory only) |
+| Format                                   | Bkit scope =                  | Drift check                            |
+| ---------------------------------------- | ----------------------------- | -------------------------------------- |
+| Text with `bkit:start..bkit:end` markers | Content between markers       | Block byte-equal                       |
+| Text without markers                     | Entire template               | Whole-file byte-equal                  |
+| JSON                                     | Entire template's deep tree   | Deep containment (template ⊆ consumer) |
+| Empty scope                              | Nothing (consumer fully owns) | No check (advisory only)               |
 
 **Override mechanism:** `.bkitignore` (already exists, DE-6) retained as the explicit per-file / per-key opt-out.
 
 ### 2.4 One real wrinkle: JSON arrays
 
-* `.cursor/hooks.json` — migrate template to Cursor v1 schema (`hooks: { eventName: [...commands] }`) — keyed object instead of flat array. Plain deep-object containment then works. **Per re-run Decision 2: SKIP runtime spike (Task 0a removed).** DE-7 already verified Cursor accepts both shapes.
-* `.claude/settings.json` — `hooks.SessionStart` is an array of objects. Containment rule: "every element in template's array exists as a deep-equal element in consumer's array, order-insensitive."
+- `.cursor/hooks.json` — migrate template to Cursor v1 schema (`hooks: { eventName: [...commands] }`) — keyed object instead of flat array. Plain deep-object containment then works. **Per re-run Decision 2: SKIP runtime spike (Task 0a removed).** DE-7 already verified Cursor accepts both shapes.
+- `.claude/settings.json` — `hooks.SessionStart` is an array of objects. Containment rule: "every element in template's array exists as a deep-equal element in consumer's array, order-insensitive."
 
 ---
 
@@ -171,6 +172,7 @@ This issue documents a real-time discovery during a consumer audit on 2026-05-09
 **Related knowledge:** KN-8 (Tier-2 deep-merge canonical) — supersede with new KN entry once v2.0.0 ships.
 
 **Manual fixes applied during the audit (not part of v2.0.0 plan):**
+
 - `app-gether-life/.github/workflows/ci.yml` — added `Run Bkit Check` step
 - `app-gether-life/.cursor/hooks.json` — restored top-level `hooks` array
 

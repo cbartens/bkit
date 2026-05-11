@@ -1,21 +1,27 @@
 # Build Input — bar-141-preflight-checklist
 
 ## Session Prompt
+
 Build feature BAR-141: bkit install preflight + post-install AI checklist.
 FID: bar-141-preflight-checklist
 ISSUE_ID: BAR-141
 
 ## Issue Description
+
 ### Goal
+
 Replace bkit's current ad-hoc `printSink` advisory pattern with a structured three-phase install:
+
 1. Phase 1 — Preflight (read-only checks before any writes)
 2. Phase 2 — Install (current behaviour)
 3. Phase 3 — Post-install AI checklist (consolidated actionable output)
 
 ## Comments
+
 See Linear issue BAR-141 for full context.
 
 Additional advisory detector proposed: `bkit-version-pin-stale`
+
 - Compares installed @cbartens/bkit version vs .agents/.bkit-version
 - Preflight advisory (before writes)
 - Action: Run `pnpm bkit install --full` to resync
@@ -23,7 +29,9 @@ Additional advisory detector proposed: `bkit-version-pin-stale`
 Also deferred: `bkit doctor` CLI subcommand (thin wrapper around runPreflight())
 
 ## Plan
+
 Verdict: CONCERNS
+
 <!-- verdict:end -->
 
 <!-- Note: Save draft plans in `docs/plans/drafts/`. Move to `docs/plans/active/` when approved for execution. -->
@@ -193,43 +201,43 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 **New stable identifiers (the `id` strings on findings are the public contract for downstream tooling):**
 
-| `id` | Severity | When |
-| --- | --- | --- |
-| `no-package-json` | blocker | `package.json` absent |
-| `malformed-package-json` | blocker | `JSON.parse(package.json)` throws |
-| `not-git-repo` | blocker | `--core` requested AND `.git/` absent |
-| `husky-no-markers-precommit` | advisory | `.husky/pre-commit` exists without bkit markers |
-| `husky-no-markers-prepush` | advisory | `.husky/pre-push` exists without bkit markers |
-| `prettierignore-no-markers` | advisory | `.prettierignore` exists without bkit markers |
-| `lint-prose-f9-vulnerable` | advisory | `lint:prose` script lacks write-good guard |
-| `bkit-version-major-downgrade` | advisory | `.bkit-version` major > installing major |
-| `bkit-version-pin-stale` | advisory | installed `@cbartens/bkit` version > `.bkit-version` (consumer ran `pnpm add` but not `bkit install`) |
-| `gh-bkit-token-missing-shell` | advisory | `process.env.GH_BKIT_TOKEN` unset |
-| `npmrc-missing-gh-packages` | advisory | `.npmrc` missing registry/auth lines |
-| `gh-bkit-token-secret-missing` | advisory | `gh secret list` confirms absent |
-| `gh-bkit-token-secret-unknown` | advisory | `gh` unavailable / unauthed / not GH repo |
-| `vercel-env-missing-preview` | advisory | `vercel env ls preview` lacks token |
-| `vercel-env-missing-production` | advisory | `vercel env ls production` lacks token |
-| `ci-yml-missing-token-env` | advisory | ci.yml install step has no env mapping |
-| `vale-package-not-synced` | advisory | vale on PATH; `.vale/styles/write-good/` absent |
-| `devdeps-need-fetch` | advisory | bkit added new devDeps in this run |
+| `id`                            | Severity | When                                                                                                  |
+| ------------------------------- | -------- | ----------------------------------------------------------------------------------------------------- |
+| `no-package-json`               | blocker  | `package.json` absent                                                                                 |
+| `malformed-package-json`        | blocker  | `JSON.parse(package.json)` throws                                                                     |
+| `not-git-repo`                  | blocker  | `--core` requested AND `.git/` absent                                                                 |
+| `husky-no-markers-precommit`    | advisory | `.husky/pre-commit` exists without bkit markers                                                       |
+| `husky-no-markers-prepush`      | advisory | `.husky/pre-push` exists without bkit markers                                                         |
+| `prettierignore-no-markers`     | advisory | `.prettierignore` exists without bkit markers                                                         |
+| `lint-prose-f9-vulnerable`      | advisory | `lint:prose` script lacks write-good guard                                                            |
+| `bkit-version-major-downgrade`  | advisory | `.bkit-version` major > installing major                                                              |
+| `bkit-version-pin-stale`        | advisory | installed `@cbartens/bkit` version > `.bkit-version` (consumer ran `pnpm add` but not `bkit install`) |
+| `gh-bkit-token-missing-shell`   | advisory | `process.env.GH_BKIT_TOKEN` unset                                                                     |
+| `npmrc-missing-gh-packages`     | advisory | `.npmrc` missing registry/auth lines                                                                  |
+| `gh-bkit-token-secret-missing`  | advisory | `gh secret list` confirms absent                                                                      |
+| `gh-bkit-token-secret-unknown`  | advisory | `gh` unavailable / unauthed / not GH repo                                                             |
+| `vercel-env-missing-preview`    | advisory | `vercel env ls preview` lacks token                                                                   |
+| `vercel-env-missing-production` | advisory | `vercel env ls production` lacks token                                                                |
+| `ci-yml-missing-token-env`      | advisory | ci.yml install step has no env mapping                                                                |
+| `vale-package-not-synced`       | advisory | vale on PATH; `.vale/styles/write-good/` absent                                                       |
+| `devdeps-need-fetch`            | advisory | bkit added new devDeps in this run                                                                    |
 
 **Internal-only ids (NOT part of the public contract — emitted by the `printSink → advisories` migration in `bkit-modules.ts` and `bkit-tiers.ts`; treat as internal and subject to change without a major bump):**
 
-| `id` | Severity | When |
-| --- | --- | --- |
-| `first-install-postinstall-steps` | advisory | `runCoreModule` first-install message |
-| `ci-package-json-missing` | advisory | `runCiModule` cannot read `package.json` |
-| `ci-package-json-malformed` | advisory | `runCiModule` finds invalid JSON in `package.json` |
-| `ci-no-test-script` | advisory | `runCiModule` finds no `test` script |
-| `lint-package-json-missing` | advisory | `runLintModule` cannot read `package.json` |
-| `lint-package-json-malformed` | advisory | `runLintModule` finds invalid JSON in `package.json` |
-| `vale-sync-recommended` | advisory | `runLintModule` write-good package hint |
-| `git-hooks-package-json-missing` | advisory | `runGitHooksModule` cannot read `package.json` |
-| `git-hooks-package-json-malformed` | advisory | `runGitHooksModule` finds invalid JSON in `package.json` |
-| `git-hooks-package-json-preserved-prepare` | advisory | `runGitHooksModule` preserved an existing `prepare` script |
-| `git-hooks-husky-devdep-added` | advisory | `runGitHooksModule` added `husky` as a devDep |
-| `tier3-merge-suggested-{dst-basename}` | advisory | `writeTier3` family — `{dst-basename}` is the basename of the merge destination (e.g. `tier3-merge-suggested-eslint.config.js`); the parent prefix `tier3-merge-suggested-` is the stable contract surface |
+| `id`                                       | Severity | When                                                                                                                                                                                                       |
+| ------------------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `first-install-postinstall-steps`          | advisory | `runCoreModule` first-install message                                                                                                                                                                      |
+| `ci-package-json-missing`                  | advisory | `runCiModule` cannot read `package.json`                                                                                                                                                                   |
+| `ci-package-json-malformed`                | advisory | `runCiModule` finds invalid JSON in `package.json`                                                                                                                                                         |
+| `ci-no-test-script`                        | advisory | `runCiModule` finds no `test` script                                                                                                                                                                       |
+| `lint-package-json-missing`                | advisory | `runLintModule` cannot read `package.json`                                                                                                                                                                 |
+| `lint-package-json-malformed`              | advisory | `runLintModule` finds invalid JSON in `package.json`                                                                                                                                                       |
+| `vale-sync-recommended`                    | advisory | `runLintModule` write-good package hint                                                                                                                                                                    |
+| `git-hooks-package-json-missing`           | advisory | `runGitHooksModule` cannot read `package.json`                                                                                                                                                             |
+| `git-hooks-package-json-malformed`         | advisory | `runGitHooksModule` finds invalid JSON in `package.json`                                                                                                                                                   |
+| `git-hooks-package-json-preserved-prepare` | advisory | `runGitHooksModule` preserved an existing `prepare` script                                                                                                                                                 |
+| `git-hooks-husky-devdep-added`             | advisory | `runGitHooksModule` added `husky` as a devDep                                                                                                                                                              |
+| `tier3-merge-suggested-{dst-basename}`     | advisory | `writeTier3` family — `{dst-basename}` is the basename of the merge destination (e.g. `tier3-merge-suggested-eslint.config.js`); the parent prefix `tier3-merge-suggested-` is the stable contract surface |
 
 > Internal ids are listed for human review completeness only. Downstream tooling MUST NOT depend on the exact internal id strings; only the public ids in the first table are stable.
 
@@ -251,13 +259,13 @@ _(Suggested 5 outcomes from the issue body, for human approval/edit:_
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
-| Keep `printSink: string[]`, add a parallel `findings: PreflightFinding[]` | Two parallel sinks → drift risk; downstream tooling has to merge two shapes. Migration is mechanical (one call site per push). |
-| `--strict` flag promoting advisories to blockers | Out of scope per issue body. Consumer can run `bkit check` (already exit-1-on-drift) for the same effect. |
-| Auto-apply fixes (e.g. rewrite `lint:prose` in place) | Violates consumer-value-wins. The whole point of advisories is the consumer/AI decides. |
-| Vercel env detection via `@vercel/sdk` | Heavy dep for one detector; shell-out to `vercel env ls` matches existing `gh secret list` pattern (return `present`/`missing`/`unknown`). |
-| Telemetry / opt-out registry for advisories | Out of scope. May be revisited if advisory fatigue becomes real. |
+| Rejected approach                                                         | Why rejected                                                                                                                               |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Keep `printSink: string[]`, add a parallel `findings: PreflightFinding[]` | Two parallel sinks → drift risk; downstream tooling has to merge two shapes. Migration is mechanical (one call site per push).             |
+| `--strict` flag promoting advisories to blockers                          | Out of scope per issue body. Consumer can run `bkit check` (already exit-1-on-drift) for the same effect.                                  |
+| Auto-apply fixes (e.g. rewrite `lint:prose` in place)                     | Violates consumer-value-wins. The whole point of advisories is the consumer/AI decides.                                                    |
+| Vercel env detection via `@vercel/sdk`                                    | Heavy dep for one detector; shell-out to `vercel env ls` matches existing `gh secret list` pattern (return `present`/`missing`/`unknown`). |
+| Telemetry / opt-out registry for advisories                               | Out of scope. May be revisited if advisory fatigue becomes real.                                                                           |
 
 **Future phase recommendations:**
 
@@ -361,7 +369,7 @@ None.
   - `detectPrettierignoreNoMarkers(cwd)` — same shape on `.prettierignore`.
   - `detectLintProseF9Vulnerable(cwd)` — `package.json#scripts.lint:prose` exists; lacks the literal substring `[ -d .vale/styles/write-good ]`.
   - `detectBkitVersionMajorDowngrade(cwd, installingVersion)` — `.bkit-version` parsed major > installing major.
-  - `detectBkitVersionPinStale(cwd)` — read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. If both exist AND `installed > onDisk` (semver compare), emit `bkit-version-pin-stale`. Returns `null` (no finding) when either file is absent (first-time install or running from checkout). ACTION: `"Run \`pnpm bkit install --full\` to resync the .agents payload + version pin, then commit the result. \`pnpm add\` does not run the bkit installer — bkit's payload must be re-synced after every \`@cbartens/bkit\` version bump."` Sibling to `devdeps-need-fetch` — both detect a half-completed install workflow.
+  - `detectBkitVersionPinStale(cwd)` — read `node_modules/@cbartens/bkit/package.json` (consumer-installed bkit) and `.agents/.bkit-version`. If both exist AND `installed > onDisk` (semver compare), emit `bkit-version-pin-stale`. Returns `null` (no finding) when either file is absent (first-time install or running from checkout). ACTION: `"Run \`pnpm bkit install --full\` to resync the .agents payload + version pin, then commit the result. \`pnpm add\` does not run the bkit installer — bkit's payload must be re-synced after every \`@cbartens/bkit\` version bump."`Sibling to`devdeps-need-fetch` — both detect a half-completed install workflow.
 - **Internal helper:** `hasBkitMarkers(content: string): boolean` — checks both `<!-- bkit:start -->` and `# bkit:start` (uses the same anchored-marker logic as `bkit-install.ts` `findLineAnchoredMarkers`).
 - **No imports from `bkit-modules.ts`** — this file is upstream of dispatch. Imports `ModuleFlag` from `bkit-cli.ts`.
 

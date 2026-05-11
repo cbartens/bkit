@@ -1,11 +1,13 @@
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Plan Execution Log
 
 DONE — Task P0.T0: Confirm OOS items in docs/pending.md — already present (grep found) (docs/pending.md)
-DONE — Task P0.T1: Extend vitest.config.ts include glob for *.integration.test.ts (vitest.config.ts)
+DONE — Task P0.T1: Extend vitest.config.ts include glob for \*.integration.test.ts (vitest.config.ts)
 DONE — Task P1.T0: Create CHANGELOG.md skeleton + add to package.json files (CHANGELOG.md, package.json)
 DONE — Task P1.T0: Create CHANGELOG.md + add to package.json files (.CHANGELOG.md, package.json)
 DONE — Task P1.T1: Register doctor verb in bkit-cli.ts + wire main() in bkit-install.ts + bkit-doctor.integration.test.ts (.agents/scripts/bkit-cli.ts, .agents/scripts/bkit-install.ts, .agents/scripts/bkit-cli.test.ts, .agents/scripts/bkit-doctor.integration.test.ts)

@@ -8,14 +8,14 @@ Verdict: PASS
 
 BAR-155 shipped six friction-reduction fixes to bkit `.agents/` prompts and workflows:
 
-| Fix | Scope | Files touched |
-| --- | --- | --- |
-| 1b | Freeform stub-first directive (`echo {finding} >> {output}`, eager `Verdict:` flip-on-FAIL) | 4 target prompts (`bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests`) |
-| 2 | Deterministic task-count gate (>15 tasks → SPLIT) in `bkit-plan` Step 8 | 2 files (`bkit-plan.md` workflow, `bkit-plan-complexity-check.md` prompt) |
-| 3 | Scoped BAR-N detection (>1 in `## Linear Issue:` section only) in `bkit-plan` Step 3 | 1 file (`bkit-plan.md` workflow) |
-| 4a–d | Parallel challenge pair (`-1`/`-2`) + reconciler (`-reconcile`) replacing single agent; `bkit-build.md` Steps 9–18 wired | 8 files (3 new challenge prompts, 1 deleted, 2 workflows, 2 index docs) |
-| 5 | Rebase failure routing via sentinel file (`.rebase-failed`) instead of bare `exit 1` | 1 file (`bkit-ship.md` workflow) |
-| 6 | Always-on long-branch advisory in `bkit-build` Step 1 | 1 file (`bkit-build.md` workflow) |
+| Fix  | Scope                                                                                                                    | Files touched                                                                                             |
+| ---- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| 1b   | Freeform stub-first directive (`echo {finding} >> {output}`, eager `Verdict:` flip-on-FAIL)                              | 4 target prompts (`bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests`) |
+| 2    | Deterministic task-count gate (>15 tasks → SPLIT) in `bkit-plan` Step 8                                                  | 2 files (`bkit-plan.md` workflow, `bkit-plan-complexity-check.md` prompt)                                 |
+| 3    | Scoped BAR-N detection (>1 in `## Linear Issue:` section only) in `bkit-plan` Step 3                                     | 1 file (`bkit-plan.md` workflow)                                                                          |
+| 4a–d | Parallel challenge pair (`-1`/`-2`) + reconciler (`-reconcile`) replacing single agent; `bkit-build.md` Steps 9–18 wired | 8 files (3 new challenge prompts, 1 deleted, 2 workflows, 2 index docs)                                   |
+| 5    | Rebase failure routing via sentinel file (`.rebase-failed`) instead of bare `exit 1`                                     | 1 file (`bkit-ship.md` workflow)                                                                          |
+| 6    | Always-on long-branch advisory in `bkit-build` Step 1                                                                    | 1 file (`bkit-build.md` workflow)                                                                         |
 
 PR #17 **squash-merged** to `dev` at **2026-05-10T11:03:09Z**, SHA `21c9bdc`. All six fixes landed atomically in single commit.
 
@@ -33,6 +33,7 @@ PR #17 **squash-merged** to `dev` at **2026-05-10T11:03:09Z**, SHA `21c9bdc`. Al
 **Plan workflow outcome (2026-05-09 01:35–02:37 UTC):** All steps DONE, plan-execute PASS, scope-check CONCERNS (4 failures remediated), complexity SINGLE (10 tasks ≤ 15). Deliverable: `docs/plans/active/bar-155-workflow-friction-optimisation-plan.md`.
 
 **Ship Phase (2026-05-10 10:55–11:05 UTC):**
+
 - Step 1 (Start Workflow) — transitioned issue State to "In Progress".
 - Step 2 (Worktree Setup) — rebase friction: bare `git rebase origin/dev` failed with `docs/pending.md` conflict despite branch already containing full origin/dev history via merge commit. Operator switched to `git rebase --rebase-merges origin/dev` — succeeded. Friction recorded in `.agents/friction.md` (BAR-169 filed).
 - Step 3 (Merge PR) — PR #17 **squash-merged** SUCCESS, `21c9bdc` landed on `dev`.
@@ -41,6 +42,7 @@ PR #17 **squash-merged** to `dev` at **2026-05-10T11:03:09Z**, SHA `21c9bdc`. Al
 ## Friction Surfaced This Ship
 
 **Rebase conflict on merge-integrated branch (bkit-ship Step 2):**
+
 - **Description:** Bare `git rebase origin/dev` failed at commit `880921c` with `docs/pending.md` conflict despite branch containing full origin/dev integration via merge commit `4725094`. Additive merge-resolved conflict re-introduced when replaying individual commits.
 - **Recovery:** Operator switched to `git rebase --rebase-merges origin/dev` (preserves merge structure) — succeeded immediately with no conflicts.
 - **Issue filed:** BAR-169 created to track rebase-conflict gap (out of scope for BAR-155 Fix 5 sentinel routing, which ships in this merge but does not address root cause of rebase anti-pattern on long-lived branches with merges).

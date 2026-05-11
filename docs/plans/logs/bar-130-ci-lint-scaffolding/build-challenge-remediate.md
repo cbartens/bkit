@@ -5,25 +5,25 @@
 
 ## Findings addressed
 
-| # | Finding | Status | Files touched |
-| --- | --- | --- | --- |
-| MED-1 | --ci without --lint print-sink | FIXED | `.agents/scripts/bkit-modules.ts` |
-| MED-2 | Non-pnpm packageManager warn | FIXED | `.agents/scripts/bkit-tokens.ts` |
-| MED-3 | Auth-shim narrowing | FIXED | `.agents/templates/.github/workflows/ci.yml` |
-| MED-4 | .bkit-version write LAST | FIXED | `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-dry-run-parity.integration.test.ts` |
-| MED-5 | Copy-paste-safe print-sink | FIXED | `.agents/scripts/bkit-modules.ts` |
-| MED-6 | .nvmrc comment-stripping | FIXED | `.agents/scripts/bkit-tokens.ts` |
-| MED-7 | applyTokens $& escape | FIXED | `.agents/scripts/bkit-tokens.ts` |
-| MED-8 | runPayload WriteSet threading | DEFERRED | — |
+| #     | Finding                        | Status   | Files touched                                                                                                                                                                       |
+| ----- | ------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MED-1 | --ci without --lint print-sink | FIXED    | `.agents/scripts/bkit-modules.ts`                                                                                                                                                   |
+| MED-2 | Non-pnpm packageManager warn   | FIXED    | `.agents/scripts/bkit-tokens.ts`                                                                                                                                                    |
+| MED-3 | Auth-shim narrowing            | FIXED    | `.agents/templates/.github/workflows/ci.yml`                                                                                                                                        |
+| MED-4 | .bkit-version write LAST       | FIXED    | `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-dry-run-parity.integration.test.ts` |
+| MED-5 | Copy-paste-safe print-sink     | FIXED    | `.agents/scripts/bkit-modules.ts`                                                                                                                                                   |
+| MED-6 | .nvmrc comment-stripping       | FIXED    | `.agents/scripts/bkit-tokens.ts`                                                                                                                                                    |
+| MED-7 | applyTokens $& escape          | FIXED    | `.agents/scripts/bkit-tokens.ts`                                                                                                                                                    |
+| MED-8 | runPayload WriteSet threading  | DEFERRED | —                                                                                                                                                                                   |
 
 ## Verification commands run
 
-| Command | Exit |
-| --- | --- |
-| `pnpm typecheck` | 0 |
-| `pnpm test` | 0 (157 tests, 7 files) |
-| `pnpm format:check` | 0 |
-| `pnpm lint:slop` | 0 |
+| Command             | Exit                   |
+| ------------------- | ---------------------- |
+| `pnpm typecheck`    | 0                      |
+| `pnpm test`         | 0 (157 tests, 7 files) |
+| `pnpm format:check` | 0                      |
+| `pnpm lint:slop`    | 0                      |
 
 ## Fix notes
 

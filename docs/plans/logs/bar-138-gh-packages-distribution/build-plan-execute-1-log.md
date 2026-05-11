@@ -25,11 +25,13 @@ DONE — lint/typecheck/format:check/lint:prose/lint:slop all pass (221 tests pa
 ## Summary
 
 ### Phase A — Pipeline Foundation
+
 - `package.json`: `private: false`, `publishConfig: {registry: "https://npm.pkg.github.com", access: "restricted"}`, bare HTTPS `repository.url`, updated `description`, `version: 0.4.0-pre.1`
 - `.github/workflows/release.yml`: new file, tag-push `v*` trigger, `permissions: {contents: read, packages: write}`, Node 20, setup-node with registry-url + scope, full check suite (typecheck, test, format:check, lint:prose, lint:slop, check:dist), `npm publish` with `NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}`
 - v0.4.0-pre.1 committed (SHA 6bbbcc0), feature branch pushed, tag pushed, GH Actions run 25409351556 green, `+ @cbartens/bkit@0.4.0-pre.1` confirmed in publish log
 
 ### Phase B (partial) — Print Constants + CI YAML Edits
+
 - `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`: rewritten with `.npmrc` setup instructions, `read:packages` scope, pnpm v7.20+ silent-ignore footgun warning; no `insteadOf` language
 - `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`: same shape, same pnpm silent-ignore warning
 - `VERCEL_AUTH_INSTRUCTIONS`: env-var-only setup; tells AI to Remove legacy `installCommand` git-shim; no `git config --global url.` literal
@@ -39,6 +41,7 @@ DONE — lint/typecheck/format:check/lint:prose/lint:slop all pass (221 tests pa
 - `.github/workflows/ci.yml` (bkit-self): `Configure private-repo auth` step deleted
 
 ### Phase C (partial) — Tests
+
 - `bkit-modules.test.ts` (new): 30 tests covering package.json manifest invariants (C0) + all 5 print constant rewrites + first-install banner (C1)
 - `release-workflow.test.ts` (new): 19 structural assertions for release.yml covering trigger, permissions, setup-node, pnpm setup, check suite order, npm publish (C1.5)
 - `templates.test.ts` (new): 8 tests covering consumer CI template snapshot/diff test + explicit assertions for no auth-shim and GH_BKIT_TOKEN env block (C2)
@@ -47,6 +50,7 @@ DONE — lint/typecheck/format:check/lint:prose/lint:slop all pass (221 tests pa
 - Snapshot written: `.agents/scripts/__snapshots__/templates.test.ts.snap`
 
 ### Hand-off State Verification
+
 - Branch: `feat/bar-138-gh-packages-distribution` checked out and pushed
 - Manifest: `private: false`, `publishConfig` set, bare HTTPS `repository.url`, `version: 0.4.0-pre.1`
 - Workflow: `.github/workflows/release.yml` exists with 11-step shape
@@ -59,5 +63,7 @@ DONE — lint/typecheck/format:check/lint:prose/lint:slop all pass (221 tests pa
 - Print-constant + test edits uncommitted (intentionally deferred to sub-plan 2 Task B14)
 
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->

@@ -27,5 +27,7 @@ Build phase: all gates green on first attempt (173 tests passed, 1 todo placehol
 3. **MED-8 pending entry** — `runPayload` WriteSet threading deferred to v0.2 (BAR-200). The issue: cross-module parity test (`runParityCheck`) cannot detect divergence in `.agents/templates/**` mirroring between dry-run and install due to `copyAdditive` running only in install mode. Architectural fix (merge `copyAdditive` + `runPayload`) documented in `docs/pending.md` for v0.2 implementation.
 
 <!-- verdict:start -->
+
 Verdict: CONCERNS
+
 <!-- verdict:end -->

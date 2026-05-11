@@ -16,7 +16,7 @@ DONE — Task 3: migrateLegacyBkitEnvelope — added to .agents/scripts/bkit-tie
 DONE — Task 4: Update runClaudeModule + runCursorModule — migrateLegacyBkitEnvelope + writeTier2JsonContained integrated (.agents/scripts/bkit-modules.ts)
 DONE — Task 4b: stripTier2JsonScope — added to .agents/scripts/bkit-uninstall.ts (.agents/scripts/bkit-uninstall.ts)
 DONE — Task 14a: package.json version bump to 2.0.0 (package.json)
-DONE — Task 5: Templates rewrite — .agents/templates/.cursor/hooks.json (Cursor v1 keyed-object); .agents/templates/.claude/settings.json (dropped __bkit__)
+DONE — Task 5: Templates rewrite — .agents/templates/.cursor/hooks.json (Cursor v1 keyed-object); .agents/templates/.claude/settings.json (dropped **bkit**)
 DONE — Task 6: Preflight advisories + drift detection — added detectLegacyBkitEnvelope, detectTier2JsonDrift, detectPreEnvelopeBkitVersion to bkit-preflight.ts (.agents/scripts/bkit-preflight.ts)
 DONE — Task 7: Delete obsolete code — removed bkit-tier1-defaults.ts/test.ts; removed extractBkitNamespace/applyBkitNamespace/writeTier2Json/migrateTier1JsonToTier2 from bkit-tiers.ts; updated upgrade integration test imports (.agents/scripts/bkit-tiers.ts, .agents/scripts/bkit-modules.upgrade.integration.test.ts)
 DONE — Task 8: bkit-tiers.test.ts rewrite — added deepContains (8 rows), writeTier2JsonContained (5 tests), migrateLegacyBkitEnvelope (4 sub-cases), cursor-v1-schema block; removed old envelope tests (.agents/scripts/bkit-tiers.test.ts)

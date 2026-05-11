@@ -13,7 +13,7 @@ DONE — Task B12: dist/ rebuilt — check:dist exit non-zero (stale) confirmed;
 DONE — Task B13: Full local check suite passed — typecheck, test (221 passed), format:check, lint:prose (0 errors), lint:slop, check:dist all exit 0
 DONE — Task B14: version bumped to 0.4.0-pre.2; commit 2fb96ca pushed to feat/bar-138-gh-packages-distribution; tag v0.4.0-pre.2 pushed (package.json, dist/bkit-modules.js)
 DONE — Task B15 GATE: release.yml run 25409836293 green; + @cbartens/bkit@0.4.0-pre.2 confirmed in publish log; all check-suite steps green
-DONE — Task C3: Scratch consumer repo created at tmp/bar-138-smoke/ — git init, minimal package.json, .npmrc with @cbartens:registry + _authToken=${GH_BKIT_TOKEN} lines; tmp/ confirmed gitignored
+DONE — Task C3: Scratch consumer repo created at tmp/bar-138-smoke/ — git init, minimal package.json, .npmrc with @cbartens:registry + \_authToken=${GH_BKIT_TOKEN} lines; tmp/ confirmed gitignored
 BLOCKED — Task C4: pnpm add -D @cbartens/bkit@0.4.0-pre.2 requires GH_BKIT_TOKEN with read:packages scope — not available in agent shell environment (gh auth token has repo+workflow scopes only, no read:packages); scratch consumer infrastructure created in tmp/bar-138-smoke/; human must run smoke test with their PAT
 BLOCKED — Task C5 GATE: smoke test cannot be confirmed without C4 completing; infrastructure ready at tmp/bar-138-smoke/; save transcript to docs/plans/logs/bar-138/smoke-pre.2.txt per plan spec
 DONE — Task D1: PR #3 opened — https://github.com/cbartens/bkit/pull/3 — feat/bar-138-gh-packages-distribution -> dev; CI runs triggered
@@ -25,6 +25,7 @@ BLOCKED — Task D5: BAR-131 #2 resolution requires Linear MCP (subagents have n
 ## Summary
 
 ### Phase B (Tasks B8-B15) — Completed
+
 - `README.md`: Install section → registry path (`pnpm add -D @cbartens/bkit@^0.4.0`); pnpm 10 allowlist section deleted; Consumer CI auth → `.npmrc` + `env: GH_BKIT_TOKEN` + pnpm silent-ignore warning; Consumer Vercel auth → env-var-only + `installCommand` removal guidance; v0.4.0 breaking changes note added
 - `.agents/README.md`: Distribution section → GH Packages registry description; pnpm 10 allowlist subsection deleted; Install prose → `@cbartens/bkit@^0.4.0`
 - `docs/decisions.md`: ADR DE-3 appended (infra, active, distribution model decision)
@@ -35,11 +36,13 @@ BLOCKED — Task D5: BAR-131 #2 resolution requires Linear MCP (subagents have n
 - Commit 2fb96ca pushed; tag v0.4.0-pre.2 pushed; GHA run 25409836293 green; `+ @cbartens/bkit@0.4.0-pre.2` published
 
 ### Phase C (Tasks C3-C5) — Infrastructure complete; smoke requires human credentials
+
 - Scratch consumer repo created at `tmp/bar-138-smoke/` with correct `.npmrc` (2 required lines) and minimal `package.json`
 - C4/C5 require `GH_BKIT_TOKEN` with `read:packages` scope — not available in agent environment
 - Infrastructure ready; human must: export `GH_BKIT_TOKEN`, `cd tmp/bar-138-smoke`, run `pnpm add -D @cbartens/bkit@0.4.0-pre.2`, run `pnpm exec bkit install --full`, save transcript to `docs/plans/logs/bar-138/smoke-pre.2.txt`
 
 ### Phase D — D1 complete; D2-D5 require human action
+
 - PR #3 created: https://github.com/cbartens/bkit/pull/3
 - D2: squash-merge after CI green + human review
 - D3: PR dev→main with explicit human approval
@@ -47,11 +50,14 @@ BLOCKED — Task D5: BAR-131 #2 resolution requires Linear MCP (subagents have n
 - D5: mark BAR-131 #2 resolved in Linear (after D4)
 
 ### Lint/Typecheck Status (Step 7 gate)
+
 - `pnpm typecheck`: PASS
 - `pnpm format:check`: PASS
 - `pnpm lint:slop`: PASS
 - `pnpm lint:prose`: PASS (0 errors, 4 pre-existing warnings in unrelated file)
 
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->

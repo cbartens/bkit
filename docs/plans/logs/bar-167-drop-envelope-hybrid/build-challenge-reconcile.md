@@ -8,6 +8,7 @@ Failures: 6
 ## MAJOR Findings (from challenge-1, verified)
 
 ### MAJOR-1 — REAL | CRITICAL | architectural
+
 **File:** `.agents/scripts/bkit-tiers.ts:227-241`
 **Title:** `writeTier2JsonContained` silently overwrites malformed consumer JSON with template (data-loss)
 
@@ -20,6 +21,7 @@ Verified: the `try { existing = JSON.parse(dstRaw) } catch { fs.writeFileSync(ds
 ---
 
 ### MAJOR-2 — REAL | CRITICAL | mechanical
+
 **File:** `.agents/scripts/bkit-manifest.ts:82`, `.agents/scripts/bkit-modules.ts:1010-1028`
 **Title:** `slop-scan.config.json` manifest format `"json"` does not match install behaviour (`writeTier3`) — uninstall deep-strips a file install never wrote as JSON
 
@@ -32,6 +34,7 @@ Verified: manifest declares `{ path: "slop-scan.config.json", format: "json", mo
 ---
 
 ### MAJOR-3 — REAL | CRITICAL | mechanical
+
 **File:** `.agents/scripts/bkit-manifest.ts:69`, `.agents/scripts/bkit-modules.ts:895` (`runCiModule`), `.agents/scripts/bkit-install.ts:378`
 **Title:** `ci.yml` manifest format `"markered-text"` does not match install behaviour (`writeTier3`); indented markers fall outside `ALLOWED_PREFIXES`
 
@@ -44,6 +47,7 @@ Verified: `ALLOWED_PREFIXES = ["", "# ", "// "]` excludes the 6-space-indented `
 ---
 
 ### MAJOR-4 — REAL | CRITICAL | mechanical
+
 **File:** `.agents/scripts/bkit-manifest.ts:81`, `.agents/scripts/bkit-modules.ts:974-991`
 **Title:** `.vale.ini` manifest format `"markered-text"` does not match install behaviour (`writeTier3`)
 
@@ -56,6 +60,7 @@ Verified: same shape as MAJOR-3 — manifest declares `markered-text` while `run
 ---
 
 ### MAJOR-5 — REAL | HIGH | mechanical
+
 **File:** `CHANGELOG.md:9-35` (2.0.0 entry)
 **Title:** CHANGELOG 2.0.0 entry under-represents breaking changes (markers added to 12 Group A + 3 Group B templates; dispatch shift)
 
@@ -70,6 +75,7 @@ Note: MAJOR-5 is mechanical (documentation completeness) — promoting to HIGH-n
 ---
 
 ### MAJOR-6 — REAL | HIGH | mechanical
+
 **File:** `.agents/scripts/bkit-preflight.ts:65-69` (`stripBkitBlock`)
 **Title:** Greedy whitespace regex marker stripping (KN-8 lesson violation)
 
@@ -86,61 +92,73 @@ Severity note: lower than KN-8 original because call sites are advisory-only (no
 ## MINOR Findings (merged from both reviews, accepted at face value)
 
 ### MINOR-1 — REAL | architectural
+
 **File:** `.agents/scripts/bkit-tiers.ts:118-126` (`_deepContainsArray`)
 `deepContains` array-of-primitives uses `includes()` — set-subset, not multiset-subset semantics. Docstring claim is imprecise. (challenge-1 MINOR-1)
 **Fix:** Update docstring to clarify "set-subset, not multiset-subset" or implement multiset check.
 
 ### MINOR-2 — REAL | architectural
+
 **File:** `.agents/scripts/bkit-uninstall.ts:152-158` (`stripTier2JsonScope`)
 Leaf equality uses `JSON.stringify(cVal) === JSON.stringify(tVal)` — sensitive to key order; over-preserves on editor-reformatted JSON. Benign over-preservation, not data loss. (challenge-1 MINOR-2)
 **Fix:** Replace with structural deep-equal.
 
 ### MINOR-3 — REAL | architectural (challenge-1 MINOR-3 + challenge-2 Finding 5 + Finding 8, merged)
+
 **File:** `.agents/scripts/bkit-tiers.ts:331-346` (`_detectSchemaFlip`)
-Only iterates `Object.keys(after)` (Finding 8) and only walks first level (challenge-1 MINOR-3 / Finding 5). Deeper schema flips silently misclassified; log message reads "stripped __bkit__ envelope" when "schema flip applied" is correct. Observability gap, not data loss. Both reviewers concur.
+Only iterates `Object.keys(after)` (Finding 8) and only walks first level (challenge-1 MINOR-3 / Finding 5). Deeper schema flips silently misclassified; log message reads "stripped **bkit** envelope" when "schema flip applied" is correct. Observability gap, not data loss. Both reviewers concur.
 **Fix:** Recurse `_detectSchemaFlip` OR rename to `_detectShallowSchemaFlip` and document; iterate `Object.keys(before) ∪ Object.keys(after)`.
 
 ### MINOR-4 — REAL | architectural (challenge-1 MINOR-4 + challenge-2 Finding 7, merged)
+
 **File:** `.agents/scripts/bkit-preflight.ts:491-503` (`detectPreEnvelopeBkitVersion`)
 Hard-coded `[".claude/settings.json", ".cursor/hooks.json"]` envelope-presence check is forward-compat fragile and may misclassify partial-install consumers from envelope-era versions. Both reviewers concur.
 **Fix:** Derive list from `getInstallManifest().filter(e => e.format === "json")`.
 
 ### MINOR-5 — REAL | mechanical
+
 **File:** `.agents/scripts/lint-no-tier-terms.ts:70-73`
 `SCAN_DIRS` only includes `docs/` — `.agents/README.md`, `CHANGELOG.md`, root README excluded; tier terminology can leak into consumer-shipped tarball. (challenge-1 MINOR-5)
 **Fix:** Add `.agents` and root `*.md` (with CHANGELOG history exclusion) or document the policy in script header.
 
 ### MINOR-6 — DEFER | architectural
+
 **File:** `.agents/scripts/bkit-tiers.ts:250-257`
 Idempotent guard analysis — challenge-1 self-classifies as "no bug, audit traceability". (challenge-1 MINOR-6)
 **Fix:** None required.
 
 ### MINOR-7 — REAL | mechanical (challenge-2 Finding 1)
+
 **File:** `.agents/scripts/bkit-preflight.ts:402`
 `detectTier2JsonDrift` call site lacks named-argument comments — latent swap-risk if refactored.
 **Fix:** Add `/* template */` and `/* consumer */` inline comments at the call site.
 
 ### MINOR-8 — REAL | mechanical (challenge-2 Finding 2)
+
 **File:** `.agents/scripts/bkit-preflight.ts:613-625`
 Hard-coded `markeredTextPaths` list missing `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.cursor/rules/00-shared-rules.mdc` — these three are `markered-text` in the manifest but never receive drift detection.
 **Fix:** Derive from manifest at runtime: `getInstallManifest().filter(e => e.format === "markered-text").map(e => e.path)`.
 
 ### MINOR-9 — REAL | mechanical (challenge-2 Finding 3)
+
 **File:** `.agents/scripts/bkit-modules.integration.test.ts:1042-1072`
 Two `describe.skip` blocks for `bkit uninstall --claude/--cursor consumer-key survival` cite "PREREQ: Task 19 reclassification" — but Task 19 is already complete in this diff (both files declared `format: "json"`). The `stripTier2JsonScope` dispatch path lacks active integration coverage.
 **Fix:** Remove `describe.skip` and activate the scaffolded assertions.
 
 ### MINOR-10 — REAL | mechanical (challenge-2 Finding 4)
+
 **File:** `.agents/scripts/bkit-modules.upgrade.integration.test.ts:325-342`
 `expect(result === null || result?.id === "tier2-text-drift").toBe(true)` is an always-true assertion for the ci.yml indented-marker limitation — zero regression protection if the gap closes.
 **Fix:** Split into `expect(result).toBeNull()` with a TODO comment explaining the future flip.
 
 ### MINOR-11 — REAL | mechanical (challenge-2 Finding 6)
+
 **File:** `.agents/scripts/bkit-modules.ts:501-519`, `:595-620`
 `migrateLegacyBkitEnvelope` gated on `!dryRun` — `bkit check` (dry-run) does not include the migration in its write-set count; idempotence-parity tests may produce false matches.
 **Fix:** Move migration into a pure function callable in both paths; track would-be write in `ws.writes` with `action: "update"` even when dry-run.
 
 ### MINOR-12 — DEFER | mechanical (challenge-2 Finding 9)
+
 **File:** `tests/fixtures/heavy-customised-ci/.github/workflows/ci.yml`
 Heavy-customised fixture has `NODE_AUTH_TOKEN` inside the bkit marker block, illustrating the indented-marker drift gap. Documented in the test but not tracked in `docs/pending.md`.
 **Fix:** Add a `docs/pending.md` entry tracking the indented-marker drift gap. Subsumed by MAJOR-3 fix scope.
@@ -149,13 +167,13 @@ Heavy-customised fixture has `NODE_AUTH_TOKEN` inside the bkit marker block, ill
 
 ## Summary
 
-| Category | Count |
-|---|---|
-| MAJOR (CRITICAL severity, real) | 4 (MAJOR-1, MAJOR-2, MAJOR-3, MAJOR-4) |
-| MAJOR (HIGH severity, real) | 2 (MAJOR-5, MAJOR-6) |
-| MAJOR false-positive | 0 |
-| MINOR real | 10 (MINOR-1, 2, 3, 4, 5, 7, 8, 9, 10, 11) |
-| MINOR deferred | 2 (MINOR-6, MINOR-12) |
+| Category                        | Count                                     |
+| ------------------------------- | ----------------------------------------- |
+| MAJOR (CRITICAL severity, real) | 4 (MAJOR-1, MAJOR-2, MAJOR-3, MAJOR-4)    |
+| MAJOR (HIGH severity, real)     | 2 (MAJOR-5, MAJOR-6)                      |
+| MAJOR false-positive            | 0                                         |
+| MINOR real                      | 10 (MINOR-1, 2, 3, 4, 5, 7, 8, 9, 10, 11) |
+| MINOR deferred                  | 2 (MINOR-6, MINOR-12)                     |
 
 All six MAJOR findings from challenge-1 were verified REAL via targeted greps. Challenge-2's nine MINOR findings merged into the MINOR set (Findings 5 and 8 collapsed into MINOR-3 with challenge-1 MINOR-3; Finding 7 collapsed into MINOR-4 with challenge-1 MINOR-4).
 

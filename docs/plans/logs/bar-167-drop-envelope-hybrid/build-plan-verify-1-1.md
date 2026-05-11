@@ -24,6 +24,7 @@ None — first verification pass on sub-plan 1 (no prior `build-plan-verify-1-*.
 ## Notes
 
 The execute-1 log claims work through Task 10 with PENDING verdict. Verification confirms all code-and-test tasks (0c, 0d, 0e, 1, 1b, 2, 3, 4, 4b, 5, 6, 8, 8b, 9, 10a, 14a) are implemented in the worktree. However, the execute log stopped before:
+
 - finishing Task 7 cleanly (left a stale `bkit-modules.test.ts` block referencing deleted helpers — the suite will FAIL),
 - finishing Task 10 sub-rows (`bkit uninstall --claude/--cursor` consumer-key survival; `slop-scan.config.json` drift row),
 - the entire Documentation block (Tasks 11, 12, 13, 14, 15, 16),
@@ -58,4 +59,3 @@ GAP 10 — Task 16 NOT DONE. `docs/pending.md` still does not contain a `bkit up
 GAP 11 — Mandatory Tasks (Testing & Documentation) and Gate 2/3/4 sub-plan-A sign-offs are not ticked. The full `pnpm turbo lint typecheck format:check test` run was not captured; given GAP 1, that run will fail. Action: address GAPs 1-10 then run the full suite and tick the gates.
 
 GAP 12 — Acceptance Scenario human-confirmation checkboxes (lines 118-119) and 🔒 Gate 1 checkboxes (lines 200-204) are unticked. These are human-gated and remain open; not blocking for build agent but must be flagged before Ship.
-

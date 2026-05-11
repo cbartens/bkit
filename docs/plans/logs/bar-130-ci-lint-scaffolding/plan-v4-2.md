@@ -368,7 +368,7 @@ _All other doc rows: untouched in v4-2 — see v4-3 for README + `.agents/README
   - **Note:** `runCiModule` does not exist until v4-3 Phase 4. v4-2 implements this test by directly invoking `resolveTokens` + `applyTokens` + `writeTier2` against the tmpdir (the same byte-equivalent path the dispatcher will eventually take). v4-3 may refactor the test to call `runCiModule` once it exists; the assertions remain identical.
   - **Verification:** `pnpm test bkit-modules` green; integration assertion fails if any token substitution path regresses.
 
-- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**` (Tier 1):** Slim seed to `.agents/**` + root `*.md` scopes only.
+- [ ] **Task 6.2 — Add `.agents/templates/.vale.ini` (Tier 2 hash-comment) + `.agents/templates/.vale/styles/House/**`(Tier 1):** Slim seed to`.agents/\*_`+ root`_.md` scopes only.
   - **Verification:** Direct-write test asserts both write paths produce expected content; rerun = no-op. Full `bkit install --lint` round-trip lives in v4-3 Phase 4.
 
 - [ ] **Task 6.3 — Add `.agents/templates/slop-scan.config.json` (Tier 3):** Verbatim from seed.

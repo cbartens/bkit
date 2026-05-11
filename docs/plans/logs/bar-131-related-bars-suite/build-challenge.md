@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: CONCERNS
 Failures: 3
+
 <!-- verdict:end -->
 
 # Build Challenge
@@ -53,6 +55,7 @@ Doc block says: `"unknown → conservative: treat as modified"` but the function
 ## No Critical Issues Found
 
 No path traversal, injection, or data-loss bugs. The three findings above are non-blocking concerns. All master plan success criteria (a), (b), (c) are enforced by the codebase:
+
 - (a) Consumer keys survive upgrades: guaranteed by `writeTier2Json` deep-merge
 - (b) `bkit install` exits 1 + recovery command on Phase 3 blocker: enforced in `bkit-install.ts`
 - (c) `bkit uninstall` round-trip leaves files byte-identical: enforced by `bkit-uninstall.ts` + manifest

@@ -32,12 +32,12 @@ The JSON deep-merge work in Phase 3 alone (13 tasks, one L + five M + two S + sp
 
 ## Suggested partition (if SPLIT)
 
-| Sub-plan | Phases | Rationale |
-| --- | --- | --- |
-| **sub-plan-1** | P0 + P1 (v0.6.x) | 11 tasks, all S/M, one integration test, no Major-Changes approval needed at merge time; independently shippable; provides `bkit doctor` verb and polish fixes used by P2.T11 |
-| **sub-plan-2** | P2 (v0.7.x) | 13 tasks including 3 L items; Major-Changes items: exit-1 + `.bkitignore`; independently shippable after P1 merges; human approval gate before PR opens |
-| **sub-plan-3** | P3 (v0.8.x) | 13 tasks; Major-Changes items: `__bkit__` namespace + Tier-1/Tier-2 reclass; highest-risk phase (JSON merge complexity + Cursor schema spike); human approval gate before PR opens; independently shippable after P2 |
-| **sub-plan-4** | P4 (v0.9.x → v1.0) | 9 tasks; NOT independently shippable — must follow P3 (P4.T1 → P3.T3) and P2 (P4.T4 → P2.T3); human approval gate before PR opens; includes helper action + v1 tag sub-step |
+| Sub-plan       | Phases             | Rationale                                                                                                                                                                                                            |
+| -------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **sub-plan-1** | P0 + P1 (v0.6.x)   | 11 tasks, all S/M, one integration test, no Major-Changes approval needed at merge time; independently shippable; provides `bkit doctor` verb and polish fixes used by P2.T11                                        |
+| **sub-plan-2** | P2 (v0.7.x)        | 13 tasks including 3 L items; Major-Changes items: exit-1 + `.bkitignore`; independently shippable after P1 merges; human approval gate before PR opens                                                              |
+| **sub-plan-3** | P3 (v0.8.x)        | 13 tasks; Major-Changes items: `__bkit__` namespace + Tier-1/Tier-2 reclass; highest-risk phase (JSON merge complexity + Cursor schema spike); human approval gate before PR opens; independently shippable after P2 |
+| **sub-plan-4** | P4 (v0.9.x → v1.0) | 9 tasks; NOT independently shippable — must follow P3 (P4.T1 → P3.T3) and P2 (P4.T4 → P2.T3); human approval gate before PR opens; includes helper action + v1 tag sub-step                                          |
 
 ## Detailed reasoning
 
