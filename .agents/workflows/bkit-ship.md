@@ -24,8 +24,8 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
-> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
+> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `\*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_\*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -56,7 +56,7 @@ description: "Ship Feature — Autonomous merge and archive"
 4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-\*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-\*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/ship-handover.md`.
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
@@ -441,12 +441,12 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan*.md`, glob `docs/plans/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
+     Read: `docs/plans/active/{FID}-plan\*.md`, glob `docs/plans/logs/{FID}/\*.md` (excluding `\*-summary.md` / `\*-handover.md`).
      Update: doc files.
      Create: `docs/plans/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `@bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
+     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-\*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/logs/{FID}/ship-summary.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Derive `UPDATE_DOCS_VERDICT`:
@@ -499,7 +499,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
 3. `YYYYMM=$(date +%Y%m) && mkdir -p docs/plans/completed/${YYYYMM}/`.
-4. `mv docs/plans/active/{FID}-*.md docs/plans/completed/${YYYYMM}/`.
+4. `mv docs/plans/active/{FID}-\*.md docs/plans/completed/${YYYYMM}/`.
 5. **Prune feature-specific skills** — remove any `.agents/skills/` folders not listed in `.agents/skills.md`:
    ```bash
    for skill_dir in .agents/skills/*/; do

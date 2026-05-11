@@ -24,8 +24,8 @@ description: "Build Feature — Autonomous implementation"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
-> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
+> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `\*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_\*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
 > - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -56,7 +56,7 @@ description: "Build Feature — Autonomous implementation"
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/build-\*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/build-handover.md`.
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
@@ -196,7 +196,7 @@ description: "Build Feature — Autonomous implementation"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** sentinel `docs/plans/logs/{FID}/.rebase-failed` exists → **Failure Path**.
-5. Move plans to active: `mv docs/plans/drafts/{FID}-*.md docs/plans/active/ 2>/dev/null || true`. Update internal path refs.
+5. Move plans to active: `mv docs/plans/drafts/{FID}-\*.md docs/plans/active/ 2>/dev/null || true`. Update internal path refs.
 6. Sub-plan count:
    ```bash
    SUB_COUNT=$(ls docs/plans/active/{FID}-plan-*.md 2>/dev/null | wc -l)
@@ -345,7 +345,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 8. Increment `VERIFY_ATTEMPT` + 1.
 9. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan ${SUB_PLAN}, attempt ${VERIFY_ATTEMPT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations. 
-Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
+Read:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-${SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-\*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-\*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
 Update:`docs/plans/active/{FID}-plan-${SUB_PLAN}.md`.
    Create: `docs/plans/logs/{FID}/build-plan-verify-${SUB_PLAN}-${VERIFY_ATTEMPT}.md`.
 10. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -440,7 +440,7 @@ Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATT
 
 1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Agent` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, all `docs/plans/active/{FID}-plan-N.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
+   Read: `docs/plans/active/{FID}-plan.md`, all `docs/plans/active/{FID}-plan-N.md`, glob `docs/plans/logs/{FID}/build-plan-verify-\*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-\*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
    Create: `docs/plans/logs/{FID}/build-plan-verify-holistic.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-plan-verify-holistic.md` until `<!-- verdict:end -->` → extract `Verdict` as `HOLISTIC_VERDICT` and `Failures` as `HOLISTIC_FAILURES`.
@@ -600,7 +600,7 @@ Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-${SUB_PLAN}-${VERIFY_ATT
 
 1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/logs/{FID}/build-challenge.md`, `docs/plans/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`.
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/logs/{FID}/build-challenge.md`, `docs/plans/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-\*.md`.
    Create: `docs/plans/logs/{FID}/build-challenge-tests.md`, test files.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-challenge-tests.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_TESTS_VERDICT`.
@@ -771,7 +771,7 @@ Create:`docs/plans/logs/{FID}/build-failure-diagnose-${TEST_ATTEMPT}.md`.
 
 1. **Subagent:** Invoke `@bkit-build-summary` using `Agent` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`, glob `docs/plans/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`, glob `docs/plans/logs/{FID}/build-\*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
    Create: `docs/plans/logs/{FID}/build-summary.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.

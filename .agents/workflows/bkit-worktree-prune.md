@@ -35,7 +35,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
    done
    ```
 
-3. Print table of all `.worktrees/*` entries with: FID, branch, last commit date, ahead/behind `origin/dev`.
+3. Print table of all `.worktrees/\*` entries with: FID, branch, last commit date, ahead/behind `origin/dev`.
 
 4. **If** no worktrees found → print `No Claude worktrees found under .worktrees/` and STOP.
 
