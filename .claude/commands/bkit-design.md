@@ -82,7 +82,8 @@ description: "Design Feature — Autonomous design phase"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "design" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   git add docs/plans/ .agents/friction.md
+   git commit --allow-empty -m "chore({FID}): start-workflow work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
@@ -114,8 +115,8 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-     git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git add docs/plans/ .agents/friction.md
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
 2. Create/resume the worktree:
