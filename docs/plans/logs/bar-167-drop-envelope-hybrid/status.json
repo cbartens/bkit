@@ -408,6 +408,18 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-holistic.md"
         ]
+      },
+      {
+        "step": "build-challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "failures": 6,
+        "at": "2026-05-11T06:28:13Z",
+        "commitSha": "9c57df691d645e445471c3efe38908ef6de57df4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-1.md",
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-2.md"
+        ]
       }
     ]
   }
