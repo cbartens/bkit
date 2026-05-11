@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [1.1.2] — 2026-05-11
+
+### Fixed
+
+- **Pre-worktree `git add` in `bkit-design` and `bkit-plan` no longer absorbs unrelated in-flight edits into the workflow's commit.** Step 1 (start-workflow) and Step 2's pre-worktree-uncommitted guard execute on the originating branch (often `dev`) before `cd "$WORKTREE_PATH"`. The prior `git add -A` (design Step 1) and broad deny-list (both Step 2 guards) swept the user's working-tree state into the workflow's commit, which then rode `feat/{FID}` → `dev` on close-workflow merge. Both pre-worktree stages now allow-list `docs/plans/ .agents/friction.md` only, with `git diff --cached --quiet ||` guarding the commit so no empty commit fires when those paths weren't touched. `git worktree add` does not inherit dirty state, so leaving other edits on `dev`'s working dir is correct, not a hazard. Post-worktree (Step 3+) `git add -A` is unchanged — cwd is the workflow sandbox. Rationale documented in `.agents/workflows.md` § Common Workflow Anatomy. `bkit-build` / `bkit-debug` / `bkit-ship` still carry the same pattern and are deferred to a follow-up.
+
+---
+
 ## [1.1.1] — 2026-05-09
 
 ### Fixed
