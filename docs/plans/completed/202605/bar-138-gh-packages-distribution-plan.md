@@ -1,4 +1,3 @@
-
 # bkit v0.4.0 — GitHub Packages npm Registry Distribution Implementation Plan (Split Index)
 
 > [!CAUTION]

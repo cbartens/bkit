@@ -95,9 +95,15 @@
   type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
   function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue;
   function extractBkitNamespace(doc: Record<string, JsonValue>): Record<string, JsonValue> | null;
-  function applyBkitNamespace(consumer: Record<string, JsonValue>, bkitPayload: Record<string, JsonValue>): Record<string, JsonValue>;
+  function applyBkitNamespace(
+    consumer: Record<string, JsonValue>,
+    bkitPayload: Record<string, JsonValue>,
+  ): Record<string, JsonValue>;
   function writeTier2Json(srcPath: string, dstPath: string, dryRun: boolean, ws: WriteSet): void;
-  function migrateTier1JsonToTier2(filePath: string, fileKey: ".claude/settings.json" | ".cursor/hooks.json"): void;
+  function migrateTier1JsonToTier2(
+    filePath: string,
+    fileKey: ".claude/settings.json" | ".cursor/hooks.json",
+  ): void;
   ```
 - **Source:** phase
 - **Related:** BAR-142 §A1, `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-tier1-defaults.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.ts`, KN-8, DE-7
@@ -206,10 +212,54 @@
 - **Type signatures (v2.0.0):**
   ```ts
   type DeepContainsResult = { ok: boolean; missing: string[]; mismatched: string[] };
-  function deepContains(template: JsonValue, consumer: JsonValue, pathPrefix?: string): DeepContainsResult;
-  function writeTier2JsonContained(srcPath: string, dstPath: string, dryRun: boolean, ws: WriteSet): void;
-  function migrateLegacyBkitEnvelope(doc: Record<string, JsonValue>, template: Record<string, JsonValue>): { stripped: boolean; deepMerged: boolean; schemaFlipped: boolean; outDoc: Record<string, JsonValue> };
-  function stripTier2JsonScope(consumerDoc: Record<string, JsonValue>, templateDoc: Record<string, JsonValue>): Record<string, JsonValue>;
+  function deepContains(
+    template: JsonValue,
+    consumer: JsonValue,
+    pathPrefix?: string,
+  ): DeepContainsResult;
+  function writeTier2JsonContained(
+    srcPath: string,
+    dstPath: string,
+    dryRun: boolean,
+    ws: WriteSet,
+  ): void;
+  function migrateLegacyBkitEnvelope(
+    doc: Record<string, JsonValue>,
+    template: Record<string, JsonValue>,
+  ): {
+    stripped: boolean;
+    deepMerged: boolean;
+    schemaFlipped: boolean;
+    outDoc: Record<string, JsonValue>;
+  };
+  function stripTier2JsonScope(
+    consumerDoc: Record<string, JsonValue>,
+    templateDoc: Record<string, JsonValue>,
+  ): Record<string, JsonValue>;
+  function deepContains(
+    template: JsonValue,
+    consumer: JsonValue,
+    pathPrefix?: string,
+  ): DeepContainsResult;
+  function writeTier2JsonContained(
+    srcPath: string,
+    dstPath: string,
+    dryRun: boolean,
+    ws: WriteSet,
+  ): void;
+  function migrateLegacyBkitEnvelope(
+    doc: Record<string, JsonValue>,
+    template: Record<string, JsonValue>,
+  ): {
+    stripped: boolean;
+    deepMerged: boolean;
+    schemaFlipped: boolean;
+    outDoc: Record<string, JsonValue>;
+  };
+  function stripTier2JsonScope(
+    consumerDoc: Record<string, JsonValue>,
+    templateDoc: Record<string, JsonValue>,
+  ): Record<string, JsonValue>;
   ```
 - **Source:** phase
 - **Related:** BAR-167, DE-7 (superseded), DE-8 (superseded), KN-8 (superseded by KN-17), `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-uninstall.ts`, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`

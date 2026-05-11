@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: PASS
 Failures: 0
+
 <!-- verdict:end -->
 
 # Plan Verification
@@ -30,6 +32,7 @@ N/A (attempt 1; no prior verify or remediate logs found).
 Partial diff coverage flagged: 13013-line diff exceeds 10000-line guard; per-file inspection focused on sub-plan-3 listed files only.
 
 Verified artefacts:
+
 - `.agents/scripts/bkit-tiers.ts` exposes `deepMergeJson` (line 39), `extractBkitNamespace` (77), `applyBkitNamespace` (93), `writeTier2Json` (113, throws when `__bkit__` envelope missing at line 131), `migrateTier1JsonToTier2` (198).
 - `.agents/scripts/bkit-tiers.test.ts` includes 55 occurrences of these primitives (sufficient coverage).
 - `.agents/scripts/bkit-tier1-defaults.ts` (NEW) exports `Tier1VersionDefaults` interface and version-keyed snapshots (v0.5.0, v0.5.1) with documentation explaining 0.6.x/0.7.x equivalence.

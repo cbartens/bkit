@@ -38,42 +38,55 @@ Gate 1 lists three checkboxes: "Acceptance Scenario confirmed", "Breaking Change
 ## OPTIONAL
 
 ### O1 — Task A2 acceptance uses `node -e` to read `publishConfig`; prefer `jq`
+
 `jq -r .publishConfig package.json` is shorter, more robust, and matches the rest of the runbook's CLI style.
 
 ### O2 — Task C3 scratch-repo location verification
+
 "`tmp/` is git-ignored at repo root (verify against `.gitignore`)" — add the literal verification command (`grep -E '^tmp/?$' .gitignore`) so the agent does not hand-grep.
 
 ### O3 — Task D4 cuts v0.4.0 on `main` directly, but repo rules say "Production merge: ANY merge into default production branch (main) requires PR"
+
 The plan acknowledges this with "via short-lived branch + fast-forward PR if branch protection requires", but the agent must not pick the wrong path. Either (a) require the PR path unconditionally and remove the "or directly on main" alternative, or (b) state that `main` is the production branch but tag pushes are version commits not merge commits and may bypass branch protection if so configured. Right now the runbook leaves it as "agent figures it out".
 
 ### O4 — Pre-release tag deletion sequence
+
 Task A5 / B15 prescribe "delete the failed tag" via `git tag -d v0.4.0-pre.1; git push origin :refs/tags/v0.4.0-pre.1`. Worth noting that GitHub Packages will reject re-publishing the same version even after tag deletion if a publish actually succeeded — only re-tag if `npm publish` itself never ran. If publish ran and succeeded but a downstream step failed, the agent must bump to `pre.1.1` (or equivalent), not re-publish. Add this distinction.
 
 ### O5 — `pnpm publish` vs `npm publish` decision worth a one-line guard in `release.yml` itself
+
 Add a comment block above the `npm publish` step: `# Use npm (NOT pnpm publish) — setup-node registry-url wiring assumes npm CLI; see DE-3.` Cheap defence against a future contributor "modernizing" the workflow.
 
 ### O6 — Smoke transcript path
+
 Task C5 says "Save transcript to `docs/plans/logs/bar-138/smoke-pre.2.txt` (or comparable)". Pin the exact filename so the ship-phase summary subagent can find it deterministically.
 
 ### O7 — `docs/knowledge.md` left as "no change required"
+
 The pnpm v7.20+ silent-`.npmrc`-ignore footgun is exactly the kind of post-mortem-style gotcha that belongs in `knowledge.md` proactively, not "if it surprises us during build". Add a `KN-N` entry now so the lesson is discoverable from outside the bkit-138 plan history.
 
 ### O8 — Test target ambiguity in Derived Test Matrix
+
 Several test rows say "extend `.agents/scripts/bkit-modules.test.ts` (or new `.agents/scripts/package-manifest.test.ts`)". Decide one path. The matrix's own template rule says "No row without a target file" — `(or new file)` is a target choice, not a target file.
 
 ### O9 — Vercel `installCommand` removal is described as "removed via printed instructions" but bkit cannot enforce it
+
 The risk that a consumer leaves the legacy `installCommand` in `vercel.json` and the new `.npmrc` then gets ignored (because pnpm runs via the shim's `&& pnpm install` tail) is real. Worth one extra line in the print copy: "If `vercel.json` has `installCommand` containing `git config --global url.…insteadOf`, removing it is mandatory — leaving it broken-but-present will cause silent fallback to npmjs.org." Belongs in B3.
 
 ## OUT OF SCOPE
 
 ### S1 — Per-consumer migration runbook
+
 Plan correctly defers per-consumer PRs. Suggest creating a reusable consumer-migration template at `.agents/templates/migration-bar-138-consumer.md` so each consumer PR follows the same shape. NOT for this plan; future ergonomics.
 
 ### S2 — Changelog automation
+
 Tag-push trigger is changelog-tooling-compatible; release-please / changesets adoption is mentioned in Future Recommendations. Out of scope here, but worth a `docs/pending.md` entry.
 
 ### S3 — Public mirror to npmjs.org
+
 Some consumers (e.g. integration partners outside the GH org) may eventually need a public mirror. ADR `DE-3` already enumerates "npmjs.org rejected — private-org plan adds cost". Re-evaluate when consumer set expands beyond personal projects.
 
 ### S4 — Automated registry-side smoke test in CI
+
 Currently smoke is manual (Task C4 + transcript). Could be automated post-publish via a tiny ephemeral repo + GitHub-hosted runner, but real PAT in CI introduces a new secret rotation surface. Defer.

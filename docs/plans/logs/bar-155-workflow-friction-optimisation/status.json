@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-09T01:38:42Z",
         "commitSha": "ad16bdd0d166b0b3c780caa48097b70f20301981",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -26,9 +24,7 @@
         "attempt": 1,
         "at": "2026-05-09T01:46:34Z",
         "commitSha": "6a88a91c231e8d143b59edd9ea6ea67689826582",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -50,9 +46,7 @@
         "attempt": 1,
         "at": "2026-05-09T01:58:56Z",
         "commitSha": "dd430b85a6ab170bbf49ab09a8f0734dadcf8c11",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -74,9 +68,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:10:17Z",
         "commitSha": "935e575f9d390e2573793480521c485698c568c3",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -96,9 +88,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:14:21Z",
         "commitSha": "dfc00e53e4f5094f1ae0178703672080034af154",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -126,9 +116,7 @@
         "status": "DONE",
         "at": "2026-05-09T04:05:05Z",
         "commitSha": "31590e286fa3e18b3158e9afb02b6b69235c07b3",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -206,9 +194,7 @@
         "failures": 0,
         "at": "2026-05-09T04:41:47Z",
         "commitSha": "fca048e55b22f7e470a0d1ad6cfb694ce6d2825f",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/build-challenge.md"]
       },
       {
         "step": "build-challenge-remediate",
@@ -250,18 +236,14 @@
         "attempt": 1,
         "at": "2026-05-09T04:56:43Z",
         "commitSha": "c337e753c443338dea00c71079b30e296c9d1651",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-09T04:58:17Z",
         "commitSha": "f7746f8dba7ba1384af7c36ec4cb5b478eb281ba",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/17"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/17"]
       },
       {
         "step": "close-workflow",
@@ -289,9 +271,7 @@
         "status": "DONE",
         "at": "2026-05-10T11:01:07Z",
         "commitSha": "31bcaa6049e3e8fe9c1a41fa63a568c52cff8a22",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/ship-input.md"]
       },
       {
         "step": "merge-pr",
@@ -317,9 +297,7 @@
         "attempt": 1,
         "at": "2026-05-10T11:11:25Z",
         "commitSha": "913cbebc2edb2d5f2a183aa5995c63d6c9bfe383",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-update-docs.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/ship-update-docs.md"]
       },
       {
         "step": "summary",
@@ -328,9 +306,7 @@
         "attempt": 1,
         "at": "2026-05-10T11:11:25Z",
         "commitSha": "913cbebc2edb2d5f2a183aa5995c63d6c9bfe383",
-        "artifacts": [
-          "docs/plans/logs/bar-155-workflow-friction-optimisation/ship-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-155-workflow-friction-optimisation/ship-summary.md"]
       },
       {
         "step": "archive-docs",

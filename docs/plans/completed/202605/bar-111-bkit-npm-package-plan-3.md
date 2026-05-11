@@ -1,7 +1,7 @@
 # ⚠️ OUT OF SCOPE FOR THIS REPO
 
 > [!CAUTION]
-> **This sub-plan covers smoke-test onboarding in a *second* repo (TBD by user at execution time) and the `0.1.1` upgrade smoke, NOT producer work in `bkit`.** It is not actionable from this repo. After `@bartens/bkit@0.1.0` is published (per `bar-111-bkit-npm-package-plan.md`) and the `app-gether-life` consumer migration is merged (sub-plan `-2.md`), this plan is executed against the chosen second smoke-test repo.
+> **This sub-plan covers smoke-test onboarding in a _second_ repo (TBD by user at execution time) and the `0.1.1` upgrade smoke, NOT producer work in `bkit`.** It is not actionable from this repo. After `@bartens/bkit@0.1.0` is published (per `bar-111-bkit-npm-package-plan.md`) and the `app-gether-life` consumer migration is merged (sub-plan `-2.md`), this plan is executed against the chosen second smoke-test repo.
 >
 > Internal links below still reference `plan-v3-checked.md` / `plan-v4-*.md` filenames that do not exist on disk (workflow bug logged in `.agents/friction.md`). They have not been rewritten because this file is not the active runbook for this repo.
 

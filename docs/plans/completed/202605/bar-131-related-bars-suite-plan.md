@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Parent Plan Index — bar-131-related-bars-suite
@@ -22,12 +23,12 @@ Resolve consumer-friction debt across `bkit install`/`check`/`uninstall` by phas
 
 ## Sub-plan map
 
-| ID | File | Phase | Linear closes | Shippable | Major-Changes |
-| --- | --- | --- | --- | --- | --- |
-| 1 | [bar-131-related-bars-suite-plan-1.md](./bar-131-related-bars-suite-plan-1.md) | P0+P1 (v0.6.x) | BAR-142 §A3, B1-B6, A7 | Yes | none |
-| 2 | [bar-131-related-bars-suite-plan-2.md](./bar-131-related-bars-suite-plan-2.md) | P2 (v0.7.x) | BAR-139 + BAR-142 §A6 + §A2 | Yes after sub-plan-1 | exit-1, .bkitignore |
-| 3 | [bar-131-related-bars-suite-plan-3.md](./bar-131-related-bars-suite-plan-3.md) | P3 (v0.8.x) | BAR-142 §A1 + §B3 | Yes after sub-plan-2 | __bkit__, Tier-1 to Tier-2 reclass |
-| 4 | [bar-131-related-bars-suite-plan-4.md](./bar-131-related-bars-suite-plan-4.md) | P4 (v0.9.x to v1.0) | BAR-142 §A4 + §A5 + BAR-131 helper-action | After sub-plan-2 + sub-plan-3 | none |
+| ID  | File                                                                           | Phase               | Linear closes                             | Shippable                     | Major-Changes                      |
+| --- | ------------------------------------------------------------------------------ | ------------------- | ----------------------------------------- | ----------------------------- | ---------------------------------- |
+| 1   | [bar-131-related-bars-suite-plan-1.md](./bar-131-related-bars-suite-plan-1.md) | P0+P1 (v0.6.x)      | BAR-142 §A3, B1-B6, A7                    | Yes                           | none                               |
+| 2   | [bar-131-related-bars-suite-plan-2.md](./bar-131-related-bars-suite-plan-2.md) | P2 (v0.7.x)         | BAR-139 + BAR-142 §A6 + §A2               | Yes after sub-plan-1          | exit-1, .bkitignore                |
+| 3   | [bar-131-related-bars-suite-plan-3.md](./bar-131-related-bars-suite-plan-3.md) | P3 (v0.8.x)         | BAR-142 §A1 + §B3                         | Yes after sub-plan-2          | **bkit**, Tier-1 to Tier-2 reclass |
+| 4   | [bar-131-related-bars-suite-plan-4.md](./bar-131-related-bars-suite-plan-4.md) | P4 (v0.9.x to v1.0) | BAR-142 §A4 + §A5 + BAR-131 helper-action | After sub-plan-2 + sub-plan-3 | none                               |
 
 ## Cross-sub-plan dependency graph
 
@@ -48,13 +49,13 @@ v0.6.x -> v0.7.x -> v0.8.x -> v0.9.x -> v1.0
 
 ## Per-sub-plan task counts (losslessness verification)
 
-| Sub-plan | Phase tasks | Phase gate | Cross-cutting gates |
-| --- | --- | --- | --- |
-| sub-plan-1 | 2 (P0) + 9 (P1) = 11 | 1 (Phase 1) | Gates 1,2,3,4 |
-| sub-plan-2 | 13 (P2) | 1 (Phase 2) | Gates 1,2,3,4 |
-| sub-plan-3 | 13 (P3) | 1 (Phase 3) | Gates 1,2,3,4 |
-| sub-plan-4 | 9 (P4) | 1 (Phase 4) | Gates 1,2,3,4 |
-| **Total** | **46** | **4** | preserved per sub-plan |
+| Sub-plan   | Phase tasks          | Phase gate  | Cross-cutting gates    |
+| ---------- | -------------------- | ----------- | ---------------------- |
+| sub-plan-1 | 2 (P0) + 9 (P1) = 11 | 1 (Phase 1) | Gates 1,2,3,4          |
+| sub-plan-2 | 13 (P2)              | 1 (Phase 2) | Gates 1,2,3,4          |
+| sub-plan-3 | 13 (P3)              | 1 (Phase 3) | Gates 1,2,3,4          |
+| sub-plan-4 | 9 (P4)               | 1 (Phase 4) | Gates 1,2,3,4          |
+| **Total**  | **46**               | **4**       | preserved per sub-plan |
 
 Master runbook task count: 46 phase tasks. Sub-plan total: 11 + 13 + 13 + 9 = 46. Lossless.
 

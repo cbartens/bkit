@@ -16,8 +16,8 @@ N/A — first debug attempt for this failure (DEBUG_ATTEMPT=0, TEST_ATTEMPT=1). 
 
 Single hard failure, action-level (not code-level), in the post-merge `dev` CI run on commit `8646711`:
 
-| Job | Step | Action | Outcome |
-| --- | --- | --- | --- |
+| Job          | Step         | Action                 | Outcome                                                                 |
+| ------------ | ------------ | ---------------------- | ----------------------------------------------------------------------- |
 | `bkit-gates` | `Setup pnpm` | `pnpm/action-setup@v4` | Self-installer aborts with `Error: Multiple versions of pnpm specified` |
 
 Verbatim error:
@@ -67,10 +67,11 @@ The bkit-self CI workflow declares pnpm version both ways simultaneously:
 ```yaml
 - uses: pnpm/action-setup@v4
   with:
-    version: {{PNPM_VERSION}}
+    version: { { PNPM_VERSION } }
 ```
 
 Combined with `.agents/scripts/bkit-tokens.ts` `resolvePnpmVersion()` (lines 56–68), which extracts the major from the consumer's own `package.json#packageManager` (e.g. `pnpm@10.4.1` → `"10"`), this template will reproduce the EXACT same defect on any consumer that has both:
+
 - a non-empty `packageManager` field in their `package.json` (which `bkit install --ci` does NOT remove), AND
 - the rendered `version: {{PNPM_VERSION}}` in their installed `ci.yml`.
 
@@ -121,7 +122,7 @@ Current (lines 18–20):
 ```yaml
 - uses: pnpm/action-setup@v4
   with:
-    version: {{PNPM_VERSION}}
+    version: { { PNPM_VERSION } }
 ```
 
 Replace with:
@@ -247,6 +248,7 @@ gh run view <RUN_ID> --log | grep -E 'Setup pnpm|Multiple versions|Using pnpm'
 ```
 
 **Pass criteria:**
+
 - Steps 1–4 all exit 0 locally.
 - Step 5 (post-push) shows `Setup pnpm` succeeding and `Install Dependencies` proceeding to `pnpm install --frozen-lockfile` without error.
 - The `bkit-gates` job runs to completion (or fails ONLY on a different downstream step — which would be a separate diagnosis, not a regression of this fix).

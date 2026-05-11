@@ -7,12 +7,13 @@ Verdict: CONCERNS
 **Parent Plan:** [plan-v4-split.md](./plan-v4-split.md)
 **Master record (historical):** [plan-v3-checked.md](./plan-v3-checked.md)
 **Hard prerequisites:**
+
 - Sub-plan B ([plan-v4-2.md](./plan-v4-2.md)) MUST be merged. Specifically:
   - **Task 19** of sub-plan B (`format` field on `ManifestEntry`) — required by Task 25 of this sub-plan (narrowed-writer test asserts emission only for `format: "byte-equal-text"`).
 - Sub-plan A ([plan-v4-1.md](./plan-v4-1.md)) MUST be merged. Specifically:
   - **Tasks 11, 12, 13** of sub-plan A (DE-16 append, KN-15 append, `docs/architecture.md` rewrite) — required by Tasks 26 and 27 of this sub-plan as the canonical baseline for the terminology sweep. Task 27's `sed`/grep rewrites would conflict with Task 13's section rewrite if Task 13 had not landed first.
-**Hard downstream consumers:** none — sub-plan C is the final ship.
-**Ship target:** `bkit v2.0.0` (final). If parent index chose pre-release ship-mode, the final tag drops the `-alpha`/`-beta` suffix and lands on this merge.
+    **Hard downstream consumers:** none — sub-plan C is the final ship.
+    **Ship target:** `bkit v2.0.0` (final). If parent index chose pre-release ship-mode, the final tag drops the `-alpha`/`-beta` suffix and lands on this merge.
 
 > [!CAUTION]
 > **CRITICAL:** Do not hallucinate plan execution state.
@@ -218,11 +219,11 @@ None.
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| Code | `git revert {MERGE_COMMIT}` | Revert restores `tier3Hashes` writer to the wider emission (all tier-3 files) and re-introduces `Tier [123]` strings in docs. Consumers' `.bkit-version` files keep their narrowed `tier3Hashes` map; next install re-emits the wider map. No data loss. |
-| Risk window | One install cycle | Brief schema-pollution + terminology-inconsistency window. |
-| DB | N/A | |
+| Axis        | Action                      | Notes                                                                                                                                                                                                                                                    |
+| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code        | `git revert {MERGE_COMMIT}` | Revert restores `tier3Hashes` writer to the wider emission (all tier-3 files) and re-introduces `Tier [123]` strings in docs. Consumers' `.bkit-version` files keep their narrowed `tier3Hashes` map; next install re-emits the wider map. No data loss. |
+| Risk window | One install cycle           | Brief schema-pollution + terminology-inconsistency window.                                                                                                                                                                                               |
+| DB          | N/A                         |                                                                                                                                                                                                                                                          |
 
 ## Agent Execution Runbook (sub-plan C — Phase 3)
 
@@ -277,8 +278,8 @@ None.
 
 ## Open-Question Disposition (sub-plan C scope)
 
-| Question | Disposition | Where tracked |
-| --- | --- | --- |
+| Question                          | Disposition                                                                    | Where tracked        |
+| --------------------------------- | ------------------------------------------------------------------------------ | -------------------- |
 | Manual fixes in `app-gether-life` | **OUT-OF-SCOPE** per Plan-Phase Decision 5 — left uncommitted in consumer repo | Out-of-Scope section |
 
 ---
@@ -286,6 +287,7 @@ None.
 ## Reviewer notes
 
 > Inherited CONCERNS verdict from `plan-v3-checked.md`. Reviewers — focus on:
+>
 > - `tier3Hashes` writer narrowing safety (no regression of `bkit uninstall .cursor/Dockerfile` safe-delete).
 > - Task 26/27 hard-ordering (must run AFTER sub-plan A Tasks 11–13 land).
 > - `lint:no-tier-terms` Node-script vs `grep -v` choice (Node preferred per implementation guidance).

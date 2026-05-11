@@ -36,7 +36,7 @@ These were appended during build (Plan Task 12 / 13) and remain intact at ship t
 
 - **File:** `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation/docs/pending.md`
 - **Entries (per `Grep BAR-155`):**
-  - line 163: `BAR-155 deferred — `task-range` parameter for `bkit-build-plan-execute`` (Status: deferred; revisit if Fix 2 task-count gate proves too strict).
+  - line 163: `BAR-155 deferred — `task-range`parameter for`bkit-build-plan-execute`` (Status: deferred; revisit if Fix 2 task-count gate proves too strict).
   - line 173: `BAR-155 deferred — KN/DE auto-renumber on rebase conflicts` (Status: deferred; sed regex / cross-platform fragility; manual resolution acceptable).
   - line 183: `BAR-155 deferred — focused-brief mode for `bkit-build-challenge`` (Status: deferred; diversity over narrowing per DE-16).
 - **Note:** Plan § Documentation Updates row also called for a fourth deferred item (`bkit-build.md` Step 2 same `git rebase || exit 1` anti-pattern carry-over). Reviewing pending.md, this fourth item is NOT explicitly persisted as a standalone BAR-155 deferred section. However, the broader rebase-conflict gap is now tracked by **BAR-169** (referenced in the OPEN friction entry) which is the active follow-up issue covering both the consumer-side Step 2 carry-over and the merge-commit rebase failure observed during this ship cycle. Surface for human review (see `## Pending Items Surfaced` below).

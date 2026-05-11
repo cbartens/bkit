@@ -48,7 +48,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
 - **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
-- **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `` `VAR` `` = reference (conditionals, schema); `` `{VAR}` `` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`` `VERIFY_ATTEMPT` = 0 ``). Singular literal enum values stay plain when compared (`` **If** `VERDICT` = PASS ``); enum unions are one backticked unit (`` `PASS|CONCERNS|FAIL` ``). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
+- **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
 
 ## Two-Layer Separation Rules
 
@@ -120,6 +120,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 
 **Branch placement (BAR-183):** `status.json` lives on different branches depending on the workflow's dev relationship:
 
+<!-- prettier-ignore -->
 | Workflow | Branch | Mechanism |
 | --- | --- | --- |
 | `bkit-plan`, `bkit-design` | `dev` (mid-run) | dev-bound workflows (merge `feat/{FID}` → `dev` at close, no PR). Status mutations run via `git -C "$REPO_ROOT"` from the worktree cwd; every status commit is followed by `git -C "$REPO_ROOT" pull --ff-only origin dev && git -C "$REPO_ROOT" push origin dev` (failure → Failure Path). Linear comment URLs reference `dev` (stable). |
@@ -129,6 +130,7 @@ Rationale: plan/design merge to dev directly with no review gate, so writing `st
 
 **Shape (JSON array — one element per workflow run):**
 
+<!-- prettier-ignore -->
 ```json
 [
   {

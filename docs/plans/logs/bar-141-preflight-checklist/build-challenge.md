@@ -45,13 +45,14 @@ The diff is large but well-structured. No CRITICAL bugs found that should block 
   - Multiple-line YAML folded form
 
   …will all FAIL the substring match → false-positive advisory. Worse, a workflow that uses `pnpm install --no-frozen-lockfile` without env (legitimate, e.g. cache-warm step) will trip the `pnpm install` heuristic and emit the advisory even though the actual install step elsewhere has the env block. Plan said "no false positives on bespoke layouts."
+
 - **Suggested fix:** Use a regex like `/GH_BKIT_TOKEN\s*:\s*["']?\$\{\{\s*secrets\.GH_BKIT_TOKEN\s*\}\}/`. Or parse the YAML properly. Document in the action message that bespoke layouts may need manual verification.
 
 ### MEDIUM-5: Type-safe but runtime-unchecked shell template in detectVercelEnv
 
 - **File:** `.agents/scripts/bkit-postinstall.ts:82-97`
 - **Severity:** MEDIUM (defense in depth)
-- **Exploit / failure scenario:** `execSync(\`vercel env ls ${env}\`, …)` interpolates `env` as a TypeScript-typed `"preview" | "production"`. Type erasure means at runtime nothing prevents a future caller (or a JS consumer importing from compiled `.js`) from passing an arbitrary string. While current call sites in `runPostInstallCheck` use literal `"preview"` and `"production"` only, adding a runtime guard hardens against future refactors and accidental misuse from the JS edge.
+- **Exploit / failure scenario:** `execSync(\`vercel env ls ${env}\`, …)`interpolates`env`as a TypeScript-typed`"preview" | "production"`. Type erasure means at runtime nothing prevents a future caller (or a JS consumer importing from compiled `.js`) from passing an arbitrary string. While current call sites in `runPostInstallCheck`use literal`"preview"`and`"production"` only, adding a runtime guard hardens against future refactors and accidental misuse from the JS edge.
 - **Suggested fix:** Add `if (env !== "preview" && env !== "production") return "unknown";` at the top of `detectVercelEnv`, OR switch to `execFileSync("vercel", ["env", "ls", env], …)` which removes shell metacharacter handling entirely. The same hardening applies to `detectGhSecret` (no user input today, but `execFileSync` is consistently safer).
 
 ### LOW-1: hasBkitMarkers uses naive substring check (not anchored)

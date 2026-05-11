@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # BAR-167 — Template Ownership via Format-Aware Containment (v2.0.0 — Phases 1+2+3 bundled) Implementation Plan
@@ -219,13 +220,13 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0. On
 
 ## Alternative Approaches & Recommendations
 
-| Option | Mechanism | Verdict |
-| --- | --- | --- |
-| A. Markers everywhere | `bkit:start..bkit:end` in every file (incl. JSON via wrapper key) | Rejected — JSON has no comments; falls back to a wrapper key (`__bkit__`) — exactly the model BAR-167 reverses. |
-| B. Containment everywhere | Set/subset semantics for all formats | Rejected — text loses ordering/contiguity (e.g. `pnpm typecheck && pnpm test` ≠ `pnpm test && pnpm typecheck`). |
-| C. Three-way merge everywhere (`diff3`) | Algorithmic merge using stored historical templates | Rejected — 3–5× hybrid LOC; bundled historical templates per shipped version (already painful for `bkit-tier1-defaults.ts`); silent-corruption risk on overlapping edits. |
-| **D. Hybrid — markers (text) + containment (JSON)** | Two mechanisms, one mental model: "bkit's scope must be intact" | **Selected.** Native ownership signals per format; net code reduction ≥ 200 LOC; cheap migration. |
-| E. Phase 1 only (defer Phase 2/3) | Original plan-v3 scope | Rejected per Plan-Phase Decision 1 — bundle all three phases as v2.0.0 to avoid dragging the Tier terminology and partial-ownership test gap across two ship cycles. |
+| Option                                              | Mechanism                                                         | Verdict                                                                                                                                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A. Markers everywhere                               | `bkit:start..bkit:end` in every file (incl. JSON via wrapper key) | Rejected — JSON has no comments; falls back to a wrapper key (`__bkit__`) — exactly the model BAR-167 reverses.                                                           |
+| B. Containment everywhere                           | Set/subset semantics for all formats                              | Rejected — text loses ordering/contiguity (e.g. `pnpm typecheck && pnpm test` ≠ `pnpm test && pnpm typecheck`).                                                           |
+| C. Three-way merge everywhere (`diff3`)             | Algorithmic merge using stored historical templates               | Rejected — 3–5× hybrid LOC; bundled historical templates per shipped version (already painful for `bkit-tier1-defaults.ts`); silent-corruption risk on overlapping edits. |
+| **D. Hybrid — markers (text) + containment (JSON)** | Two mechanisms, one mental model: "bkit's scope must be intact"   | **Selected.** Native ownership signals per format; net code reduction ≥ 200 LOC; cheap migration.                                                                         |
+| E. Phase 1 only (defer Phase 2/3)                   | Original plan-v3 scope                                            | Rejected per Plan-Phase Decision 1 — bundle all three phases as v2.0.0 to avoid dragging the Tier terminology and partial-ownership test gap across two ship cycles.      |
 
 **Future phases (recommended — post-v2.0.0):**
 
@@ -597,22 +598,23 @@ None.
   - **Open-block intent:** the marker block opens at `Install Dependencies` and closes at `Run Bkit Check` — meaning the consumer steps `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan` (lines 33–46) end up INSIDE the marker block. **This is acceptable** — those steps are part of bkit's "run all checks" CI contract; if a consumer customises them they will trigger `tier2-text-drift`. If finer granularity is needed in a future minor version, split into two marker blocks. v2.0.0 ships with one block covering `Install Dependencies` through `Run Bkit Check` inclusive.
   - Insert `# bkit:end` immediately below the `- name: Run Bkit Check` step's `run:` line (currently line 49). Marker at the same indentation as `- name:` (6 spaces).
 - **Exact YAML to insert:**
+
   ```yaml
-        # bkit:start
-        - name: Install Dependencies
-          # ... (existing body — preserved byte-identical)
-          run: pnpm install --frozen-lockfile
-          env:
-            GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+  # bkit:start
+  - name: Install Dependencies
+    # ... (existing body — preserved byte-identical)
+    run: pnpm install --frozen-lockfile
+    env:
+      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
 
-        - name: Run Typecheck
-          # ... (existing body)
+  - name: Run Typecheck
+    # ... (existing body)
 
-        # ... (existing Vitest, Prettier, Vale, Slop steps)
+  # ... (existing Vitest, Prettier, Vale, Slop steps)
 
-        - name: Run Bkit Check
-          run: pnpm bkit check
-        # bkit:end
+  - name: Run Bkit Check
+    run: pnpm bkit check
+  # bkit:end
   ```
 
 ##### [MODIFY] `.agents/templates/.vale.ini`
@@ -781,11 +783,11 @@ None.
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| **Code** | `git revert {MERGE_COMMIT}` | Revert restores `__bkit__` templates + envelope helpers + Tier integers + Phase 2 marker absence. Consumer JSON files keep their post-strip schema-clean shape (envelope was stripped on first upgrade); next `bkit install` re-writes the envelope on top via the rolled-back `writeTier2Json` deep-merge. Markered consumer files keep their marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
-| **Risk window** | One `bkit upgrade` cycle | If a consumer ran `pnpm bkit upgrade` post-v2.0.0 and we then ship v2.0.1 reverting BAR-167, the consumer's file ends up with the legacy envelope re-applied via deep-merge and Phase 2 markers retained as harmless comments. No data loss; brief schema-pollution + redundant-marker window. |
-| **DB** | N/A | No DB changes. |
+| Axis            | Action                      | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Code**        | `git revert {MERGE_COMMIT}` | Revert restores `__bkit__` templates + envelope helpers + Tier integers + Phase 2 marker absence. Consumer JSON files keep their post-strip schema-clean shape (envelope was stripped on first upgrade); next `bkit install` re-writes the envelope on top via the rolled-back `writeTier2Json` deep-merge. Markered consumer files keep their marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
+| **Risk window** | One `bkit upgrade` cycle    | If a consumer ran `pnpm bkit upgrade` post-v2.0.0 and we then ship v2.0.1 reverting BAR-167, the consumer's file ends up with the legacy envelope re-applied via deep-merge and Phase 2 markers retained as harmless comments. No data loss; brief schema-pollution + redundant-marker window.                                                                                                                                        |
+| **DB**          | N/A                         | No DB changes.                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 _Code-only — `git revert` sufficient. Document rollback path in DE-16 "Trade-offs accepted" section._
 
@@ -794,11 +796,13 @@ _Code-only — `git revert` sufficient. Document rollback path in DE-16 "Trade-o
 > Chronological. Each task includes scope, target file(s), and verification step.
 >
 > **Splittability note:** if `plan-complexity-check.md` flips to SPLIT, this runbook splits along clean phase boundaries:
+>
 > - **Phase 1 (sub-plan A):** Tasks 0c, 1, 1b, 2, 3, 4, 4a, 4b, 5, 6, 7, 8–10a, 11–16 — code primitives + JSON migration + Phase 1 docs.
 > - **Phase 2 (sub-plan B):** Tasks 17, 17a, 18, 18a, 18b, 19, 20, 21, 22, 23, 23a, 23b, 24 — markers in Group A + Group B templates, manifest simplification, dispatch refactor, marker tests, Tier-3 drift regression test.
 > - **Phase 3 (sub-plan C):** Tasks 25–28 — schema cleanup, terminology sweep, doc-block update, lint:no-tier-terms script.
 >
 > **Cross-sub-plan dependencies (HARD):**
+>
 > - Sub-plan B HARD-DEPENDS on sub-plan A — specifically: Task 4b (`stripTier2JsonScope` defined; needed by Task 20's `format: "json"` uninstall branch) AND Task 1 (`deepContains` defined; needed by Task 21's `format: "markered-text"` drift detection chain via `bkit-preflight.ts` allow-list extended in Task 6) AND the manifest schema baseline established in Task 19 of sub-plan B itself. Sub-plan B cannot start until sub-plan A's Tasks 1, 4b, and 6 are merged.
 > - Sub-plan C HARD-DEPENDS on sub-plan B — Task 25's narrowed-writer test requires `format: "byte-equal-text"` to exist on `ManifestEntry` (introduced in Task 19); Tasks 26–28 reference Phase 2 doc-block + lint terms.
 
@@ -829,7 +833,7 @@ _Code-only — `git revert` sufficient. Document rollback path in DE-16 "Trade-o
   - Task 3 — `migrateLegacyBkitEnvelope` defined.
   - Task 4 — `runClaudeModule` / `runCursorModule` rewritten to call `migrateLegacyBkitEnvelope` and `writeTier2JsonContained`.
   - Task 14a — `package.json` `"version": "2.0.0"` edit applied (so `bkit install` records `pinnedVersion: "2.0.0"`).
-  Without Tasks 1–4 first, `pnpm bkit install` against the worktree crashes (legacy `throw` in `writeTier2Json` for envelope-less template) or no-ops. Rewrite `.agents/templates/.cursor/hooks.json` (Cursor v1 keyed-object) and `.agents/templates/.claude/settings.json` (drop `__bkit__`). Run `pnpm bkit install` in worktree against itself; confirm `pnpm bkit check` reports `Done. 0 write(s).`
+    Without Tasks 1–4 first, `pnpm bkit install` against the worktree crashes (legacy `throw` in `writeTier2Json` for envelope-less template) or no-ops. Rewrite `.agents/templates/.cursor/hooks.json` (Cursor v1 keyed-object) and `.agents/templates/.claude/settings.json` (drop `__bkit__`). Run `pnpm bkit install` in worktree against itself; confirm `pnpm bkit check` reports `Done. 0 write(s).`
 
 - [ ] **Task 6 — Preflight advisories + drift detection.** Edit `.agents/scripts/bkit-preflight.ts`: extend allow-list (header comment) for `readBkitVersion`, `deepContains`, `getPkgRoot`. Add advisories `legacy-bkit-envelope-detected`, `tier2-json-drift`, blocker `pre-envelope-bkit-version-detected`. **`legacy-bkit-envelope-detected` condition: `__bkit__` present at the top level of the consumer file — full stop.** Do NOT predicate on `canonicalHashes`-based version check (that field is content-hash, not version-stamp; the predicate is unimplementable against the current `BkitVersion` schema). (Phase 2 adds `tier2-text-drift` for markered text — already prepared by allow-list.) Verify: `pnpm vitest run bkit-preflight.test.ts` green. End-to-end verification is the green outcome of Task 10 integration tests.
 
@@ -962,14 +966,14 @@ _Code-only — `git revert` sufficient. Document rollback path in DE-16 "Trade-o
 
 ## Open-Question Disposition
 
-| Question | Disposition | Where tracked |
-| --- | --- | --- |
-| Cursor v1 keyed-object schema runtime spike | **REMOVED** per Plan-Phase Decision 2 | `docs/pending.md` entry deleted (Task 16) |
-| Drop decorative `.cursor/hooks.json` echoes | **DEFERRED** per Plan-Phase Decision 3 (KEEP for v2.0.0) | `docs/pending.md` |
-| `bkit upgrade --prune` flag | **DEFERRED** post-v2.0.0 (no key drops in v2.x yet) | `docs/pending.md` |
-| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE for v2.0.0 Phase 2** (Task 23a) | Runbook |
-| Pre-push duplicate-work in `app-gether-life` | **RESOLVED** by Phase 2 marker addition to `.husky/pre-push` (Task 18a) per Plan-Phase Decision 4 | Runbook |
-| Manual fixes in `app-gether-life` | **OUT-OF-SCOPE** per Plan-Phase Decision 5 — left uncommitted in consumer repo | Out-of-Scope section |
+| Question                                             | Disposition                                                                                       | Where tracked                             |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Cursor v1 keyed-object schema runtime spike          | **REMOVED** per Plan-Phase Decision 2                                                             | `docs/pending.md` entry deleted (Task 16) |
+| Drop decorative `.cursor/hooks.json` echoes          | **DEFERRED** per Plan-Phase Decision 3 (KEEP for v2.0.0)                                          | `docs/pending.md`                         |
+| `bkit upgrade --prune` flag                          | **DEFERRED** post-v2.0.0 (no key drops in v2.x yet)                                               | `docs/pending.md`                         |
+| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE for v2.0.0 Phase 2** (Task 23a)                                                        | Runbook                                   |
+| Pre-push duplicate-work in `app-gether-life`         | **RESOLVED** by Phase 2 marker addition to `.husky/pre-push` (Task 18a) per Plan-Phase Decision 4 | Runbook                                   |
+| Manual fixes in `app-gether-life`                    | **OUT-OF-SCOPE** per Plan-Phase Decision 5 — left uncommitted in consumer repo                    | Out-of-Scope section                      |
 
 ---
 

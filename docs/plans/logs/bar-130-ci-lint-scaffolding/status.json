@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-04T10:03:19Z",
         "commitSha": "563b0758a66386628afbe6e8f94974473b069410",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -26,9 +24,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:11:32Z",
         "commitSha": "45c83d5d43856cba8e9f9e8668f9bb4a2193f54f",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -50,9 +46,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:22:59Z",
         "commitSha": "91542280b4ae5b3ffeed207a4c92da964e2717d3",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -74,9 +68,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:34:05Z",
         "commitSha": "5725ef3d0e56c75f322403c0731725b083106b98",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -85,9 +77,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:36:11Z",
         "commitSha": "47e9ba756df4e9c5817ea411b56e56ee23ba90f0",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-complexity-check.md"]
       },
       {
         "step": "complexity-split",
@@ -96,9 +86,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:51:02Z",
         "commitSha": "92b94d2bc21968769b5f332db6329b24709d5c79",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v4-split.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v4-split.md"]
       },
       {
         "step": "summary",
@@ -107,9 +95,7 @@
         "attempt": 1,
         "at": "2026-05-04T10:53:27Z",
         "commitSha": "e2a872a6c5db514e4ae5ba8b0e8f68b0c39b594b",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -137,9 +123,7 @@
         "status": "DONE",
         "at": "2026-05-04T12:03:55Z",
         "commitSha": "1a01d1afa4ed8e4e38c9cdd60f8367d5b49ec77c",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -154,9 +138,7 @@
         "attempt": 1,
         "at": "2026-05-04T12:07:29Z",
         "commitSha": "071eeefee3004e2e129a771fb4b75f6aa9df7fe6",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -166,9 +148,7 @@
         "subPlan": 1,
         "at": "2026-05-04T12:29:09Z",
         "commitSha": "e9014c128d83577a13e456efc00cb865fbab69a7",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-1.md"]
       },
       {
         "step": "plan-verify",
@@ -179,9 +159,7 @@
         "failures": 0,
         "at": "2026-05-04T12:31:46Z",
         "commitSha": "bd3e0d1cfe21bdebe8bb2a0b3d53b215b1b39c4b",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-1-1.md"]
       },
       {
         "step": "plan-execute",
@@ -191,9 +169,7 @@
         "subPlan": 2,
         "at": "2026-05-04T13:08:54Z",
         "commitSha": "b13ad32cf26ce0ee966e2b3bbaf5e6a24dc20410",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-2.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-2.md"]
       },
       {
         "step": "plan-verify",
@@ -204,9 +180,7 @@
         "failures": 0,
         "at": "2026-05-04T13:12:14Z",
         "commitSha": "a3f2933ef760b7c680497ed9b51a8a5df30d1c21",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-2-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-2-1.md"]
       },
       {
         "step": "plan-execute",
@@ -216,9 +190,7 @@
         "subPlan": 3,
         "at": "2026-05-04T13:35:13Z",
         "commitSha": "62a7d5239486c51a04dd5d0d9575ca4be1c0d747",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-3.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-execute-3.md"]
       },
       {
         "step": "plan-verify",
@@ -229,9 +201,7 @@
         "failures": 0,
         "at": "2026-05-04T13:39:04Z",
         "commitSha": "3c30ae982550aedd280b058dabae6e54bd4a9916",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-3-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-3-1.md"]
       },
       {
         "step": "plan-verify-holistic",
@@ -241,9 +211,7 @@
         "failures": 0,
         "at": "2026-05-04T13:42:09Z",
         "commitSha": "52b4a1616ccc4e7daa8abad97ec4cdb22783360d",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-holistic.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-plan-verify-holistic.md"]
       },
       {
         "step": "challenge",
@@ -253,9 +221,7 @@
         "failures": 0,
         "at": "2026-05-04T13:55:56Z",
         "commitSha": "9b71f321d291a4eea5dc8d85ff6982ef6972727c",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge.md"]
       },
       {
         "step": "challenge-remediate",
@@ -265,9 +231,7 @@
         "strategy": "STANDARD",
         "at": "2026-05-04T14:07:56Z",
         "commitSha": "3c31733c0beac032e1dae614101d316b56d24044",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge-remediate.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge-remediate.md"]
       },
       {
         "step": "challenge-tests",
@@ -276,9 +240,7 @@
         "attempt": 1,
         "at": "2026-05-04T14:13:15Z",
         "commitSha": "a51794066462577aa028e87aeb414ace2b514b19",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-challenge-tests.md"]
       },
       {
         "step": "run-tests",
@@ -297,18 +259,14 @@
         "attempt": 1,
         "at": "2026-05-04T14:16:04Z",
         "commitSha": "dcd3837cc5b484bff07748bbd3ec29237527a98f",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-04T14:17:05Z",
         "commitSha": "12bc620ac88c53922b62843e3b81ba0e053decb1",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/1"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/1"]
       },
       {
         "step": "close-workflow",
@@ -336,9 +294,7 @@
         "status": "DONE",
         "at": "2026-05-05T02:15:09Z",
         "commitSha": "19d6597b79b7c983a2f5fbc3812368d5469647fb",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-input.md"]
       },
       {
         "step": "merge-pr",
@@ -364,9 +320,7 @@
         "attempt": 1,
         "at": "2026-05-05T02:23:41Z",
         "commitSha": "22697f613a0dedf39735261d6ba75ebd756d9ed3",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-update-docs.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-update-docs.md"]
       },
       {
         "step": "summary",
@@ -375,9 +329,7 @@
         "attempt": 1,
         "at": "2026-05-05T02:23:41Z",
         "commitSha": "22697f613a0dedf39735261d6ba75ebd756d9ed3",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary.md"]
       },
       {
         "step": "archive-docs",
@@ -405,9 +357,7 @@
         "status": "DONE",
         "at": "2026-05-05T02:49:39Z",
         "commitSha": "9db0b4ddd1535a8dd58d1dd404ce8780c46e9c2e",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-input-0.md"
-        ],
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/debug-input-0.md"],
         "debugMode": "local",
         "observeMode": "off"
       },
@@ -419,9 +369,7 @@
         "strategy": "STANDARD",
         "at": "2026-05-05T02:55:01Z",
         "commitSha": "22bb1ccbefa48f58c290f5357a33d4bba2915507",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-diagnose-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-diagnose-1.md"]
       },
       {
         "step": "failure-remediate",
@@ -430,9 +378,7 @@
         "attempt": 1,
         "at": "2026-05-05T03:14:25Z",
         "commitSha": "da592d6f8f70bc984178c9c459daae9a4e3b4ce7",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-remediate-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/debug-failure-remediate-1.md"]
       },
       {
         "step": "run-tests",
@@ -459,9 +405,7 @@
         "attempt": 1,
         "at": "2026-05-05T03:19:19Z",
         "commitSha": "773fab7d0e00b9ff7ba355abd60f0b1d4d05800a",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/debug-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/debug-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -490,9 +434,7 @@
         "status": "DONE",
         "at": "2026-05-05T03:32:12Z",
         "commitSha": "c3f7b0e453ee1fffdec5fe1f9f5cec44b21e142e",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-input.md"]
       },
       {
         "step": "merge-pr",
@@ -518,9 +460,7 @@
         "attempt": 1,
         "at": "2026-05-05T03:40:35Z",
         "commitSha": "3812646c17486e3fb16ac49b53d887c70f719cc6",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-update-docs.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-update-docs.md"]
       },
       {
         "step": "summary",
@@ -529,9 +469,7 @@
         "attempt": 1,
         "at": "2026-05-05T03:40:35Z",
         "commitSha": "3812646c17486e3fb16ac49b53d887c70f719cc6",
-        "artifacts": [
-          "docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary-2.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-130-ci-lint-scaffolding/ship-summary-2.md"]
       },
       {
         "step": "archive-docs",

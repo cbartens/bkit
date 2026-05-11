@@ -9,11 +9,13 @@ Verdict: PASS
 **Final state:** BAR-130 has been split into three single-session-executable sub-plans (`plan-v4-1.md`, `plan-v4-2.md`, `plan-v4-3.md`) anchored by parent index (`plan-v4-split.md`). All four plans carry PASS verdicts from prior workflow steps.
 
 **Feature contract (unchanged across split):** Ship bkit v0.1.2 with three scopes:
+
 - **(A)** bkit-the-repo self-gating — adds CI workflow, Vale, slop-scan, lint scripts to bkit's own repo.
 - **(B)** bkit-the-installer engine — extends `bkit-install.ts` with three-tier file ownership, token substitution, generalised markers (HTML + hash variants), and template payloads.
 - **(C)** CLI redesign + ship prep — refactors `init`+`install`+`--host=` into composable module flags, bumps version, rewrites docs, gates manual smoke against two consumers.
 
 **Order-of-execution constraint (enforced by dependency):**
+
 ```
 v4-1 (A: self-gating)
   └→ v4-2 (B: installer engine)
@@ -29,6 +31,7 @@ v4-1 must precede v4-2 and v4-3 because lint scripts and prettier devDep (Task 7
 **Structural conformance:** All three sub-plans and parent index adhere to `.agents/template.md` — context, acceptance scenario, breaking changes, pre-flight, architecture, documentation, rollback, runbook with gates, and verification plan all present and populated.
 
 **Losslessness verified by parent:**
+
 - Task count: 41 master tasks → v4-1 (4) + v4-2 (20) + v4-3 (17) = 41 ✓
 - Phase coverage: Phases 0–10 distributed → v4-1 (Phase 7), v4-2 (Phases 0, 1, 2, 5, 6), v4-3 (Phases 3, 4, 8, 9, 10) = 11 phases assigned exactly once ✓
 - DoD bullet mapping: All 16 DoD bullets (from plan-input.md) assigned to exactly one child per ownership table in parent ✓
@@ -43,6 +46,7 @@ v4-1 must precede v4-2 and v4-3 because lint scripts and prettier devDep (Task 7
 ## Completeness
 
 **Scope coverage:**
+
 - ✓ All three-tier file ownership semantics (Tier 1 fully managed, Tier 2 managed-block, Tier 3 seed-or-print) specified in v4-2 with examples.
 - ✓ Token substitution (`{{NODE_VERSION}}`, `{{PNPM_VERSION}}`, `{{DEFAULT_BRANCH}}`, `{{PROJECT_NAME}}`) with fallback priority and hard-fail rules in v4-2 Phase 1.
 - ✓ Marker generalisation (HTML-comment default, hash-comment for YAML/INI/shell) in v4-2 Phase 2 with call-site audit.
@@ -52,6 +56,7 @@ v4-1 must precede v4-2 and v4-3 because lint scripts and prettier devDep (Task 7
 - ✓ Dry-run parity investigation (Phase 5 root-cause) before fix (Phase 5 Task 5.2) in v4-2.
 
 **Test coverage (Derived Test Matrix):**
+
 - v4-1 owns 0 new tests — acceptance via pre-PR gate sequence + GitHub Actions CI.
 - v4-2 owns 14 test matrix rows: token resolver (6), markers (3), tier writers (3), dry-run parity (7), plus auth-shim assertion in ci.yml template.
 - v4-3 owns 7 test matrix rows: CLI parsing (5), module dispatch idempotence/composition (5), first-run signal (1), plus `it.todo` stub promotion audit at Gate 3.
@@ -60,11 +65,13 @@ v4-1 must precede v4-2 and v4-3 because lint scripts and prettier devDep (Task 7
 **All 21 Derived Test Matrix rows mapped to runbook tasks** (per parent plan-v4-split.md line 101–102).
 
 **Manual gates (DoD bullets 13, 14):**
+
 - Gate 4.5a: `app-gether-life` smoke-install log committed to `docs/plans/logs/bar-130-ci-lint-scaffolding/smoke-install.md`.
 - Gate 4.5b: Second consumer (e.g., `www-visitfrasercoast-com`) onboarding log appended to smoke file.
 - Both gates **block merge** per v4-3 runbook Gate 4.5 caution block.
 
 **Documentation plan:**
+
 - v4-1: None (self-gating only, no consumer-facing docs).
 - v4-2: `docs/knowledge.md` if dry-run root-cause investigation surfaces a non-trivial gotcha (Task 5.1).
 - v4-3: README + `.agents/README.md` rewrites (Tasks 8.1, 8.2), `docs/decisions.md` ADRs (Task 9.1), `docs/pending.md` kill-dates (Task 9.2), version bump (Task 10.1).
@@ -73,16 +80,18 @@ v4-1 must precede v4-2 and v4-3 because lint scripts and prettier devDep (Task 7
 
 ## Acceptance Scenario
 
-**Inherited verbatim from master (featu
+\*\*Inherited verbatim from master (featu
 
-re contract):** Consumer adds `@cbartens/bkit@v0.1.2`, runs `bkit install --full`, gets complete stack with tokens substituted, managed blocks reconciled, auth-shim seeded, and first PR CI passing.
+re contract):\*\* Consumer adds `@cbartens/bkit@v0.1.2`, runs `bkit install --full`, gets complete stack with tokens substituted, managed blocks reconciled, auth-shim seeded, and first PR CI passing.
 
 **Concrete examples (v4-specific):**
+
 - **v4-1:** bkit's own PR runs typecheck, vitest, Vale, slop-scan, format:check, self-test; all green.
 - **v4-2:** Tmpdir pre-seeded with `.nvmrc`, `package.json`, `git init` → `resolveTokens(cwd)` → `bkit install --ci` → on-disk `ci.yml` has substituted tokens (`node-version: 22`, `pnpm/action-setup: 10`, `branches: [main]`), bkit block appended, consumer jobs preserved.
 - **v4-3:** User runs `bkit install --full` (no flags) → core + all modules written across three tiers; second run is a no-op; `bkit init` prints deprecation and delegates.
 
 **Human confirmation gates:**
+
 - v4-1 Gate 1: [ ] Acceptance Scenario confirmed; [ ] Breaking Changes confirmed.
 - v4-2 Gate 1: [ ] Acceptance Scenario confirmed; [ ] Breaking Changes confirmed.
 - v4-3 Gate 1: [ ] Acceptance Scenario confirmed; [ ] Breaking Changes confirmed.
@@ -95,11 +104,13 @@ re contract):** Consumer adds `@cbartens/bkit@v0.1.2`, runs `bkit install --full
 ## Design Alignment
 
 **Acceptance Scenario narrative + success criteria in each child:**
+
 - v4-1: Specialises criteria #5 ("bkit's own PRs run gates before merge"); narrative inherited as context.
 - v4-2: Specialises criteria #3 ("install --ci on existing ci.yml") and #4 ("check/install parity"); contributes to #1.
 - v4-3: Specialises criteria #1 ("install --full seeds all tiers"), #2 ("install --claude" selective), #5 ("init/--host= deprecation"); closes #1–5 collectively.
 
 **Design-doc verbatim content retained:**
+
 - Three-tier semantics (Tier 1 fully managed, Tier 2 managed-block, Tier 3 seed-or-print) — embedded in v4-2 Architecture § B.
 - CLI surface (verbs install/check/help; module flags --core/--claude/--cursor/--ci/--lint/--git-hooks/--full) — embedded in v4-3 Architecture § C.
 - Token list with source priority and defaults — embedded in v4-2 Phase 1 Tasks 1.1–1.3.
@@ -136,7 +147,7 @@ re contract):** Consumer adds `@cbartens/bkit@v0.1.2`, runs `bkit install --full
 
 11. **Package distribution guard (Reviewer 2 C7):** Fixed — v4-1 Task 7.1 now explicitly verifies that `.github/workflows/ci.yml` (bkit's own CI, at repo root) is excluded from consumer package via `pnpm pack --dry-run`.
 
-12. **Auth-shim assertion (Auditor 1 CRITICAL #2):** Fixed — v4-2 Task 6.1 adds an automated test in `bkit-install.test.ts` asserting the auth-shim line is present *between* `# bkit:start` and `# bkit:end` and *before* `pnpm install`.
+12. **Auth-shim assertion (Auditor 1 CRITICAL #2):** Fixed — v4-2 Task 6.1 adds an automated test in `bkit-install.test.ts` asserting the auth-shim line is present _between_ `# bkit:start` and `# bkit:end` and _before_ `pnpm install`.
 
 13. **Substituted ci.yml end-to-end (Auditor 1 CRITICAL #3 — DoD bullet 9):** Fixed — v4-2 Task 6.1b adds an integration test in `bkit-modules.integration.test.ts` asserting the rendered template contains literal substituted values (node-version: 22, branches: [main], pnpm major 10) with no placeholder leakage.
 

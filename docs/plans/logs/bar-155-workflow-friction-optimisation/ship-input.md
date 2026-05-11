@@ -18,14 +18,14 @@ Friction-reduction fixes to bkit `.agents/` prompts and workflows, surfaced from
 
 Six fixes shipped on this branch:
 
-| Fix | What changed |
-| --- | --- |
-| 1b | `echo {finding} >> {output}` stub-first + eager `Verdict:` flip on FAIL added to `bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests` |
-| 2 | `bkit-plan` Step 8 hard task-count gate (>15 → SPLIT, deterministic, no LLM judgement) |
-| 3 | `bkit-plan` Step 3 scoped BAR-N detection (>1 in `## Linear Issue:` section → Failure Path) |
+| Fix  | What changed                                                                                                                                                               |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1b   | `echo {finding} >> {output}` stub-first + eager `Verdict:` flip on FAIL added to `bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests`    |
+| 2    | `bkit-plan` Step 8 hard task-count gate (>15 → SPLIT, deterministic, no LLM judgement)                                                                                     |
+| 3    | `bkit-plan` Step 3 scoped BAR-N detection (>1 in `## Linear Issue:` section → Failure Path)                                                                                |
 | 4a–d | Single `bkit-build-challenge.md` → parallel pair (`-1` Opus/high, `-2` Sonnet/medium) + reconciler (`-reconcile` Opus/xhigh); `bkit-build.md` Steps 9–18 wired accordingly |
-| 5 | `bkit-ship.md` Step 2 rebase failure: bare `exit 1` → sentinel-file Failure Path routing |
-| 6 | `bkit-build.md` Step 1 always-on long-branch advisory (`N commits behind dev / M ago since divergence`) |
+| 5    | `bkit-ship.md` Step 2 rebase failure: bare `exit 1` → sentinel-file Failure Path routing                                                                                   |
+| 6    | `bkit-build.md` Step 1 always-on long-branch advisory (`N commits behind dev / M ago since divergence`)                                                                    |
 
 Out-of-scope items deferred to `docs/pending.md`. KN/DE auto-renumber, focused-brief mode, and template-vs-canonical preference rule explicitly dropped (rationale recorded in DE-16).
 
@@ -36,6 +36,7 @@ Out-of-scope items deferred to `docs/pending.md`. KN/DE auto-renumber, focused-b
 All 18 build steps DONE. 744 tests passing (39 new regression tests). All pre-push hooks clean. Plan tasks 1–10 PASS. Build summary recorded `docs/plans/logs/bar-155-workflow-friction-optimisation/build-summary.md`.
 
 Step verdicts:
+
 - Step 5 Plan Execute — PASS
 - Step 6 Plan Verify — CONCERNS attempt 1 → PASS attempt 2
 - Step 7 Plan Gaps Remediate — PASS attempt 1 (STANDARD)

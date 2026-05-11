@@ -1,5 +1,6 @@
 Verdict: FAIL
 Failures: 2
+
 <!-- verdict:end -->
 
 ## Findings

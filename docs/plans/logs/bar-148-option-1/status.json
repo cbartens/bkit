@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-08T13:00:03Z",
         "commitSha": "a37ce99b8e04c1b1e842e2e688e189cc0597eaf8",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -26,9 +24,7 @@
         "attempt": 1,
         "at": "2026-05-08T13:07:31Z",
         "commitSha": "9360229a9eac7b87a7e1babf2433da50cba2c3f0",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -50,9 +46,7 @@
         "attempt": 1,
         "at": "2026-05-08T13:14:19Z",
         "commitSha": "597213d67d6ce81c700815ce062a562ae76b3275",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -74,9 +68,7 @@
         "attempt": 1,
         "at": "2026-05-08T13:21:23Z",
         "commitSha": "7cff30e69151d485082c4d03c4d825e12a81df4d",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -85,9 +77,7 @@
         "attempt": 1,
         "at": "2026-05-08T13:22:22Z",
         "commitSha": "2eed9e16e718cc75e5661a68781de8583e489759",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-complexity-check.md"]
       },
       {
         "step": "summary",
@@ -96,9 +86,7 @@
         "attempt": 1,
         "at": "2026-05-08T13:23:50Z",
         "commitSha": "78f9067b65b515445d15454194c285980555b25e",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/plan-summary.md"]
       },
       {
         "step": "close-workflow",

@@ -10,6 +10,7 @@ Verdict: PASS
 **PR:** #20 — bkit v2.0.0 breaking-change release
 
 **Scope:** All three phases of bar-167 bundled into single v2.0.0 squash:
+
 - **Phase 1 (A):** Drop `__bkit__` JSON envelope; add `deepContains`, `writeTier2JsonContained`, `migrateLegacyBkitEnvelope`, `stripTier2JsonScope`; rewrite `.cursor/hooks.json` and `.claude/settings.json` to envelope-free; introduce preflight advisories; Phase 1 docs (DE-16, KN-15, architecture rewrite, CHANGELOG, README).
 - **Phase 2 (B):** Add `<!-- bkit:start -->` markers to 12 Group A + 3 Group B template files; simplify `bkit-manifest.ts` schema (tier→format); refactor install/check/uninstall to single dispatch on `entry.format`; add `tier2-text-drift` advisory; Phase 2 marker tests + Tier-3 drift regression.
 - **Phase 3 (C):** Narrow `.bkit-version` writer to emit `tier3Hashes` for `byte-equal-text` only; rewrite `bkit-tiers.ts` doc-block; sweep `Tier [123]` strings from docs; add `lint:no-tier-terms` script.

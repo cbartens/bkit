@@ -53,6 +53,7 @@ Greps for deleted symbols (`__bkit__`, `applyBkitNamespace`, `extractBkitNamespa
 ### 3. Terminology consistency
 
 `grep -E "Tier [123]" docs/`:
+
 - Live docs (`docs/architecture.md`, `docs/testing.md`, `docs/deployments.md`, `docs/knowledge.md`, `docs/decisions.md`, `README.md`): zero matches (after sub-plan C Task 27 sweep).
 - `docs/completed.md:40`: excluded per plan (`FILE_EXCLUSIONS` in lint-no-tier-terms.ts).
 - `docs/plans/active/bar-167-*`: the plans themselves (self-referential; not subject to sweep).
@@ -68,6 +69,7 @@ Greps for deleted symbols (`__bkit__`, `applyBkitNamespace`, `extractBkitNamespa
 ### 5. Test coverage holistic
 
 Full acceptance-scenario E2E coverage spans:
+
 - Phase 1 JSON primitives: `bkit-tiers.test.ts` (deepContains x8, writeTier2JsonContained, migrateLegacyBkitEnvelope x4, cursor-v1-schema), `bkit-uninstall.test.ts` (stripTier2JsonScope), `bkit-modules.upgrade.integration.test.ts` (v0.5.x → v0.8.x → v2.0.0 chain, heavy-customised consumer, idempotency), `bkit-modules.integration.test.ts` (envelope advisory, drift advisory, pre-envelope blocker, Dockerfile safe-delete).
 - Phase 2 markers + dispatch: `bkit-templates.test.ts` (NEW — marker presence Group A+B, slop-scan deep-containment), `bkit-modules.test.ts:218` (single-dispatch on entry.format), `bkit-modules.integration.test.ts` (Tier-3 drift regression for ci.yml, .husky/pre-push fixture survival via Task-0d), `bkit-modules.upgrade.integration.test.ts:289-345` (heavy-customised ci.yml fixture via Task-0e — both outside-marker survival and inside-marker drift detection rows; indented-marker limitation documented).
 - Phase 3 cleanup: `bkit-version.test.ts:226-263` (reader default, narrowed writer, shouldDeleteTier3 unchanged), `bkit-tiers.test.ts:919-928` (static grep regression test for `/Tier [123]/g`), `bkit-modules.integration.test.ts` Dockerfile safe-delete re-verified after writer narrowing.

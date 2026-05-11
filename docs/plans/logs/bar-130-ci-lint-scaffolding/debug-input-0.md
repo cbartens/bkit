@@ -49,6 +49,7 @@ bkit-gates	Setup pnpm	Remove one of these versions to avoid version mismatch err
 ## Linear DESCRIPTION (BAR-130)
 
 CI/lint scaffolding install optimisation. Three scopes shipped in v0.1.2:
+
 - Scope A: bkit self-gating (CI workflow, Vale, slop-scan, lint scripts).
 - Scope B: installer engine (token resolver, 3-tier writers, marker generalisation, WriteSet dry-run parity).
 - Scope C: CLI redesign (`install` verb with module flags, deprecation stubs).

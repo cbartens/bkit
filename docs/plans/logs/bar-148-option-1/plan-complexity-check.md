@@ -7,6 +7,7 @@ Verdict: SINGLE
 ## Counts
 
 **Tasks:** 44 total runbook tasks
+
 - Phase A: 9 tasks (A1–A9) — source artifacts and orchestrator files
 - Phase B: 4 tasks (B1–B4) — installer module wiring
 - Phase C: 18 tasks (C1a–C9g) — test coverage (all Derived Test Matrix rows)
@@ -14,12 +15,14 @@ Verdict: SINGLE
 - Phase E: 3 tasks (E1–E3) — mirror regen and bkit-repo checks
 
 **Gates:** 4 gates
+
 - Gate 1: Prerequisites Check (human-confirmed Acceptance Scenario + Breaking Changes)
 - Gate 2: Code Implementation Check
 - Gate 3: Testing and Documentation Check
 - Gate 4: Automated Verification Confirmed
 
 **Domain areas covered:** 3
+
 - Installer/CLI (bkit-modules.ts, bkit-cli.ts, TypeScript test suite)
 - GHA Workflow / YAML (new trigger workflow + template)
 - Documentation (workflows.md, docs.md, decisions.md, knowledge.md, deployments.md, pending.md, prompts.md)
@@ -33,6 +36,7 @@ Verdict: SINGLE
 **Files to modify:** ~18 (5 orchestrators, bkit-modules.ts, bkit-cli.ts, 6 test files, workflows.md, docs.md, templates/docs.md, prompts.md, knowledge.md, deployments.md)
 
 **Token estimate breakdown:**
+
 - Plan read + docs.md: ~15K tokens
 - Reading 15 existing files for context: ~25K tokens
 - Writing 3 new files (orchestrator md is largest at ~4K tokens, 2 YAML files): ~8K tokens

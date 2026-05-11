@@ -54,6 +54,7 @@ Plan covers all 14 DoD bullets, anchors to real files (`bkit-install.ts` v0.1.1,
 ---
 
 **Boundary checks:**
+
 - Branch convention `feat/bar-130-ci-lint-scaffolding`: confirmed in Task 0.1.
 - Commit format `{type}({FID}): {message}`: not explicitly mentioned but is universal rule; orchestrator/builder enforces.
 - `--no-verify` ban: not violated; no `git` task in plan.
@@ -61,6 +62,7 @@ Plan covers all 14 DoD bullets, anchors to real files (`bkit-install.ts` v0.1.1,
 - Integration/E2E only post-PR: plan mixes `*.test.ts` and `*.integration.test.ts` in Vitest single suite, run pre-PR. **Note:** project rule says "Integration and E2E: Debug workflow only (post-PR)". Bkit's integration tests are filesystem-only (no DB, no live APIs) — arguably fine to run pre-PR for this CLI tool. Worth a one-line confirmation in plan that bkit's integration tier is filesystem-fast and does not need post-PR gating. Currently implicit.
 
 **Files referenced (all absolute):**
+
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-130-ci-lint-scaffolding/docs/plans/logs/bar-130-ci-lint-scaffolding/plan-v1-draft.md`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-130-ci-lint-scaffolding/docs/plans/logs/bar-130-ci-lint-scaffolding/plan-input.md`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-130-ci-lint-scaffolding/docs/plans/template.md`

@@ -6,14 +6,14 @@ Verdict: CONCERNS
 
 ## Ecosystem Search
 
-| Capability | What exists | Fit | Recommendation |
-| --- | --- | --- | --- |
-| Publish npm to GH Packages from Actions | `actions/setup-node@v4` writes `~/.npmrc` from `registry-url` + `scope`; auths via `NODE_AUTH_TOKEN` (built-in `GITHUB_TOKEN` w/ `packages: write`) | Direct match — design uses exactly this snippet. User-scope `@cbartens` (not org) so first-publish with `GITHUB_TOKEN` is documented to work. | USE-AS-IS |
-| Tag-push trigger pattern | Standard `on: push: tags: ['v*']` | Standard idiom; matches design. Pre-release tags (`v0.4.0-pre.1`) fire identically. | USE-AS-IS |
-| Auto-link package → repo | Manifest `repository.url` (bare HTTPS preferred) auto-links when published from same repo with `GITHUB_TOKEN` | Design drops the `git+` prefix which aligns with docs guidance. | USE-AS-IS |
-| Consumer auth via `.npmrc` env interpolation | `${VAR}` substitution in `.npmrc` is npm/pnpm standard | Works with both. **Trap:** pnpm ≥7.20 silently ignores the entire `.npmrc` if `${GH_BKIT_TOKEN}` is unset (see Risks). | USE-AS-IS — but installer print MUST flag the silent-ignore failure mode. |
-| Release-notes / changelog automation | `release-please`, `changesets`, `semantic-release` | All exist; design explicitly defers (single-maintainer, tag-push-only). YAGNI for v0.4.0. | OUT-OF-SCOPE — defer (see § OUT OF SCOPE). |
-| Pre-release version retraction | `npm deprecate` works against GH Packages (community-confirmed); `npm unpublish` also supported within window | Design notes "untested in this codebase" — fair flag, no action needed yet. | USE-AS-IS when needed. |
+| Capability                                   | What exists                                                                                                                                         | Fit                                                                                                                                           | Recommendation                                                            |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Publish npm to GH Packages from Actions      | `actions/setup-node@v4` writes `~/.npmrc` from `registry-url` + `scope`; auths via `NODE_AUTH_TOKEN` (built-in `GITHUB_TOKEN` w/ `packages: write`) | Direct match — design uses exactly this snippet. User-scope `@cbartens` (not org) so first-publish with `GITHUB_TOKEN` is documented to work. | USE-AS-IS                                                                 |
+| Tag-push trigger pattern                     | Standard `on: push: tags: ['v*']`                                                                                                                   | Standard idiom; matches design. Pre-release tags (`v0.4.0-pre.1`) fire identically.                                                           | USE-AS-IS                                                                 |
+| Auto-link package → repo                     | Manifest `repository.url` (bare HTTPS preferred) auto-links when published from same repo with `GITHUB_TOKEN`                                       | Design drops the `git+` prefix which aligns with docs guidance.                                                                               | USE-AS-IS                                                                 |
+| Consumer auth via `.npmrc` env interpolation | `${VAR}` substitution in `.npmrc` is npm/pnpm standard                                                                                              | Works with both. **Trap:** pnpm ≥7.20 silently ignores the entire `.npmrc` if `${GH_BKIT_TOKEN}` is unset (see Risks).                        | USE-AS-IS — but installer print MUST flag the silent-ignore failure mode. |
+| Release-notes / changelog automation         | `release-please`, `changesets`, `semantic-release`                                                                                                  | All exist; design explicitly defers (single-maintainer, tag-push-only). YAGNI for v0.4.0.                                                     | OUT-OF-SCOPE — defer (see § OUT OF SCOPE).                                |
+| Pre-release version retraction               | `npm deprecate` works against GH Packages (community-confirmed); `npm unpublish` also supported within window                                       | Design notes "untested in this codebase" — fair flag, no action needed yet.                                                                   | USE-AS-IS when needed.                                                    |
 
 ## Stack Feasibility
 
@@ -25,6 +25,7 @@ Buildable as designed. All moving parts are off-the-shelf:
 - `checkBkitTokenSecret` (line 527) and `detectVercelProject` (line 581) untouched per design — auth-detection logic survives the rewrite.
 
 **Constraints / footguns identified:**
+
 1. `ci.yml` currently pins `node-version: 20`; design pins release.yml at 22 — that's a deliberate divergence the design notes but does NOT propose harmonizing `ci.yml`. If `tsc` emit differs across major versions, `check:dist` will fail in release.yml even when ci.yml stayed green. Either (a) bump `ci.yml` to 22 in the same PR, or (b) keep release.yml at 20 to match ci.yml. **The design says "Pin `node-version: 22`" but `ci.yml` is on 20 — that's the inverse of "match ci.yml discipline".** This is the single biggest design contradiction.
 2. Manifest currently has no `name`-scope concern: `@cbartens/bkit` is user-scoped, so `GITHUB_TOKEN` first-publish works (org scopes need extra config). Confirmed feasible.
 3. `package.json` `engines.node = ">=20"` — fine for Node 22 release runner.
@@ -33,12 +34,12 @@ Buildable as designed. All moving parts are off-the-shelf:
 
 No new dependencies introduced. All actions used already:
 
-| Surface | Version pin | Risk |
-| --- | --- | --- |
-| `actions/checkout@v4` | major | None — existing in ci.yml. |
-| `actions/setup-node@v4` | major | None — existing in ci.yml. |
-| `pnpm/action-setup@v4` | major | None — existing in ci.yml. |
-| Built-in `GITHUB_TOKEN` (no PAT) | n/a | None — workflow `permissions: packages: write` is the documented happy path. |
+| Surface                            | Version pin          | Risk                                                                            |
+| ---------------------------------- | -------------------- | ------------------------------------------------------------------------------- |
+| `actions/checkout@v4`              | major                | None — existing in ci.yml.                                                      |
+| `actions/setup-node@v4`            | major                | None — existing in ci.yml.                                                      |
+| `pnpm/action-setup@v4`             | major                | None — existing in ci.yml.                                                      |
+| Built-in `GITHUB_TOKEN` (no PAT)   | n/a                  | None — workflow `permissions: packages: write` is the documented happy path.    |
 | `npm publish` (not `pnpm publish`) | bundled with Node 22 | Low — `setup-node` registry-url wiring assumes `npm`; matches GH Packages docs. |
 
 License / bundle / types: no impact (shipping bits unchanged; tarball contents identical to v0.3.0 pre-built `dist/`).

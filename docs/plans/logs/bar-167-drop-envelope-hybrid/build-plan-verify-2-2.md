@@ -34,6 +34,7 @@ Attempt 2 confirms all 7 prior gaps closed with codebase evidence:
 - GAP 7 (Gate 1 human checkboxes): plan lines 99-100 (Acceptance Scenario + Breaking Changes) and 162-165 (Gate 1 four checkboxes) all `[x]`.
 
 Schema confirmations:
+
 - `bkit-manifest.ts`: zero `tier: [123]` occurrences; 22 `format:` field declarations across all 6 module manifests.
 - `bkit-uninstall.ts:219`: clean `switch (entry.format)` with three cases `json` / `markered-text` / `byte-equal-text`.
 

@@ -40,6 +40,6 @@ STEP 7 — classify conflicts: package.json = Allowed (one-sided version bump, f
 STEP 8a — resolved package.json (took 2.0.0) and .agents/scripts/bkit-modules.ts (took re-export from bkit-paths.js), git add both — outcome: staged
 STEP 8b — resolved CHANGELOG.md (additive: kept both [2.0.0] and [1.1.2] entries, 2.0.0 first as latest version), git add — outcome: staged
 STEP 8c — resolved dist/bkit-modules.js (compiled dist, same getPkgRoot conflict as source, took re-export from bkit-paths.js), git add — outcome: staged
-STEP 8d — resolved 11 mirror files (.agents/.bkit-version, .claude/commands/*.md x5, .cursor/commands/*.md x5) via git checkout --theirs (feature branch version: pinnedVersion=2.0.0, feature branch wording for Labels/workflow steps), git add — outcome: staged
+STEP 8d — resolved 11 mirror files (.agents/.bkit-version, .claude/commands/_.md x5, .cursor/commands/_.md x5) via git checkout --theirs (feature branch version: pinnedVersion=2.0.0, feature branch wording for Labels/workflow steps), git add — outcome: staged
 STEP 8e — git rebase --continue — rebase completed successfully (50/50 commits rebased) — outcome: OK
 STEP 9 — pnpm install: exit 0; pnpm typecheck: exit 0; pnpm test: exit 0 (787 passed, 2 skipped, 1 todo); pnpm build: exit 0 — outcome: all pass

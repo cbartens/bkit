@@ -5,16 +5,12 @@ dist/
 .agents/skills/
 # Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit-modules.ts):
 # bkit force-overwrites these on every install, so consumer prettier must not
-# lint them (BAR-165). Width-sensitive rewrites would be reverted next install.
-.agents/prompts.md
-.agents/workflows.md
-.agents/IDEs.md
+# lint them. Width-sensitive rewrites would be reverted next install.
 .claude/
 .cursor/
 .github/
 .husky/_/
 *.tsbuildinfo
-docs/
 pnpm-lock.yaml
 
 # bkit:end

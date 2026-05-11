@@ -28,7 +28,7 @@
 
 7. **`applyTokens` uses `String.prototype.replace` with raw user-controlled values; `$&`/`$1`/`$$` substitution patterns leak through** — `.agents/scripts/bkit-tokens.ts:102-108`. `PROJECT_NAME` comes from `package.json.name` and `DEFAULT_BRANCH` from git output — both attacker-influenceable in supply-chain scenarios. A `package.json.name` of `"$&-evil"` would expand `$&` to the matched template token (`{{PROJECT_NAME}}`). Likely low blast radius (no auto-execution) but a defensive replacement uses `replaceAll(literal, value)` or wraps with a function-form replacer that returns the literal value.
 
-8. **`runPayload` mirror writes are excluded from `WriteSet`, breaking dry-run parity for `.agents/templates/**` mirroring on first install** — `.agents/scripts/bkit-modules.ts:278-282`, `bkit-install.ts:613-619`. `mirrorDirAlways` increments local `writes` count but never pushes path entries into `ws.writes`. The cross-module parity test `runParityCheck(new Set(["core"]))` (`.agents/scripts/bkit-dry-run-parity.integration.test.ts:213`) asserts equality of `ws.writes`, not of `runPayload` returned counts. So `bkit check --core` and `bkit install --core` could agree on writeset paths while diverging by N actual file copies — drift the user can't see in the check verb's output. **Fix:** thread the `WriteSet` accumulator into `runPayload` / `mirrorDirAlways` so payload writes are tracked alongside template writes.
+8. **`runPayload` mirror writes are excluded from `WriteSet`, breaking dry-run parity for `.agents/templates/**`mirroring on first install** —`.agents/scripts/bkit-modules.ts:278-282`, `bkit-install.ts:613-619`. `mirrorDirAlways`increments local`writes`count but never pushes path entries into`ws.writes`. The cross-module parity test `runParityCheck(new Set(["core"]))` (`.agents/scripts/bkit-dry-run-parity.integration.test.ts:213`) asserts equality of `ws.writes`, not of `runPayload`returned counts. So`bkit check --core`and`bkit install --core`could agree on writeset paths while diverging by N actual file copies — drift the user can't see in the check verb's output. **Fix:** thread the`WriteSet`accumulator into`runPayload`/`mirrorDirAlways` so payload writes are tracked alongside template writes.
 
 ### LOW (informational)
 
@@ -36,7 +36,7 @@
 
 2. `runCoreTemplates` uses hardcoded `"html-comment"` markerStyle for every core-owned template (`.agents/scripts/bkit-modules.ts:153`); fine for current set (`AGENTS.md`, `CLAUDE.md`, `gitignore`) but if `docs/` ever contains a hash-comment file it'll silently no-op. Add an assertion or per-file style mapping.
 
-3. `applyT2`'s `using \`Agent\` tool` → `using \`Task\` tool` rewrite (`.agents/scripts/bkit-install.ts:79-84`) is redundant with the prior global `\`Agent\` tool` → `\`Task\` tool` substitution; first replace already covers it.
+3. `applyT2`'s `using \`Agent\` tool`→`using \`Task\` tool` rewrite (`.agents/scripts/bkit-install.ts:79-84`) is redundant with the prior global `\`Agent\` tool`→`\`Task\` tool` substitution; first replace already covers it.
 
 4. `bkit-cli.ts` does not handle `bkit install --` (bare double-dash) gracefully — falls into the "Unknown flag: --" branch via `flag = "" `; not in `MODULE_FLAGS`, exits 1. Mostly fine but the error message is misleading ("Unknown flag: --" vs "expected a flag name").
 

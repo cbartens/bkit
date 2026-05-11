@@ -7,11 +7,11 @@ Failures: 4
 
 ## CRITICAL
 
-1. **Test-matrix row without runbook task: "Hash-comment marker variant round-trips for YAML/INI/shell"** — the matrix row points at `.agents/scripts/bkit-install.test.ts`, and Task 2.1 *does* extend that file, but Task 2.1 ALSO bundles the html-comment backward-compat assertion into the same task without giving the matrix row a unique acceptance bullet. Acceptable by 1:1 mapping standards (one row → one task is satisfied) but verify the runbook explicitly enumerates "round-trip both marker styles on YAML/INI/shell AND markdown/.gitignore". Currently Task 2.1 reads as one combined assertion. **Fix:** Split Task 2.1 acceptance criteria into two enumerated bullets ((a) hash-comment round-trip on YAML/INI/shell, (b) html-comment round-trip on markdown/.gitignore + default-arg backward-compat) so reviewers can tick each test-matrix row off independently.
+1. **Test-matrix row without runbook task: "Hash-comment marker variant round-trips for YAML/INI/shell"** — the matrix row points at `.agents/scripts/bkit-install.test.ts`, and Task 2.1 _does_ extend that file, but Task 2.1 ALSO bundles the html-comment backward-compat assertion into the same task without giving the matrix row a unique acceptance bullet. Acceptable by 1:1 mapping standards (one row → one task is satisfied) but verify the runbook explicitly enumerates "round-trip both marker styles on YAML/INI/shell AND markdown/.gitignore". Currently Task 2.1 reads as one combined assertion. **Fix:** Split Task 2.1 acceptance criteria into two enumerated bullets ((a) hash-comment round-trip on YAML/INI/shell, (b) html-comment round-trip on markdown/.gitignore + default-arg backward-compat) so reviewers can tick each test-matrix row off independently.
 
-2. **DoD bullet 12 ("Seeded ci.yml includes auth-shim step; README documents BKIT_READ_TOKEN secret setup") — verification missing for the auth-shim being inside the bkit-managed block.** Task 6.1 lists `auth-shim` in the template body and Task 8.1 covers the README. The Test Matrix row "Token-substituted `ci.yml` template renders auth-shim step inside bkit block" is mapped to `bkit-install.test.ts (extend)`, but no runbook task explicitly asserts that test. Phase 6 Task 6.1's verification only says "bkit block appended; consumer jobs preserved" — it does NOT assert the auth-shim step is rendered between markers nor that `BKIT_READ_TOKEN` secret reference is present. **Fix:** Add an acceptance bullet to Task 6.1 (or a sibling Task 6.1b) requiring an automated test in `bkit-install.test.ts` that loads the rendered template after `applyTokens` and asserts the auth-shim line `git config --global url."https://x-access-token:${{ secrets.BKIT_READ_TOKEN }}@github.com/"` is present *between* `# bkit:start` and `# bkit:end`.
+2. **DoD bullet 12 ("Seeded ci.yml includes auth-shim step; README documents BKIT_READ_TOKEN secret setup") — verification missing for the auth-shim being inside the bkit-managed block.** Task 6.1 lists `auth-shim` in the template body and Task 8.1 covers the README. The Test Matrix row "Token-substituted `ci.yml` template renders auth-shim step inside bkit block" is mapped to `bkit-install.test.ts (extend)`, but no runbook task explicitly asserts that test. Phase 6 Task 6.1's verification only says "bkit block appended; consumer jobs preserved" — it does NOT assert the auth-shim step is rendered between markers nor that `BKIT_READ_TOKEN` secret reference is present. **Fix:** Add an acceptance bullet to Task 6.1 (or a sibling Task 6.1b) requiring an automated test in `bkit-install.test.ts` that loads the rendered template after `applyTokens` and asserts the auth-shim line `git config --global url."https://x-access-token:${{ secrets.BKIT_READ_TOKEN }}@github.com/"` is present _between_ `# bkit:start` and `# bkit:end`.
 
-3. **DoD bullet 9 ("Token substitution: seeded ci.yml has node-version: <consumer's .nvmrc value> and branches: [<consumer's default branch>]") — automated assertion missing in runbook tasks.** Manual Verification Step 4 covers it manually, and Phase 1 tests the resolver in isolation, but no integration-level runbook task asserts the *integrated path* (resolveTokens → applyTokens → Tier 2 write → final on-disk `ci.yml` content has the substituted values). The Phase 5 dry-run-parity tests don't assert content equality, only writeset equality. **Fix:** Add an integration test row + matching Task (e.g., Task 4.1 sub-bullet or new Task 6.1c) asserting that after `runCiModule` against a tmpdir pre-seeded with `.nvmrc: 22\n` and `package.json` with `packageManager: "pnpm@10.4.1"`, the resulting `ci.yml` contains `node-version: 22` and `branches: [main]` literally.
+3. **DoD bullet 9 ("Token substitution: seeded ci.yml has node-version: <consumer's .nvmrc value> and branches: [<consumer's default branch>]") — automated assertion missing in runbook tasks.** Manual Verification Step 4 covers it manually, and Phase 1 tests the resolver in isolation, but no integration-level runbook task asserts the _integrated path_ (resolveTokens → applyTokens → Tier 2 write → final on-disk `ci.yml` content has the substituted values). The Phase 5 dry-run-parity tests don't assert content equality, only writeset equality. **Fix:** Add an integration test row + matching Task (e.g., Task 4.1 sub-bullet or new Task 6.1c) asserting that after `runCiModule` against a tmpdir pre-seeded with `.nvmrc: 22\n` and `package.json` with `packageManager: "pnpm@10.4.1"`, the resulting `ci.yml` contains `node-version: 22` and `branches: [main]` literally.
 
 4. **Task 0.2 / "Test files scaffolded with todo stubs" loophole — undermines Reproduce-first.** Task 0.2 creates the five test files with `it.todo(...)`. Subsequent phases (1.1, 2.3, 3.1, 4.1, 5.1) replace them with real failing tests. But there is no audit task that confirms "every `it.todo()` from Phase 0.2 has been promoted to a real `it()` before Gate 2 closes". An agent could leave todos behind and still claim phase-gate completion. **Fix:** Add a task at Gate 3 (or in "Mandatory Tasks (Testing & Documentation)") explicitly running `grep -n "it\.todo\|test\.todo" .agents/scripts/*.test.ts .agents/scripts/*.integration.test.ts` and asserting zero hits except where the stub is intentionally deferred (with documented reason).
 
@@ -47,26 +47,26 @@ Failures: 4
 
 ## DoD Coverage Map (14 bullets)
 
-| # | DoD Bullet | Mapped Task / Gate |
-| - | - | - |
-| 1 | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test | Task 7.1, 7.4, Verification Plan §Automated Tests |
-| 2 | `bkit install` (no flags) on empty repo seeds full stack | Test Matrix `--full ≡ no flags`, Manual Step 3, Task 4.1 |
-| 3 | `bkit install --claude` seeds only `.claude/**` + core | Test Matrix row, Task 4.1, Manual Step 2 |
-| 4 | `bkit install --ci --lint` seeds CI + lint + core | Manual Step 3, Test Matrix row, Task 4.1 |
-| 5 | `bkit install --ci` on existing customised ci.yml preserves consumer jobs | Task 6.1 verification |
-| 6 | `bkit install` on existing slop-scan.config.json (Tier 3) preserves + suggests | Test Matrix Tier 3 row, Task 6.3 |
-| 7 | `bkit install` idempotent (post-init) | Test Matrix idempotence row, Manual Step 5 |
-| 8 | `bkit check --full` ≡ `bkit install --full` writeset | Phase 5 (5.1, 5.2, 5.3) |
-| 9 | Token substitution in seeded ci.yml | Phase 1 + Manual Step 4 — **CRITICAL #3 above: missing integration assertion** |
-| 10 | `bkit init` deprecation | Task 3.1, 3.3, Manual Step 1 |
-| 11 | `bkit install --host=claude` deprecation | Task 3.1, 3.3, Manual Step 2 |
-| 12 | Seeded ci.yml auth-shim + README BKIT_READ_TOKEN | Task 6.1, 8.1 — **CRITICAL #2 above: shim-inside-block assertion missing** |
-| 13 | app-gether-life re-installs at v0.1.2, CI passes | Task 10.3, Gate 4.5a |
-| 14 | Second consumer onboards via `install --full`, CI green | Gate 4.5b |
-| 15* | `package.json` v0.1.2 + tag pushed | Task 10.1, 10.4 |
-| 16* | README + `.agents/README.md` document tier model + CLI + init deprecation | Task 8.1, 8.2 |
+| #    | DoD Bullet                                                                     | Mapped Task / Gate                                                             |
+| ---- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| 1    | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test           | Task 7.1, 7.4, Verification Plan §Automated Tests                              |
+| 2    | `bkit install` (no flags) on empty repo seeds full stack                       | Test Matrix `--full ≡ no flags`, Manual Step 3, Task 4.1                       |
+| 3    | `bkit install --claude` seeds only `.claude/**` + core                         | Test Matrix row, Task 4.1, Manual Step 2                                       |
+| 4    | `bkit install --ci --lint` seeds CI + lint + core                              | Manual Step 3, Test Matrix row, Task 4.1                                       |
+| 5    | `bkit install --ci` on existing customised ci.yml preserves consumer jobs      | Task 6.1 verification                                                          |
+| 6    | `bkit install` on existing slop-scan.config.json (Tier 3) preserves + suggests | Test Matrix Tier 3 row, Task 6.3                                               |
+| 7    | `bkit install` idempotent (post-init)                                          | Test Matrix idempotence row, Manual Step 5                                     |
+| 8    | `bkit check --full` ≡ `bkit install --full` writeset                           | Phase 5 (5.1, 5.2, 5.3)                                                        |
+| 9    | Token substitution in seeded ci.yml                                            | Phase 1 + Manual Step 4 — **CRITICAL #3 above: missing integration assertion** |
+| 10   | `bkit init` deprecation                                                        | Task 3.1, 3.3, Manual Step 1                                                   |
+| 11   | `bkit install --host=claude` deprecation                                       | Task 3.1, 3.3, Manual Step 2                                                   |
+| 12   | Seeded ci.yml auth-shim + README BKIT_READ_TOKEN                               | Task 6.1, 8.1 — **CRITICAL #2 above: shim-inside-block assertion missing**     |
+| 13   | app-gether-life re-installs at v0.1.2, CI passes                               | Task 10.3, Gate 4.5a                                                           |
+| 14   | Second consumer onboards via `install --full`, CI green                        | Gate 4.5b                                                                      |
+| 15\* | `package.json` v0.1.2 + tag pushed                                             | Task 10.1, 10.4                                                                |
+| 16\* | README + `.agents/README.md` document tier model + CLI + init deprecation      | Task 8.1, 8.2                                                                  |
 
-(*Bullets 15+16 are extra DoD bullets present in plan-input.md; both covered.)
+(\*Bullets 15+16 are extra DoD bullets present in plan-input.md; both covered.)
 
 ## Out-of-Scope Cross-Check
 

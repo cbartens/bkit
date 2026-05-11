@@ -9,6 +9,7 @@
 BAR-167: Template ownership via markers + JSON containment
 
 bkit v2.0.0 — drop `__bkit__` JSON envelope and consolidate every template file under one ownership model:
+
 - format-aware containment: `bkit:start..bkit:end` comment markers for text formats
 - deep-tree containment for JSON
 - Phase 1 (drop envelope), Phase 2 (markers everywhere), Phase 3 (terminology cleanup)

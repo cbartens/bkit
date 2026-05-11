@@ -6,7 +6,7 @@ Verdict: CONCERNS
 
 ## Overview
 
-This plan executes the bkit v0.4.0 GitHub Packages npm registry distribution migration. The feature hard-cuts bkit distribution from git-dependency (`github:cbartens/bkit#vX.Y.Z`) to scoped-package registry path (`@cbartens/bkit@^0.4.0`), eliminating four classes of consumer friction: private-repo auth-shim, two auth surfaces (Actions + Vercel), lifecycle-hook OOM, and pnpm tag-drop. 
+This plan executes the bkit v0.4.0 GitHub Packages npm registry distribution migration. The feature hard-cuts bkit distribution from git-dependency (`github:cbartens/bkit#vX.Y.Z`) to scoped-package registry path (`@cbartens/bkit@^0.4.0`), eliminating four classes of consumer friction: private-repo auth-shim, two auth surfaces (Actions + Vercel), lifecycle-hook OOM, and pnpm tag-drop.
 
 The plan splits into two sequential sub-plans (v4-1 and v4-2, ~70K + ~55K tokens) to respect session budgets. Sub-plan 1 covers Phase A (pipeline foundation: branch, package.json edits, release.yml creation, pre.1 publish smoke), Phase B Tasks B1–B7 (installer print constants, CI template edits), and Phase C Tasks C0–C2 (Vitest tests). Sub-plan 2 covers Phase B Tasks B8–B15 (docs rewrites, dist rebuild, pre.2 publish smoke), Phase C Tasks C3–C5 (scratch consumer smoke), Phase D (production ship: PR, squash-merge, dev→main, v0.4.0 tag, BAR-131 resolution), and Gates 2/3/4.
 
@@ -33,6 +33,7 @@ The plan splits into two sequential sub-plans (v4-1 and v4-2, ~70K + ~55K tokens
 ## Acceptance Scenario
 
 Scenario is complete and concrete per `docs/plans/template.md` spec:
+
 - **Narrative (inherited from design):** Verbatim from approved design.
 - **Success Criteria (inherited from design):** Five numbered bullets covering npm publish via GITHUB_TOKEN, scratch-consumer install via .npmrc + env, print message updates, CI template edits, pre-release tags + ADR.
 - **Concrete Example:** Setup, numbered steps, observable outcome specified (scratch repo scratch/bar-138-smoke/, .npmrc config, pnpm add, bkit install --full, verification of seeded files and print sink).
@@ -40,7 +41,8 @@ Scenario is complete and concrete per `docs/plans/template.md` spec:
 - **Derived Test Matrix:** 13 rows, each mapping to a specific task. One-to-one correspondence verified.
 
 **However: Both human-confirmation gates are UNCHECKED.** Per the contract in `plan-v4-split.md` (lines 128, 168) and the `docs/plans/template.md` spec (line 88), Gate 1 cannot pass until:
-- `[ ] **Acceptance Scenario confirmed**` → `[x]` 
+
+- `[ ] **Acceptance Scenario confirmed**` → `[x]`
 - `[ ] **Breaking Changes confirmed**` → `[x]`
 
 These are unchecked in the source file as of this read.
@@ -70,5 +72,5 @@ Only one action item — **required human confirmation before execution can begi
 1. **BLOCKING:** Check `[x]` the two human-confirmation checkboxes in the parent plan (`plan-v4-split.md`):
    - Line 128: `[x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.`
    - Line 168: `[x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.`
-   
+
    Once both are checked, save the file, and the plan is ready for Gate 1 entry. No other revisions needed — the plan scope, completeness, test coverage, and design alignment are all sound.

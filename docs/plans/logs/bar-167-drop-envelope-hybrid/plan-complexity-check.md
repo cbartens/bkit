@@ -7,12 +7,14 @@ Verdict: SPLIT
 ## Counts
 
 **Tasks (runbook checkboxes):** 41 discrete tasks across three phases
+
 - Phase 1: Tasks 0c, 0d, 0e, 1, 1b, 2, 3, 4, 4b, 5, 6, 7, 8, 8b, 9, 10, 10a, 11, 12, 13, 14, 14a, 15, 16 — 24 tasks
 - Phase 2: Tasks 17, 17a, 18, 18a, 18b, Sub-gate 2A, 19, 20, 21, 22, 23, 23a, 23b, 24 — 14 tasks (including gate)
 - Phase 3: Tasks 25, 26, 27, 28 — 4 tasks
 - Shared mandatory / gate tasks: Gate 1 (2 human checkboxes), Gate 2, Gate 3, Gate 4 — 4 gates total (1 human-gated)
 
 **Gates (🔒):** 5 gates
+
 - Gate 1 (human confirmation — 2 checkboxes, NOT auto-passable)
 - Sub-gate 2A (manifest reclassification readiness)
 - Gate 2 (code implementation check)
@@ -20,6 +22,7 @@ Verdict: SPLIT
 - Gate 4 (automated verification confirmed)
 
 **Domain areas touched:**
+
 - Core library code (`.agents/scripts/`) — bkit-tiers.ts, bkit-modules.ts, bkit-preflight.ts, bkit-uninstall.ts, bkit-install.ts, bkit-manifest.ts, bkit-version.ts, bkit-paths.ts (new)
 - Templates (`.agents/templates/`) — 14 template files modified (2 JSON rewrites, 12 marker additions)
 - Tests — 7 test files modified/created (bkit-tiers.test.ts, bkit-uninstall.test.ts, bkit-templates.test.ts (new), bkit-modules.upgrade.integration.test.ts, bkit-modules.integration.test.ts, bkit-doctor.integration.test.ts, bkit-version.test.ts)
@@ -30,6 +33,7 @@ Verdict: SPLIT
 **Derived Test Matrix rows:** 34 test rows across 7 test files
 
 **Files touched (total):** ~44 files
+
 - 8 source files modified, 1 source file created, 2 source files deleted
 - 14 template files modified
 - 7 test files modified/created
@@ -41,11 +45,11 @@ Verdict: SPLIT
 
 **Estimated tokens to execute the full plan in one session:**
 
-| Phase | Source edits | Test writes | Doc writes | Subtotal estimate |
-| --- | --- | --- | --- | --- |
-| Phase 1 | ~800 LOC added + ~400 LOC deleted across 9 source files | ~350 LOC across 5 test files | ~400 LOC across 6 doc files | ~50K tokens |
-| Phase 2 | ~600 LOC across 6 source files + 14 template marker edits | ~300 LOC across 3 test files + fixture commits | ~minimal (docs already done Phase 1) | ~40K tokens |
-| Phase 3 | ~200 LOC across 4 files (writer narrowing + doc-block + sweep + lint script) | ~100 LOC across 2 test files | ~300 LOC terminology sweep | ~20K tokens |
+| Phase   | Source edits                                                                 | Test writes                                    | Doc writes                           | Subtotal estimate |
+| ------- | ---------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------ | ----------------- |
+| Phase 1 | ~800 LOC added + ~400 LOC deleted across 9 source files                      | ~350 LOC across 5 test files                   | ~400 LOC across 6 doc files          | ~50K tokens       |
+| Phase 2 | ~600 LOC across 6 source files + 14 template marker edits                    | ~300 LOC across 3 test files + fixture commits | ~minimal (docs already done Phase 1) | ~40K tokens       |
+| Phase 3 | ~200 LOC across 4 files (writer narrowing + doc-block + sweep + lint script) | ~100 LOC across 2 test files                   | ~300 LOC terminology sweep           | ~20K tokens       |
 
 **Estimated total: ~110K tokens** — approximately 10–15% over the 100K single-session threshold, before accounting for read overhead (the plan itself is ~49K tokens; reading source files for each edit adds another ~15–20K in context load during execution).
 
@@ -78,6 +82,7 @@ The plan is SPLIT. Three independent measures all exceed SINGLE thresholds simul
 **Tasks:** 0c, 0d, 0e, 1, 1b, 2, 3, 4, 4b, 5, 6, 7, 8, 8b, 9, 10, 10a, 11, 12, 13, 14, 14a, 15, 16 (24 tasks)
 
 **Files touched (~17):**
+
 - Source (new/modified): `bkit-tiers.ts`, `bkit-modules.ts`, `bkit-preflight.ts`, `bkit-uninstall.ts`, `bkit-version.ts`, `bkit-paths.ts` (new), `bkit-tier1-defaults.ts` (delete), `bkit-tier1-defaults.test.ts` (delete)
 - Templates: `.agents/templates/.cursor/hooks.json`, `.agents/templates/.claude/settings.json`
 - Tests: `bkit-tiers.test.ts`, `bkit-uninstall.test.ts`, `bkit-modules.upgrade.integration.test.ts`, `bkit-modules.integration.test.ts`, `bkit-doctor.integration.test.ts`
@@ -99,6 +104,7 @@ The plan is SPLIT. Three independent measures all exceed SINGLE thresholds simul
 **Tasks:** 17, 17a, 18, 18a, 18b, Sub-gate 2A, 19, 20, 21, 22, 23, 23a, 23b, 24 (14 tasks including gate)
 
 **Files touched (~15):**
+
 - Source: `bkit-manifest.ts`, `bkit-install.ts`, `bkit-modules.ts`, `bkit-uninstall.ts`, `bkit-preflight.ts`
 - Templates (Group A, 12 files): `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-shared-rules.mdc`, `.vale/styles/House/{Filler,Hedging,LLMSlop,Verbose}.yml`, `.agents/{rules,docs,friction,skills}.md`, `docs/plans/template.md`
 - Templates (Group B, 3 files): `.github/workflows/ci.yml`, `.vale.ini`, `.husky/pre-push` (verify only)
@@ -120,6 +126,7 @@ The plan is SPLIT. Three independent measures all exceed SINGLE thresholds simul
 **Tasks:** 25, 26, 27, 28 (4 tasks)
 
 **Files touched (~10):**
+
 - Source: `bkit-version.ts`, `bkit-tiers.ts` (doc-block only)
 - Tests: `bkit-version.test.ts`, `bkit-tiers.test.ts` (static grep check), `bkit-modules.integration.test.ts` (`.cursor/Dockerfile` safe-delete row)
 - Docs: `docs/architecture.md` (residual sweep), `docs/testing.md`, `docs/deployments.md`, `README.md`

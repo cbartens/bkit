@@ -20,16 +20,16 @@
 
 ## Verification commands (with exit codes)
 
-| Command | Exit | Note |
-| --- | --- | --- |
-| `pnpm typecheck` | 0 | |
-| `pnpm format:check` | 0 | All matched files use Prettier code style |
-| `pnpm lint:slop` | 0 | 2 findings in vendored skill scripts — below threshold |
-| `pnpm lint:prose` | 0 | Vale present; 4 warnings in `.agents/prompts/bkit-utility-compress-markdown.md` (warnings only, not errors) |
-| `pnpm test` | 0 | 63 tests passed across 2 test files |
-| `pnpm build` | 0 | `dist/` emitted cleanly |
-| `pnpm pack --dry-run` | 0 | `.github/`, `.vale*`, `slop-scan.config.json`, `.prettierignore` absent from packed list ✓ |
-| `pnpm tsx .agents/scripts/bkit-install.ts check` | 0 | 0 writes, 0 deletes — in sync |
+| Command                                          | Exit | Note                                                                                                        |
+| ------------------------------------------------ | ---- | ----------------------------------------------------------------------------------------------------------- |
+| `pnpm typecheck`                                 | 0    |                                                                                                             |
+| `pnpm format:check`                              | 0    | All matched files use Prettier code style                                                                   |
+| `pnpm lint:slop`                                 | 0    | 2 findings in vendored skill scripts — below threshold                                                      |
+| `pnpm lint:prose`                                | 0    | Vale present; 4 warnings in `.agents/prompts/bkit-utility-compress-markdown.md` (warnings only, not errors) |
+| `pnpm test`                                      | 0    | 63 tests passed across 2 test files                                                                         |
+| `pnpm build`                                     | 0    | `dist/` emitted cleanly                                                                                     |
+| `pnpm pack --dry-run`                            | 0    | `.github/`, `.vale*`, `slop-scan.config.json`, `.prettierignore` absent from packed list ✓                  |
+| `pnpm tsx .agents/scripts/bkit-install.ts check` | 0    | 0 writes, 0 deletes — in sync                                                                               |
 
 ## Outstanding / deferred
 

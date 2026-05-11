@@ -31,13 +31,13 @@ Failures: 4
 
 - **`Frontmatter` of new `bkit-build-challenge-1.md`: existing `bkit-build-challenge.md` is `effort: xhigh, model: claude-opus-4-7`.** Plan correctly downgrades `-1` to `effort: high`. Update `.agents/prompts.md` Effort tiers table § `xhigh` row to remove `bkit-build-challenge` AND add `bkit-build-challenge-reconcile` — currently the plan says "replace `bkit-build-challenge` with `bkit-build-challenge-reconcile` in `xhigh` row" which is correct, but the workflow trace also needs to verify the `xhigh` row examples list stays canonical (see Mandatory Tasks).
 
-- **Failure Path Step 4 condition broadening for ship — preserve idempotency.** The proposed condition `MAX_*_ATTEMPT exceeded OR REBASE_FAILED = true` is fine, but ship's `MAX_MERGE_ATTEMPT` is set in Step 2 sub-step 5 (after rebase). If rebase fails, those MAX_* counters are unset; downstream comparison may need a `[ -z "${MAX_VERIFY_ATTEMPT:-}" ] && ...` guard. Confirm shell semantics in the plan.
+- **Failure Path Step 4 condition broadening for ship — preserve idempotency.** The proposed condition `MAX_*_ATTEMPT exceeded OR REBASE_FAILED = true` is fine, but ship's `MAX_MERGE_ATTEMPT` is set in Step 2 sub-step 5 (after rebase). If rebase fails, those MAX\_\* counters are unset; downstream comparison may need a `[ -z "${MAX_VERIFY_ATTEMPT:-}" ] && ...` guard. Confirm shell semantics in the plan.
 
 ## OUT OF SCOPE
 
 - **Retrofit `bkit-design-review-*` and `bkit-plan-review-*` parallel pairs with the `Parallel:` Contract guard** — the plan adds it only to new `bkit-build-challenge-1/-2`. Linear issue Out of Scope explicitly says no retrofit; plan correctly excludes. Out-of-scope.
 
-- **Auto-renumber KN-* / DE-* on rebase conflicts** — Linear-defined Out of Scope; plan correctly excludes.
+- **Auto-renumber KN-_ / DE-_ on rebase conflicts** — Linear-defined Out of Scope; plan correctly excludes.
 
 - **Replace `bkit install` mirror-regen with delta sync** — out of scope; plan correctly defers.
 

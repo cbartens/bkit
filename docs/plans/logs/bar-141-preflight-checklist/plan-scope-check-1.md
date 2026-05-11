@@ -46,4 +46,3 @@ Scope item ↔ build/verify pairing: every `[NEW]` and `[MODIFY]` file in Archit
 4. **Telemetry / advisory snoozing / per-finding opt-out** — explicitly out of scope. Confirmed.
 
 5. **JSON-schema export for `PreflightFinding`** — could help downstream tooling consume the structured shape programmatically (vs scraping the rendered banner). Out of scope for this plan; potential follow-up if AI-agent integrations grow.
-

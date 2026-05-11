@@ -9,6 +9,7 @@ Verdict: CONCERNS
 BAR-167 ships bkit v2.0.0 as a three-phase major release: Phase 1 drops the `__bkit__` JSON envelope and introduces format-aware containment primitives; Phase 2 adds `bkit:start..bkit:end` markers to 12 group-A full-ownership files and partial-marker blocks to 3 group-B files, refactoring manifest dispatch to a single `format`-based model; Phase 3 narrows the `.bkit-version` writer to emit `tier3Hashes` for byte-equal-text files only and sweeps residual `Tier [123]` terminology from docs. This reverses DE-7/DE-8 and collapses the Tier 1/2/3 distinction into one rule: **every template's bkit-owned scope must be intact in the consumer file.**
 
 **Sub-plan inventory:**
+
 - **Sub-plan A (Phase 1)** — 24 tasks, ~17 files touched, v2.0.0-alpha target. Core: drop envelope, build `deepContains`/`writeTier2JsonContained`/`migrateLegacyBkitEnvelope`/`stripTier2JsonScope`, reclassify JSON files to `tier: 2`, extend preflight advisories. ~50K tokens.
 - **Sub-plan B (Phase 2)** — 14 tasks, ~15 files touched, v2.0.0-beta target. Core: add markers to 12 group-A files + 3 group-B partial blocks, simplify manifest schema `tier → format`, single dispatch on format in install/check/uninstall, Phase-2 `tier2-text-drift` advisory. ~40K tokens.
 - **Sub-plan C (Phase 3)** — 5 tasks, ~10 files touched, v2.0.0 final target. Core: narrow `tier3Hashes` writer to byte-equal-text, rewrite `bkit-tiers.ts` doc-block, sweep `Tier [123]` strings from docs, add `lint:no-tier-terms` script. ~20K tokens.
@@ -26,17 +27,20 @@ Each sub-plan is self-contained per `docs/plans/template.md` with Verdict header
 ## Completeness
 
 **Master success criteria preserved across all three sub-plans:**
+
 1. Zero-drift on clean v2.0.0 install (JSON surfaces sub-plan A; markered-text surfaces sub-plan B; cumulative verification sub-plan C).
 2. `__bkit__` removed; Cursor v1 keyed-object schema; consumer keys byte-identical across upgrade chain (sub-plan A).
 3. Phase 2 markers on all listed files; partial-ownership block byte-equal enforced; Tier-3 drift regression caught (sub-plan B — captures the `app-gether-life` regression that lost `bkit check` step from `.github/workflows/ci.yml`).
 4. Phase 3 cleanup: `Tier [123]` removed from docs; `format` field on manifest; `bkit-tiers.ts` doc-block rewritten; `lint:no-tier-terms` exits 0 (sub-plan C).
 
 **Scope tightness check (lossless decomposition):**
+
 - Phase 1 (24 tasks): foundational JSON drop, JSON primitives, tests, fixtures, Phase-1 docs (DE-16, KN-15, architecture rewrite, CHANGELOG, README). Target: v2.0.0-alpha.
 - Phase 2 (14 tasks): markers on 12 group-A + 3 group-B files, manifest reclassification, single dispatch refactor, Phase-2 tests + Tier-3 drift regression. Target: v2.0.0-beta.
 - Phase 3 (5 tasks): schema narrowing, terminology sweep, doc-block rewrite, lint script. Target: v2.0.0 final.
 
 **Critical fixes from plan-v3 review/scope-check all present in sub-plans:**
+
 1. `deepContains` semantics (order-insensitive object-array containment; subset for primitive arrays; null boundaries) — sub-plan A Task 1.
 2. Manifest reclassification (JSON files from `tier: 1` to `format: "json"`) — sub-plan B Task 19.
 3. JSON-aware `stripTier2JsonScope` helper for uninstall — sub-plan A Task 4b.
@@ -67,6 +71,7 @@ Plan scope ⊆ design scope: BAR-167 issue defines the "format-aware containment
 ## Risks
 
 **Known parked items from plan-v3 scope-check (9 CRITICAL items all addressed):**
+
 1. ✅ `deepContains` semantics — resolved in sub-plan A Task 1 (~60 LOC, order-insensitive arrays, null boundaries).
 2. ✅ Manifest reclassification — resolved in sub-plan B Task 19 (tier → format).
 3. ✅ JSON-aware uninstall — resolved in sub-plan A Task 4b (`stripTier2JsonScope`).
@@ -78,6 +83,7 @@ Plan scope ⊆ design scope: BAR-167 issue defines the "format-aware containment
 9. ✅ Phase 3 hard-ordering (Tasks 26/27 after sub-plan A Tasks 11–13) — documented in sub-plan C Runbook.
 
 **Additional known risks (documented in each sub-plan's Reviewer Notes):**
+
 - Array-containment semantics correctness (deepContains for object-arrays).
 - `migrateLegacyBkitEnvelope` idempotency.
 - Phase 1 supersession inventory completeness (six functions + one file deleted).
@@ -88,6 +94,7 @@ Plan scope ⊆ design scope: BAR-167 issue defines the "format-aware containment
 - Task 26/27 hard-ordering (must run after sub-plan A Tasks 11–13 land).
 
 **Deferred to post-v2.0.0:**
+
 - `bkit upgrade --prune` flag (documented in `docs/pending.md`).
 - Cursor v1 runtime spike (Task 0a removed per Decision 2).
 - Potential renaming `tier2-text-drift` → `markered-block-drift` (backward-compat key retained).

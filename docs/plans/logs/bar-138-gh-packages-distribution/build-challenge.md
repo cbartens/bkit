@@ -24,7 +24,7 @@ All findings are LOW severity supply-chain / hygiene concerns. None block the v0
 ### 2. LOW — Action references use floating major-version tags, not pinned commit SHAs
 
 - **Location:** `.github/workflows/release.yml:16,18,26` (`actions/checkout@v4`, `actions/setup-node@v4`, `pnpm/action-setup@v4`)
-- **Exploit scenario:** A compromised upstream action repo (or a malicious tag re-point on `@v4`) executes attacker code inside the publish job, which has `packages: write` on the `GITHUB_TOKEN`. Risk is low (these are widely-used official actions / well-known orgs) but supply-chain best practice for *publishing* workflows is SHA-pinning. OpenSSF Scorecard flags this; Dependabot can keep SHAs current.
+- **Exploit scenario:** A compromised upstream action repo (or a malicious tag re-point on `@v4`) executes attacker code inside the publish job, which has `packages: write` on the `GITHUB_TOKEN`. Risk is low (these are widely-used official actions / well-known orgs) but supply-chain best practice for _publishing_ workflows is SHA-pinning. OpenSSF Scorecard flags this; Dependabot can keep SHAs current.
 - **Suggested fix:** Pin to commit SHAs with version comment, e.g. `uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1`. Consistency note: `.github/workflows/ci.yml` and the consumer template `.agents/templates/.github/workflows/ci.yml` use the same floating refs, so a fix here should propagate (or accept that this is project-wide style).
 
 ### 3. LOW — Published tarball includes test sources and snapshot files
@@ -36,7 +36,7 @@ All findings are LOW severity supply-chain / hygiene concerns. None block the v0
 ### 4. LOW — `publishConfig.access: restricted` is silently ignored by GitHub Packages
 
 - **Location:** `package.json:23-26`
-- **Failure scenario:** A future maintainer reads `"access": "restricted"` and assumes GH Packages enforces it. GH Packages derives package visibility from the *linked repository's* visibility (private repo → private package), NOT from the npm `access` field. If `cbartens/bkit` repo is ever made public, the package becomes public regardless of `access: restricted`. The plan's Edge Cases row notes the ADR fallback to `access: public` if needed, so the maintainer is aware, but the field's no-op nature on GH Packages is not documented in code.
+- **Failure scenario:** A future maintainer reads `"access": "restricted"` and assumes GH Packages enforces it. GH Packages derives package visibility from the _linked repository's_ visibility (private repo → private package), NOT from the npm `access` field. If `cbartens/bkit` repo is ever made public, the package becomes public regardless of `access: restricted`. The plan's Edge Cases row notes the ADR fallback to `access: public` if needed, so the maintainer is aware, but the field's no-op nature on GH Packages is not documented in code.
 - **Suggested fix:** Add an inline comment in `package.json` is not feasible (no JSON comments), but ADR `DE-3` should explicitly note that on GH Packages the `access` field is informational and visibility tracks repo visibility. Confirm `cbartens/bkit` repo is private before the v0.4.0 production tag publishes.
 
 ### 5. LOW — Publish job has no `environment:` protection / required reviewer

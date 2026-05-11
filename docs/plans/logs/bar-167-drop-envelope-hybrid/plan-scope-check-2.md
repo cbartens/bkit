@@ -34,14 +34,18 @@ Every Group A full-ownership template file in Task 17 is described only as "Wrap
 ### C-4: `migrateLegacyBkitEnvelope` round-trip — `.claude/settings.json` BEFORE/AFTER fixture lacks the `hooks.Stop` consumer key in the AFTER shape
 
 The static fixture in Architecture & Component Changes → Static Fixture committed shows the `claude-settings.json` AFTER shape as:
+
 ```json
 { "hooks": { "SessionStart": [...], "Stop": [...] } }
 ```
+
 This appears correct. However the BEFORE shape for `claude-settings.json` shows `hooks.Stop` as an array element:
+
 ```json
 "__bkit__": { "hooks": { "SessionStart": [{ "command": "pnpm bkit check" }] } },
 "hooks": { "SessionStart": [...], "Stop": [{ "command": "echo 'consumer stop hook'" }] }
 ```
+
 After `migrateLegacyBkitEnvelope` strips `__bkit__`, `postStripDoc` = `{ hooks: { SessionStart: [...], Stop: [...] } }`. Then `deepContains(template, postStripDoc)` checks that every template key is present — template has only `hooks.SessionStart`, which IS present. So `stripped: true`, `deepMerged: false`, `schemaFlipped: false`. The AFTER shape correctly retains `Stop`. This is internally consistent.
 
 **However**, the Acceptance Scenario Concrete Example (line ~76) describes the migration log as `[bkit] migrated .cursor/hooks.json — schema flip applied (flat-array → keyed-object) (v2.0.0)` AND `[bkit] migrated .claude/settings.json — stripped __bkit__ envelope (v2.0.0)`. The `cursor-hooks.json` BEFORE fixture IS a flat-array shape (`"hooks": [...]`), so `schemaFlipped: true` should fire there. The BEFORE/AFTER samples for `cursor-hooks.json` correctly show this. The plan is internally consistent here, but the plan does NOT specify that the `migrateLegacyBkitEnvelope` matrix test row for "schema-flip" uses the `cursor-hooks.json` fixture specifically. The test matrix row (line ~132) says "Unit (Vitest) / `.agents/scripts/bkit-tiers.test.ts`" without naming the fixture. A build agent may write a synthetic schema-flip case rather than using the `cursor-hooks.json` fixture, causing the test to miss a corner: the BEFORE `cursor-hooks.json` has BOTH `__bkit__` (keyed-object) AND top-level `hooks` (flat-array). After stripping `__bkit__`, the top-level `hooks` is `[...]` (flat-array), but the template's `hooks` is `{...}` (keyed-object). The type-flip detection in `writeTier2JsonContained`/`deepContains` needs to fire here. The plan calls this out in the Edge Cases table but the unit test spec for `migrateLegacyBkitEnvelope` (Task 3) says "schema-flip" without tying it to this exact fixture shape. The fixture files committed in Task 0c should be referenced explicitly from Task 3's test block.
@@ -55,6 +59,7 @@ After `migrateLegacyBkitEnvelope` strips `__bkit__`, `postStripDoc` = `{ hooks: 
 The plan's concrete example (line ~70–71) sets up "a heavily customised v3+ CI workflow that previously lost its `pnpm bkit check` step." The marker coverage spec says the block covers `Install Dependencies` (auth-surface) through `Run Bkit Check` inclusive, including `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan` steps (lines ~596–597). The plan notes "if a consumer customises them they will trigger `tier2-text-drift`" and acknowledges this as a design trade-off for v2.0.0.
 
 The `app-gether-life` consumer has a heavily-customised `Install Dependencies` step with additional env vars or matrix configuration. Task 23a adds a "heavy-customised `ci.yml` survival test," but the plan does not specify what the fixture's `Install Dependencies` step looks like. Specifically:
+
 1. If the consumer has added env vars to the `Install Dependencies` step (e.g. `NODE_AUTH_TOKEN`), those additions will be INSIDE the marker block and will trigger `tier2-text-drift` on every `bkit check`. This is the scenario the `app-gether-life` precedent makes concrete but which the plan defers to post-v2.0.0 as "if finer granularity is needed in a future minor version."
 2. Task 23a's fixture should include a consumer `Install Dependencies` step with customised env to demonstrate that `bkit upgrade` correctly handles the case — but the plan only says "consumer's surrounding job structure preserved byte-identical" without specifying whether the test fixture's marker block IS the template's content exactly, or whether it has consumer modifications inside the marker block.
 
@@ -123,4 +128,3 @@ The runbook splittability note is informational only (if `plan-complexity-check.
 ### X-3: Consumer-repo migration automation for `app-gether-life` and `visitfrasercoast-com`
 
 The plan correctly scopes this as out-of-scope: consumers run `pnpm bkit upgrade` themselves post-v2.0.0 release. No action required within this plan.
-

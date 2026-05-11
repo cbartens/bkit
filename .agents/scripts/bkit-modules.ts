@@ -809,6 +809,19 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   --- end bkit reference slop-scan.config.json ---
 `;
 
+const LINTSTAGED_MERGE_INSTRUCTIONS = `[bkit] .lintstagedrc.json exists — bkit will not overwrite. The bkit pre-commit hook calls \`pnpm lint-staged\`; ensure your config formats markdown/code on staged files (e.g. \`"*": "prettier --write --ignore-unknown"\`).
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .lintstagedrc.json. Compare against the bkit reference below.
+  Keep your existing project-specific entries; ensure that staged
+  files matching the bkit canonical paths get formatted on commit.
+
+  --- begin bkit reference .lintstagedrc.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .lintstagedrc.json ---
+`;
+
 const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -1029,6 +1042,30 @@ export function runLintModule(ctx: ModuleContext): void {
     }
   }
 
+  // .lintstagedrc.json — Tier 3 (seed-or-print). Pairs with the lint-staged
+  // call in the bkit-managed pre-commit hook block; without the config file
+  // lint-staged errors out at commit time.
+  const lintstagedSrc = path.join(templatesBase, ".lintstagedrc.json");
+  if (fs.existsSync(lintstagedSrc)) {
+    const lintstagedDst = ".lintstagedrc.json";
+    const prevLen = ws.writes.length;
+    const lintstagedRes = writeTier3(
+      lintstagedSrc,
+      lintstagedDst,
+      dryRun,
+      advisories,
+      ws,
+      LINTSTAGED_MERGE_INSTRUCTIONS,
+    );
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}lint: ${lintstagedDst}`);
+    } else if (lintstagedRes.suggested) {
+      console.log(
+        `${logPrefix} ${tag}lint: ${lintstagedDst} (exists; AI merge instructions printed)`,
+      );
+    }
+  }
+
   // .prettierignore — Tier 2 hash-comment
   const prettierSrc = path.join(templatesBase, ".prettierignore");
   if (fs.existsSync(prettierSrc)) {
@@ -1085,6 +1122,7 @@ export function runLintModule(ctx: ModuleContext): void {
     {
       prettier: "^3.5.3",
       "slop-scan": "^0.3.0",
+      "lint-staged": "^15.2.10",
     },
     dryRun,
     ws,

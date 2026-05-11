@@ -31,6 +31,7 @@ The router is explicitly designed as a leaf orchestrator with no Worktree Setup 
 
 **O1 — Edge case rows in Acceptance Scenario table have no matrix coverage**
 Five edge cases documented in the table have no Derived Test Matrix rows and no C-tasks:
+
 - `cancelled` CI conclusion → no-op exit (mentioned in orchestrator Step 5 skeleton only)
 - `status.json` missing or malformed → failure exit
 - PR closed (ship merged before router fires) → no-op

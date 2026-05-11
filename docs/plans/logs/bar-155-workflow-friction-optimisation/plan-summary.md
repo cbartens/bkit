@@ -7,6 +7,7 @@ Verdict: CONCERNS
 ## Overview
 
 BAR-155 is a bkit-repo-internal tooling maintenance plan addressing recurring workflow friction across six distinct failure modes discovered 2026-05-06 → 2026-05-08:
+
 1. Freeform review agents budget-exhaust → silent `Verdict: PENDING` logs (BAR-141, BAR-93, BAR-132)
 2. `bkit-plan-generate` stream-times-out on 32KB multi-issue input with no artifact
 3. Single-reviewer `bkit-build-challenge` has same-model blind spots (inconsistent with parallel-pair reviewers)
@@ -25,6 +26,7 @@ Plan-v3-checked has `Verdict: CONCERNS` at file header. Status.json shows `apply
 **Dependencies:** Explicit — BAR-137 parent fix (stub-first pattern) shipped 2026-05-05. No new dependencies on packages/APIs.
 
 **Gates:** Three explicit gates present:
+
 - Gate 1: Acceptance Scenario + Breaking Changes (both human-confirmed `[x]`)
 - Gate 2: Code Implementation Check (15 runbook tasks)
 - Gate 3: Testing & Documentation (verbatim `Grep` checks, manual workflow trace)
@@ -92,15 +94,16 @@ Plan-v3-checked has `Verdict: CONCERNS` at file header. Status.json shows `apply
 
 ## Action Items
 
-This plan carries `Verdict: CONCERNS` per prior scope-check-2 step in status.json. The note in the plan header states "Plan-v3-checked has `Verdict: CONCERNS` at file header." Re-reading the plan, uncovered reason: **no explicit revision items listed in the prior scope-check-2 or apply-review artifacts** are visible in this review session. 
+This plan carries `Verdict: CONCERNS` per prior scope-check-2 step in status.json. The note in the plan header states "Plan-v3-checked has `Verdict: CONCERNS` at file header." Re-reading the plan, uncovered reason: **no explicit revision items listed in the prior scope-check-2 or apply-review artifacts** are visible in this review session.
 
 The plan itself is **well-formed, comprehensive, and ready for execution**, with one caveat: **Gate 1 pre-flight checklist is unchecked** (the two human-confirmation checkboxes in Acceptance Scenario and Breaking Changes are `[x]`, but the Gate 1 final checkbox `[ ] Gate 1 - Verified: All Core items checked` is NOT). This is expected pre-review state per protocol.
 
-**No revisions required** based on completeness, scope, or acceptance-scenario adherence. The CONCERNS verdict appears to be from a prior planning phase (apply-scope step) and has not been updated. 
+**No revisions required** based on completeness, scope, or acceptance-scenario adherence. The CONCERNS verdict appears to be from a prior planning phase (apply-scope step) and has not been updated.
 
 **To proceed to execution:** Check Gate 1 final checkbox (`Gate 1 - Verified`) and begin Task 1 of Agent Execution Runbook (Phase A, Task 1: read echo >> verbatim source).
 
 File paths for reference:
+
 - Plan file: `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation/docs/plans/logs/bar-155-workflow-friction-optimisation/plan-v3-checked.md`
 - Status file: `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation/docs/plans/logs/bar-155-workflow-friction-optimisation/status.json`
 - Plan input: `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-155-workflow-friction-optimisation/docs/plans/logs/bar-155-workflow-friction-optimisation/plan-input.md`

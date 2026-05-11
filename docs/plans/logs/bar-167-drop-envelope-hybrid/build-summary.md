@@ -23,6 +23,7 @@ All 787 tests passed in final run (2 skipped, 1 todo). Challenge remediation cyc
 ## Challenge
 
 Build challenge identified 6 MAJOR findings:
+
 - MAJOR-1 (CRITICAL): writeTier2JsonContained malformed-JSON data-loss — fixed by throwing on malformed dst JSON; updated symmetric catches in bkit-modules.ts
 - MAJOR-2 (CRITICAL): slop-scan.config.json manifest format (`"json"`) did not match install (byte-equal-text semantics) — fixed by changing manifest entry to `format: "byte-equal-text"`
 - MAJOR-3 (CRITICAL): ci.yml manifest format (`"markered-text"`) did not match install (Tier-3 whole-file seed) — fixed by reclassifying to `byte-equal-text`
@@ -39,9 +40,10 @@ No additional tests beyond plan-mandated ones. Challenge phase verified existing
 ## Risks
 
 10 MINOR findings accepted as deferred follow-up work (distinct from MINORs already resolved in this cycle):
+
 - MINOR-1: deepContains array uses set-subset, docstring imprecise — fix on next cycle
 - MINOR-2: stripTier2JsonScope leaf equality sensitive to JSON key order — fix on next cycle
-- MINOR-3: _detectSchemaFlip shallow-only, misclassifies deeper flips — fix on next cycle
+- MINOR-3: \_detectSchemaFlip shallow-only, misclassifies deeper flips — fix on next cycle
 - MINOR-4: detectPreEnvelopeBkitVersion hard-coded file list, fragile forward-compat — fix on next cycle
 - MINOR-5: lint-no-tier-terms SCAN_DIRS only docs/, leaks possible — fix on next cycle
 - MINOR-7: detectTier2JsonDrift call site lacks named-arg comments, latent refactor risk — fix on next cycle
@@ -57,5 +59,6 @@ None of these MINORs block shipment. All are observability/maintenance/forward-c
 No blockers. All MAJOR findings (6) fixed. All tests green (787 passed). Build ready for PR to dev branch.
 
 FOLLOW-UP ONLY (not blocking this ship):
+
 - Activate MINOR-9 describe.skip blocks when next cycle reviews Task 19 reclassification
 - Address MINOR-1 through MINOR-8, MINOR-10, MINOR-11 in post-ship maintenance cycle

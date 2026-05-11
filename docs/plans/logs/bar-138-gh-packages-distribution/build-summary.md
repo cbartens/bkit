@@ -80,6 +80,7 @@ Tests validate all remediations; no bugs caught in generated tests themselves. A
 None blocking v0.4.0 ship. All plan work and challenge remediation complete.
 
 **Outstanding human-gated items (expected, not failures):**
+
 - C4: Registry install smoke test with real `GH_BKIT_TOKEN` against pre.2 from scratch consumer (user performs manually)
 - C5 gate: Canonical smoke transcript (gated on registry availability)
 - D2–D5: Squash-merge feat/bar-138 → dev, promote dev → main, tag v0.4.0 on main, flip BAR-131 Linear issue to Done (user performs)

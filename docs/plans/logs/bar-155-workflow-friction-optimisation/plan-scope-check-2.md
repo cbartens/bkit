@@ -56,4 +56,3 @@ Architecture § `[MODIFY]` `.agents/prompts.md` sets reconciler `maxTurns: 30` a
 **S-3. `bkit-design-review-*` and `bkit-plan-review-*` model diversity retrofit** — correctly noted as already verified (Opus/high vs Sonnet/medium) and excluded from this plan's scope.
 
 **S-4. Automated test harness for prompts/workflows** — no automated test surface exists for `.agents/` markdown files. Manual workflow trace + `Grep` is the established convention. No new test infrastructure is in scope here.
-

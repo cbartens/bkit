@@ -16,9 +16,7 @@
         "status": "DONE",
         "at": "2026-05-09T11:55:30Z",
         "commitSha": "c433879306fa898f7ad11d48e0b6bdf7fc2cdde8",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -26,9 +24,7 @@
         "attempt": 1,
         "at": "2026-05-09T12:03:25Z",
         "commitSha": "265694d537618ca154418d7f7f0918579c50c118",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -50,9 +46,7 @@
         "attempt": 1,
         "at": "2026-05-09T12:16:04Z",
         "commitSha": "10b41794e78782d82901da5de4f25126a9f224fa",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -74,9 +68,7 @@
         "attempt": 1,
         "at": "2026-05-09T12:27:15Z",
         "commitSha": "467bb6024fd044bbb8c975e7149e931c3e763d4b",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -85,9 +77,7 @@
         "attempt": 1,
         "at": "2026-05-09T12:29:15Z",
         "commitSha": "7194745815424b1d6c9ad88a50d64c2b3e77e484",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"]
       },
       {
         "step": "summary",
@@ -96,9 +86,7 @@
         "attempt": 1,
         "at": "2026-05-09T12:32:07Z",
         "commitSha": "3c8d1abeb6a054da6b267ac9467005a14be4c55a",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -126,9 +114,7 @@
         "status": "DONE",
         "at": "2026-05-09T13:08:41Z",
         "commitSha": "1efbf5e6e9476f7ff7cf21db1bd20c92bd29faf6",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-input.md"]
       },
       {
         "step": "generate-plan",
@@ -136,9 +122,7 @@
         "attempt": 1,
         "at": "2026-05-09T13:21:02Z",
         "commitSha": "8685c2b573e5d0756f9fe10fbea1d5884770f13b",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v1-draft.md"]
       },
       {
         "step": "review-plan",
@@ -160,9 +144,7 @@
         "attempt": 1,
         "at": "2026-05-09T13:33:50Z",
         "commitSha": "88fbe3784d9e34444a8ae7ce488fdd005240de9f",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v2-reviewed.md"]
       },
       {
         "step": "scope-check",
@@ -184,9 +166,7 @@
         "attempt": 1,
         "at": "2026-05-09T13:51:02Z",
         "commitSha": "647d2fd349db2425840d87dafd25bd7d283871cb",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-v3-checked.md"]
       },
       {
         "step": "complexity-check",
@@ -195,9 +175,7 @@
         "attempt": 1,
         "at": "2026-05-09T13:53:23Z",
         "commitSha": "dc53cb46eaccfdc26fb6788fa3d972e35ecc55a4",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-complexity-check.md"]
       },
       {
         "step": "complexity-split",
@@ -220,9 +198,7 @@
         "attempt": 1,
         "at": "2026-05-09T14:09:59Z",
         "commitSha": "74d1f2281586412633254cc52843c60194d19c49",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/plan-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -250,9 +226,7 @@
         "status": "DONE",
         "at": "2026-05-11T04:41:10Z",
         "commitSha": "015f2f0f8cdd0026f676dc84d3a188a1b3ec5237",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -267,9 +241,7 @@
         "attempt": 1,
         "at": "2026-05-11T04:43:57Z",
         "commitSha": "2fb865f698b6aa1b3e9adae49e5d2c724b03ea62",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -279,9 +251,7 @@
         "subPlan": 1,
         "at": "2026-05-11T05:08:25Z",
         "commitSha": "bd90b5669fec41495cea688eeec8857f1bea1310",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-1-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-1-log.md"]
       },
       {
         "step": "plan-verify",
@@ -292,9 +262,7 @@
         "failures": 12,
         "at": "2026-05-11T05:13:52Z",
         "commitSha": "786489dc584207eab14323539367d4379e5ca31d",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-1.md"]
       },
       {
         "step": "plan-gaps-remediate",
@@ -318,9 +286,7 @@
         "failures": 0,
         "at": "2026-05-11T05:26:45Z",
         "commitSha": "6a04e9a05e5a25017c57b7986f8daac277dba49e",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-2.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-2.md"]
       },
       {
         "step": "plan-execute",
@@ -330,9 +296,7 @@
         "subPlan": 2,
         "at": "2026-05-11T05:44:11Z",
         "commitSha": "eeb8c9bce58f4549f2c799035efb4b2b190e073f",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-2-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-2-log.md"]
       },
       {
         "step": "plan-verify",
@@ -343,9 +307,7 @@
         "failures": 7,
         "at": "2026-05-11T05:48:15Z",
         "commitSha": "12e6160a716e11a8418502eed1a8b96222ca7ba3",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-1.md"]
       },
       {
         "step": "plan-gaps-remediate",
@@ -369,9 +331,7 @@
         "failures": 0,
         "at": "2026-05-11T06:02:47Z",
         "commitSha": "7dfc1e4b5155852e627ab6d66f94a89aa6c43582",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-2.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-2.md"]
       },
       {
         "step": "plan-execute",
@@ -381,9 +341,7 @@
         "subPlan": 3,
         "at": "2026-05-11T06:14:13Z",
         "commitSha": "98713caa614f73c73f15531ddc3818dddc65190c",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-3-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-3-log.md"]
       },
       {
         "step": "plan-verify",
@@ -394,9 +352,7 @@
         "failures": 0,
         "at": "2026-05-11T06:18:47Z",
         "commitSha": "162c3923210eb0abb29dc0b045751bca74a798ad",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-3-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-3-1.md"]
       },
       {
         "step": "plan-verify-holistic",
@@ -405,9 +361,7 @@
         "failures": 0,
         "at": "2026-05-11T06:22:19Z",
         "commitSha": "ca33d6c0ee0b69596866d6f0ac53f218180c6859",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-holistic.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-holistic.md"]
       },
       {
         "step": "build-challenge",
@@ -428,9 +382,7 @@
         "failures": 6,
         "at": "2026-05-11T06:35:23Z",
         "commitSha": "cece0d37c4862d23c9bf374dcb2aee6c9e4b6819",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-reconcile.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-reconcile.md"]
       },
       {
         "step": "build-challenge-remediate",
@@ -457,17 +409,13 @@
         "verdict": "SHIP",
         "at": "2026-05-11T06:42:14Z",
         "commitSha": "76fee502006707868a7f7706d93b787f9b248e47",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-11T06:45:52Z",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/20"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/20"]
       }
     ]
   },
@@ -488,9 +436,7 @@
         "status": "DONE",
         "at": "2026-05-11T10:00:48Z",
         "commitSha": "70d50caa0ac69591490c7203869d522ecf3219af",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/ship-input.md"]
       },
       {
         "step": "conflict-resolve",
@@ -498,9 +444,7 @@
         "verdict": "PASS",
         "at": "2026-05-11T10:09:21Z",
         "commitSha": "1581a00abdfb1a273a778402d316dc5af4edf896",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-conflict-resolve.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/ship-conflict-resolve.md"]
       },
       {
         "step": "switch-to-dev",
@@ -516,9 +460,7 @@
         "attempt": 1,
         "at": "2026-05-11T10:15:17Z",
         "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-update-docs.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/ship-update-docs.md"]
       },
       {
         "step": "summary",
@@ -527,9 +469,7 @@
         "attempt": 1,
         "at": "2026-05-11T10:15:17Z",
         "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
-        "artifacts": [
-          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-167-drop-envelope-hybrid/ship-summary.md"]
       },
       {
         "step": "archive-docs",

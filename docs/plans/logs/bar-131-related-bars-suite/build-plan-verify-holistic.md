@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: CONCERNS
 Failures: 1
+
 <!-- verdict:end -->
 
 # Plan Verification
@@ -18,6 +20,7 @@ Holistic — master plan + all 4 sub-plans (`bar-131-related-bars-suite-plan.md`
 ## Sub-Plans Verified
 
 4 of 4 sub-plans (1, 2, 3, 4). Matches the count of `docs/plans/active/bar-131-related-bars-suite-plan-{1,2,3,4}.md` files. Each sub-plan's runbook tasks (P0/P1/P2/P3/P4) are already ticked `[x]` per single-scope verifier conclusions:
+
 - sub-plan-1 (`verify-1-1.md`): PASS (P0.T0, P0.T1, P1.T0–T8 all verified).
 - sub-plan-2 (`verify-2-2.md`): PASS after remediation of `verify-2-1.md` CONCERNS (`.bkitignore` wiring + `--auto-revert` integration test); see `gaps-remediate-2-1-log.md`.
 - sub-plan-3 (`verify-3-1.md`): PASS (all 13 P3 tasks T0–T10 verified).
@@ -44,12 +47,14 @@ Holistic — master plan + all 4 sub-plans (`bar-131-related-bars-suite-plan.md`
 Methodology: targeted `grep` and bounded `Read` per Large Diff Guard. Did NOT run `pnpm test` or `pnpm turbo test` (no `turbo.json` in worktree root for this scope; verifier MUST NOT build/install per protocol). Existence-based and integration-boundary verification only. Master plan checkbox state preserved (master `bar-131-related-bars-suite-plan.md` is an index page with Verdict: PASS at line 1 — no per-task checkboxes to flip; sub-plan checkboxes were ticked by their respective single-scope verifiers).
 
 The single integration gap (sub-plan-4 staging not wired into `bkit-modules.ts`) is addressable by gap-remediate. The architectural foundation (exported primitives, unit tests, API-level integration test) is intact; what's missing is the actual call-site change in `bkit-modules.ts` to route writes through `getStagingDir`/`commitStaging` and a real subprocess SIGTERM integration test. Verdict CONCERNS rather than FAIL because:
+
 - master plan-level breaking-changes review is PASS;
 - all 46 phase tasks are checkboxed `[x]` per single-scope verifiers;
 - no architectural blocker — staging is exported and unit-tested;
 - gap is bounded to a single file (`bkit-modules.ts`) plus one new subprocess integration test.
 
 Files of interest (absolute paths):
+
 - /Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-install.ts (lines 39-103, 746-973)
 - /Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-modules.ts (lines 15-16, 425-518)
 - /Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-version.ts (lines 46-228)

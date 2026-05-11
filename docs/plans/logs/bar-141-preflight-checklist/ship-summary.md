@@ -7,6 +7,7 @@
 **Lines changed:** 6,460 additions, 763 deletions across 38 files
 
 **Key changes:**
+
 - Replaced bkit's ad-hoc `printSink: string[]` advisory pattern with structured three-phase install architecture
 - Phase 1 (Preflight): Read-only blocker detection before any writes; exits 1 if critical issues found (`no-package-json`, `malformed-package-json`, `not-git-repo`)
 - Phase 2 (Install): Current module dispatch with writes (unchanged)
@@ -24,6 +25,7 @@
 **Green, no retries.** PR #5 merged at 2026-05-06T10:43:17Z with single squash commit.
 
 Build phase completed with PASS verdict:
+
 - All 371 tests pass (13 test files + 21 additional challenge tests)
 - 0 test failures
 - TypeScript type check, linting, formatting all pass
@@ -31,6 +33,7 @@ Build phase completed with PASS verdict:
 - Integration tests verify blocker exit path, advisory checklist output, and dry-run Phase 1 parity (`bkit check`)
 
 Code implementation verified against plan Derived Test Matrix:
+
 - Phase A–G runbook tasks (A1–G4): all 28 tasks completed and independently verified
 - Intra-phase deduplication by id (both preflight and postinstall)
 - Cross-phase deduplication with Phase 3 winning on conflicts
@@ -42,6 +45,7 @@ Code implementation verified against plan Derived Test Matrix:
 None. Feature shipped clean with no retries.
 
 All PR acceptance criteria met:
+
 - Phase 1 blockers exit 1 before any writes (prevents half-installed state)
 - Structured findings with stable `id` strings ready for downstream tooling consumption
 - Four-surface `GH_BKIT_TOKEN` sweep implemented (shell, .npmrc, GitHub secret, Vercel env)

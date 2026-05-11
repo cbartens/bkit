@@ -13,14 +13,14 @@ STANDARD — apply diagnose edits as written, add recommended regression guards.
 
 ## Changes Applied
 
-| Edit | File | Action |
-| --- | --- | --- |
-| 1 (pre-existing) | `.github/workflows/ci.yml` | Dropped `with: version: 10` block; added two-line KN-3 comment |
-| 2 (pre-existing) | `.agents/templates/.github/workflows/ci.yml` | Dropped `with: version: {{PNPM_VERSION}}` block; added two-line KN-3 comment |
-| 3 (pre-existing) | `.agents/scripts/bkit-tokens.ts` | Added three-line `NOTE:` comment above `resolvePnpmVersion` |
-| 4 (pre-existing) | `docs/knowledge.md` | Appended `KN-3` entry before `<!-- bkit:end -->` |
-| 5 (this pass) | `docs/pending.md` | Appended `v0.2: Retire {{PNPM_VERSION}} token` entry before `<!-- bkit:end -->` |
-| 6 (this pass) | `.agents/scripts/bkit-modules.integration.test.ts` | Added two KN-3 regression guards (template ci.yml + bkit ci.yml must not set `with.version:` for pnpm action); updated pre-existing `toContain("10")` pnpm-version assertion broken by Edit 2 |
+| Edit             | File                                               | Action                                                                                                                                                                                        |
+| ---------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1 (pre-existing) | `.github/workflows/ci.yml`                         | Dropped `with: version: 10` block; added two-line KN-3 comment                                                                                                                                |
+| 2 (pre-existing) | `.agents/templates/.github/workflows/ci.yml`       | Dropped `with: version: {{PNPM_VERSION}}` block; added two-line KN-3 comment                                                                                                                  |
+| 3 (pre-existing) | `.agents/scripts/bkit-tokens.ts`                   | Added three-line `NOTE:` comment above `resolvePnpmVersion`                                                                                                                                   |
+| 4 (pre-existing) | `docs/knowledge.md`                                | Appended `KN-3` entry before `<!-- bkit:end -->`                                                                                                                                              |
+| 5 (this pass)    | `docs/pending.md`                                  | Appended `v0.2: Retire {{PNPM_VERSION}} token` entry before `<!-- bkit:end -->`                                                                                                               |
+| 6 (this pass)    | `.agents/scripts/bkit-modules.integration.test.ts` | Added two KN-3 regression guards (template ci.yml + bkit ci.yml must not set `with.version:` for pnpm action); updated pre-existing `toContain("10")` pnpm-version assertion broken by Edit 2 |
 
 ## Deviations from Diagnose
 

@@ -1,5 +1,7 @@
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Build Challenge Testing
@@ -20,10 +22,10 @@ File: `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-su
 
 Added describe block: **"C1 end-to-end regression: runClaudeModule triggers migration with JSON-format .bkit-version"** (2 new `it` blocks, appended to the end of the file).
 
-| Test | What it covers |
-| --- | --- |
-| `runClaudeModule migrates Tier-1 .claude/settings.json when .bkit-version is JSON format` | Seeds JSON-format `.bkit-version` with `pinnedVersion: "0.5.0"` + Tier-1 `settings.json` with consumer Stop hook. Calls `runClaudeModule`. Asserts `__bkit__` envelope appears and consumer Stop hook survives. Would fail if the C1 raw `.trim()` regression were reintroduced. |
-| `runClaudeModule does NOT skip migration when .bkit-version pinnedVersion is extracted (not raw JSON blob)` | Same pattern with `pinnedVersion: "0.7.0"` (also a JSON-format `.bkit-version`). Verifies migration runs and consumer `customKey` survives. Confirms the fix works across different v0.7.x JSON payloads. |
+| Test                                                                                                        | What it covers                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runClaudeModule migrates Tier-1 .claude/settings.json when .bkit-version is JSON format`                   | Seeds JSON-format `.bkit-version` with `pinnedVersion: "0.5.0"` + Tier-1 `settings.json` with consumer Stop hook. Calls `runClaudeModule`. Asserts `__bkit__` envelope appears and consumer Stop hook survives. Would fail if the C1 raw `.trim()` regression were reintroduced. |
+| `runClaudeModule does NOT skip migration when .bkit-version pinnedVersion is extracted (not raw JSON blob)` | Same pattern with `pinnedVersion: "0.7.0"` (also a JSON-format `.bkit-version`). Verifies migration runs and consumer `customKey` survives. Confirms the fix works across different v0.7.x JSON payloads.                                                                        |
 
 ## Test Run Results
 

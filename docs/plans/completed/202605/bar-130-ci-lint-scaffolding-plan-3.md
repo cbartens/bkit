@@ -317,7 +317,7 @@ parseArgs(argv)
 
 - [x] **Task 4.3 — Wire `bkit-install.ts` `main()` to module dispatcher + remove greenfield guard (Reviewer 2 C5):** Refactor `main()` — call `parseArgs` from `bkit-cli.ts`, resolve tokens, dispatch through `MODULE_REGISTRY` per parsed module set, emit print-sink at end. Preserve existing log prefix conventions (`[bkit-install]` / `[bkit-check]`).
   - **Sub-step (Reviewer 2 C5):** Remove (or relax) the existing pre-dispatch guard `if (verb !== "init" && !fs.existsSync(".agents/prompts.md"))` at `bkit-install.ts` lines ~650–653. Rationale: with the new module surface, `bkit install --ci` (and any other module) on a greenfield repo MUST work — `--core` is implicitly prepended and `runCoreModule` will create `.agents/` including `prompts.md`. Replacement behaviour:
-    - **Preferred:** Delete the guard entirely. `runCoreModule` is responsible for ensuring `.agents/prompts.md` exists (via additive payload copy from `PKG_AGENTS`). Any module that depends on `prompts.md` runs *after* `runCoreModule`.
+    - **Preferred:** Delete the guard entirely. `runCoreModule` is responsible for ensuring `.agents/prompts.md` exists (via additive payload copy from `PKG_AGENTS`). Any module that depends on `prompts.md` runs _after_ `runCoreModule`.
     - **Fallback (if deletion proves risky):** Move the guard inside any module function that actually reads `prompts.md` (e.g., agent host modules), so installing `--ci` alone on a clean repo does not get rejected.
   - **Sub-step (Reviewer 1 #7):** In `runCoreModule` ordering, ensure `.bkit-version` write is sequenced **AFTER** all other core writes (additive `.agents/` payload copy, `rules.md` Tier 2 block update, `.gitignore` Tier 2 block update). Rationale: a mid-install crash between Tier 1 and Tier 2 leaves `.bkit-version` unwritten, so `bkit install` re-run is correctly detected as upgrade-needed (per Edge Case row).
   - **Sub-step (Auditor 2 CRITICAL C5 — `printUsage` DELETE verification):** After `printUsage()` is extracted into `bkit-cli.ts` (Task 3.2) and `main()` in `bkit-install.ts` is refactored to route help through `bkit-cli.ts`, run `grep -n 'printUsage' .agents/scripts/bkit-install.ts`. MUST return zero hits — the old definition + any local references in `bkit-install.ts` must be gone (callers now route through `bkit-cli.ts`'s exported `printUsage`). If `bkit-install.ts` needs to invoke usage-printing it must `import { printUsage } from "./bkit-cli"` — confirmed via `grep -n 'from "./bkit-cli"' .agents/scripts/bkit-install.ts` returning ≥ 1 hit.
@@ -375,9 +375,11 @@ parseArgs(argv)
   - **Verification:** `jq -r .version package.json` outputs `0.1.2`.
 
 - [x] **Task 10.2 — Run full pre-PR gate (Reviewer 1 #5):** bkit is a single-package repo with NO `turbo.json` and NO `turbo` devDep — the `pnpm turbo …` invocation does not apply. Run the direct-pnpm sequential equivalent:
+
   ```
   pnpm lint:prose && pnpm lint:slop && pnpm typecheck && pnpm format:check && pnpm test
   ```
+
   Per `.agents/rules.md` § Testing & Debugging: lint + typecheck + format:check + unit only. (No top-level `pnpm lint` aggregate script is added by this plan; the two lint scripts run sequentially.)
   - **Note (Reviewer 1 boundary check):** bkit's `*.integration.test.ts` files are filesystem-only (real `os.tmpdir()` + `process.chdir`); no DB, no live API. They are fast and safe to run pre-PR alongside unit tests via `pnpm test` (Vitest single-suite). Project rule "Integration and E2E: post-PR" is honored in spirit — bkit's integration tier is filesystem-fast and does not need post-PR gating.
   - **Verification:** All five steps green; `pnpm test` runs both `*.test.ts` and `*.integration.test.ts` in one Vitest invocation.

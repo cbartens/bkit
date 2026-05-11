@@ -7,13 +7,14 @@ Verdict: PASS
 **Parent Plan:** [bar-167-drop-envelope-hybrid-plan.md](./bar-167-drop-envelope-hybrid-plan.md)
 **Master record (historical):** [plan-v3-checked.md](./plan-v3-checked.md)
 **Hard prerequisites:**
+
 - Sub-plan A ([bar-167-drop-envelope-hybrid-plan-1.md](./bar-167-drop-envelope-hybrid-plan-1.md)) MUST be merged. Specifically:
   - **Task 1** of sub-plan A (`deepContains` defined) — required by Task 21 of this sub-plan (`tier2-text-drift` advisory dispatch).
   - **Task 4b** of sub-plan A (`stripTier2JsonScope` defined) — required by Task 20 of this sub-plan (`format: "json"` uninstall branch).
   - **Task 6** of sub-plan A (preflight allow-list extended) — required by Task 21 (drift detection chain via `bkit-preflight.ts`).
   - Task-0d / Task-0e fixtures from sub-plan A — required by Tasks 23a / 23b of this sub-plan.
-**Hard downstream consumers:** sub-plan C ([bar-167-drop-envelope-hybrid-plan-3.md](./bar-167-drop-envelope-hybrid-plan-3.md)) hard-deps on Task 19 of this sub-plan (manifest `format` field on `ManifestEntry`).
-**Ship target:** `bkit v2.0.0-beta` (or second incremental landing of three-step `2.0.0` if the index chooses single-tag mode).
+    **Hard downstream consumers:** sub-plan C ([bar-167-drop-envelope-hybrid-plan-3.md](./bar-167-drop-envelope-hybrid-plan-3.md)) hard-deps on Task 19 of this sub-plan (manifest `format` field on `ManifestEntry`).
+    **Ship target:** `bkit v2.0.0-beta` (or second incremental landing of three-step `2.0.0` if the index chooses single-tag mode).
 
 > [!CAUTION]
 > **CRITICAL:** Do not hallucinate plan execution state.
@@ -177,6 +178,7 @@ None.
 **Anchor convention:** `bkit:start` immediately AFTER any pre-existing top-of-file frontmatter / shebang / license header (else line 1 col 0); `bkit:end` immediately BEFORE EOF on a new line. Markers at column 0. **Verification per file:** `grep -c '^<!-- bkit:start -->' <file>` returns `1` for `.md`/`.mdc`; `grep -c '^# bkit:start' <file>` returns `1` for `.yml`. Same for matching `bkit:end`. Byte content BETWEEN markers must equal the pre-Task-17 file content byte-for-byte.
 
 **Group A files (12):**
+
 - `.agents/templates/AGENTS.md` — wrap entire bkit-owned content; line 1 → EOF.
 - `.agents/templates/CLAUDE.md` — wrap entire bkit-owned content.
 - `.agents/templates/.cursor/rules/00-shared-rules.mdc` — wrap entire bkit-owned content.
@@ -201,22 +203,23 @@ None.
   - **Open-block intent:** marker block opens at `Install Dependencies` and closes at `Run Bkit Check` — meaning the consumer steps `Run Typecheck`, `Run Vitest Tests`, `Run Prettier Format Check`, `Run Vale Prose Lint`, `Run Slop Scan` (lines 33–46) end up INSIDE the marker block. **This is acceptable** — those steps are part of bkit's "run all checks" CI contract; if a consumer customises them they trigger `tier2-text-drift`. v2.0.0 ships with one block covering `Install Dependencies` through `Run Bkit Check` inclusive.
   - `# bkit:end` immediately below `- name: Run Bkit Check` step's `run:` line (currently line 49).
 - **Exact YAML to insert:**
+
   ```yaml
-        # bkit:start
-        - name: Install Dependencies
-          # ... (existing body)
-          run: pnpm install --frozen-lockfile
-          env:
-            GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+  # bkit:start
+  - name: Install Dependencies
+    # ... (existing body)
+    run: pnpm install --frozen-lockfile
+    env:
+      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
 
-        - name: Run Typecheck
-          # ... (existing body)
+  - name: Run Typecheck
+    # ... (existing body)
 
-        # ... (existing Vitest, Prettier, Vale, Slop steps)
+  # ... (existing Vitest, Prettier, Vale, Slop steps)
 
-        - name: Run Bkit Check
-          run: pnpm bkit check
-        # bkit:end
+  - name: Run Bkit Check
+    run: pnpm bkit check
+  # bkit:end
   ```
 
 #### [MODIFY] `.agents/templates/.vale.ini`
@@ -317,10 +320,10 @@ None.
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| Code | `git revert {MERGE_COMMIT}` | Restores Tier integers + Phase 2 marker absence. Markered consumer files keep marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
-| Risk window | One `bkit upgrade` cycle | Brief schema-pollution + redundant-marker window. |
+| Axis        | Action                      | Notes                                                                                                                                                                |
+| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code        | `git revert {MERGE_COMMIT}` | Restores Tier integers + Phase 2 marker absence. Markered consumer files keep marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
+| Risk window | One `bkit upgrade` cycle    | Brief schema-pollution + redundant-marker window.                                                                                                                    |
 
 ## Agent Execution Runbook (sub-plan B — Phase 2)
 
@@ -402,16 +405,17 @@ None.
 
 ## Open-Question Disposition (sub-plan B scope)
 
-| Question | Disposition | Where tracked |
-| --- | --- | --- |
-| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE** (Task 23a uses sub-plan A Task 0e fixture) | Runbook |
-| Pre-push duplicate-work in `app-gether-life` | **RESOLVED** by Task 18a per Plan-Phase Decision 4 | Runbook |
+| Question                                             | Disposition                                             | Where tracked |
+| ---------------------------------------------------- | ------------------------------------------------------- | ------------- |
+| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE** (Task 23a uses sub-plan A Task 0e fixture) | Runbook       |
+| Pre-push duplicate-work in `app-gether-life`         | **RESOLVED** by Task 18a per Plan-Phase Decision 4      | Runbook       |
 
 ---
 
 ## Reviewer notes
 
 > Inherited CONCERNS verdict from `plan-v3-checked.md`. Reviewers — focus on:
+>
 > - Phase 2 manifest-dispatch refactor correctness (no regression of Phase 1 JSON behaviour).
 > - Phase 2 marker scope correctness for partial-ownership files (`.github/workflows/ci.yml`, `.vale.ini`).
 > - Sub-gate 2A correctness (PREREQ tests blocked until Task 19 lands).

@@ -1,6 +1,8 @@
 <!-- verdict:start -->
+
 Verdict: CONCERNS
 Failures: 2
+
 <!-- verdict:end -->
 
 # Plan Verification
@@ -27,13 +29,14 @@ N/A (Single scope).
 
 ## Previously Attempted
 
-N/A (attempt 1; no prior verify-2-* logs, no prior gaps-remediate-2-* logs).
+N/A (attempt 1; no prior verify-2-_ logs, no prior gaps-remediate-2-_ logs).
 
 ## Notes
 
 Partial diff coverage (10663-line diff > 10k threshold; per-file budget mode used). Verified via direct file reads + targeted grep, not full diff inspection.
 
 Strong implementations confirmed:
+
 - `runUninstall` orchestrator + `WriteSet.deletes` (P2.T5) — `.agents/scripts/bkit-uninstall.ts` 700+ lines.
 - Per-module manifest `getInstallManifest` (P2.T1) — `.agents/scripts/bkit-manifest.ts`.
 - `stripManagedBlock` (P2.T2) + `stripManagedKeys` (P2.T4) wired through manifest.
@@ -48,6 +51,7 @@ Strong implementations confirmed:
 Both gaps are addressable by gap-remediate (wire `.bkitignore` into postinstall.ts/preflight.ts; add `--auto-revert` integration test). No blocking architectural failures. Verdict CONCERNS rather than FAIL because the deliverables exist as specified for parser/CLI but the integration-level wiring and one integration test are missing.
 
 Files of interest (absolute paths):
+
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-bkitignore.ts`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-postinstall.ts`
 - `/Users/christian/Documents/GitHub/bkit/.worktrees/bar-131-related-bars-suite/.agents/scripts/bkit-preflight.ts`

@@ -34,6 +34,7 @@ Plan-level coverage is thorough:
 **CONCERNS — Human-confirmation gates are UNCHECKED:**
 
 The Acceptance Scenario section (lines 34–148) is complete and well-formed:
+
 - **Narrative** (lines 56–60): Fallback provided because no design doc exists. Suggested wording from issue body for human approval.
 - **Success Criteria** (lines 62–72): Fallback provided. Suggested 5 measurable outcomes from issue (blocker exit, no-checklist on health, token advisory, deduplication, format compliance).
 - **Concrete Example** (lines 74–95): Setup → Steps → Outcome narrative is specific and testable (4-advisory run).
@@ -73,5 +74,6 @@ Per the contract in the plan itself (lines 150–151, 218–219), both Gate 1 ch
 **After Gate 1 confirmation, plan is build-ready.**
 
 Non-blocking observations:
+
 - Pre-Flight / Dependencies section (lines 278–304) shows all Core items unchecked but lists them correctly — Gate 1 instruction (line 300) directs the agent to verify and check `[x]` these without stopping for user permission. This is correctly scoped to the agent.
 - Gate 2–4 checkboxes (code implementation, testing/docs, automated verification) are similarly unchecked — these are agent execution gates, not human gates.
