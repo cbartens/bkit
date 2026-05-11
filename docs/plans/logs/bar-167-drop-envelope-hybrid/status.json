@@ -260,6 +260,16 @@
         "at": "2026-05-11T04:41:37Z",
         "commitSha": "6573de9139e4e600bb667221953df940aabb61cf",
         "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-11T04:43:57Z",
+        "commitSha": "2fb865f698b6aa1b3e9adae49e5d2c724b03ea62",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-install-skills.md"
+        ]
       }
     ]
   }
