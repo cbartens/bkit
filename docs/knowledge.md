@@ -253,6 +253,7 @@
 - **Symptom:** `bkit check` / `bkit uninstall` apply wrong strip/delete strategy for ci.yml, .vale.ini, slop-scan.config.json — all three call `writeTier3` (seed-or-print) but were classified `markered-text` or `json` in bkit-manifest.ts.
 - **Root cause:** Manifest format was set to reflect the intended future format (markered-text ownership) rather than the actual installed format (byte-equal-text / seed-or-print). Downstream dispatch in uninstall/check used manifest format, so it tried to strip a managed block that never existed.
 - **Fix:** Always set manifest `format` to match the _actual install function called_: `writeTier3` → `byte-equal-text`; `writeTier2`/`writeTier2JsonContained` → `markered-text`/`json`. When install strategy changes, update both the module code and the manifest entry atomically.
+- **Fix:** Always set manifest `format` to match the *actual install function called*: `writeTier3` → `byte-equal-text`; `writeTier2`/`writeTier2JsonContained` → `markered-text`/`json`. When install strategy changes, update both the module code and the manifest entry atomically.
 - **Type:** incident
 - **Confidence:** high
 - **Severity:** normal
@@ -269,3 +270,17 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-167, KN-8, `.agents/scripts/bkit-tiers.ts` (`writeTier2JsonContained`)
+
+## KN-20: Release workflow silently skipped after `chore(release)` tag push — re-tag at same SHA does NOT re-fire (2026-05-11)
+
+- **Category:** infra
+- **Symptom:** Pushing `v2.0.2` tag after merging `chore(release): 2.0.2 (#26)` into `main` produced zero workflow runs. CI on the `main` push event ALSO did not fire. Deleting the tag and re-pushing at the same SHA produced no run either. Previous releases (v2.0.0, v2.0.1) had succeeded via the same flow.
+- **Root cause:** Two stacked issues. (1) The squash commit body inherited `[skip ci]` / `[skip build]` tokens from historical dev commits (e.g. `chore(bar-167-...): close-workflow status [skip build] [skip ci]`). GitHub Actions parses ANY commit message in a push and skips workflow dispatch on `[skip ci]`. (2) For tag-push events, deleting and re-creating a tag at the SAME target commit does NOT generate a new push event — GitHub deduplicates. v2.0.0 succeeded with the same skip-ci tokens because the previous run did fire, then a NEW tag commit was created — different SHA → new push event.
+- **Fix or rule:** Two complementary defences:
+  1. **Strip `[skip ci]` / `[skip build]` tokens from squash-commit bodies before merging** into `main`. `gh pr merge --squash` lets you edit the commit message inline; remove any historical skip markers. Reviewer rule: "if the PR squashes dev-history commits with skip-ci, scrub the body before clicking merge."
+  2. **To re-fire a tag push, move the tag to a NEW commit** (cherry-pick or empty commit), then `git tag -f` + `git push --force origin v{N}`. Deleting and recreating at the same SHA is a no-op for the push trigger.
+- **Type:** post-mortem
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-186, feedback memory `skip-ci commits must not be HEAD when PR is created`, `.github/workflows/release.yml`, commit `05a3e6b chore(release): 2.0.2 (#26)`
