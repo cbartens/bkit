@@ -26,7 +26,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path; phase label persists.
+> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — phase label persists.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
@@ -79,6 +79,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 1. Acquire concurrency lock:
    ```bash
+   git fetch origin dev 2>/dev/null
+   AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
+   [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    mkdir -p "docs/plans/logs/{FID}"
    LOCK="docs/plans/logs/{FID}/.lock"
    if [ -f "$LOCK" ]; then
@@ -88,7 +91,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    printf '%s debug\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
-   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path**.
+   **If** divergence check or lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
@@ -98,8 +101,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. Extract `DEBUG_ATTEMPT` and `PRIOR_OBSERVE_MODE` from most recent `workflow == "debug"` entry:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
-   DEBUG_ATTEMPT=$(jq -r '[.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS")
-   PRIOR_OBSERVE_MODE=$(jq -r '[.[] | select(.workflow=="debug") | .steps[] | select(.step=="worktree-setup")] | last.observeMode // "off"' "$STATUS")
+   [ -f ".worktrees/{FID}/$STATUS" ] && STATUS=".worktrees/{FID}/$STATUS"
+   DEBUG_ATTEMPT=$(jq -r '[.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
+   PRIOR_OBSERVE_MODE=$(jq -r '[.[] | select(.workflow=="debug") | .steps[] | select(.step=="worktree-setup")] | last.observeMode // "off"' "$STATUS" 2>/dev/null || echo off)
    ```
 8. Set `OBSERVE_MODE`:
    - **If** `PRIOR_OBSERVE_MODE` = instrument → `OBSERVE_MODE` = analyse.
@@ -107,41 +111,26 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-11. Update status and commit:
-    ```bash
-    STATUS="docs/plans/logs/{FID}/status.json"
-    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
-    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "debug" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-      t=$(mktemp); jq '. + [{workflow:"debug", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
-    fi
-    git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
-    SHA=$(git rev-parse HEAD)
-    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
-      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
-       | .[-1] |= (. + {debugAttempt:$da})' \
-      "$STATUS" > "$t" && mv "$t" "$STATUS"
-    git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
-    ```
-12. Add `Debug` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-13. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+11. Add `Debug` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
+12. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
 
 ```comment
 ## Debug Workflow
 ### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-[docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
 ```
 
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] Local `dev` NOT ahead of `origin/dev`
+- [ ] Lock acquired (`.lock` exists in `docs/plans/logs/{FID}/`)
 - [ ] `DEBUG_MODE` decided
 - [ ] `PR_NUMBER` extracted (`DEBUG_MODE` = pr only)
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
-- [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, step `start-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (state `In Progress`, label `Debug`)
+- [ ] Issue update attempted (state `In Progress`, `Debug` added additively — prior phase label persists)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -203,6 +192,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 8. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
+   [ -f "$STATUS" ] || echo '[]' > "$STATUS"
+   if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "debug" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
+     t=$(mktemp); jq '. + [{workflow:"debug", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
+   fi
+   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   START_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$START_SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+      | .[-1] |= (. + {debugAttempt:$da})' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg dm "$DEBUG_MODE" --arg om "$OBSERVE_MODE" \
@@ -214,6 +214,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+   [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
    ```
 
 ### 🔒 Gate 2 — Worktree Setup
@@ -223,7 +224,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] On branch that passed eligibility
 - [ ] Counters initialised (`TEST_ATTEMPT` = 0)
 - [ ] Artifact written (`debug-input-{DEBUG_ATTEMPT}.md`, non-empty)
-- [ ] Workflow status updated (step `worktree-setup` recorded with `commitSha`, `debugMode`, `observeMode`)
+- [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `start-workflow` + `worktree-setup` recorded with `commitSha`, `worktree-setup` with `debugMode`, `observeMode`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -248,9 +249,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-5. Add `Debug: PR` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
-6. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
-7. Update status and commit:
+5. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
+6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} work"
@@ -260,7 +260,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} status"
    ```
-8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 3 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
@@ -607,7 +607,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git push origin "$(git branch --show-current)"
    ```
 3. **Mode-aware Linear update:**
-   - **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged so phase label `Debug` persists.
+   - **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
    - **If** `OBSERVE_MODE` = instrument → leave issue as `In Progress` with `Debug` label; instrumented CI run is in flight and the next debug invocation continues the workflow.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -622,5 +622,5 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (`debug` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (matches `OBSERVE_MODE`: off → state `In Review`, phase label `Debug` preserved; instrument → unchanged `In Progress`/`Debug`)
+- [ ] Issue update attempted (matches `OBSERVE_MODE`: off → state `In Review`, `{LABELS}` unchanged (phase + `Debug` persist); instrument → unchanged `In Progress` with `Debug` still applied)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)
