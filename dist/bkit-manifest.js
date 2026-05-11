@@ -8,32 +8,32 @@
 // Per-module manifests
 // ---------------------------------------------------------------------------
 const CORE_MANIFEST = [
-    { path: "AGENTS.md", tier: 2, module: "core" },
-    { path: "CLAUDE.md", tier: 2, module: "core" },
-    { path: ".gitignore", tier: 2, module: "core" },
-    { path: ".agents/.bkit-version", tier: 1, module: "core" },
+    { path: "AGENTS.md", format: "markered-text", module: "core" },
+    { path: "CLAUDE.md", format: "markered-text", module: "core" },
+    { path: ".gitignore", format: "markered-text", module: "core" },
+    { path: ".agents/.bkit-version", format: "byte-equal-text", module: "core" },
 ];
 const CLAUDE_MANIFEST = [
-    { path: ".claude/settings.json", tier: 1, module: "claude" },
-    { path: ".claude/hooks/preflight.sh", tier: 1, module: "claude" },
+    { path: ".claude/settings.json", format: "json", module: "claude" },
+    { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
 ];
 const CURSOR_MANIFEST = [
-    { path: ".cursor/hooks.json", tier: 1, module: "cursor" },
-    { path: ".cursor/hooks/preflight.sh", tier: 1, module: "cursor" },
-    { path: ".cursor/rules/00-shared-rules.mdc", tier: 1, module: "cursor" },
-    { path: ".cursor/settings.json", tier: 3, module: "cursor" },
-    { path: ".cursor/Dockerfile", tier: 3, module: "cursor" },
-    { path: ".cursor/environment.json", tier: 3, module: "cursor" },
+    { path: ".cursor/hooks.json", format: "json", module: "cursor" },
+    { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
+    { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
+    { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
+    { path: ".cursor/Dockerfile", format: "byte-equal-text", module: "cursor" },
+    { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
     // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 const CI_MANIFEST = [
-    { path: ".github/workflows/ci.yml", tier: 3, module: "ci" },
+    { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
     {
         path: "package.json",
-        tier: 2,
+        format: "markered-text",
         module: "ci",
         packageJsonKeys: {
             scripts: { typecheck: "tsc --noEmit" },
@@ -41,14 +41,14 @@ const CI_MANIFEST = [
     },
 ];
 const LINT_MANIFEST = [
-    { path: ".vale.ini", tier: 3, module: "lint" },
-    { path: "slop-scan.config.json", tier: 3, module: "lint" },
-    { path: ".prettierignore", tier: 2, module: "lint" },
-    // .vale/styles/House/ — T1 but managed as a directory; individual files
+    { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
+    { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint" },
+    { path: ".prettierignore", format: "markered-text", module: "lint" },
+    // .vale/styles/House/ — fully managed as a directory; individual files
     // are enumerated at uninstall time.
     {
         path: "package.json",
-        tier: 2,
+        format: "markered-text",
         module: "lint",
         packageJsonKeys: {
             scripts: {
@@ -64,11 +64,11 @@ const LINT_MANIFEST = [
     },
 ];
 const GIT_HOOKS_MANIFEST = [
-    { path: ".husky/pre-commit", tier: 2, module: "git-hooks" },
-    { path: ".husky/pre-push", tier: 2, module: "git-hooks" },
+    { path: ".husky/pre-commit", format: "markered-text", module: "git-hooks" },
+    { path: ".husky/pre-push", format: "markered-text", module: "git-hooks" },
     {
         path: "package.json",
-        tier: 2,
+        format: "markered-text",
         module: "git-hooks",
         packageJsonKeys: {
             scripts: { prepare: "husky" },

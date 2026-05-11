@@ -2,7 +2,87 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { extractFullManagedBlock, extractManagedBlock, updateManagedBlock, findLineAnchoredMarkers, } from "./bkit-install.js";
 import { applyTokens } from "./bkit-tokens.js";
-import { lookupTier1Defaults } from "./bkit-tier1-defaults.js";
+export function deepContains(template, consumer, pathPrefix = "") {
+    const missing = [];
+    const mismatched = [];
+    // null template: owns nothing → ok
+    if (template === null) {
+        return { ok: true, missing, mismatched };
+    }
+    // non-null template, null consumer → missing
+    if (consumer === null) {
+        missing.push(pathPrefix || "<root>");
+        return { ok: false, missing, mismatched };
+    }
+    // Both are arrays
+    if (Array.isArray(template) && Array.isArray(consumer)) {
+        _deepContainsArray(template, consumer, pathPrefix, missing, mismatched);
+        return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+    }
+    // Type mismatch (one is array, other is not, or different primitive types)
+    if (Array.isArray(template) !== Array.isArray(consumer)) {
+        mismatched.push(pathPrefix || "<root>");
+        return { ok: false, missing, mismatched };
+    }
+    // Both are plain objects
+    if (typeof template === "object" && typeof consumer === "object") {
+        const tObj = template;
+        const cObj = consumer;
+        for (const key of Object.keys(tObj)) {
+            const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
+            const tVal = tObj[key];
+            const cVal = cObj[key];
+            if (cVal === undefined) {
+                // If template has null for this key, still ok
+                if (tVal === null)
+                    continue;
+                missing.push(childPath);
+            }
+            else {
+                const sub = deepContains(tVal, cVal, childPath);
+                missing.push(...sub.missing);
+                mismatched.push(...sub.mismatched);
+            }
+        }
+        return { ok: missing.length === 0 && mismatched.length === 0, missing, mismatched };
+    }
+    // Both are primitives — exact equality
+    if (template !== consumer) {
+        mismatched.push(pathPrefix || "<root>");
+        return { ok: false, missing, mismatched };
+    }
+    return { ok: true, missing, mismatched };
+}
+function _deepContainsArray(template, consumer, pathPrefix, missing, mismatched) {
+    // Classify template elements as primitive or object
+    for (let i = 0; i < template.length; i++) {
+        const tEl = template[i];
+        const elPath = pathPrefix ? `${pathPrefix}[${i}]` : `[${i}]`;
+        if (tEl === null || typeof tEl !== "object") {
+            // Primitive — subset: consumer must contain this value
+            if (!consumer.includes(tEl)) {
+                missing.push(elPath);
+            }
+        }
+        else if (Array.isArray(tEl)) {
+            // Nested array element — must find an equal consumer element
+            const found = consumer.some((cEl) => Array.isArray(cEl) && deepContains(tEl, cEl, "").ok);
+            if (!found) {
+                missing.push(elPath);
+            }
+        }
+        else {
+            // Object element — order-insensitive deep-equal containment
+            const found = consumer.some((cEl) => cEl !== null &&
+                typeof cEl === "object" &&
+                !Array.isArray(cEl) &&
+                deepContains(tEl, cEl, "").ok);
+            if (!found) {
+                missing.push(elPath);
+            }
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // deepMergeJson — recursive JSON merge primitive (P3.T1)
 //
@@ -38,54 +118,26 @@ export function deepMergeJson(base, override) {
     return result;
 }
 // ---------------------------------------------------------------------------
-// extractBkitNamespace — return the __bkit__ envelope from a parsed JSON doc (P3.T2)
+// writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 //
-// Returns null when the envelope is absent (consumer file pre-dates __bkit__ contract).
-// ---------------------------------------------------------------------------
-export function extractBkitNamespace(doc) {
-    const envelope = doc["__bkit__"];
-    if (envelope === undefined || envelope === null)
-        return null;
-    if (typeof envelope !== "object" || Array.isArray(envelope))
-        return null;
-    return envelope;
-}
-// ---------------------------------------------------------------------------
-// applyBkitNamespace — set (or replace) __bkit__ envelope in a consumer doc (P3.T2)
+// Replaces writeTier2Json. No __bkit__ envelope required.
 //
-// Returns a new object: { ...consumer, __bkit__: bkitPayload }
-// Does NOT mutate consumer.
+// Contract:
+//   - dest absent         → write template as-is (first install)
+//   - dest present, valid JSON, template contained → no-op (idempotent)
+//   - dest present, valid JSON, containment fails → deepMergeJson(existing, template)
+//     (template wins on key collisions; consumer-only keys outside template tree preserved)
+//   - dest present, malformed JSON → overwrite with template
+//   - schemaFlipped: true when a path value changed type during deep-merge
 // ---------------------------------------------------------------------------
-export function applyBkitNamespace(consumer, bkitPayload) {
-    return { ...consumer, __bkit__: bkitPayload };
-}
-// ---------------------------------------------------------------------------
-// writeTier2Json — deep-merge JSON helper (P3.T3)
-//
-// Contract (DE-8):
-//   - template must contain a __bkit__ envelope — THROWS if absent (rollback safety)
-//   - dest absent → write template as-is (first install: consumer has no custom keys yet)
-//   - dest present → deep-merge: consumer top-level keys preserved; __bkit__ from template wins
-//   - idempotent: writing identical content produces no-op (no WriteSet entry)
-//
-// "Deep-merge" semantics: { ...existingConsumerDoc, __bkit__: template.__bkit__ }
-// Consumer keys outside __bkit__ survive unchanged.
-// ---------------------------------------------------------------------------
-export function writeTier2Json(srcPath, dstPath, dryRun, ws) {
+export function writeTier2JsonContained(srcPath, dstPath, dryRun, ws) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
     let template;
     try {
         template = JSON.parse(srcRaw);
     }
     catch {
-        throw new Error(`writeTier2Json: template at ${srcPath} is not valid JSON`);
-    }
-    // Guard: template MUST have __bkit__ envelope
-    const bkitPayload = extractBkitNamespace(template);
-    if (bkitPayload === null) {
-        throw new Error(`writeTier2Json: template at ${srcPath} is missing the __bkit__ envelope. ` +
-            `This indicates a rollback to a pre-v0.8.0 template. ` +
-            `Restore the __bkit__ key in the template before running bkit install.`);
+        throw new Error(`writeTier2JsonContained: template at ${srcPath} is not valid JSON`);
     }
     if (!fs.existsSync(dstPath)) {
         // First install — write template as-is
@@ -98,133 +150,86 @@ export function writeTier2Json(srcPath, dstPath, dryRun, ws) {
         ws.writes.push({ path: dstPath, action: "write" });
         return;
     }
-    // dest exists — deep-merge
+    // dest exists — read and check containment
     const dstRaw = fs.readFileSync(dstPath, "utf-8");
     let existing;
     try {
         existing = JSON.parse(dstRaw);
     }
     catch {
-        // Malformed destination — treat as absent and overwrite
-        ensureDir(path.dirname(dstPath));
-        if (!dryRun) {
-            fs.writeFileSync(dstPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
-            const srcMode = fs.statSync(srcPath).mode;
-            fs.chmodSync(dstPath, srcMode);
-        }
-        ws.writes.push({ path: dstPath, action: "write" });
-        return;
+        // Malformed destination — refuse to overwrite; require manual fix (matches malformed-package-json blocker discipline)
+        throw new Error(`[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`);
     }
-    // Merge: consumer top-level keys survive; __bkit__ from template wins
-    const merged = applyBkitNamespace(existing, bkitPayload);
-    // Remove __bkit__ from consumer's own non-envelope keys if they had one (keep only from template)
-    // applyBkitNamespace already sets __bkit__ = bkitPayload, which handles this.
+    // Check if existing already contains the template
+    const containsResult = deepContains(template, existing);
+    if (containsResult.ok) {
+        return; // idempotent — no change needed
+    }
+    // Deep-merge: existing base, template override (template wins on conflicts)
+    const merged = deepMergeJson(existing, template);
     const mergedStr = JSON.stringify(merged, null, 2) + "\n";
     if (mergedStr === dstRaw)
-        return; // idempotent — no change
+        return; // idempotent guard
     if (!dryRun) {
         fs.writeFileSync(dstPath, mergedStr, "utf-8");
     }
     ws.writes.push({ path: dstPath, action: "update" });
 }
-// ---------------------------------------------------------------------------
-// migrateTier1JsonToTier2 — lift old Tier-1 shape into __bkit__ envelope (P3.T6)
-//
-// Purpose: Auto-migration for consumers upgrading from a pre-v0.8.0 install.
-// When a consumer has an existing .claude/settings.json or .cursor/hooks.json
-// that was written by bkit as Tier-1 (full-overwrite, no __bkit__ envelope),
-// this function:
-//   1. Reads the on-disk file.
-//   2. Consults BKIT_TIER1_DEFAULTS_BY_VERSION for the consumer's installed version.
-//   3. Identifies which top-level keys match the bkit-shipped defaults (bkit-owned).
-//   4. Moves bkit-owned content under __bkit__; consumer-added keys remain at top level.
-//   5. Writes back if changed (idempotent: re-run on already-migrated file is a no-op).
-//
-// Called by runClaudeModule/runCursorModule BEFORE writeTier2Json on upgrade paths.
-// onDiskBkitVersion: the version string from .agents/.bkit-version (read at install time).
-// fileKey: which file is being migrated (".claude/settings.json" or ".cursor/hooks.json").
-// ---------------------------------------------------------------------------
-export function migrateTier1JsonToTier2(filePath, fileKey, onDiskBkitVersion) {
-    if (!fs.existsSync(filePath))
-        return false; // nothing to migrate
-    const raw = fs.readFileSync(filePath, "utf-8");
-    let doc;
-    try {
-        doc = JSON.parse(raw);
-    }
-    catch {
-        return false; // malformed JSON — skip, writeTier2Json will handle
-    }
-    // Already has __bkit__ envelope → idempotent, no-op
-    if (extractBkitNamespace(doc) !== null)
-        return false;
-    // Look up defaults for this consumer's installed version
-    const defaults = lookupTier1Defaults(onDiskBkitVersion);
-    if (defaults === null) {
-        // Version pre-dates Tier-1 classification (< 0.5.0) — can't auto-migrate safely.
-        // writeTier2Json will write the template as-is on first Tier-2 install.
-        return false;
-    }
-    const bkitDefaults = defaults[fileKey];
-    // Build __bkit__ envelope and consumer doc using a two-pass strategy:
-    //
-    // For each top-level key in the on-disk doc:
-    //   - If key NOT in bkit defaults → it's consumer-owned, keep at top level
-    //   - If key IS in bkit defaults AND both values are plain objects →
-    //       put the bkit-default sub-keys under __bkit__.<key>;
-    //       keep consumer-only sub-keys at top level <key>
-    //   - If key IS in bkit defaults AND NOT both plain objects →
-    //       put on-disk value entirely under __bkit__.<key>
-    //
-    // This handles .claude/settings.json where `hooks` has both bkit-owned SessionStart
-    // and consumer-owned Stop: SessionStart goes under __bkit__.hooks, Stop stays at hooks.Stop.
-    const bkitEnvelope = {};
-    const consumerDoc = {};
-    for (const [key, onDiskValue] of Object.entries(doc)) {
-        const defaultValue = bkitDefaults[key];
-        if (defaultValue === undefined) {
-            // Not in bkit defaults → purely consumer-owned
-            consumerDoc[key] = onDiskValue;
-            continue;
-        }
-        // Key is in bkit defaults
-        const defaultIsObject = defaultValue !== null && typeof defaultValue === "object" && !Array.isArray(defaultValue);
-        const onDiskIsObject = onDiskValue !== null && typeof onDiskValue === "object" && !Array.isArray(onDiskValue);
-        if (defaultIsObject && onDiskIsObject) {
-            // Both plain objects — split at sub-key level
-            const defaultKeys = new Set(Object.keys(defaultValue));
-            const bkitSubDoc = {};
-            const consumerSubDoc = {};
-            for (const [subKey, subValue] of Object.entries(onDiskValue)) {
-                if (defaultKeys.has(subKey)) {
-                    bkitSubDoc[subKey] = subValue;
-                }
-                else {
-                    consumerSubDoc[subKey] = subValue;
-                }
-            }
-            if (Object.keys(bkitSubDoc).length > 0) {
-                bkitEnvelope[key] = bkitSubDoc;
-            }
-            if (Object.keys(consumerSubDoc).length > 0) {
-                consumerDoc[key] = consumerSubDoc;
-            }
-        }
-        else {
-            // Primitive, array, or null — the whole value goes to __bkit__
-            bkitEnvelope[key] = onDiskValue;
-        }
-    }
-    // Build migrated doc: __bkit__ envelope first, then consumer keys
-    const migrated = {
-        __bkit__: bkitEnvelope,
-        ...consumerDoc,
+export function migrateLegacyBkitEnvelope(doc, template) {
+    const noOp = {
+        stripped: false,
+        deepMerged: false,
+        schemaFlipped: false,
+        outDoc: doc,
     };
-    const migratedStr = JSON.stringify(migrated, null, 2) + "\n";
-    if (migratedStr === raw)
-        return false; // already in final form
-    fs.writeFileSync(filePath, migratedStr, "utf-8");
-    return true;
+    // No envelope — nothing to migrate
+    if (!("__bkit__" in doc) || doc["__bkit__"] === undefined) {
+        return noOp;
+    }
+    // Strip __bkit__ from doc
+    const stripped = {};
+    for (const [k, v] of Object.entries(doc)) {
+        if (k !== "__bkit__")
+            stripped[k] = v;
+    }
+    // Check if stripped doc already contains the template
+    const containsResult = deepContains(template, stripped);
+    if (containsResult.ok) {
+        return {
+            stripped: true,
+            deepMerged: false,
+            schemaFlipped: false,
+            outDoc: stripped,
+        };
+    }
+    // Deep-merge: stripped base, template override
+    const merged = deepMergeJson(stripped, template);
+    // Detect schema flip: any path where the type changed from stripped to merged
+    const schemaFlipped = _detectSchemaFlip(stripped, merged);
+    return {
+        stripped: true,
+        deepMerged: true,
+        schemaFlipped,
+        outDoc: merged,
+    };
+}
+/** Detect if any path type-flipped between two objects (shallow first level only for perf). */
+function _detectSchemaFlip(before, after) {
+    for (const key of Object.keys(after)) {
+        const bVal = before[key];
+        const aVal = after[key];
+        if (bVal === undefined)
+            continue; // new key — not a flip
+        if (bVal === null && aVal === null)
+            continue;
+        const bIsArray = Array.isArray(bVal);
+        const aIsArray = Array.isArray(aVal);
+        if (bIsArray !== aIsArray)
+            return true;
+        if (!bIsArray && typeof bVal !== typeof aVal)
+            return true;
+    }
+    return false;
 }
 // ---------------------------------------------------------------------------
 // stripManagedBlock — pure-string transform (P2.T2)
@@ -278,7 +283,7 @@ function ensureDir(dir) {
     fs.mkdirSync(dir, { recursive: true });
 }
 // ---------------------------------------------------------------------------
-// Tier 1 — Fully managed (idempotent rewrite of whole file after token substitution)
+// fully-managed format — idempotent rewrite of whole file after token substitution
 //
 // Semantics: always writes the src content (with tokens applied) to dst.
 // If dst exists with identical content, no-op (no double-count in WriteSet).
@@ -301,7 +306,7 @@ export function writeTier1(srcPath, dstPath, tokens, dryRun, ws) {
     ws.writes.push({ path: dstPath, action: "write" });
 }
 // ---------------------------------------------------------------------------
-// Tier 2 — Managed-block (bkit owns content between markers; consumer owns rest)
+// markered-text format — managed-block (bkit owns content between markers; consumer owns rest)
 //
 // Semantics:
 //   - dest absent            → write whole file (with token substitution)

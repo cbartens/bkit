@@ -1,5 +1,7 @@
 <\!-- Note: Save draft plans in `docs/plans/drafts/`. Move to `docs/plans/active/` when approved for execution. -->
 
+<!-- bkit:start -->
+
 # [Plan Title] Implementation Plan
 
 > [!CAUTION]
@@ -353,3 +355,5 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > **Dashboard Ban:** Proactively use local CLIs (`gh`, `vercel`, `npx supabase`) to verify CI/CD pipelines instead of asking users to check dashboards.
 
 - [ ] **Step 1:** [Instructions for agent/user to verify feature end-to-end via CLI/DB.]
+
+<!-- bkit:end -->

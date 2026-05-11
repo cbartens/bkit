@@ -149,3 +149,33 @@
 - **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
 - **Source:** phase
 - **Related:** BAR-167, DE-7, DE-16
+
+## bkit upgrade --prune flag — deferred post-v2.0.0 (2026-05-11)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add `bkit upgrade --prune` flag to remove consumer keys that were once part of the bkit-declared scope but have since been removed from the template. Currently `bkit upgrade` only deep-merges (adds/updates template keys) — it does not prune consumer keys that were bkit-written in a prior version but removed from the current template. The `--prune` flag would walk the prior-version template tree and delete any consumer keys that exactly match the prior template's values and are absent from the current template. Deferred from BAR-167 Phase 1 scope — prune semantics require prior-template-version tracking not yet implemented.
+- **Source:** phase
+- **Related:** BAR-167, DE-18, `.agents/scripts/bkit-upgrade.ts`
+
+## Drop decorative `.cursor/hooks.json` echo commands — deferred per Plan-Phase Decision 3 (2026-05-11)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** The `.cursor/hooks.json` template ships `echo '[bkit] session started'` and `echo '[bkit] session stopped'` hook commands. These are decorative (confirm hook firing) and produce visible output in the Cursor terminal. Plan-Phase Decision 3 resolved to KEEP these echoes (they provide actionable debugging value — consumer can confirm hooks fired). This entry tracks the open question: if consumer feedback emerges that the echoes are noisy/unwanted, add a bkit-config opt-out rather than removing from the template. No work required unless that feedback arrives.
+- **Source:** phase
+- **Related:** BAR-167, DE-18, `.agents/templates/.cursor/hooks.json`
+
+## BAR-167 Phase 2 — indented YAML marker drift detection not implemented (2026-05-11)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
+- **Source:** phase
+- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`

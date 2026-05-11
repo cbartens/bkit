@@ -1,3 +1,5 @@
+<!-- bkit:start -->
+
 # Document Index
 
 > [!CAUTION]
@@ -123,3 +125,5 @@
 | File | Scope |
 | --- | --- |
 | `docs/setup.md` | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
+
+<!-- bkit:end -->

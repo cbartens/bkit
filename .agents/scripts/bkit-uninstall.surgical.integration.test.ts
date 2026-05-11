@@ -172,16 +172,26 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     expect(postContent).toBe(originalContent); // byte-identical when not stripping
   });
 
-  it("Tier-1 file (.claude/settings.json) is deleted by uninstall (T1 semantics)", async () => {
-    // Tier-1 files are fully managed: uninstall always deletes them.
-    // Consumer customisations in T1 files are protected at INSTALL time via
-    // detectHooksConfigOverwriteRisk (Phase 1 preflight), not at uninstall time.
+  it("JSON file (.claude/settings.json) has bkit scope stripped by uninstall (format: json semantics)", async () => {
+    // BAR-167 Phase 2: .claude/settings.json is format: "json" in the manifest.
+    // Uninstall uses stripTier2JsonScope — removes bkit-managed keys from the consumer
+    // JSON doc but does NOT delete the file. Consumer-only keys are preserved.
+    // The consumer fixture has a "Stop" hook not present in the bkit template — it is retained.
     expect(fs.existsSync(path.join(tmpDir, ".claude", "settings.json"))).toBe(true);
 
     await runUninstall(["claude"], makeCtx());
 
-    // T1 file is deleted (this is expected — consumer should re-add their Stop hook after)
-    expect(fs.existsSync(path.join(tmpDir, ".claude", "settings.json"))).toBe(false);
+    // File still exists (json format: scope-strip, not full-delete)
+    expect(fs.existsSync(path.join(tmpDir, ".claude", "settings.json"))).toBe(true);
+    const afterContent = JSON.parse(
+      fs.readFileSync(path.join(tmpDir, ".claude", "settings.json"), "utf-8"),
+    ) as Record<string, unknown>;
+    // Consumer-only "Stop" hook should be preserved (not in bkit template)
+    const hooks = afterContent.hooks as Record<string, unknown> | undefined;
+    expect(hooks?.Stop).toBeDefined();
+    // bkit-managed keys like $schema and permissions.allow should be stripped
+    expect(afterContent.$schema).toBeUndefined();
+    expect(afterContent.permissions).toBeUndefined();
   });
 
   it("round-trip: uninstall is idempotent on heavy-customised consumer", async () => {

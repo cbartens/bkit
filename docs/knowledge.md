@@ -116,7 +116,7 @@
 - **Source:** phase
 - **Related:** BAR-141, BAR-131, PR #5, PR #7, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`, `docs/deployments.md` § Pre-push checklist
 
-## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07)
+## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07) (superseded by KN-17, BAR-167, 2026-05-11)
 
 - **Category:** agentic
 - **Symptom (original):** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
@@ -131,7 +131,7 @@
 ## KN-9: .bkit-version migration reads must use readBkitVersion().pinnedVersion (2026-05-07)
 
 - **Category:** agentic
-- **Symptom:** `migrateTier1JsonToTier2` receives a full JSON string (e.g. `{"pinnedVersion":"0.8.0",...}`) instead of a semver string when `.bkit-version` is in v0.7.x+ JSON format. `semverLte` returns false for the JSON blob, silently skipping the Tier-1 → Tier-2 migration.
+- **Symptom (historical — `migrateTier1JsonToTier2` deleted in v2.0.0):** `migrateTier1JsonToTier2` received a full JSON string (e.g. `{"pinnedVersion":"0.8.0",...}`) instead of a semver string when `.bkit-version` was in v0.7.x+ JSON format. `semverLte` returned false for the JSON blob, silently skipping the legacy migration.
 - **Root cause:** The claude and cursor modules in `bkit-modules.ts` read `.bkit-version` with `fs.readFileSync(...).trim()` before the fix. This works for v0.6.x plain-text format but yields the full JSON string for v0.7.x+. `migrateTier1JsonToTier2` uses the value in a semver comparison — a JSON blob fails the comparison silently.
 - **Fix or rule:** Always read `.bkit-version` via `readBkitVersion(path).pinnedVersion` (or `parseBkitVersion(content).pinnedVersion`) — never with raw `readFileSync(...).trim()`. The helper handles all schema versions (v0.6.x plain-text, v0.7.x+ JSON) and returns null for absent/empty files.
 - **Type:** gotcha
@@ -223,3 +223,49 @@
 - **Severity:** high
 - **Source:** build-challenge
 - **Related:** BAR-155, `.agents/prompts/bkit-build-plan-verify.md`, `.agents/prompts/bkit-build-challenge-tests.md`
+
+## KN-17: Deep-containment is canonical for ownership-mixed JSON — `__bkit__` envelope removed (2026-05-11)
+
+- **Category:** agentic
+- **Symptom (original):** Consumer-side audit (2026-05-09) on `app-gether-life` found two failure modes with the v0.8.0 `__bkit__` envelope model: (1) duplicate content — every bkit-owned key appeared twice (inside `__bkit__` AND at the top level), bloating the consumer file and causing confusion; (2) silent drift — `.github/workflows/ci.yml` lost its `pnpm bkit check` step with no detection because the envelope check only walked `__bkit__`, not the full file.
+- **Root cause:** The `__bkit__` envelope model required both the template AND the consumer to maintain two copies of every bkit-owned value. `writeTier2Json` wrote `{ ...consumer, __bkit__: template.__bkit__ }` but did not enforce top-level key presence — so the consumer could hold a stale top-level copy alongside a fresh `__bkit__` copy indefinitely. Drift detection only checked `canonicalHashes` (SHA-based), not semantic key presence.
+- **Fix or rule (v2.0.0+):** Deep-containment model: the template JSON tree IS the bkit-declared scope. `deepContains(template, consumer)` checks that every leaf path in the template is present and equal in the consumer. Consumer keys outside the template tree are never touched. `writeTier2JsonContained` replaces `writeTier2Json`: dest absent → write template as-is; present → `deepContains` → ok no-op; fail → `deepMergeJson(existing, template)` (template-wins on conflict). `migrateLegacyBkitEnvelope` runs once on upgrade: strips `__bkit__`, runs `deepContains`, deep-merges if containment fails. Idempotent. Logs per `[bkit] migrated <file> — stripped __bkit__ envelope (v2.0.0)`. `detectLegacyBkitEnvelope` advisory surfaces if `__bkit__` still present. `detectTier2JsonDrift` advisory surfaces if `deepContains` fails.
+- **Collision risk:** A consumer that added their own top-level `__bkit__` key for an unrelated purpose will see it stripped by `migrateLegacyBkitEnvelope` on first `bkit upgrade` to v2.0.0. Document as a known collision; consumers must rename their key before upgrading.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-167, KN-8 (superseded), DE-18, `.agents/scripts/bkit-tiers.ts` (`deepContains`, `writeTier2JsonContained`, `migrateLegacyBkitEnvelope`, `stripTier2JsonScope`), `.agents/scripts/bkit-preflight.ts` (`detectLegacyBkitEnvelope`, `detectTier2JsonDrift`), `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`
+
+## KN-16: bkit-modules.ts format dispatch alignment — writeTier2 for markered-text, not writeTier1 (BAR-167 Phase 2) (2026-05-11)
+
+- **Pattern:** Files classified as `format: "markered-text"` in `bkit-manifest.ts` MUST use `writeTier2` (marker-block update semantics) in `bkit-modules.ts`, NOT `writeTier1` (full-overwrite semantics). Using `writeTier1` on a markered-text file silently overwrites consumer content outside the markers on every `bkit upgrade`. `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, and `.cursor/rules/00-shared-rules.mdc` were incorrectly using `writeTier1` via `tier1Files` arrays prior to Phase 2 remediation.
+- **Resolution:** Remove `tier1Files` local arrays; replace with direct `writeTier2(src, dst, tokens, "html-comment", dryRun, ws)` calls. Files with `# <!-- bkit:start -->` markers (hash-comment wrapper around html-comment marker) are detected by `extractManagedBlock` with `"html-comment"` style via the `ALLOWED_PREFIXES` `"# "` logic.
+- **Corollary:** Files classified as `format: "byte-equal-text"` (e.g. `.cursor/settings.json`, `.cursor/Dockerfile`) should intentionally use `writeTier3` (seed-or-print) for install semantics — not `writeTier1` (force-overwrite). The manifest classification is for check/uninstall dispatch; install uses seed-or-print to preserve consumer modifications on upgrade. Document this explicitly in the module function.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, KN-15, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-tiers.ts` (`writeTier2`, `writeTier1`)
+
+## KN-18: manifest format must match install dispatch (not intent) (2026-05-11)
+
+- **Symptom:** `bkit check` / `bkit uninstall` apply wrong strip/delete strategy for ci.yml, .vale.ini, slop-scan.config.json — all three call `writeTier3` (seed-or-print) but were classified `markered-text` or `json` in bkit-manifest.ts.
+- **Root cause:** Manifest format was set to reflect the intended future format (markered-text ownership) rather than the actual installed format (byte-equal-text / seed-or-print). Downstream dispatch in uninstall/check used manifest format, so it tried to strip a managed block that never existed.
+- **Fix:** Always set manifest `format` to match the *actual install function called*: `writeTier3` → `byte-equal-text`; `writeTier2`/`writeTier2JsonContained` → `markered-text`/`json`. When install strategy changes, update both the module code and the manifest entry atomically.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-modules.ts`
+
+## KN-19: malformed-JSON destination must throw, not silently overwrite (2026-05-11)
+
+- **Symptom:** `writeTier2JsonContained` silently overwrote a malformed-JSON destination file with the template, destroying any consumer content that was unrecoverable as JSON.
+- **Root cause:** Catch branch treated parse failure as "absent" and wrote the template wholesale — same as a fresh install. A corruption or partial write that left invalid JSON would be permanently lost without warning.
+- **Fix:** Throw `[bkit] <path> is malformed JSON — fix manually before running bkit install` when destination exists but fails JSON.parse. Matches the `malformed-package-json` blocker discipline. Fresh install (file absent) path is unchanged.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, KN-8, `.agents/scripts/bkit-tiers.ts` (`writeTier2JsonContained`)

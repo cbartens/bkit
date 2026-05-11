@@ -18,7 +18,8 @@
 //     - The consumer has modified the file since last install (on-disk hash ≠ canonical hash).
 //
 // Dependency: P4.T4 `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
-//             P3.T6 `migrateTier1JsonToTier2` from bkit-tiers.ts (upgrade respects migration).
+//             BAR-167 v2.0.0: `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
+//             `writeTier2JsonContained` to strip legacy `__bkit__` envelope on upgrade.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { readBkitVersion, writeBkitVersion, sha256, isConsumerModified, } from "./bkit-version.js";
