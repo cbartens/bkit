@@ -83,9 +83,9 @@ tools:
 
 **Post-compression verification (mandatory):**
 
-1. **Size sanity:** if word reduction > 40%, STOP and report — likely over-compression. Do NOT save.
-2. **Token round-trip:** re-grep every Pre-flight inventory entry in the output. Each MUST match exactly. Missing → restore that section from original and re-run.
-3. **Readability:** re-read end-to-end. If any instruction is now ambiguous, undecidable, or could be misread, restore the verbose original for that block.
+1. **Size sanity:** **If** word reduction > 40% → STOP and report (likely over-compression). Do NOT save.
+2. **Token round-trip:** re-grep every Pre-flight inventory entry in the output. Each MUST match exactly. **If** missing → restore that section from original and re-run.
+3. **Readability:** re-read end-to-end. **If** any instruction is now ambiguous, undecidable, or could be misread → restore the verbose original for that block.
 4. Report to caller (not file): original vs new line/word counts; list blocks restored verbatim due to ambiguity.
 
 > ⛔ **STOP after writing the compressed target. Do NOT make other modifications.**

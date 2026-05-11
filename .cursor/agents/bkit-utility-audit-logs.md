@@ -47,9 +47,9 @@ tools:
 **Update rules:**
 
 - Preserve status flags (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Never strip annotations.
-- Recurring → match signature → bump count, extend timeframe. `✅ RESOLVED` reappears → `🔁 REGRESSION`.
-- New → append unmatched.
-- Disappeared → non-resolved and zero occurrences → `📉 NOT SEEN THIS SCAN`. Delete only after **2 consecutive clean scans** (track `Last Seen`).
+- **If** recurring → match signature → bump count, extend timeframe. **If** `✅ RESOLVED` reappears → `🔁 REGRESSION`.
+- **If** new → append unmatched.
+- **If** disappeared (non-resolved and zero occurrences) → `📉 NOT SEEN THIS SCAN`. Delete only after **2 consecutive clean scans** (track `Last Seen`).
 - Metadata → update `## Scan Metadata` (date, timeframe, model). Append `Previous Scan` row.
 - Priority → rebuild — regressions first, new HIGH, unresolved. Exclude `✅ RESOLVED`.
 

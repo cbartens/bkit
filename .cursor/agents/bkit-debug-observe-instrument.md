@@ -27,7 +27,7 @@ tools:
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Add `[DEBUG-OBSERVE]`-prefixed logging. ONLY observation changes, no bug fixes, no refactors, no behaviour changes.
 - **Single-shot:** Runs once per instrumented push; not part of any retry loop.
-- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour, incl. `--hard`/`--soft`/`--mixed`), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
@@ -43,7 +43,7 @@ tools:
 - Cap at ~10 log calls (over-instrumenting pollutes CI output).
 
 5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` to verify instrumentation didn't break behaviour.
-6. Any failures → document errors in output.
+6. **If** any failures → document errors in output.
 7. Produce **Create** output.
 
 **Output format:**
