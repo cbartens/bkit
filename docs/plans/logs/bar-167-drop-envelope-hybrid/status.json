@@ -431,6 +431,18 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-reconcile.md"
         ]
+      },
+      {
+        "step": "build-challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "strategy": "STANDARD",
+        "attempt": 1,
+        "at": "2026-05-11T06:40:11Z",
+        "commitSha": "23cb9b9de4c878a2a120775116ba13b72f571ae4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-remediate-1-log.md"
+        ]
       }
     ]
   }
