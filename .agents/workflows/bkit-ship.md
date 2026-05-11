@@ -324,10 +324,10 @@ description: "Ship Feature — Autonomous merge and archive"
 1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
-   Create: `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`.
+   Create: `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Add `Debug: Ship` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
-4. Read `ship-failure-diagnose-${MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
+4. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -346,10 +346,10 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 5 — Failure Diagnose
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
-- [ ] Artifact written (`ship-failure-diagnose-${MERGE_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
 - [ ] `DIAGNOSE_VERDICT` extracted
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
-- [ ] No PENDING placeholders remain (`ship-failure-diagnose-${MERGE_ATTEMPT}.md`)
+- [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 
@@ -371,12 +371,12 @@ description: "Ship Feature — Autonomous merge and archive"
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
-   Create: `docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}-log.md`.
+   Create: `docs/plans/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-5. Read `ship-failure-remediate-${MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -396,7 +396,7 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 ### 🔒 Gate 6 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Artifact written (`ship-failure-remediate-${MERGE_ATTEMPT}-log.md`, non-empty)
+- [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`, `strategy`)
@@ -498,8 +498,8 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 
 1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
-3. `YYYYMM=$(date +%Y%m) && mkdir -p docs/plans/completed/${YYYYMM}/`.
-4. `mv docs/plans/active/{FID}-\*.md docs/plans/completed/${YYYYMM}/`.
+3. `YYYYMM=$(date +%Y%m) && mkdir -p docs/plans/completed/{YYYYMM}/`.
+4. `mv docs/plans/active/{FID}-\*.md docs/plans/completed/{YYYYMM}/`.
 5. **Prune feature-specific skills** — remove any `.agents/skills/` folders not listed in `.agents/skills.md`:
    ```bash
    for skill_dir in .agents/skills/*/; do

@@ -361,7 +361,7 @@ description: "Design Feature — Autonomous design phase"
 1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v\*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `${DESIGN_FINAL}` (highest v{N}), `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/design-\*.md`.
+   Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/design-\*.md`.
    Create: `docs/plans/logs/{FID}/design-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.

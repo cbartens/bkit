@@ -441,7 +441,7 @@ Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/bl
 1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/logs/{FID}/plan-v\*.md 2>/dev/null | grep -v 'plan-v[0-9]\*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-plan-summary` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `${PLAN_FINAL}` (highest v{N}), glob `docs/plans/logs/{FID}/plan-v4-\*.md` (children if SPLIT), `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/plan-input.md`, glob `docs/plans/logs/{FID}/plan-\*.md`.
+   Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/logs/{FID}/plan-v4-\*.md` (children if SPLIT), `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/plan-input.md`, glob `docs/plans/logs/{FID}/plan-\*.md`.
    Create: `docs/plans/logs/{FID}/plan-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `plan-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
