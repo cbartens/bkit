@@ -67,14 +67,14 @@ describe("getInstallManifest", () => {
     expect(prettierEntry!.format).toBe("markered-text");
   });
 
-  it("git-hooks manifest includes .husky files as markered-text", () => {
+  it("git-hooks manifest includes .husky files as byte-equal-text (Tier 3 seed-or-print, v2.0.4)", () => {
     const entries = getInstallManifest(["git-hooks"]);
     const preCommit = entries.find((e) => e.path === ".husky/pre-commit");
     const prePush = entries.find((e) => e.path === ".husky/pre-push");
     expect(preCommit).toBeDefined();
-    expect(preCommit!.format).toBe("markered-text");
+    expect(preCommit!.format).toBe("byte-equal-text");
     expect(prePush).toBeDefined();
-    expect(prePush!.format).toBe("markered-text");
+    expect(prePush!.format).toBe("byte-equal-text");
   });
 
   it("cursor manifest includes hooks.json as json", () => {

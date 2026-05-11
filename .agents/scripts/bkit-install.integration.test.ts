@@ -140,7 +140,9 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     );
     // .git dir — so not-git-repo does NOT fire
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-    // .husky/pre-commit without bkit markers — triggers husky-no-markers-precommit
+    // .husky/pre-commit is no longer a preflight-advisory trigger as of v2.0.4
+    // (husky moved to Tier 3 seed-or-print — no markers expected, no drift gate).
+    // Tier-3 advisory emission is now handled in-module by runGitHooksModule.
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
@@ -149,8 +151,10 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     const { blockers, advisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     expect(blockers).toHaveLength(0);
     const ids = advisories.map((f) => f.id);
-    expect(ids).toContain("husky-no-markers-precommit");
     expect(ids).toContain("lint-prose-f9-vulnerable");
+    // husky-no-markers-* is no longer emitted (Tier 3 husky, v2.0.4)
+    expect(ids).not.toContain("husky-no-markers-precommit");
+    expect(ids).not.toContain("husky-no-markers-prepush");
   });
 
   it("formatChecklist renders a numbered checklist for multiple advisories", () => {
@@ -218,14 +222,12 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 
     // Phase 1 findings should be present in the combined output
     const ids = postFindings.map((f) => f.id);
-    expect(ids).toContain("husky-no-markers-precommit");
     expect(ids).toContain("lint-prose-f9-vulnerable");
     // Phase 3 shell token finding should also be present
     expect(ids).toContain("gh-bkit-token-missing-shell");
 
     const banner = formatChecklist(postFindings);
     expect(banner).toBeTruthy();
-    expect(banner).toContain("husky-no-markers-precommit");
     expect(banner).toContain("lint-prose-f9-vulnerable");
     expect(banner).toContain("gh-bkit-token-missing-shell");
   });
@@ -309,7 +311,6 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
     const banner = formatChecklist(preflightAdvisories);
     // Phase 1 advisories should still produce a visible banner in dry-run
     expect(banner).toBeTruthy();
-    expect(banner).toContain("husky-no-markers-precommit");
     expect(banner).toContain("lint-prose-f9-vulnerable");
   });
 

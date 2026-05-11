@@ -11,12 +11,10 @@ import {
   detectNoPackageJson,
   detectMalformedPackageJson,
   detectNotGitRepo,
-  detectHuskyNoMarkers,
   detectPrettierignoreNoMarkers,
   detectLintProseF9Vulnerable,
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
-  detectHuskyBlockDuplicates,
   detectGitignoreBlockDuplicates,
   detectPrettierignoreScopeNarrowing,
   runPreflight,
@@ -162,56 +160,9 @@ describe("detectNotGitRepo", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// detectHuskyNoMarkers
-// ---------------------------------------------------------------------------
-
-describe("detectHuskyNoMarkers", () => {
-  it("returns finding when .husky/pre-commit exists without markers", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
-    const result = detectHuskyNoMarkers(tmpDir, "pre-commit");
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("husky-no-markers-precommit");
-    expect(result!.severity).toBe("advisory");
-  });
-
-  it("returns null when .husky/pre-commit has HTML markers", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "<!-- bkit:start -->\npnpm test\n<!-- bkit:end -->\n",
-      "utf-8",
-    );
-    expect(detectHuskyNoMarkers(tmpDir, "pre-commit")).toBeNull();
-  });
-
-  it("returns null when .husky/pre-commit has hash-comment markers", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "# bkit:start\npnpm test\n# bkit:end\n",
-      "utf-8",
-    );
-    expect(detectHuskyNoMarkers(tmpDir, "pre-commit")).toBeNull();
-  });
-
-  it("returns null when .husky/pre-commit is absent", () => {
-    expect(detectHuskyNoMarkers(tmpDir, "pre-commit")).toBeNull();
-  });
-
-  it("returns finding when .husky/pre-push exists without markers", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-push"), "#!/bin/sh\necho push\n", "utf-8");
-    const result = detectHuskyNoMarkers(tmpDir, "pre-push");
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("husky-no-markers-prepush");
-  });
-
-  it("returns null when .husky/pre-push is absent", () => {
-    expect(detectHuskyNoMarkers(tmpDir, "pre-push")).toBeNull();
-  });
-});
+// detectHuskyNoMarkers tests removed in v2.0.4 — husky moved to Tier 3
+// (seed-or-print); markers are no longer expected. Tier-3 advisory emission
+// is exercised by bkit-modules.integration.test.ts via runGitHooksModule.
 
 // ---------------------------------------------------------------------------
 // detectPrettierignoreNoMarkers
@@ -396,12 +347,16 @@ describe("runPreflight", () => {
     expect(blockers).toHaveLength(0);
   });
 
-  it("returns advisory husky-no-markers-precommit when .husky/pre-commit has no markers", () => {
+  it("does NOT emit husky-no-markers-* (Tier 3 husky has no markers, v2.0.4)", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), '{"name":"test"}', "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".husky", "pre-push"), "#!/bin/sh\npnpm test\n", "utf-8");
     const { advisories } = runPreflight(makeModules("lint"), tmpDir);
-    expect(advisories.some((f) => f.id === "husky-no-markers-precommit")).toBe(true);
+    expect(advisories.some((f) => f.id === "husky-no-markers-precommit")).toBe(false);
+    expect(advisories.some((f) => f.id === "husky-no-markers-prepush")).toBe(false);
+    expect(advisories.some((f) => f.id === "husky-block-duplicates-precommit")).toBe(false);
+    expect(advisories.some((f) => f.id === "husky-block-duplicates-prepush")).toBe(false);
   });
 
   it("deduplicates findings within phase when same id would appear twice", () => {
@@ -486,63 +441,22 @@ describe("P3.T7 — detectHooksConfigOverwriteRisk deleted (v0.8.0)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// detectHuskyBlockDuplicates — Detector B (BAR-141 iter 2)
-// ---------------------------------------------------------------------------
-
-describe("detectHuskyBlockDuplicates", () => {
-  it("flags pre-commit when consumer content already runs lint:prose", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "#!/usr/bin/env sh\npnpm lint:prose && lint-staged\n# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
-    expect(f).toBeDefined();
-    expect(f?.id).toBe("husky-block-duplicates-precommit");
-    expect(f?.severity).toBe("advisory");
-    expect(f?.detect).toContain("lint:prose");
+// detectHuskyBlockDuplicates tests removed in v2.0.4 — husky is Tier 3
+// (seed-or-print); there is no managed block to duplicate. Source-level
+// guard below asserts neither obsolete detector lingers in the source.
+describe("husky Tier-3 migration — removed detectors must not return in source", () => {
+  it("bkit-preflight.ts no longer exports detectHuskyNoMarkers or detectHuskyBlockDuplicates", () => {
+    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
+    expect(src).not.toMatch(/export function detectHuskyNoMarkers\b/);
+    expect(src).not.toMatch(/export function detectHuskyBlockDuplicates\b/);
   });
 
-  it("flags pre-push when consumer content runs typecheck via turbo", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-push"),
-      "npx turbo run typecheck test --filter='...[origin/dev]'\n# bkit:start\npnpm typecheck && pnpm test\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectHuskyBlockDuplicates(tmpDir, "pre-push");
-    expect(f).toBeDefined();
-    expect(f?.id).toBe("husky-block-duplicates-prepush");
-    expect(f?.detect).toContain("typecheck");
-  });
-
-  it("does NOT flag when consumer-owned region is empty (only bkit block in file)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
-    expect(f).toBeNull();
-  });
-
-  it("does NOT flag when consumer content does not reference bkit's commands", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "lint-staged\n# bkit:start\npnpm lint:prose\n# bkit:end\n",
-      "utf-8",
-    );
-    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
-    expect(f).toBeNull();
-  });
-
-  it("returns null when hook file does not exist", () => {
-    const f = detectHuskyBlockDuplicates(tmpDir, "pre-commit");
-    expect(f).toBeNull();
+  it("runPreflight no longer hardcodes .husky/* in markeredTextPaths (Tier 3 owns drift)", () => {
+    const src = fs.readFileSync(path.join(__dirname, "bkit-preflight.ts"), "utf-8");
+    const markeredBlock = src.match(/const markeredTextPaths = \[([\s\S]*?)\];/);
+    expect(markeredBlock).not.toBeNull();
+    expect(markeredBlock![1]).not.toContain(".husky/pre-commit");
+    expect(markeredBlock![1]).not.toContain(".husky/pre-push");
   });
 });
 

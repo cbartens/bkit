@@ -704,6 +704,57 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .lintstagedrc.json ---
 `;
+// Husky hooks moved from Tier 2 (managed-block enforced) to Tier 3 (seed-or-print)
+// in v2.0.4. Real-world consumers routinely already run typecheck/test/format:check
+// via turbo or lint-staged in their own hook content, making the bkit-managed block
+// a duplicate — and the strict Tier-2 drift gate (`tier2-text-drift`) failed CI
+// whenever the consumer customised the block, forcing them either back to the
+// canonical form or to delete the block (which the next install would re-seed).
+// Tier 3 seeds the canonical hook for new consumers and emits an advisory for
+// existing consumers whose hook differs — no drift gate, no managed-block markers
+// to keep in sync. Declarative pattern files (`.gitignore`, `.prettierignore`)
+// stay Tier 2 because their semantics genuinely require additive merging; husky
+// hooks are imperative scripts whose semantics are fully replaceable.
+const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose && pnpm lint:slop\`.
+  Most consumers using turbo or their own lint-staged config already cover the
+  equivalent — in that case, ignore this advisory and keep your existing hook.
+  If your hook does NOT already format staged files / run prose + slop scans,
+  consider adopting the reference, or merging the missing commands into yours.
+
+  Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
+  # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
+  the hook as a full-file template (Tier 3 seed-or-print). If your file still
+  contains bkit:start/bkit:end markers, you can safely delete them — the file
+  is yours to own. The block content itself can stay or go.
+
+  --- begin bkit reference .husky/pre-commit ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .husky/pre-commit ---
+`;
+const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`.
+  Most consumers using turbo (e.g. \`npx turbo run lint typecheck format:check test\`)
+  already cover the equivalent — in that case, ignore this advisory and keep your
+  existing hook. If your hook does NOT already run those three gates, consider
+  adopting the reference, or merging the missing commands into yours.
+
+  Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
+  # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
+  the hook as a full-file template (Tier 3 seed-or-print). If your file still
+  contains bkit:start/bkit:end markers, you can safely delete them — the file
+  is yours to own. The block content itself can stay or go.
+
+  --- begin bkit reference .husky/pre-push ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .husky/pre-push ---
+`;
 const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -963,8 +1014,20 @@ export function runLintModule(ctx) {
     });
 }
 // ---------------------------------------------------------------------------
-// runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 2 hash-comment)
+// runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print)
+//
+// Switched from Tier 2 (managed-block) to Tier 3 (seed-or-print) in v2.0.4.
+// Rationale: imperative hook scripts don't need the additive-merge semantics
+// of `.gitignore` / `.prettierignore`. Consumers with their own turbo /
+// lint-staged hook content fully replace bkit's commands and would otherwise
+// fail the `tier2-text-drift` gate every install. Tier 3 seeds the canonical
+// hook for new consumers, prints AI-actionable merge instructions when one
+// already exists, and never enforces drift. See KN entry / CHANGELOG 2.0.4.
 // ---------------------------------------------------------------------------
+const HUSKY_MERGE_INSTRUCTIONS = {
+    "pre-commit": HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS,
+    "pre-push": HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS,
+};
 export function runGitHooksModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
@@ -981,13 +1044,15 @@ export function runGitHooksModule(ctx) {
             continue;
         const dstPath = path.join(".husky", hookName);
         const prevLen = ws.writes.length;
-        writeTier2(srcPath, dstPath, tokens, "hash-comment", dryRun, ws);
+        const result = writeTier3(srcPath, dstPath, dryRun, advisories, ws, HUSKY_MERGE_INSTRUCTIONS[hookName], tokens);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}git-hooks: ${dstPath}`);
-            // Ensure hook is executable after write
             if (!dryRun && fs.existsSync(dstPath)) {
                 fs.chmodSync(dstPath, 0o755);
             }
+        }
+        else if (result.suggested) {
+            console.log(`${logPrefix} ${tag}git-hooks: ${dstPath} (exists; AI merge instructions printed)`);
         }
     }
     // Ensure `prepare: husky install` exists so hooks activate on `pnpm install`.

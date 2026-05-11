@@ -263,20 +263,30 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
 });
 
 // ---------------------------------------------------------------------------
-// Verify that .husky/pre-push already has markers (pre-existing, no change)
+// .husky/pre-push and pre-commit are Tier 3 (seed-or-print) as of v2.0.4 — no
+// markers expected. Templates are full-file shell scripts.
 // ---------------------------------------------------------------------------
 
-describe("pre-existing markers — .husky/pre-push", () => {
-  it(".husky/pre-push has exactly one # bkit:start and one # bkit:end", () => {
+describe("Tier 3 husky templates (v2.0.4) — no bkit markers in template content", () => {
+  it(".husky/pre-push contains NO bkit:start/bkit:end markers (full-file Tier 3)", () => {
     const content = readTemplate(".husky/pre-push");
-    expect(countMatches(content, /^# bkit:start$/m)).toBe(1);
-    expect(countMatches(content, /^# bkit:end$/m)).toBe(1);
+    expect(countMatches(content, /^# bkit:start$/m)).toBe(0);
+    expect(countMatches(content, /^# bkit:end$/m)).toBe(0);
   });
 
-  it(".husky/pre-push marker block contains the pnpm test step", () => {
+  it(".husky/pre-commit contains NO bkit:start/bkit:end markers (full-file Tier 3)", () => {
+    const content = readTemplate(".husky/pre-commit");
+    expect(countMatches(content, /^# bkit:start$/m)).toBe(0);
+    expect(countMatches(content, /^# bkit:end$/m)).toBe(0);
+  });
+
+  it(".husky/pre-push template still invokes pnpm at the script level", () => {
     const content = readTemplate(".husky/pre-push");
-    const block = extractManagedBlock(content, "hash-comment");
-    expect(block).not.toBeNull();
-    expect(block!).toContain("pnpm");
+    expect(content).toContain("pnpm");
+  });
+
+  it(".husky/pre-commit template still invokes pnpm at the script level", () => {
+    const content = readTemplate(".husky/pre-commit");
+    expect(content).toContain("pnpm");
   });
 });

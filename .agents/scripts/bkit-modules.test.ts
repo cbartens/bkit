@@ -224,7 +224,7 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     expect(paths).toContain(".cursor/hooks.json");
   });
 
-  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore, .prettierignore, .husky files use format markered-text", () => {
+  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore, .prettierignore use format markered-text", () => {
     const allEntries = getInstallManifest([]);
     const markedEntries = allEntries.filter((e) => e.format === "markered-text");
     const paths = markedEntries.map((e) => e.path);
@@ -232,11 +232,12 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     expect(paths).toContain("CLAUDE.md");
     expect(paths).toContain(".gitignore");
     expect(paths).toContain(".prettierignore");
-    expect(paths).toContain(".husky/pre-commit");
-    expect(paths).toContain(".husky/pre-push");
     // ci.yml and .vale.ini are byte-equal-text (seed-or-print) since v2.0.0
     expect(paths).not.toContain(".github/workflows/ci.yml");
     expect(paths).not.toContain(".vale.ini");
+    // .husky/* moved to byte-equal-text (Tier 3 seed-or-print) in v2.0.4
+    expect(paths).not.toContain(".husky/pre-commit");
+    expect(paths).not.toContain(".husky/pre-push");
   });
 
   it("byte-equal-text entries: .cursor/Dockerfile, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {

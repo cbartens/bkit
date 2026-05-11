@@ -133,11 +133,15 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     expect(postContent).not.toContain("<!-- bkit:end -->");
   });
 
-  it(".husky/pre-commit: bkit block stripped, consumer commands preserved", async () => {
+  it(".husky/pre-commit: heavily customised legacy fixture preserved byte-identically (Tier 3 byte-equal-text, v2.0.4)", async () => {
+    // v2.0.4: .husky/* is byte-equal-text. Uninstall only deletes when content
+    // matches install-time hash (recorded in .agents/.bkit-version#canonicalHashes).
+    // The heavy-customised fixture has consumer-written lines + a legacy bkit:start/end
+    // block — content does NOT match any bkit install-time hash, so uninstall PRESERVES
+    // the file byte-identically rather than mutating it. This is a stronger guarantee
+    // than the prior strip-block behaviour: bkit never touches a consumer-modified hook.
     const originalContent = fs.readFileSync(path.join(tmpDir, ".husky", "pre-commit"), "utf-8");
 
-    expect(originalContent).toContain("# bkit:start");
-    expect(originalContent).toContain("# bkit:end");
     expect(originalContent).toContain("Consumer custom check");
     expect(originalContent).toContain("Running consumer pre-commit checks");
 
@@ -145,13 +149,8 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 
     const postContent = fs.readFileSync(path.join(tmpDir, ".husky", "pre-commit"), "utf-8");
 
-    // Consumer content preserved
-    expect(postContent).toContain("Consumer custom check");
-    expect(postContent).toContain("Running consumer pre-commit checks");
-    // bkit block removed
-    expect(postContent).not.toContain("# bkit:start");
-    expect(postContent).not.toContain("pnpm typecheck");
-    expect(postContent).not.toContain("# bkit:end");
+    // Whole file is byte-identical to the pre-uninstall state.
+    expect(postContent).toBe(originalContent);
   });
 
   it("package.json: consumer-customised scripts/devDeps preserved when not stripping", async () => {

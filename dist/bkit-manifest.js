@@ -63,9 +63,14 @@ const LINT_MANIFEST = [
         },
     },
 ];
+// v2.0.4: husky hooks switched from "markered-text" (Tier 2) to "byte-equal-text"
+// (Tier 3 seed-or-print). Hook scripts no longer carry bkit:start/bkit:end markers;
+// the canonical file IS the install-time template, and uninstall is hash-guarded
+// (delete only when consumer hasn't modified). See `runGitHooksModule` and
+// CHANGELOG 2.0.4 for the architecture rationale.
 const GIT_HOOKS_MANIFEST = [
-    { path: ".husky/pre-commit", format: "markered-text", module: "git-hooks" },
-    { path: ".husky/pre-push", format: "markered-text", module: "git-hooks" },
+    { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks" },
+    { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks" },
     {
         path: "package.json",
         format: "markered-text",

@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.4] — 2026-05-12
+
+### Changed
+
+- **`.husky/pre-commit` and `.husky/pre-push` migrated from Tier 2 (managed-block enforced) → Tier 3 (seed-or-print).** The `tier2-text-drift` gate failed `bkit check` in CI whenever a consumer customised the bkit-managed block, forcing them either back to the canonical content or to delete the block (which the next install would re-seed — there was no stable opt-out). The new tier ships the hook as a full-file template (no `bkit:start/bkit:end` markers): bkit seeds the canonical hook for new consumers and emits a `tier3-merge-suggested-pre-{commit,push}` advisory when one already exists, never enforcing drift. Declarative pattern files (`.gitignore`, `.prettierignore`) stay Tier 2 because their semantics genuinely require additive merging; imperative hook scripts don't. Migration is non-destructive — existing consumers with the legacy marker-block format keep their file unchanged on next install, get the advisory, can choose to migrate or ignore. **Manifest format flipped `markered-text` → `byte-equal-text`** for both husky paths; `bkit uninstall` now hash-guards deletion (preserves consumer-modified hooks rather than stripping a block). **Removed detectors:** `detectHuskyNoMarkers` and `detectHuskyBlockDuplicates` (and their `husky-no-markers-*` / `husky-block-duplicates-*` advisory IDs) — both keyed to the obsolete Tier-2 managed-block design.
+
+---
+
 ## [2.0.3] — 2026-05-12
 
 ### Added
