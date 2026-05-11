@@ -865,7 +865,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    rm -f "docs/plans/logs/{FID}/.lock"
    git push origin "$(git branch --show-current)"
    ```
-3. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged so phase label `Build` persists.
+3. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`— `{LABELS}` unchanged.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 18 — Close Workflow

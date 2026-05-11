@@ -510,7 +510,7 @@
    git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
    rm -f "docs/plans/logs/{FID}/.lock"
    ```
-6. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged so phase label `Design` persists.
+6. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 10 — Close Workflow
