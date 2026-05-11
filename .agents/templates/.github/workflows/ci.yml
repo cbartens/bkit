@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [{{DEFAULT_BRANCH}}, dev]
+    branches: [{{DEFAULT_BRANCH}}, dev, 'feat/**']
   pull_request:
     branches: [{{DEFAULT_BRANCH}}, dev]
 
