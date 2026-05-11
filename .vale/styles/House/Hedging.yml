@@ -1,3 +1,4 @@
+# bkit:start
 extends: existence
 message: "Hedging: '%s' — remove or commit to a position."
 level: warning
@@ -8,3 +9,4 @@ tokens:
   - arguably
   - it's worth noting
   - it could be argued
+# bkit:end

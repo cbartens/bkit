@@ -1,12 +1,12 @@
 {
-  "pinnedVersion": "1.1.2",
+  "pinnedVersion": "2.0.0",
   "tier3Hashes": {},
   "canonicalHashes": {
     "docs/deployments.md": "558e4cf9bdf763e340b49be12d45102837f25ca7d59e4a0a036a02c6fb3ce569",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
-    ".claude/settings.json": "4f30254582fc690ad9eeb7a7f4ebb4aa340a5c126b730908e5c82b355871b66b",
-    ".husky/pre-push": "efd866b545cc1ec2e263e09d87cc58b34552c309e24e3f68b74ae79692cc6003",
-    ".agents/docs.md": "0b94ce35be234519e515a60b6b633b7ceea37137555a52945712c74e9a2c50e5",
+    ".claude/settings.json": "94ed3bbc81cdef80974be1a363a13c304bca20befff0292183903818cc89900e",
+    ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
+    ".agents/docs.md": "21b5bfa2bbf7c3d06a569e76be71a792b6bdecba3195aab9da6659b91f58c586",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
     ".claude/hooks/preflight.sh": "768b3846a69fbc5720e51571f65277f2b7934df64aa0f3e5c7c5e26ae5693c9a",
     ".cursor/Dockerfile": "4dbb9ef11c561733d98fbd78aa6320a099519b8315d3ca678a20614b92ecddf5",
@@ -15,12 +15,12 @@
     ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
     ".cursor/settings.json": "1b4f18de636c8c03ba0b748fb57499c71816ac34cfd5e3cc0c5ddb57c263d972",
     ".husky/pre-commit": "36bbb7ed74e56f4b02974f7ff3d2b0b5d5fe6c4518e982c8f4ca1eb2eda98bba",
-    ".prettierignore": "4a24543255a5c60ebb34f4a891378a8a74859184764be56a7691cb8b27a899db",
-    ".vale/styles/House/Filler.yml": "9b10438de3158a1923c51375fcba56de7a8dd2f17de97d62385407eee2a6e377",
-    ".vale/styles/House/Hedging.yml": "7289b6bfe98f48803734c016c6ba49661071b5d8ded0f4678509b37c6ab8aff9",
-    ".vale/styles/House/LLMSlop.yml": "17a22ab44f0bd37de4d4c972fbb39a71dc256712ba0cfc39320043381f180a8e",
-    ".vale/styles/House/Verbose.yml": "bcb18beb903e7bd57780905778ea4d1a4f294589cf191375db144ecb11f4c619",
-    ".vale.ini": "85b155509ce6c4dae325738b8f13f60eb0bfafadb20561c6cd635fdf5b79c53b",
+    ".prettierignore": "93df5955b38ae58ac5b35e206d10ce1b4ba31a9e06a02e2203d71c195dc083f5",
+    ".vale/styles/House/Filler.yml": "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
+    ".vale/styles/House/Hedging.yml": "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
+    ".vale/styles/House/LLMSlop.yml": "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",
+    ".vale/styles/House/Verbose.yml": "8278791997cca85a2df63b2c93decac480e685215e0569e8472aa433e7a27ac8",
+    ".vale.ini": "341faf5ea0f372108e10c5b555916737202fbd6f2b1db8b7516660672fefb8bf",
     "AGENTS.md": "daa4c05963fa64e6e6739067e18233e81e9cf646883ad7862f6691ab251cec64",
     "CLAUDE.md": "06fcc17120169721d39bf8da7cb785027c6b1c8000b83ed157dfbf0490fef533",
     "docs/data-cron-jobs.md": "b264b9c7ef491967aba259511dcc84d1edac8ad6335e3806793c849a8806e810",
@@ -31,6 +31,8 @@
     "docs/styles.md": "6f4d76486f882ee3a910a458b147fb38716ea8b0087a04f9b8a5258290c3b572",
     "docs/warnings.md": "ad12966c6fdf59c2f75390854f19f2bdc43122475ee9042366e2e13fe75be573",
     "docs/webhooks.md": "c8c11dcd84fae1815a36978e7a83ab26d45406edbbd6d66697c0eb7bdadff7e9",
-    "slop-scan.config.json": "6186de06a906ba7340a6faa95a4acb42f37f1d18500c8f5e3bf1e104e44e098e"
+    "slop-scan.config.json": "6186de06a906ba7340a6faa95a4acb42f37f1d18500c8f5e3bf1e104e44e098e",
+    "gitattributes": "c1b6f47d9ef1abc3726b77c857431cc507d9c85bc8a3be5e729c76a5d75ba44e",
+    "docs/plans/template.md": "24f6b3c1712e76b9b59330a8dcbb295d2bab7002eee09383627d6fdce6c9ad01"
   }
 }

@@ -1,12 +1,13 @@
 {
-  "__bkit__": {
-    "hooks": [
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
       {
-        "event": "sessionStart",
         "command": "echo '[bkit] session started'"
-      },
+      }
+    ],
+    "sessionStop": [
       {
-        "event": "sessionStop",
         "command": "echo '[bkit] session stopped'"
       }
     ]
