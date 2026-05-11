@@ -126,9 +126,7 @@ function _deepContainsArray(
       }
     } else if (Array.isArray(tEl)) {
       // Nested array element — must find an equal consumer element
-      const found = consumer.some(
-        (cEl) => Array.isArray(cEl) && deepContains(tEl, cEl, "").ok,
-      );
+      const found = consumer.some((cEl) => Array.isArray(cEl) && deepContains(tEl, cEl, "").ok);
       if (!found) {
         missing.push(elPath);
       }
@@ -136,7 +134,9 @@ function _deepContainsArray(
       // Object element — order-insensitive deep-equal containment
       const found = consumer.some(
         (cEl) =>
-          cEl !== null && typeof cEl === "object" && !Array.isArray(cEl) &&
+          cEl !== null &&
+          typeof cEl === "object" &&
+          !Array.isArray(cEl) &&
           deepContains(tEl, cEl, "").ok,
       );
       if (!found) {
@@ -311,7 +311,10 @@ export function migrateLegacyBkitEnvelope(
   }
 
   // Deep-merge: stripped base, template override
-  const merged = deepMergeJson(stripped as JsonValue, template as JsonValue) as Record<string, JsonValue>;
+  const merged = deepMergeJson(stripped as JsonValue, template as JsonValue) as Record<
+    string,
+    JsonValue
+  >;
 
   // Detect schema flip: any path where the type changed from stripped to merged
   const schemaFlipped = _detectSchemaFlip(stripped, merged);
@@ -325,7 +328,10 @@ export function migrateLegacyBkitEnvelope(
 }
 
 /** Detect if any path type-flipped between two objects (shallow first level only for perf). */
-function _detectSchemaFlip(before: Record<string, JsonValue>, after: Record<string, JsonValue>): boolean {
+function _detectSchemaFlip(
+  before: Record<string, JsonValue>,
+  after: Record<string, JsonValue>,
+): boolean {
   for (const key of Object.keys(after)) {
     const bVal = before[key];
     const aVal = after[key];

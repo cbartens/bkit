@@ -123,7 +123,10 @@ export function stripTier2JsonScope(
   return out;
 }
 
-function _stripScope(consumer: Record<string, JsonValue>, template: Record<string, JsonValue>): void {
+function _stripScope(
+  consumer: Record<string, JsonValue>,
+  template: Record<string, JsonValue>,
+): void {
   for (const key of Object.keys(template)) {
     const tVal = template[key];
     const cVal = consumer[key];

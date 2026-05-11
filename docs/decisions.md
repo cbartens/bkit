@@ -73,7 +73,7 @@
 - **Source:** phase
 - **Related:** BAR-141, `docs/plans/active/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4
 
-## DE-7: BAR-142 §A1 — Cursor v1 hooks.json schema spike outcome (2026-05-07)
+## DE-7: BAR-142 §A1 — Cursor v1 hooks.json schema spike outcome (2026-05-07) (superseded by DE-18, 2026-05-11)
 
 - **Category:** agentic
 - **Status:** active
@@ -83,7 +83,7 @@
 - **Source:** phase
 - **Related:** BAR-142 §A1, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`, DE-8
 
-## DE-8: BAR-142 §A1 — `__bkit__` envelope contract + `detectHooksConfigOverwriteRisk` DELETE disposition (2026-05-07)
+## DE-8: BAR-142 §A1 — `__bkit__` envelope contract + `detectHooksConfigOverwriteRisk` DELETE disposition (2026-05-07) (superseded by DE-18, 2026-05-11)
 
 - **Category:** agentic
 - **Status:** active
@@ -195,3 +195,21 @@
 - **Discarded:** (1) Single uniform sentinel→handover path for all conflicts — preserves current dead-end. (2) New full workflow Step for conflict resolution — adds status.json/gate/comment overhead for what is mechanical recovery; better as inline sub-step of Step 2. (3) Repurpose `bkit-debug` workflow for rebase conflicts — its diagnose/remediate subagents are scoped to test failures; verdict signal "tests pass" is necessary but not sufficient for a merge (tests can pass while one side's intent is silently dropped). (4) Wire `bkit-ship-conflict-resolve` into build/debug Failure Paths — those workflows operate on the feature branch in isolation; conflicts there are rarer and usually indicate deeper problems. (5) `.agents/friction.md` for `merge=union` — friction.md has post-write edits to `Recovery`/`Status` fields, breaking the strict-append contract that union-safety requires.
 - **Source:** human
 - **Related:** BAR-169, BAR-155, PR #17, `.agents/templates/gitattributes`, `.gitattributes`, `.agents/workflows/bkit-ship.md` Step 2, `.agents/workflows/bkit-build.md` Step 2, `.agents/workflows/bkit-debug.md` Step 2, `.agents/prompts/bkit-ship-conflict-resolve.md`, `.agents/scripts/bkit-install.ts` (`NPM_STRIP_REMAP`)
+
+## DE-18: BAR-167 — Drop `__bkit__` envelope; adopt deep-containment ownership model (2026-05-11)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Remove the `__bkit__` JSON envelope from `.claude/settings.json` and `.cursor/hooks.json`. Reverse DE-7 and DE-8. Replace with a **deep-containment** model: bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. New primitives: `deepContains(template, consumer)` (pure check), `writeTier2JsonContained(srcPath, dstPath, dryRun, ws)` (dest absent → write as-is; present → deepContains → ok no-op; fail → deepMergeJson template-wins), `migrateLegacyBkitEnvelope(doc, template)` (strips `__bkit__`, deep-merges if containment fails; idempotent), `stripTier2JsonScope(consumerDoc, templateDoc)` (uninstall helper — removes template scope, preserves consumer-only siblings). `.cursor/hooks.json` template migrated to Cursor v1 keyed-object schema. `bkit upgrade` runs `migrateLegacyBkitEnvelope` once per consumer JSON file on first v2.0.0 encounter. Preflight adds: advisory `legacy-bkit-envelope-detected` (`__bkit__` present), advisory `tier2-json-drift` (deepContains fails), blocker `pre-envelope-bkit-version-detected` (`pinnedVersion < 0.8.0` AND no `__bkit__`).
+- **Why:** The `__bkit__` envelope caused two real-world failure modes on 2026-05-09 consumer audit: (1) duplicate content — the same hook block appeared inside `__bkit__` AND at the top level, causing confusion and bloat; (2) silent drift — `.github/workflows/ci.yml` lost its `pnpm bkit check` step with no detection. The envelope model required consumers to hold two copies of every bkit-owned key. Deep-containment eliminates the duplication: the template IS the declared scope; the consumer only needs to contain it. Consumer-added keys outside the template tree are never touched. `writeTier2Json` THROW (envelope guard) was a footgun — deep-containment removes the need for it entirely.
+- **Discarded:** (1) Retain `__bkit__` envelope, fix drift detection separately — does not eliminate the duplicate-content failure mode. (2) Use comment markers in JSON — JSON has no comment syntax; marker approach requires a serialisation round-trip. (3) Separate ownership manifest per consumer file — too much ceremony; the template itself is the manifest. (4) Namespace all bkit keys under a prefix — requires renaming every key in every template; breaks existing consumer files without a migration path.
+- **Type signatures (v2.0.0):**
+  ```ts
+  type DeepContainsResult = { ok: boolean; missing: string[]; mismatched: string[] };
+  function deepContains(template: JsonValue, consumer: JsonValue, pathPrefix?: string): DeepContainsResult;
+  function writeTier2JsonContained(srcPath: string, dstPath: string, dryRun: boolean, ws: WriteSet): void;
+  function migrateLegacyBkitEnvelope(doc: Record<string, JsonValue>, template: Record<string, JsonValue>): { stripped: boolean; deepMerged: boolean; schemaFlipped: boolean; outDoc: Record<string, JsonValue> };
+  function stripTier2JsonScope(consumerDoc: Record<string, JsonValue>, templateDoc: Record<string, JsonValue>): Record<string, JsonValue>;
+  ```
+- **Source:** phase
+- **Related:** BAR-167, DE-7 (superseded), DE-8 (superseded), KN-8 (superseded by KN-17), `.agents/scripts/bkit-tiers.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-uninstall.ts`, `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`

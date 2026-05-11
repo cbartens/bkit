@@ -146,11 +146,7 @@ function listFilesRecursive(dir: string): string[] {
 // BAR-167 Phase 1 — doctor surfaces tier2-json-drift and legacy-bkit-envelope advisories
 // ---------------------------------------------------------------------------
 
-import {
-  detectLegacyBkitEnvelope,
-  detectTier2JsonDrift,
-  runPreflight,
-} from "./bkit-preflight";
+import { detectLegacyBkitEnvelope, detectTier2JsonDrift, runPreflight } from "./bkit-preflight";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
   it("tier2-json-drift and legacy-bkit-envelope-detected surface through runPreflight", () => {

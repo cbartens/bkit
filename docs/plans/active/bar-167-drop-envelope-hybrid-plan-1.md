@@ -115,8 +115,8 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0(-al
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** Phase 1 narrative, success criteria, edge cases, and test matrix correctly describe what "done" looks like for sub-plan A.
-- [ ] **Breaking Changes confirmed:** Phase 1 breaking changes (envelope removal, public API deletions, `writeTier2Json` rename, Cursor v1 keyed-object schema flip) reviewed.
+- [x] **Acceptance Scenario confirmed:** Phase 1 narrative, success criteria, edge cases, and test matrix correctly describe what "done" looks like for sub-plan A.
+- [x] **Breaking Changes confirmed:** Phase 1 breaking changes (envelope removal, public API deletions, `writeTier2Json` rename, Cursor v1 keyed-object schema flip) reviewed.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until both checkboxes above are `[x]`.

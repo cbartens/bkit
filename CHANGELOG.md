@@ -6,6 +6,35 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.0] — 2026-05-11
+
+### Removed (breaking)
+
+- **`__bkit__` JSON envelope removed** from `.claude/settings.json` and `.cursor/hooks.json` templates. Reverses DE-7 and DE-8. Consumers upgrading from v0.8.0–v1.1.1 will have the `__bkit__` block stripped automatically on first `bkit upgrade`. Consumer-added keys outside the template tree survive byte-identical. (BAR-167)
+- **Public API deletions from `bkit-tiers.ts`:** `applyBkitNamespace`, `extractBkitNamespace`, `migrateTier1JsonToTier2`, envelope-guard `throw` branch of `writeTier2Json`. (BAR-167)
+- **`writeTier2Json` renamed to `writeTier2JsonContained`** — callers in `bkit-modules.ts` updated. (BAR-167)
+- **`bkit-tier1-defaults.ts` deleted** — sole consumer was `migrateTier1JsonToTier2`. (BAR-167)
+
+### Changed (breaking)
+
+- **`.cursor/hooks.json` template migrated to Cursor v1 keyed-object schema.** Old shape: `{"hooks": [{event, command}]}`. New shape: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`. Existing consumers are migrated automatically on `bkit upgrade`. (BAR-167)
+- **Ownership model for Tier-2 JSON is now deep-containment.** The template JSON tree is the declared bkit scope; `deepContains(template, consumer)` verifies every leaf is present. `writeTier2JsonContained` replaces the envelope-guard write path. No `__bkit__` key is written or expected. (BAR-167)
+
+### Added
+
+- **`deepContains(template, consumer, pathPrefix?)` primitive** — recursive walk; returns `{ ok, missing, mismatched }`. Supports object containment, array-of-primitive subset, array-of-object element-wise order-insensitive containment, null-input boundary cases. (BAR-167)
+- **`migrateLegacyBkitEnvelope(doc, template)` helper** — pure function, no file I/O. Strips `__bkit__`, runs `deepContains`, deep-merges if containment fails. Returns `{ stripped, deepMerged, schemaFlipped, outDoc }`. Idempotent. (BAR-167)
+- **`stripTier2JsonScope(consumerDoc, templateDoc)` helper** — for `bkit uninstall`: removes template scope, preserves consumer-only siblings, prunes empty intermediates only where template populated them. (BAR-167)
+- **`bkit-paths.ts`** — new module exporting `getPkgRoot()`. Breaks `bkit-preflight ↔ bkit-modules` circular import. (BAR-167)
+- **Preflight advisories:** `legacy-bkit-envelope-detected` (advisory, fires when `__bkit__` present), `tier2-json-drift` (advisory, fires when `deepContains` fails for `.cursor/hooks.json` or `.claude/settings.json`). (BAR-167)
+- **Preflight blocker:** `pre-envelope-bkit-version-detected` (fires when `pinnedVersion < 0.8.0` AND no `__bkit__` — consumer must route through v1.x first). (BAR-167)
+
+### Migration
+
+- Run `pnpm bkit upgrade` after bumping to v2.0.0. `migrateLegacyBkitEnvelope` strips the `__bkit__` block from `.claude/settings.json` and `.cursor/hooks.json` and logs `[bkit] migrated <file> — stripped __bkit__ envelope (v2.0.0)`. Run `pnpm bkit check` to verify zero drift.
+
+---
+
 ## [1.1.2] — 2026-05-11
 
 ### Fixed

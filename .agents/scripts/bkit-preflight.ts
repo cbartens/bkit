@@ -357,10 +357,7 @@ export function detectPrettierignoreScopeNarrowing(cwd: string): PreflightFindin
  * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
  * Action: run `pnpm bkit upgrade`.
  */
-export function detectLegacyBkitEnvelope(
-  cwd: string,
-  relPath: string,
-): PreflightFinding | null {
+export function detectLegacyBkitEnvelope(cwd: string, relPath: string): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
   if (!fs.existsSync(absPath)) return null;
   let doc: Record<string, unknown>;

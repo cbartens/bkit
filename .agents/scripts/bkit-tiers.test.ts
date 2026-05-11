@@ -726,7 +726,12 @@ describe("deepContains", () => {
 
   it("(6) array-of-objects asymmetric size: template 1 element, consumer 2 elements → ok=true", () => {
     const template: JsonValue = { items: [{ id: 1, name: "foo" }] };
-    const consumer: JsonValue = { items: [{ id: 2, name: "bar" }, { id: 1, name: "foo" }] };
+    const consumer: JsonValue = {
+      items: [
+        { id: 2, name: "bar" },
+        { id: 1, name: "foo" },
+      ],
+    };
     expect(deepContains(template, consumer).ok).toBe(true);
   });
 
@@ -912,10 +917,7 @@ describe("migrateLegacyBkitEnvelope", () => {
 
 describe("cursor-v1-schema", () => {
   it("parsed template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__, no flat-array hooks", () => {
-    const templatePath = path.resolve(
-      __dirname,
-      "../../.agents/templates/.cursor/hooks.json",
-    );
+    const templatePath = path.resolve(__dirname, "../../.agents/templates/.cursor/hooks.json");
     expect(fs.existsSync(templatePath)).toBe(true);
     const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     expect(doc.version).toBe(1);

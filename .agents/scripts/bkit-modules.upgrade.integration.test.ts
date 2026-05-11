@@ -71,7 +71,7 @@ describe("v0.8.x → v2.0.0 envelope migration (Task-0c fixture)", () => {
 
     // Template = schema-clean settings.json (no __bkit__)
     const template: Record<string, JsonValue> = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
         SessionStart: [
           { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
@@ -91,7 +91,7 @@ describe("v0.8.x → v2.0.0 envelope migration (Task-0c fixture)", () => {
     const srcPath = path.join(tmpDir, "settings-template.json");
     const dstPath = path.join(tmpDir, ".claude", "settings.json");
     const template = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: { SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }] },
     };
     fs.writeFileSync(srcPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
@@ -114,18 +114,19 @@ describe("v0.8.x → v2.0.0 envelope migration (Task-0c fixture)", () => {
     fs.copyFileSync(fixturePath, onDiskPath);
 
     const beforeDoc = JSON.parse(fs.readFileSync(onDiskPath, "utf-8")) as Record<string, JsonValue>;
-    const stopHookBefore = JSON.stringify(
-      (beforeDoc.hooks as Record<string, JsonValue>).Stop,
-    );
+    const stopHookBefore = JSON.stringify((beforeDoc.hooks as Record<string, JsonValue>).Stop);
 
     // Step 1: migrateLegacyBkitEnvelope (strips __bkit__)
     const templateSrcPath = path.join(tmpDir, "settings-template.json");
     const template = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: { SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }] },
     };
     fs.writeFileSync(templateSrcPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
-    const templateDoc = JSON.parse(fs.readFileSync(templateSrcPath, "utf-8")) as Record<string, JsonValue>;
+    const templateDoc = JSON.parse(fs.readFileSync(templateSrcPath, "utf-8")) as Record<
+      string,
+      JsonValue
+    >;
 
     const migrResult = migrateLegacyBkitEnvelope(beforeDoc, templateDoc);
     expect(migrResult.stripped).toBe(true);
@@ -161,7 +162,10 @@ describe("v0.8.x → v2.0.0 envelope migration (Task-0c fixture)", () => {
       },
     };
     fs.writeFileSync(templateSrcPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
-    const templateDoc = JSON.parse(fs.readFileSync(templateSrcPath, "utf-8")) as Record<string, JsonValue>;
+    const templateDoc = JSON.parse(fs.readFileSync(templateSrcPath, "utf-8")) as Record<
+      string,
+      JsonValue
+    >;
 
     const migrResult = migrateLegacyBkitEnvelope(beforeDoc, templateDoc);
     expect(migrResult.stripped).toBe(true);
@@ -181,14 +185,14 @@ describe("v0.8.x → v2.0.0 envelope migration (Task-0c fixture)", () => {
     // File already in v2.0.0 schema (no __bkit__), fully contains template
     const templateSrcPath = path.join(tmpDir, "settings-template.json");
     const template = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: { SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }] },
     };
     fs.writeFileSync(templateSrcPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
 
     const onDiskPath = path.join(tmpDir, "settings.json");
     const consumerDoc = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
         SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }],
         Stop: [{ hooks: [{ type: "command", command: "echo consumer" }] }],
@@ -222,7 +226,7 @@ describe("heavy-customised consumer fixture (v0.5.x era) — v2.0.0 contained wr
     // Simulate a consumer that already had the Stop hook and migrated __bkit__ manually
     const onDiskPath = path.join(tmpDir, "settings.json");
     const consumerDoc = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: {
         SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }],
         Stop: [{ hooks: [{ type: "command", command: "echo 'Consumer Stop hook'" }] }],
@@ -233,7 +237,7 @@ describe("heavy-customised consumer fixture (v0.5.x era) — v2.0.0 contained wr
 
     const templatePath = path.join(tmpDir, "template.json");
     const template = {
-      "$schema": "https://json.schemastore.org/claude-code-settings.json",
+      $schema: "https://json.schemastore.org/claude-code-settings.json",
       hooks: { SessionStart: [{ hooks: [{ type: "command", command: "bash preflight.sh" }] }] },
     };
     fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
@@ -257,10 +261,7 @@ describe("heavy-customised consumer fixture (v0.5.x era) — v2.0.0 contained wr
 
 describe("cursor-v1-schema sanity", () => {
   it("template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__", () => {
-    const templatePath = path.resolve(
-      __dirname,
-      "../../.agents/templates/.cursor/hooks.json",
-    );
+    const templatePath = path.resolve(__dirname, "../../.agents/templates/.cursor/hooks.json");
     expect(fs.existsSync(templatePath)).toBe(true);
     const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     expect(doc.version).toBe(1);

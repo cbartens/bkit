@@ -116,7 +116,7 @@
 - **Source:** phase
 - **Related:** BAR-141, BAR-131, PR #5, PR #7, commits `edbd891` (broke), `7ab6bff` (fixed), `.husky/pre-push`, `.github/workflows/ci.yml`, `docs/deployments.md` § Pre-push checklist
 
-## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07)
+## KN-8: Tier-2 deep-merge via `__bkit__` envelope is canonical for ownership-mixed JSON (2026-05-07) (superseded by KN-17, BAR-167, 2026-05-11)
 
 - **Category:** agentic
 - **Symptom (original):** Consumer-side regression: bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` on `app-gether-life`, destroying the consumer's `Stop` hook block, postflight wiring, `failClosed`, and `loop_limit` fields. Recovered only by `git revert` of the install commit.
@@ -223,3 +223,16 @@
 - **Severity:** high
 - **Source:** build-challenge
 - **Related:** BAR-155, `.agents/prompts/bkit-build-plan-verify.md`, `.agents/prompts/bkit-build-challenge-tests.md`
+
+## KN-17: Deep-containment is canonical for ownership-mixed JSON — `__bkit__` envelope removed (2026-05-11)
+
+- **Category:** agentic
+- **Symptom (original):** Consumer-side audit (2026-05-09) on `app-gether-life` found two failure modes with the v0.8.0 `__bkit__` envelope model: (1) duplicate content — every bkit-owned key appeared twice (inside `__bkit__` AND at the top level), bloating the consumer file and causing confusion; (2) silent drift — `.github/workflows/ci.yml` lost its `pnpm bkit check` step with no detection because the envelope check only walked `__bkit__`, not the full file.
+- **Root cause:** The `__bkit__` envelope model required both the template AND the consumer to maintain two copies of every bkit-owned value. `writeTier2Json` wrote `{ ...consumer, __bkit__: template.__bkit__ }` but did not enforce top-level key presence — so the consumer could hold a stale top-level copy alongside a fresh `__bkit__` copy indefinitely. Drift detection only checked `canonicalHashes` (SHA-based), not semantic key presence.
+- **Fix or rule (v2.0.0+):** Deep-containment model: the template JSON tree IS the bkit-declared scope. `deepContains(template, consumer)` checks that every leaf path in the template is present and equal in the consumer. Consumer keys outside the template tree are never touched. `writeTier2JsonContained` replaces `writeTier2Json`: dest absent → write template as-is; present → `deepContains` → ok no-op; fail → `deepMergeJson(existing, template)` (template-wins on conflict). `migrateLegacyBkitEnvelope` runs once on upgrade: strips `__bkit__`, runs `deepContains`, deep-merges if containment fails. Idempotent. Logs per `[bkit] migrated <file> — stripped __bkit__ envelope (v2.0.0)`. `detectLegacyBkitEnvelope` advisory surfaces if `__bkit__` still present. `detectTier2JsonDrift` advisory surfaces if `deepContains` fails.
+- **Collision risk:** A consumer that added their own top-level `__bkit__` key for an unrelated purpose will see it stripped by `migrateLegacyBkitEnvelope` on first `bkit upgrade` to v2.0.0. Document as a known collision; consumers must rename their key before upgrading.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** phase
+- **Related:** BAR-167, KN-8 (superseded), DE-18, `.agents/scripts/bkit-tiers.ts` (`deepContains`, `writeTier2JsonContained`, `migrateLegacyBkitEnvelope`, `stripTier2JsonScope`), `.agents/scripts/bkit-preflight.ts` (`detectLegacyBkitEnvelope`, `detectTier2JsonDrift`), `.agents/templates/.claude/settings.json`, `.agents/templates/.cursor/hooks.json`
