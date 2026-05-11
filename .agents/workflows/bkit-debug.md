@@ -26,7 +26,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
+> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path; phase label persists.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
@@ -45,7 +45,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    rm -f "docs/plans/logs/{FID}/.rebase-failed"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
-2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
@@ -607,7 +607,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git push origin "$(git branch --show-current)"
    ```
 3. **Mode-aware Linear update:**
-   - **If** `OBSERVE_MODE` = off → add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+   - **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged so phase label `Debug` persists.
    - **If** `OBSERVE_MODE` = instrument → leave issue as `In Progress` with `Debug` label; instrumented CI run is in flight and the next debug invocation continues the workflow.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -622,5 +622,5 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (`debug` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (matches `OBSERVE_MODE`: off → `In Review`/`Review`; instrument → unchanged `In Progress`/`Debug`)
+- [ ] Issue update attempted (matches `OBSERVE_MODE`: off → state `In Review`, phase label `Debug` preserved; instrument → unchanged `In Progress`/`Debug`)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)
