@@ -74,6 +74,22 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 
 All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `[skip build] [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
 
+### Manual CI trigger on feat branches (`workflow_dispatch`)
+
+`ci.yml` includes `workflow_dispatch:` with no inputs. CI only auto-fires on push to `main`/`dev` or on a PR targeting those branches — feat branches without an open PR (or with a conflicted PR) produce no automatic run.
+
+**To trigger CI manually on a feat branch:**
+
+```bash
+gh workflow run ci.yml --ref feat/{FID}
+# then watch:
+gh run list --branch feat/{FID} --limit 3
+```
+
+Or use the GitHub Actions tab → "CI" → "Run workflow" → select the branch.
+
+This mirrors the pattern in `app-gether-life/.github/workflows/ci.yml`.
+
 ### `bkit install` three-phase contract
 
 bkit's installer runs in three phases:
