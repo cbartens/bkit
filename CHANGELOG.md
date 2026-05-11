@@ -8,6 +8,8 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [2.0.2] — 2026-05-11
 
+> Note: initial `v2.0.2` tag did not trigger the Release workflow — the `chore(release): 2.0.2 (#26)` squash commit body inherited `[skip ci]` tokens from historical dev commits, and tag re-push at the same SHA does not generate a new push event. Republished via a fresh commit with a scrubbed squash body and the tag moved forward. See KN-20.
+
 ### Added
 
 - **Claude Cowork Dispatch support** — `BKIT_PREFLIGHT_BYPASS=dispatch` env var skips the Linear `Auto`/state guards so phone-triggered sessions without a Linear issue context can run. Destruction guards remain in force. (BAR-186)
