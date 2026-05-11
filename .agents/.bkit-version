@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "2.0.2",
+  "pinnedVersion": "2.0.3",
   "tier3Hashes": {},
   "canonicalHashes": {
     "docs/deployments.md": "558e4cf9bdf763e340b49be12d45102837f25ca7d59e4a0a036a02c6fb3ce569",
@@ -15,7 +15,7 @@
     ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
     ".cursor/settings.json": "1b4f18de636c8c03ba0b748fb57499c71816ac34cfd5e3cc0c5ddb57c263d972",
     ".husky/pre-commit": "36bbb7ed74e56f4b02974f7ff3d2b0b5d5fe6c4518e982c8f4ca1eb2eda98bba",
-    ".prettierignore": "93df5955b38ae58ac5b35e206d10ce1b4ba31a9e06a02e2203d71c195dc083f5",
+    ".prettierignore": "9785d49ca23b30f65565d3392121b892e092f8ffc18369f20f9df738236bbc10",
     ".vale/styles/House/Filler.yml": "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
     ".vale/styles/House/Hedging.yml": "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
     ".vale/styles/House/LLMSlop.yml": "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",

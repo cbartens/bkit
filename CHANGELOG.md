@@ -6,6 +6,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.3] — 2026-05-11
+
+### Added
+
+- **`utility-new-release` agent prompt** (`.claude/agents/utility-new-release.md` + `.agents/templates/`) — codifies the dev → main → tag → publish flow so future cuts avoid the KN-20 silent-skip trap (explicit scrubbed squash body, post-tag Release-workflow verification).
+
+### Changed
+
+- **`.prettierignore` bkit-managed block** narrowed — removed `.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`, and `docs/` from the canonical-overwrite ignore set so Prettier formats them in consumer repos. The affected paths are no longer width-sensitive after recent rewrites, so churn risk is acceptable.
+
+---
+
 ## [2.0.2] — 2026-05-11
 
 ### Added
