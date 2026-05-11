@@ -552,6 +552,15 @@ describe("runTemplates", () => {
     expect(fs.readFileSync(".gitignore", "utf-8")).toBe("node_modules/\n");
   });
 
+  it("npm-strip remap — `gitattributes` source writes to `.gitattributes` dest", () => {
+    fs.writeFileSync(".agents/templates/gitattributes", "docs/pending.md merge=union\n");
+    const { writes } = runTemplates(false);
+    expect(writes).toBe(1);
+    expect(fs.existsSync(".gitattributes")).toBe(true);
+    expect(fs.existsSync("gitattributes")).toBe(false);
+    expect(fs.readFileSync(".gitattributes", "utf-8")).toBe("docs/pending.md merge=union\n");
+  });
+
   it("rule 3b — dest no markers AND template has no block → no-op", () => {
     fs.mkdirSync(".agents/templates/docs", { recursive: true });
     fs.writeFileSync(".agents/templates/docs/setup.md", "# Setup\n");

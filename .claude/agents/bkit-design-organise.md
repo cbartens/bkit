@@ -47,12 +47,12 @@ maxTurns: 50
 6. Group design work into workstreams at the identified boundaries. No workstream target count; granularity follows logical seams wherever they fall.
 7. For each workstream → assign stable ID `WS-{N}` → identify `Requires` references to other workstream IDs. `Requires` is mandatory for every workstream — empty list `[]` valid ONLY for root workstream without upstream prerequisites.
 8. Append workstream sections to **Create** output via `Edit` at end of file.
-9. Self-verify (mandatory before verdict; max 2 fix iterations → else `FAIL`):
+9. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
    - Extract all major design elements from the input: Architecture components, data model entities, component/flow items, decisions, open questions.
-   - Confirm every element is addressed in at least one workstream scope. Gap → assign to appropriate workstream and recheck.
-   - Confirm every `Requires` ID refers to an existing workstream. Dangling reference → fix and recheck.
-   - Confirm no cycles: For each workstream → check its `Requires` chain does NOT loop back to itself → else `FAIL`.
-10. Update **Create** output — set Verdict via `Edit`; mapping:
+   - Confirm every element is addressed in at least one workstream scope. **If** gap → assign to appropriate workstream and recheck.
+   - Confirm every `Requires` ID refers to an existing workstream. **If** dangling reference → fix and recheck.
+   - Confirm no cycles: for each workstream → check its `Requires` chain does NOT loop back to itself. **If** loop detected → `FAIL`.
+10. Update **Create** output — set `Verdict` via `Edit`; mapping:
     - `PASS` = all elements covered, all references valid, clean DAG.
     - `CONCERNS` = workable decomposition but structural ambiguities present (tightly coupled workstreams, fuzzy scope boundaries).
     - `FAIL` = cycle detected (any workstream `Requires` chain loops back to itself) or failed self-verify.

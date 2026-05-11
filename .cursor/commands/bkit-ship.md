@@ -9,22 +9,22 @@
 >
 > - **Order:** Execute sequentially unless stated otherwise.
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
-> - **Auto-apply:** NEVER request human confirmation between steps. Single recommended option → document and proceed.
-> - **Failures:** Any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
+> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls → else **Failure Path** with `Empty placeholder: {name}`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; When `failures` field present cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. Existing lock <2h old → **Failure Path** with `{FID} workflow already running`. Older lock → consider stale, remove and re-acquire.
+> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. **If** existing lock <2h old → **Failure Path**. **If** existing lock older → consider stale, remove and re-acquire.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path** with `Not in worktree`.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
+> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path; phase label persists.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
-> - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
+> - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constant `MAX_MERGE_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
 
@@ -36,22 +36,24 @@
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
+   git rebase --abort 2>/dev/null || true
    rm -f "docs/plans/logs/{FID}/.lock"
+   rm -f "docs/plans/logs/{FID}/.rebase-failed"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
-2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
-   Step: {N} — {Step Name}
+   Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
-4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) → step 5. **Else** → step 12.
+4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**)
-   Create: `docs/plans/logs/{FID}/ship-handover.md`
+   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+   Create: `docs/plans/logs/{FID}/ship-handover.md`.
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
@@ -82,14 +84,14 @@
    fi
    printf '%s ship\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
-   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path** with `{FID} workflow already running`.
+   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path**.
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Ship"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path** with `save_issue returned no id`.
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Ship"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
+7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
 8. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -106,13 +108,12 @@
    ```
 9. Add `Ship` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
 10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-
-```comment
-## Ship Workflow
-### Step 1 — Start Workflow
-[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-[docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
-```
+    ```comment
+    ## Ship Workflow
+    ### Step 1 — Start Workflow
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -134,17 +135,32 @@
    fi
    ```
 2. Create/resume the worktree:
-
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
-   git worktree prune  # clean stale entries first
+   git worktree prune
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
-     # Rebase on latest dev to keep feature branch current
+     rm -f "docs/plans/logs/{FID}/.rebase-failed"
      git fetch origin dev
-     git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
+     if ! git rebase origin/dev; then
+       CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+       if [ "$CONFLICT_FILES" = "pnpm-lock.yaml" ]; then
+         git checkout --theirs pnpm-lock.yaml
+         pnpm install --lockfile-only
+         git add pnpm-lock.yaml
+         if ! git rebase --continue; then
+           git rebase --abort 2>/dev/null || true
+           mkdir -p "docs/plans/logs/{FID}/"
+           touch "docs/plans/logs/{FID}/.rebase-failed"
+         fi
+       else
+         git rebase --abort 2>/dev/null || true
+         echo "Rebase conflict" >&2
+         mkdir -p "docs/plans/logs/{FID}/"
+         touch "docs/plans/logs/{FID}/.rebase-failed"
+       fi
+     fi
    else
      if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
        git worktree add "$WORKTREE_PATH" "feat/{FID}"
@@ -157,21 +173,17 @@
      fi
      cd "$WORKTREE_PATH"
    fi
-
    mkdir -p docs/plans/logs/{FID}/
    for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
      [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
    done
-   # Vale `write-good` package is gitignored (vendored via `vale sync`); seed from parent so pre-commit hook works
    [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
-   # pnpm per-package node_modules symlinks are not inherited — create them (symlink-only, ~5s)
    pnpm install --frozen-lockfile
    ```
-
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. **If** `BRANCH` NOT `dev` **AND** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path** with `Wrong branch.`
-5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path** with `No open PR for current branch.` Set `MERGE_ATTEMPT` = 0.
-6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **if** ANY failures → **Failure Path** with `PR #{PR_NUMBER} CI failures.`
+4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
+5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
+6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
 7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
    ```bash
@@ -202,7 +214,46 @@
 
 ---
 
-## 🤖 Step 3 — Merge PR
+## 🧠 Step 3 — Conflict Resolve
+
+**Run only if:** Sentinel `docs/plans/logs/{FID}/.rebase-failed` exists after Step 2.
+
+1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Task` tool:
+   Context: You are a subagent in the Ship phase. Lockfile-only fast-path already attempted and did not match. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
+   Update: Conflicted source files.
+   Create: `docs/plans/logs/{FID}/ship-conflict-resolve.md`.
+2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+3. Read `ship-conflict-resolve.md` until `<!-- verdict:end -->` → extract `Verdict` as `RESOLVE_VERDICT`.
+4. **If** `RESOLVE_VERDICT` = PASS → `rm -f "docs/plans/logs/{FID}/.rebase-failed"`. **Else** → **Failure Path**.
+5. Update status and commit:
+   ```bash
+   STATUS="docs/plans/logs/{FID}/status.json"
+   git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve work"
+   SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$RESOLVE_VERDICT" \
+     '.[-1].steps += [{step:"conflict-resolve", status:"DONE", verdict:$v, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-conflict-resolve.md"]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): conflict-resolve status"
+   ```
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 3 — Conflict Resolve - Verdict: {RESOLVE_VERDICT}
+   ```
+
+### 🔒 Gate 3 — Conflict Resolve
+
+- [ ] Subagent invoked (`@bkit-ship-conflict-resolve`, no inline work)
+- [ ] Artifact written (`ship-conflict-resolve.md`, non-empty)
+- [ ] `RESOLVE_VERDICT` extracted
+- [ ] Verdict valid (`RESOLVE_VERDICT` in `PASS|FAIL`)
+- [ ] Sentinel cleared on PASS
+- [ ] Workflow status updated (step `conflict-resolve` recorded with `commitSha`, `verdict`)
+- [ ] Issue comment attempted (`Step 3` section)
+
+---
+
+## 🤖 Step 4 — Merge PR
 
 1. Increment `MERGE_ATTEMPT` + 1.
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
@@ -219,16 +270,15 @@
    gh pr merge {PR_NUMBER} --squash --delete-branch \
      --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
      --body ""
-   # CI-trigger verification gate (CI runs on dev after squash merge)
    PUSH_AT=$(date -u +%s)
-   sleep 30  # GH event registration window
+   sleep 30
    RUN_ID=$(gh run list --branch dev --limit 5 \
      --json databaseId,createdAt,workflowName \
      --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
    [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
    ```
 4. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else `FAIL`. Set `MERGE_FAILURES` = 0 if PASS, else 1.
+5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
 6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -241,15 +291,15 @@
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Merge PR - Verdict: {MERGE_VERDICT}
+   ### Step 4 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-8. **If** `state` is `MERGED` → Step 6.
-9. **If** `state` is NOT `MERGED`:
-   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 4.
+8. **If** `state` = MERGED → Step 7.
+9. **If** `state` != MERGED:
+   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 5.
    - **Else** → **Failure Path**.
 10. **Else** → **Failure Path**.
 
-### 🔒 Gate 3 — Merge PR
+### 🔒 Gate 4 — Merge PR
 
 - [ ] `MERGE_ATTEMPT` incremented
 - [ ] PR merge attempted
@@ -259,22 +309,21 @@
 - [ ] Verdict valid (`MERGE_VERDICT` in `PASS|FAIL`)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (step `merge-pr` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 3` section)
+- [ ] Issue comment attempted (`Step 4` section)
 
 ---
 
-## 🧠 Step 4 — Failure Diagnose
+## 🧠 Step 5 — Failure Diagnose
 
-**Run only if** `state` is NOT `MERGED`.
+**Run only if** `state` != MERGED.
 
 1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`
-   Create: `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`
+   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
+   Create: `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Add `Debug: Ship` to `{LABELS}` → `save_issue({ id: "{ISSUE_ID}", labels: [{LABELS}] })`.
-4. Read `ship-failure-diagnose-${MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
-5. Update status and commit:
+3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
+4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} work"
@@ -284,48 +333,46 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} status"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 4 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
+   ### Step 5 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```
 
-### 🔒 Gate 4 — Failure Diagnose
+### 🔒 Gate 5 — Failure Diagnose
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
-- [ ] Artifact written (`ship-failure-diagnose-${MERGE_ATTEMPT}.md`, non-empty)
+- [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
 - [ ] `DIAGNOSE_VERDICT` extracted
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
-- [ ] No PENDING placeholders remain (`ship-failure-diagnose-${MERGE_ATTEMPT}.md`)
+- [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 4` section)
+- [ ] Issue comment attempted (`Step 5` section)
 
 ---
 
-## 🧠 Step 5 — Failure Remediate
+## 🧠 Step 6 — Failure Remediate
 
-**Run only if** `state` is NOT `MERGED`.
+**Run only if** `state` != MERGED.
 
-1. Read prior strategy from status.json and select next `STRATEGY`:
-
+1. Read status.json and extract `PRIOR_STRATEGY`:
    ```bash
    PRIOR_STRATEGY=$(jq -r --arg s "failure-remediate" \
      '[.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
      docs/plans/logs/{FID}/status.json)
    ```
-
+2. Set next `STRATEGY`:
    - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
-   - **Else** → **Failure Path** with `Unexpected prior strategy: ${PRIOR_STRATEGY}`.
-
-2. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: ${STRATEGY}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"`→ verify with`pwd`→ use for all subsequent file operations.
-Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-${MERGE_ATTEMPT}.md`
-   Update: source files
-   Create: `docs/plans/logs/{FID}/ship-failure-remediate-${MERGE_ATTEMPT}-log.md`
-3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-4. Read `ship-failure-remediate-${MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
-5. Update status and commit:
+   - **Else** → **Failure Path**.
+3. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
+   Update: Source files.
+   Create: `docs/plans/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
+4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
+6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${MERGE_ATTEMPT} work"
@@ -335,26 +382,26 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT} status"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 5 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
+   ### Step 6 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-7. **Re-run Step 3**.
+8. **Re-run Step 4**.
 
-### 🔒 Gate 5 — Failure Remediate
+### 🔒 Gate 6 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
-- [ ] Artifact written (`ship-failure-remediate-${MERGE_ATTEMPT}-log.md`, non-empty)
+- [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
 - [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`, `strategy`)
-- [ ] Issue comment attempted (`Step 5` section)
+- [ ] Issue comment attempted (`Step 6` section)
 
 ---
 
-## 🤖 Step 6 — Switch to Dev
+## 🤖 Step 7 — Switch to Dev
 
-**Run only if** `state` is `MERGED`.
+**Run only if** `state` = MERGED.
 
 1. `git checkout dev && git pull origin dev`.
 2. Update status and commit:
@@ -369,33 +416,33 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 6 — Switch to Dev
+   ### Step 7 — Switch to Dev
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    ```
 
-### 🔒 Gate 6 — Switch to Dev
+### 🔒 Gate 7 — Switch to Dev
 
 - [ ] On `dev` branch
 - [ ] `dev` up to date with origin
 - [ ] Workflow status updated (step `switch-to-dev` recorded with `commitSha`)
-- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Issue comment attempted (`Step 7` section)
 
 ---
 
-## 🧠 Step 7 — Update Docs & Summary
+## 🧠 Step 8 — Update Docs & Summary
 
-**Run only if** `state` is `MERGED`.
+**Run only if** `state` = MERGED.
 
 1. Launch both subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `@bkit-ship-update-docs`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan*.md`, glob `docs/plans/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`)
-     Update: doc files
-     Create: `docs/plans/logs/{FID}/ship-update-docs.md`
+     Read: `docs/plans/active/{FID}-plan*.md`, glob `docs/plans/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
+     Update: doc files.
+     Create: `docs/plans/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `@bkit-ship-summary`
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`
-     Create: `docs/plans/logs/{FID}/ship-summary.md`
+     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
+     Create: `docs/plans/logs/{FID}/ship-summary.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Derive `UPDATE_DOCS_VERDICT`:
    ```bash
@@ -419,16 +466,16 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 7 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
+   ### Step 8 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-6. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 8.
-7. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path** with `Update docs verdict: FAIL`.
-8. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path** with `Ship summary verdict: FAIL`.
-9. **Else** → **Failure Path** with `Unexpected {update docs/summary} verdict: {SUMMARY_VERDICT}`.
+6. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
+7. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
+8. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+9. **Else** → **Failure Path**.
 
-### 🔒 Gate 7 — Update Docs & Summary
+### 🔒 Gate 8 — Update Docs & Summary
 
 - [ ] Subagents invoked (`@bkit-ship-update-docs`, `@bkit-ship-summary`, no inline work)
 - [ ] Artifact written (`ship-update-docs.md`, non-empty)
@@ -436,18 +483,18 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 - [ ] Verdicts extracted (`UPDATE_DOCS_VERDICT`, `SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `update-docs` and `summary` recorded with `commitSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 8` section)
 
 ---
 
-## 🤖 Step 8 — Archive Docs
+## 🤖 Step 9 — Archive Docs
 
-**Run only if** `state` is `MERGED`.
+**Run only if** `state` = MERGED.
 
-1. `git log origin/dev --oneline | head -5` → **if** NO squash SHA → **Failure Path**.
+1. `git log origin/dev --oneline | head -5` → **If** NO squash SHA → **Failure Path**.
 2. Assert `FID` non-empty before any path operations.
-3. `YYYYMM=$(date +%Y%m) && mkdir -p docs/plans/completed/${YYYYMM}/`.
-4. `mv docs/plans/active/{FID}-*.md docs/plans/completed/${YYYYMM}/`.
+3. `YYYYMM=$(date +%Y%m) && mkdir -p docs/plans/completed/{YYYYMM}/`.
+4. `mv docs/plans/active/{FID}-*.md docs/plans/completed/{YYYYMM}/`.
 5. **Prune feature-specific skills** — remove any `.agents/skills/` folders not listed in `.agents/skills.md`:
    ```bash
    for skill_dir in .agents/skills/*/; do
@@ -469,10 +516,10 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 8 — Archive
+   ### Step 9 — Archive
    ```
 
-### 🔒 Gate 8 — Archive Docs
+### 🔒 Gate 9 — Archive Docs
 
 - [ ] Plans moved to `docs/plans/completed/{YYYYMM}/`
 - [ ] `docs/completed.md` updated
@@ -480,13 +527,13 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 - [ ] Logs at `docs/plans/logs/{FID}/` retained for manual cleanup
 - [ ] Archive commit pushed to `dev`
 - [ ] Workflow status updated (step `archive-docs` recorded with `commitSha`)
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 9` section)
 
 ---
 
-## 🤖 Step 9 — Worktree Cleanup
+## 🤖 Step 10 — Worktree Cleanup
 
-**Run only if** `state` is `MERGED`.
+**Run only if** `state` = MERGED.
 
 1. Remove the feature worktree:
    ```bash
@@ -518,21 +565,21 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 9 — Worktree Cleanup
+   ### Step 10 — Worktree Cleanup
    ```
 
-### 🔒 Gate 9 — Worktree Cleanup
+### 🔒 Gate 10 — Worktree Cleanup
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent)
 - [ ] `git worktree prune` executed
 - [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `worktree-cleanup` recorded with `commitSha`)
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 10` section)
 
 ---
 
-## 🤖 Step 10 — Close Workflow
+## 🤖 Step 11 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Update status and commit:
@@ -550,10 +597,10 @@ Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-di
 3. Add `Merged` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 10 — Close Workflow
+   ### Step 11 — Close Workflow
    ```
 
-### 🔒 Gate 10 — Close Workflow
+### 🔒 Gate 11 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] All documents archived and logs retained for manual cleanup

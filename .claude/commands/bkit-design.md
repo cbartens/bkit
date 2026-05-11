@@ -13,22 +13,22 @@ description: "Design Feature — Autonomous design phase"
 >
 > - **Order:** Execute sequentially unless stated otherwise.
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
-> - **Auto-apply:** NEVER request human confirmation between steps. Single recommended option → document and proceed.
-> - **Failures:** Any step, tool, command fails, or gate cannot pass → **Failure Path**.
+> - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
+> - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls → else **Failure Path** with `Empty placeholder: {name}`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; When `failures` field present cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. Existing lock <2h old → **Failure Path** with `{FID} workflow already running`. Older lock → consider stale, remove and re-acquire.
+> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path. **If** existing lock <2h old → **Failure Path**. **If** existing lock older → consider stale, remove and re-acquire.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If step ever finds `pwd` outside worktree → **Failure Path** with `Not in worktree`.
+> - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. On failure → retry once after 5s → continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) mutually exclusive — drop old label before adding new one.
+> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
+> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path; phase label persists.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
-> - **Timeouts:** Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`.
+> - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
 ---
 
@@ -38,14 +38,15 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
+   git rebase --abort 2>/dev/null || true
    rm -f "docs/plans/logs/{FID}/.lock"
    git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
    ```
-2. Add `Failed` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
-   Step: {N} — {Step Name}
+   Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
@@ -66,14 +67,14 @@ description: "Design Feature — Autonomous design phase"
    fi
    printf '%s design\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
-   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path** with `{FID} workflow already running`.
+   **If** lock acquisition exits non-zero (existing lock <2h old) → **Failure Path**.
    `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Design"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path** with `save_issue returned no id`.
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Design"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/drafts/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
+7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
 8. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -81,7 +82,8 @@ description: "Design Feature — Autonomous design phase"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "design" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"design", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
+   git add docs/plans/ .agents/friction.md
+   git commit --allow-empty -m "chore({FID}): start-workflow work"
    SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
@@ -113,20 +115,17 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-     git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git add docs/plans/ .agents/friction.md
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
 2. Create/resume the worktree:
-
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
-   git worktree prune  # clean stale entries first
+   git worktree prune
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
-
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
-     # Rebase on latest dev to keep feature branch current
      git fetch origin dev
      git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
    else
@@ -141,17 +140,13 @@ description: "Design Feature — Autonomous design phase"
      fi
      cd "$WORKTREE_PATH"
    fi
-
    mkdir -p docs/plans/logs/{FID}/
    for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
      [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
    done
-   # Vale `write-good` package is gitignored (vendored via `vale sync`); seed from parent so pre-commit hook works
    [ -d "$REPO_ROOT/.vale/styles/write-good" ] && cp -R "$REPO_ROOT/.vale/styles/write-good" "$WORKTREE_PATH/.vale/styles/"
-   # pnpm per-package node_modules symlinks are not inherited — create them (symlink-only, ~5s)
    pnpm install --frozen-lockfile
    ```
-
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. Create: `docs/plans/logs/{FID}/design-input.md` = session prompt + `DESCRIPTION` + `COMMENTS`.
 5. Update status and commit:
@@ -185,12 +180,12 @@ description: "Design Feature — Autonomous design phase"
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/logs/{FID}/design-input.md`
-     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`
+     Read: `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-2`
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/logs/{FID}/design-input.md`
-     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`
+     Read: `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
@@ -220,8 +215,8 @@ description: "Design Feature — Autonomous design phase"
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`
-   Create: `docs/plans/logs/{FID}/design-v1-draft.md`
+   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
+   Create: `docs/plans/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
@@ -253,16 +248,16 @@ description: "Design Feature — Autonomous design phase"
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-review-1`
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`
-     Create: `docs/plans/logs/{FID}/design-review-1.md`
+     Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-review-1.md`.
    - **Subagent:** Invoke `@bkit-design-review-2`
      Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`
-     Create: `docs/plans/logs/{FID}/design-review-2.md`
+     Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-review-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `design-review-1.md` and `design-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`).
-4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
-5. **If** `REVIEW_VERDICT` = FAIL → **Failure Path** with `Design review verdict: FAIL`.
+4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+5. **If** `REVIEW_VERDICT` = FAIL → **Failure Path**.
 6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -295,10 +290,10 @@ description: "Design Feature — Autonomous design phase"
 
 1. **Subagent:** Invoke `@bkit-design-update` using `Agent` tool:
    Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-review-1.md`, `docs/plans/logs/{FID}/design-review-2.md`
-   Create: `docs/plans/logs/{FID}/design-v2-reviewed.md`
+   Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-review-1.md`, `docs/plans/logs/{FID}/design-review-2.md`.
+   Create: `docs/plans/logs/{FID}/design-v2-reviewed.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
+3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -330,11 +325,11 @@ description: "Design Feature — Autonomous design phase"
 
 1. **Subagent:** Invoke `@bkit-design-organise` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/design-v2-reviewed.md`
-   Create: `docs/plans/logs/{FID}/design-v3-organised.md`
+   Read: `docs/plans/logs/{FID}/design-v2-reviewed.md`.
+   Create: `docs/plans/logs/{FID}/design-v3-organised.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `design-v3-organised.md` until `<!-- verdict:end -->` → extract `Verdict` as `ORGANISE_VERDICT`. **If** `ORGANISE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **if** still invalid → **Failure Path** with `Subagent verdict invalid after retry`.
-4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path** with `Design organise verdict: FAIL — cycles detected, human review required`.
+3. Read `design-v3-organised.md` until `<!-- verdict:end -->` → extract `Verdict` as `ORGANISE_VERDICT`. **If** `ORGANISE_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v3-organised.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
+4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path**.
 5. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -364,11 +359,11 @@ description: "Design Feature — Autonomous design phase"
 
 ## 🧠 Step 8 — Summary
 
-1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path** with `No design version found`.
+1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Agent` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `${DESIGN_FINAL}` (highest v{N}), `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/design-*.md`
-   Create: `docs/plans/logs/{FID}/design-summary.md`
+   Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/design-*.md`.
+   Create: `docs/plans/logs/{FID}/design-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Update status and commit:
@@ -392,8 +387,8 @@ description: "Design Feature — Autonomous design phase"
    {design-summary.md content verbatim}
    ```
 8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
-9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path** with `Design summary verdict: FAIL`.
-10. **Else** → **Failure Path** with `Unexpected design summary verdict: {SUMMARY_VERDICT}`.
+9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Summary
 
@@ -412,43 +407,43 @@ description: "Design Feature — Autonomous design phase"
 
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
-1. Read `design-v3-organised.md` section `Design Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path** with `No workstreams in design`.
+1. Read `design-v3-organised.md` section `Design Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
 2. `list_issues({ parentId: "{ISSUE_ID}", limit: 250 })` → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
 3. Per workstream `WS-{N}` in `WORKSTREAMS`:
-   - **If** `EXISTING[WS-{N}]` present → `save_comment({ issueId: "{EXISTING[WS-{N}].id}", body: "{BODY}"})` — `{BODY}` = fenced block:
-     ```comment
-     ## Workstream Update — {FID}
-     **Parent issue:** {ISSUE_ID}
-     **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
-     **Workstream:** WS-{N} — {NAME}
-     **Requires:** {REQUIRES}
-     ### Scope
-     {SCOPE}
-     ### Rationale
-     {RATIONALE}
-     ```
-     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
-   - **Else** → `save_issue({ parentId: "{ISSUE_ID}", team: "Bartens", title: "WS-{N}: {NAME}", description: "{DESCRIPTION}"})` — `{DESCRIPTION}` = body below verbatim:
-     ```description
-     ## Workstream Create — {FID}
-     **Parent issue:** {ISSUE_ID}
-     **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
-     **Workstream:** WS-{N} — {NAME}
-     **Requires:** {REQUIRES}
-     ### Scope
-     {SCOPE}
-     ### Rationale
-     {RATIONALE}
-     ```
-     Capture returned `id` as `WORKSTREAM_ISSUE_ID[WS-{N}]`. **If** `id` empty → **Failure Path** with `save_issue returned no id for WS-{N}`.
-4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → `save_comment({ issueId: "{EXISTING[WS-{K}].id}", body: "{BODY}"})` — `{BODY}` = fenced block:
+   - **If** `EXISTING[WS-{N}]` present → `save_comment({ issueId: "{EXISTING[WS-{N}].id}", body: "{BODY}"})` — `{BODY}` = fenced block below:
+   ```comment
+   ## Workstream Update — {FID}
+   **Parent issue:** {ISSUE_ID}
+   **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
+   **Workstream:** WS-{N} — {NAME}
+   **Requires:** {REQUIRES}
+   ### Scope
+   {SCOPE}
+   ### Rationale
+   {RATIONALE}
+   ```
+   Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
+   - **Else** → `save_issue({ parentId: "{ISSUE_ID}", team: "Bartens", title: "WS-{N}: {NAME}", description: "{DESCRIPTION}"})` — `{DESCRIPTION}` = fenced block below:
+   ```description
+   ## Workstream Create — {FID}
+   **Parent issue:** {ISSUE_ID}
+   **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
+   **Workstream:** WS-{N} — {NAME}
+   **Requires:** {REQUIRES}
+   ### Scope
+   {SCOPE}
+   ### Rationale
+   {RATIONALE}
+   ```
+   Capture returned `id` as `WORKSTREAM_ISSUE_ID[WS-{N}]`. **If** `id` empty → **Failure Path**.
+4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → `save_comment({ issueId: "{EXISTING[WS-{K}].id}", body: "{BODY}"})` — `{BODY}` = fenced block below:
    ```comment
    ## Workstream Delete — {FID}
    **Parent issue:** {ISSUE_ID}
    **Parent design:** [docs/plans/drafts/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{FID}-design.md)
    No longer in current design. Body left unchanged.
    ```
-5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `BLOCKED_BY` = `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path** with `Requires references unresolved workstream: WS-{N}`. `save_issue({ id: "{WORKSTREAM_ISSUE_ID[WS-{N}]}", blockedBy: BLOCKED_BY })`.
+5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `BLOCKED_BY` = `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. `save_issue({ id: "{WORKSTREAM_ISSUE_ID[WS-{N}]}", blockedBy: BLOCKED_BY })`.
 6. Update status and commit:
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
@@ -520,7 +515,7 @@ description: "Design Feature — Autonomous design phase"
    git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
    rm -f "docs/plans/logs/{FID}/.lock"
    ```
-6. Add `Review` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+6. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 10 — Close Workflow
@@ -536,5 +531,5 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
 - [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (state `In Review`, label `Review`)
+- [ ] Issue update attempted (state `In Review`; phase label `Design` preserved)
 - [ ] Issue comment attempted (`Step 10` section)

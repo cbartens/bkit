@@ -38,11 +38,11 @@ maxTurns: 25
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Run `bash scripts/tooling/audit-gcp-errors.sh 1h` — covers Vercel / Resend / Stripe / Inngest log drains + GHA failures (DEV+PROD).
 4. Interpret script output (`docs/audits/errors-audit.log` + `tmp/gcp-audit/*.json`): surface API 5xx, new Inngest `function.failed`, Vercel build errors. Existing `docs/audits/errors-audit.md` = baseline → flag NEW / REGRESSION only.
-5. CDC freshness check (only if DB changes shipped):
+5. **If** DB changes shipped → CDC freshness check:
    ```bash
    bq query --use_legacy_sql=false 'SELECT MAX(operation_timestamp) AS latest FROM `supabase.operations`'
    ```
-   `latest` older than deploy timestamp → CDC stalled → `DEGRADED`.
+   **If** `latest` older than deploy timestamp → CDC stalled → `DEGRADED`.
 6. Emit verdict to caller (output format below). Do NOT modify `docs/audits/errors-audit.md` — that is `bkit-utility-audit-logs`'s job.
 
 **Output format:**

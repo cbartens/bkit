@@ -32,7 +32,7 @@ maxTurns: 50
 
 **Process:**
 
-1. Initialise **Create** output stub with `PENDING` placeholders.
+1. Initialise **Create** output stub with `PENDING` placeholders; do NOT `cp` existing inputs.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.

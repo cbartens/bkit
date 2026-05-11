@@ -19,9 +19,9 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 .agents/workflows/
 ├── bkit-design.md         # Workflow 1/5 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/5 — 11 steps; hard stop after summary
-├── bkit-build.md          # Workflow 3/5 — 17 steps; CI takes over after PR
+├── bkit-build.md          # Workflow 3/5 — 18 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/5 — 8 steps; PR-debug or normal-debug mode
-├── bkit-ship.md           # Workflow 5/5 — 10 steps; merge → archive → close
+├── bkit-ship.md           # Workflow 5/5 — 11 steps; merge → archive → close
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
 └── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
 ```
@@ -47,6 +47,8 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.agents/workflows.md`) — NEVER in the per-workflow files.
 - **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
 - **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
+- **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
+- **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `` `VAR` `` = reference (conditionals, schema); `` `{VAR}` `` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`` `VERIFY_ATTEMPT` = 0 ``). Singular literal enum values stay plain when compared (`` **If** `VERDICT` = PASS ``); enum unions are one backticked unit (`` `PASS|CONCERNS|FAIL` ``). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
 
 ## Two-Layer Separation Rules
 
@@ -77,10 +79,12 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 6. Step 2 — Worktree Setup         (create/resume .worktrees/{FID}, copy env, pnpm install, save input)
 7. Phase-specific steps            (subagent invocations, gates, save_comment append)
 8. Summary step                    (subagent → commit → push → verdict)
-9. Close Workflow                  (status done, lock release, label flip → Review/Merged)
+9. Close Workflow                  (status done, lock release, state → In Review/Done; ship swaps label to `Merged`; non-ship phases preserve phase label)
 ```
 
 **Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and writes to same Linear comment by appending one fenced section.
+
+**Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/ .agents/friction.md` only; guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
 
 ### Execution Protocol — canonical invariants
 
@@ -90,20 +94,20 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | Invariant | Rule |
 | --- | --- |
 | **Order** | Execute sequentially unless step explicitly says "in parallel". |
-| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path** with `Empty placeholder: {name}`. |
+| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. |
 | **Tools** | Verify every return; do NOT assume success. |
 | **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions ≠ compliance. |
 | **Artifacts** | `Write:` artifact IS the deliverable; always emit; assert non-empty; empty → **Failure Path**. |
 | **Gates** | Verify all checkboxes before next step. Skipped gate = invalid work. |
 | **No improv** | No ad-hoc task lists, no skipping, no alternative approaches, no scope beyond the file. |
 | **Git** | Pre `add`/`commit`: log `git status --short`; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Pre `push`: assert `{BRANCH}` non-empty. |
-| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path** with `Not in worktree`. |
+| **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
 | **Status** | `docs/plans/logs/{FID}/status.json` is central state file; ONE entry per step (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
-| **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Review`, `Failed`, `Merged`, `Router`) are mutually exclusive — drop old phase before adding new (see § Linear Integration). |
+| **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Debug`, `Ship`, `Merged`) are mutually exclusive — drop old phase before adding new. `Failed` is additive — added on Failure Path without dropping phase (see § Linear Integration). |
 | **Comments** | ONE Linear comment per workflow run; Step 1 creates, all later steps append (see § Linear Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
-| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path** with `Step {N} timeout`. |
+| **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Existing lock under 2h old → Failure Path with `Workflow already running for {FID}`. Older lock → considered stale, removed and re-acquired. Released in Close Workflow and Failure Path. |
 
 ### `status.json` — workflow state SoT
@@ -238,7 +242,7 @@ After each call, capture returned `body` as new `{COMMENT_BODY}` so next step ap
 
 ```comment
 ### Workflow Failure
-Step: {N} — {Step Name}
+Step: {N} — {Step Name}; Sub-step: {M}
 Error: {error message / tool response}
 Stderr: {last 20 lines if shell}
 ```
@@ -334,7 +338,7 @@ If the agent terminates mid-stream after the verdict line is written, the orches
 4. **If invalid** (missing, empty, `PENDING`, or any other value):
    - Re-issue the same subagent with a tightening prompt: "Your prior output `{file}` is missing/invalid verdict. Re-emit ONLY the verdict header (`Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`) at the top of that file. Do NOT redo the work; the body is already in place."
    - Increment a local `VERDICT_RETRY` = 1.
-5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path** with `Subagent {name}: verdict invalid after retry`.
+5. **If retry also fails** (`VERDICT_RETRY` > 1) → **Failure Path**.
 6. Orchestrator NEVER synthesizes a verdict itself — that would mask truncation/budget signals that humans need to see.
 
 **Per-step gate item (universal for verdict-bearing steps):**
@@ -398,12 +402,12 @@ Then assert each Update/Create artifact exists and is non-empty. Empty → **Fai
 | Agent | Verdict values | Routing |
 | --- | --- | --- |
 | `@bkit-build-plan-verify` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → next sub-plan or Step 8; `CONCERNS`/`FAIL` → `@bkit-build-plan-gaps-remediate` loop (max `MAX_VERIFY_ATTEMPT` = 3 → Failure Path). |
-| `@bkit-build-challenge` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → Step 12; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10 → Step 11 → re-Step 9; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical|architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
+| `@bkit-build-challenge-reconcile` | `PASS` / `CONCERNS` / `FAIL` | `PASS` → Step 13; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11 → Step 12 → Step 13; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11 → Step 12 → re-Step 9; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. Findings carry `class: mechanical|architectural`; `@bkit-build-challenge-remediate` classify-gate FAILs (no fixes) when any architectural finding is present, else fixes mechanical findings. One re-Challenge bite — bounded by `CHALLENGE_REMEDIATE_ATTEMPT` < 1. |
 | `@bkit-design-review-1` / `-2` | `PASS` / `CONCERNS` / `FAIL` | `REVIEW_VERDICT` = worst-of-two. `PASS`/`CONCERNS` → Step 6 apply-review; `FAIL` → Failure Path (design fundamentally not viable, human reframe required). |
 | `@bkit-design-update` | `PASS` / `CONCERNS` / `FAIL` | All paths continue to Step 7 design-organise; CRITICAL items applied, OPTIONAL applied on consensus, OUT-OF-SCOPE deferred. |
 | `@bkit-design-organise` | `PASS` / `CONCERNS` / `FAIL` | `PASS`/`CONCERNS` → Step 8 summary; `FAIL` → Failure Path (cycles detected, human review required). |
 | `@*-summary` (`design`, `plan`, `build`, `debug`, `ship`) | `PASS` / `CONCERNS` / `FAIL` | `PASS` or `CONCERNS` → close workflow / next step; `FAIL` → Failure Path. |
-| 2-way agents (`@bkit-build-plan-execute`, `@bkit-debug-abort-handover`, `@bkit-design-generate`, `@bkit-design-brainstorm-ideate-1/2`, `@bkit-debug-observe-instrument`, `@bkit-debug-observe-revert`, `@bkit-plan-complexity-check`, `@bkit-plan-complexity-split`, `@bkit-ship-update-docs`) | `PASS` / `FAIL` | `PASS` → continue; `FAIL` → Failure Path. Atomic action — no middle state (cannot proceed → fail; no partial-progress CONCERNS). |
+| 2-way agents (`@bkit-build-plan-execute`, `@bkit-debug-abort-handover`, `@bkit-design-generate`, `@bkit-design-brainstorm-ideate-1/2`, `@bkit-debug-observe-instrument`, `@bkit-debug-observe-revert`, `@bkit-plan-complexity-check`, `@bkit-plan-complexity-split`, `@bkit-ship-update-docs`, `@bkit-ship-conflict-resolve`) | `PASS` / `FAIL` | `PASS` → continue; `FAIL` → Failure Path. Atomic action — no middle state (cannot proceed → fail; no partial-progress CONCERNS). For `@bkit-ship-conflict-resolve`: `PASS` clears `docs/plans/logs/{FID}/.rebase-failed` sentinel and Step 2 continues; `FAIL` leaves sentinel and routes to `@bkit-debug-abort-handover`. |
 
 ### Retry / timeout / iteration constants
 
@@ -426,7 +430,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 **Standard failure (always run):**
 
 1. Mark `status.json` last entry `status: "failed"`; remove `.lock`.
-2. Add `Failed` phase to `{LABELS}` (drop old phase) → `save_issue({ id, state: "In Review", labels })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id, state: "In Review", labels })`.
 3. Append `### Workflow Failure` block to workflow comment with step number, error, and last 20 lines of stderr.
 
 **Conditional handover** — runs ONLY if failure was triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded):
@@ -438,6 +442,25 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 7. **STOP** — no further downstream steps.
 
 `/bkit-design` is only command without conditional handover (no max-retry loop).
+
+### Rebase Conflict Tiering
+
+`/bkit-ship`, `/bkit-build`, `/bkit-debug` Step 2 all rebase the feature worktree against `origin/dev`. Three-tier recovery:
+
+<!-- prettier-ignore -->
+| Tier | Conflict shape | Recovery | Mechanism |
+| --- | --- | --- | --- |
+| 1 | Append-only doc ledgers (`docs/{pending,knowledge,decisions,completed}.md`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.agents/templates/gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
+| 2 | `pnpm-lock.yaml` only | Inline `git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only` + `git add` + `git rebase --continue` | Bash block in Step 2 of all three workflows |
+| 3 | Code, configs, anything else | Touch sentinel `docs/plans/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
+
+**Why Tier 1 is `merge=union` and not a workflow step:** the trade-off is silent duplicate `KN-N` / `DE-N` IDs if both branches allocate the same number — same renumbering hazard already deferred separately, not a regression. `.gitattributes` is the standard git mechanism; pre-empts the conflict at the git layer for all callers without workflow surface area. Excludes `.agents/friction.md` (post-write edits to `Recovery` / `Status` fields break the strict-append contract that union-safety requires).
+
+**Why Tier 2 is inline bash and not a subagent:** mechanical recovery, deterministic git plumbing, no judgement call. A subagent or new Step would add status.json / gate / Linear-comment overhead for what is a 4-line shell idiom.
+
+**Why Tier 3 invokes `@bkit-ship-conflict-resolve` only in `/bkit-ship`:** ship is the only workflow that rebases against an active integration target where conflicts are common. `/bkit-build` and `/bkit-debug` operate on the feature branch in isolation; conflicts there are rarer and usually point to a deeper problem worth a human glance — they keep sentinel → handover only. The resolver's verdict signal (`pnpm install` + `typecheck` + `test` + `build` all PASS) is necessary but not sufficient for a merge — tests can pass while one side's intent is silently dropped — so the resolver refuses semantic overlaps and falls through to handover on any ambiguity. `bkit-debug` itself is **not** repurposed for git plumbing because its diagnose/remediate subagents are scoped to test/runtime failures with the same insufficient verdict signal.
+
+**Failure Path routing:** rebase sentinel triggers conditional handover via `@bkit-debug-abort-handover` (same path as max-retry exhaustion), so Tier 3 unrecovered conflicts always end with a written handover doc, `Failed` label, and `In Review` state — not a silent stop.
 
 ## Per-Phase Workflows
 
@@ -459,7 +482,7 @@ Each subsection below documents what command actually does — step list, subage
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `docs({FID}): design complete [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 9 — Design Workstream Issues | — | `design-v3-organised.md` | Linear sub-issues + `blockedBy` edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: `list_issues({ parentId })` → existing match → `save_comment` sync (body untouched); else `save_issue({ parentId, title: "WS-N: …", description: … })` with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: `save_issue({ blockedBy })` per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
-| 10 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Add `Review` label, `In Review`. |
+| 10 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. |
 
 **Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
@@ -482,11 +505,11 @@ Each subsection below documents what command actually does — step list, subage
 | 8 — Check Complexity | `@bkit-plan-complexity-check` | `COMPLEXITY_VERDICT` ∈ {single, split}. |
 | 9 — Split Plan | `@bkit-plan-complexity-split` _(only if `split`)_ | Writes `{FID}-plan-N.md` sub-plans + `plan-split.md` log; self-verifies losslessness (`SPLIT_VERDICT` ∈ {PASS, FAIL}; `FAIL` → Failure Path). |
 | 10 — Summary | `@bkit-plan-summary` | Commit `docs({FID}): plan complete [skip build] [skip ci]` → push. |
-| 11 — Close Workflow | — | Sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 7). Add `Review` label, `In Review`. |
+| 11 — Close Workflow | — | Sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 7). Set state `In Review`; phase label `Plan` persists. |
 
 **Hard stop in Step 11 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
 
-### `/bkit-build` — 17 steps
+### `/bkit-build` — 18 steps
 
 **Goal:** implementation + PR creation. CI takes over after PR exists. Workflow stops on PR creation; no human gate within build itself.
 
@@ -503,15 +526,16 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Verify Plan | `@bkit-build-plan-verify` | Per sub-plan N, attempt-numbered: `build-plan-verify-N-{VERIFY_ATTEMPT}.md`. Reads glob of execute attempts' `DONE —` lines to cross-reference against `git diff`; ticks plan `[ ]`→`[x]` only when codebase artifact verified (NEVER on `DONE —` claim alone). `VERIFY_VERDICT` ∈ {PASS, CONCERNS, FAIL}. `PASS` → next N or Step 8. `CONCERNS` / `FAIL` → Step 7. Reads prior verify and remediate logs to know what was already verified. |
 | 7 — Remediate Gaps | `@bkit-build-plan-gaps-remediate` _(only if Step 6 CONCERNS or FAIL)_ | Attempt-numbered: `build-plan-gaps-remediate-N-{VERIFY_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per gap fixed; `BLOCKED —` per blocked gap, appended via `Bash echo >>`); reads glob of own prior attempts to skip already-fixed gaps. Increment `VERIFY_ATTEMPT`; re-run Step 6. > `MAX_VERIFY_ATTEMPT` → Failure Path. |
 | 8 — Holistic Verification | `@bkit-build-plan-verify` (holistic mode) _(only if `SUB_COUNT` >= 2)_ | Cross-sub-plan integration check; writes `build-plan-verify-holistic.md`. `HOLISTIC_VERDICT` `FAIL` → Failure Path. |
-| 9 — Challenge Build | `@bkit-build-challenge` | Adversarial review of `git diff origin/dev..HEAD`. Each finding tagged `class: mechanical|architectural`. Large-diff guard: > 10 000 lines → per-file budget mode (top 20 files, 500 lines each, capped at 50 000 total; flag `partial` in report). `CHALLENGE_VERDICT`: `PASS` → Step 12. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 12. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 10; `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. After Step 11 (when `CHALLENGE_VERDICT` was FAIL), re-runs Step 9. |
-| 10 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits `FAIL` (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). Verdict `PASS` / `CONCERNS` / `FAIL`. |
-| 11 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 9 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 9 (safety net; counter already incremented in Step 10); else falls through to Step 12. |
-| 12 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 15. `FAIL` → Step 13 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
-| 13 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 12 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. Add `Debug: Build` label. |
-| 14 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 12 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 12. > `MAX_TEST_ATTEMPT` → Failure Path. |
-| 15 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
-| 16 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `[force build]` → amend or empty commit with `[force build]` → push. PR body is the plan blob URL. Retry `gh pr create` once on failure. |
-| 17 — Close Workflow | — | Add `Review` label, `In Review`. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. |
+| 9 — Challenge Build (parallel) | `@bkit-build-challenge-1`, `@bkit-build-challenge-2` (parallel) | Launch parallel pair. Each reviewer gets same diff; `CHALLENGE_REMEDIATE_ATTEMPT` init 0 on first entry (persists across re-runs). Large-diff guard applied. Outputs: `build-challenge-1.md`, `build-challenge-2.md`. Both must be non-empty → Failure Path on partial (reconciler does not run on partial input). → Step 10. |
+| 10 — Reconcile Challenge | `@bkit-build-challenge-reconcile` | Merge `build-challenge-1.md` + `build-challenge-2.md` into unified `build-challenge.md`. Dedup same `file:line` or root-cause cluster; severity max-wins. Verdict max-wins (`FAIL > CONCERNS > PASS`). Extraction of `CHALLENGE_VERDICT`/`CHALLENGE_FAILURES` happens here. `PASS` → Step 13. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11. `CONCERNS` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11. `FAIL` AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Failure Path. |
+| 11 — Remediate Challenge | `@bkit-build-challenge-remediate` _(only if Step 10 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Reads `class` field on findings (data-driven). Any `architectural` → classify-gate emits `FAIL` (no fixes; architectural BLOCKED entries logged) → Failure Path. Else apply mechanical fixes. Increments `CHALLENGE_REMEDIATE_ATTEMPT` at step entry. Stub-first artifact + flat append-only log (`DONE —` per finding fixed; `BLOCKED —` per blocked finding; appended via `Bash echo >>`). Verdict `PASS` / `CONCERNS` / `FAIL`. → Step 12. |
+| 12 — Generate Tests | `@bkit-build-challenge-tests` _(only if Step 10 CONCERNS or FAIL at `CHALLENGE_REMEDIATE_ATTEMPT` < 1)_ | Add edge-case tests from verify + challenge findings. If `CHALLENGE_VERDICT` = FAIL → re-runs Step 9 (safety net; counter persists, NOT reset); else falls through to Step 13. |
+| 13 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 16. `FAIL` → Step 14 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
+| 14 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 13 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. |
+| 15 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 13 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 13. > `MAX_TEST_ATTEMPT` → Failure Path. |
+| 16 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
+| 17 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `[force build]` → amend or empty commit with `[force build]` → push. PR body is the plan blob URL. Retry `gh pr create` once on failure. |
+| 18 — Close Workflow | — | Set state `In Review`; phase label `Build` persists. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. |
 
 **Failure Path includes handover** — when triggered by exhausted retry counts, invokes `@bkit-debug-abort-handover` and posts `Workflow Handover` comment.
 
@@ -526,16 +550,16 @@ Each subsection below documents what command actually does — step list, subage
 | --- | --- | --- |
 | 1 — Start Workflow | — | Set label `Debug`, `In Progress`. PR-mode: extract `PR_NUMBER`. Read `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` from status.json's most recent `workflow == "debug"` entry. Set `OBSERVE_MODE`: `PRIOR_OBSERVE_MODE = instrument` → `analyse` (Step 9–10 + Failure Path handover). `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `instrument` (Step 8 single-shot). Else → `off` (normal Steps 3–7). |
 | 2 — Worktree Setup | — | Branch fallback differs from feat workflows: if no `feat/{FID}` branch exists locally or on origin → `git worktree add -b fix/{FID} origin/dev`. Branch eligibility check: `BRANCH` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive) — else Failure Path with `Wrong branch.` PR mode: also captures `CI_LOGS` from `gh run view --log-failed`. Writes `debug-input-{DEBUG_ATTEMPT}.md` (includes `CI_LOGS` or `N/A`). Init `TEST_ATTEMPT` = 1. |
-| 3 — Diagnose Failure | `@bkit-debug-failure-diagnose` | Writes `debug-failure-diagnose-{TEST_ATTEMPT}.md`. Reads prior diagnose+remediate logs to avoid repeating strategies. Add `Debug: PR` label. |
+| 3 — Diagnose Failure | `@bkit-debug-failure-diagnose` | Writes `debug-failure-diagnose-{TEST_ATTEMPT}.md`. Reads prior diagnose+remediate logs to avoid repeating strategies. |
 | 4 — Remediate Failure | `@bkit-debug-failure-remediate` | Writes `debug-failure-remediate-{TEST_ATTEMPT}-log.md` + source files. |
 | 5 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (PR-debug mode) or with `test:integration test:e2e` appended (normal mode). Absent → single-package fallback iterates `pnpm $script` for present scripts in `package.json#scripts` under `set -e` (typecheck/test/format:check/lint:slop/lint:prose; normal mode adds test:integration/test:e2e if present). Same shape as Build Step 12. `PASS` → Step 6. `FAIL` → increment `TEST_ATTEMPT`, loop back to Step 3. > `MAX_TEST_ATTEMPT` → Failure Path. |
 | 6 — Push Remediation | — | Increment `DEBUG_ATTEMPT`. Commit `fix({FID}): debug attempt {DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`. Persist new `debugAttempt` onto status.json workflow entry. Push. |
 | 7 — Summary | `@bkit-debug-summary` | Commit `docs({FID}): debug summary [skip build] [skip ci]` → push. |
-| 8 — Close Workflow | — | Add `Review` label, `In Review`. Comment includes CI run link if applicable. Worktree persists. |
+| 8 — Close Workflow | — | Set state `In Review`; phase label `Debug` persists. Comment includes CI run link if applicable. Worktree persists. |
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` when max-retry exhausted, writing `debug-handover-{DEBUG_ATTEMPT}.md`.
 
-### `/bkit-ship` — 10 steps
+### `/bkit-ship` — 11 steps
 
 **Goal:** merge PR, archive plans, clean up worktree.
 
@@ -543,15 +567,16 @@ Each subsection below documents what command actually does — step list, subage
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
 | 1 — Start Workflow | — | Set label `Ship`, `In Progress`. |
-| 2 — Worktree Setup | — | Branch eligibility check (same as debug). Resolve `PR_NUMBER` for current branch (no open PR → Failure Path). Reject if PR has any failing CI checks (`gh pr view --json statusCheckRollup`). Init `MERGE_ATTEMPT` = 1. |
-| 3 — Merge PR | — | `gh pr merge {PR_NUMBER} --squash --delete-branch --subject "<title> (#{PR_NUMBER})" --body ""` (empty body — feature commits embed `[skip ci]` which would suppress post-merge CI on `dev`). State `MERGED` → Step 6. Else if `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 4. Else Failure Path. |
-| 4 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if not merged)_ | Writes `ship-failure-diagnose-{MERGE_ATTEMPT}.md`. Add `Debug: Ship` label. |
-| 5 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if not merged)_ | Writes `ship-failure-remediate-{MERGE_ATTEMPT}-log.md`. Increment `MERGE_ATTEMPT`; re-run Step 3. |
-| 6 — Switch to Dev | — | `git checkout dev && git pull origin dev`. Steps 7+ run on `dev`. |
-| 7 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | `update-docs` writes `ship-update-docs.md` + edits cataloged docs. `summary` writes `ship-summary.md`. Sibling-blind: `summary` MUST NOT read `update-docs.md`. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 8 — Archive | — | Verify squash SHA on `origin/dev`. `mv docs/plans/active/{FID}-*.md docs/plans/completed/{YYYYMM}/`. Update `docs/completed.md`. Prune feature-specific skills not in `.agents/skills.md`. Commit `docs({FID}): archive cleanup [skip build] [skip ci]` → push to `dev`. |
-| 9 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. Local + remote branch deletion is explicit because `gh pr merge --delete-branch` aborts both sides when the local one fails (worktree holds the ref). Squash-merged tip is unreachable from `dev`, so `-D` is correct. |
-| 10 — Close Workflow | — | Add `Merged` label, state `Done`. |
+| 2 — Worktree Setup | — | Rebase against `origin/dev` with tiered conflict recovery (see § Rebase Conflict Tiering): `merge=union` for append-only docs auto-resolves at git layer; `pnpm-lock.yaml`-only conflicts handled by inline regen-and-continue; everything else touches `.rebase-failed` sentinel for Step 3. Branch eligibility check (same as debug). Resolve `PR_NUMBER` for current branch (no open PR → Failure Path). Reject if PR has any failing CI checks (`gh pr view --json statusCheckRollup`). Init `MERGE_ATTEMPT` = 0. |
+| 3 — Conflict Resolve | `@bkit-ship-conflict-resolve` _(only if rebase sentinel set)_ | Writes `ship-conflict-resolve.md`. `RESOLVE_VERDICT` = PASS clears the `.rebase-failed` sentinel and the workflow continues; FAIL leaves sentinel and routes to Failure Path → `@bkit-debug-abort-handover`. |
+| 4 — Merge PR | — | `gh pr merge {PR_NUMBER} --squash --delete-branch --subject "<title> (#{PR_NUMBER})" --body ""` (empty body — feature commits embed `[skip ci]` which would suppress post-merge CI on `dev`). `state` = MERGED → Step 7. Else if `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 5. Else Failure Path. |
+| 5 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if not merged)_ | Writes `ship-failure-diagnose-{MERGE_ATTEMPT}.md`. |
+| 6 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if not merged)_ | Writes `ship-failure-remediate-{MERGE_ATTEMPT}-log.md`. Increment `MERGE_ATTEMPT`; re-run Step 4. |
+| 7 — Switch to Dev | — | `git checkout dev && git pull origin dev`. Steps 8+ run on `dev`. |
+| 8 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | `update-docs` writes `ship-update-docs.md` + edits cataloged docs. `summary` writes `ship-summary.md`. Sibling-blind: `summary` MUST NOT read `update-docs.md`. `SUMMARY_VERDICT` = FAIL → Failure Path. |
+| 9 — Archive | — | Verify squash SHA on `origin/dev`. `mv docs/plans/active/{FID}-*.md docs/plans/completed/{YYYYMM}/`. Update `docs/completed.md`. Prune feature-specific skills not in `.agents/skills.md`. Commit `docs({FID}): archive cleanup [skip build] [skip ci]` → push to `dev`. |
+| 10 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. Local + remote branch deletion is explicit because `gh pr merge --delete-branch` aborts both sides when the local one fails (worktree holds the ref). Squash-merged tip is unreachable from `dev`, so `-D` is correct. |
+| 11 — Close Workflow | — | Add `Merged` label, state `Done`. |
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
@@ -654,6 +679,8 @@ Tool names (only these are used):
 
 ### Phase labels (mutually exclusive)
 
+In the Linear workspace these live under the `workflow` parent label group — Linear enforces mutual exclusion server-side, so `save_issue` with a new phase label auto-removes the prior one. Workflow code still drops the old phase from `{LABELS}` explicitly (idempotent; matches Linear's behaviour).
+
 <!-- prettier-ignore -->
 | Label | Meaning |
 | --- | --- |
@@ -662,21 +689,16 @@ Tool names (only these are used):
 | `Build` | `/bkit-build` running |
 | `Debug` | `/bkit-debug` running |
 | `Ship` | `/bkit-ship` running |
-| `Review` | Workflow completed and is awaiting human review (close-workflow exit) |
-| `Failed` | Workflow hit its Failure Path; human triage required |
 | `Merged` | `/bkit-ship` completed; PR merged to `dev`; terminal |
-| `Router` | (reserved for routing flows) |
 
-Adding one phase label drops the previous phase from `{LABELS}`.
+Phase label is preserved through Close Workflow exit — state column (`In Review` for non-ship, `Done` for ship) carries the completion signal, so the label tells reviewers which workflow just finished. Ship is the exception: Close Workflow swaps `Ship` → `Merged` and state → `Done`.
 
-### Debug origin labels (ungrouped, additive)
+### Additive labels (do not drop phase)
 
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `Debug: Build` | `/bkit-build` Step 13 | Pre-PR test failures route through debug subagents. |
-| `Debug: PR` | `/bkit-debug` Step 3 | PR-debug or normal-debug Diagnose. |
-| `Debug: Ship` | `/bkit-ship` Step 4 | Post-merge / merge-attempt failures. |
+| `Failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Lives outside the Linear `workflow` group — no server-side phase eviction. |
 
 ### Statuses
 
@@ -806,7 +828,7 @@ Inline definitions for tokens used in workflow files. Keep this section in sync 
 Add `X` phase to {LABELS}, drop old → save_issue({ id: "{ISSUE_ID}", state: "...", labels: [{LABELS}] })
 ```
 
-Phase labels mutually exclusive — drop old before adding new. Additive non-phase labels (e.g. `Debug: Build`) skip the drop.
+Phase labels mutually exclusive — drop old before adding new. Additive labels (e.g. `Failed`) skip the drop.
 
 ### Sub-plan loop discovery
 
@@ -865,7 +887,7 @@ Verify→remediate and diagnose→fix loops carry context via **per-attempt log 
 | Verifier / checker | Remediator | Max attempts | Escalation |
 | --- | --- | --- | --- |
 | `@bkit-build-plan-verify` | `@bkit-build-plan-gaps-remediate` | `MAX_VERIFY_ATTEMPT` = 3 | Failure Path |
-| `@bkit-build-challenge` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 10; one remediation max; `FAIL` triggers re-Challenge for verification, `CONCERNS` falls through without re-Challenge) | Failure Path on `FAIL` after remediate (covers both unrecoverable remediation and architectural-class findings) |
+| `@bkit-build-challenge-1` + `@bkit-build-challenge-2` (parallel pair) → `@bkit-build-challenge-reconcile` | `@bkit-build-challenge-remediate` | `CHALLENGE_REMEDIATE_ATTEMPT` < 1 (init 0, increments to 1 in Step 11; one remediation max; `FAIL` triggers re-Challenge for verification, `CONCERNS` falls through without re-Challenge) | Failure Path on `FAIL` after remediate (covers both unrecoverable remediation and architectural-class findings) |
 | Build test loop (`pnpm turbo`) | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 | Failure Path |
 | Debug test loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_TEST_ATTEMPT` = 3 per debug attempt; `MAX_DEBUG_ATTEMPT` = 3 outer | Failure Path with `@bkit-debug-abort-handover` |
 | Ship merge loop | `@bkit-debug-failure-diagnose` → `@bkit-debug-failure-remediate` | `MAX_MERGE_ATTEMPT` = 3 | Failure Path with `@bkit-debug-abort-handover` |
@@ -904,7 +926,7 @@ When writing or editing `.agents/workflows/bkit-*.md` (canonical source — `bki
 - [ ] Verdict-bearing steps extract `{*_VERDICT}` and route per § Verdict vocabulary.
 - [ ] Loops cap at `MAX_*_ATTEMPT` constants; exhaustion → Failure Path; per-attempt logs use `-{N}` filename suffix.
 - [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm turbo`; exceeded → Failure Path.
-- [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, flips label to `Review` (or `Merged` for ship), sets state `In Review` (or `Done`).
+- [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases preserve phase label.
 - [ ] Docs-only commits include both `[skip build]` and `[skip ci]` (§ CI / Vercel commit tags).
 - [ ] Branch eligibility check on phases that don't create their own branch (`/bkit-debug`, `/bkit-ship`).
 - [ ] Token efficient — tables > prose, `→` not `then`, no sub-bullets when a table works.

@@ -159,3 +159,43 @@
 - **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
+
+## BAR-155 deferred — `task-range` parameter for `bkit-build-plan-execute` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans legitimately exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
+- **Source:** phase
+- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
+
+## BAR-155 deferred — KN/DE auto-renumber on rebase conflicts (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Automate renumbering of `KN-{N}` / `DE-{N}` ID sequences on rebase conflict in `docs/knowledge.md` / `docs/decisions.md`. Deferred — sed regex / cross-platform fragility; manual resolution acceptable at current frequency. Revisit if rebase conflicts on these files become recurring.
+- **Source:** phase
+- **Related:** BAR-155
+
+## BAR-155 deferred — focused-brief mode for `bkit-build-challenge` (2026-05-09)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add a focused-brief mode to challenge prompts that narrows reviewer attention to a specific subsystem or diff slice. Dropped from BAR-155 scope — diversity over narrowing per DE-16 (parallel pair provides cross-model coverage; focused-brief risks correlated misses in both reviewers). Revisit if reconciler findings cluster around the same file:line across multiple runs.
+- **Source:** phase
+- **Related:** BAR-155, DE-16
+
+## Cursor v1 keyed-object schema deeper validation if Task 0a spike surfaces issues (2026-05-09)
+
+- **Type:** issue
+- **Category:** infra
+- **Severity:** low
+- **Status:** deferred
+- **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
+- **Source:** phase
+- **Related:** BAR-167, DE-7, DE-16
