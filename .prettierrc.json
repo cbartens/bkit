@@ -3,13 +3,5 @@
   "singleQuote": false,
   "tabWidth": 2,
   "trailingComma": "all",
-  "printWidth": 100,
-  "overrides": [
-    {
-      "files": "*.md",
-      "options": {
-        "printWidth": 1000
-      }
-    }
-  ]
+  "printWidth": 100
 }
