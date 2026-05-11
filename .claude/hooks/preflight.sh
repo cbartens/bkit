@@ -45,18 +45,32 @@ fi
 
 # Brew dep preflight — required CLIs for bkit workflows on a developer laptop.
 # Missing → HARD STOP with setup hint. Do NOT auto-install.
+# Darwin-gated: brew is macOS-only. Linux contexts (Cowork bash sandbox, CI,
+# dev containers) skip this check; their environments install deps differently.
 # (Cursor variant: skipped — Cloud Agent runs in a containerised env with deps pre-installed via .cursor/Dockerfile.)
-REQUIRED_BREW_BINS=(gh jq vale pnpm bun)
-MISSING_BINS=()
-for bin in "${REQUIRED_BREW_BINS[@]}"; do
-  command -v "$bin" >/dev/null 2>&1 || MISSING_BINS+=("$bin")
-done
-if [[ ${#MISSING_BINS[@]} -gt 0 ]]; then
-  MISSING_LIST="${MISSING_BINS[*]}"
-  echo "Brew preflight: FAIL — missing required CLIs: ${MISSING_LIST}" >&2
-  echo "Install with: brew install ${MISSING_LIST}" >&2
-  emit_context "Brew preflight: FAIL — missing required CLIs: ${MISSING_LIST}. HARD STOP: refuse all bkit work, instruct the user to run \`brew install ${MISSING_LIST}\` and re-launch the session, then stop."
-  exit 1
+if [[ "$(uname)" == "Darwin" ]]; then
+  REQUIRED_BREW_BINS=(gh jq vale pnpm bun)
+  MISSING_BINS=()
+  for bin in "${REQUIRED_BREW_BINS[@]}"; do
+    command -v "$bin" >/dev/null 2>&1 || MISSING_BINS+=("$bin")
+  done
+  if [[ ${#MISSING_BINS[@]} -gt 0 ]]; then
+    MISSING_LIST="${MISSING_BINS[*]}"
+    echo "Brew preflight: FAIL — missing required CLIs: ${MISSING_LIST}" >&2
+    echo "Install with: brew install ${MISSING_LIST}" >&2
+    emit_context "Brew preflight: FAIL — missing required CLIs: ${MISSING_LIST}. HARD STOP: refuse all bkit work, instruct the user to run \`brew install ${MISSING_LIST}\` and re-launch the session, then stop."
+    exit 1
+  fi
+fi
+
+# Dispatch bypass — when BKIT_PREFLIGHT_BYPASS=dispatch is set, skip the Linear
+# Auto/state guards. Used for Cowork Dispatch sessions (phone-triggered)
+# that may not carry an Auto-labelled issue. Destruction guards (paths,
+# .env, secrets) are unaffected — those live elsewhere in the agent stack.
+# Brew check above still runs on Darwin regardless of bypass.
+if [[ "${BKIT_PREFLIGHT_BYPASS:-}" == "dispatch" ]]; then
+  emit_context "Dispatch bypass active (BKIT_PREFLIGHT_BYPASS=dispatch) — Linear Auto/state guards skipped for ${LINEAR_ISSUE_ID}. Destruction guards remain in force."
+  exit 0
 fi
 
 # LINEAR_API_KEY required to call the Linear GraphQL API.
@@ -102,9 +116,9 @@ print(ident, state, labels if labels else "-")
 
 FAIL_REASON=""
 
-# Guard 1: `Automated` label must be present.
-if [[ ",${LABELS}," != *",Automated,"* ]]; then
-  FAIL_REASON="Automated label missing (labels: ${LABELS})"
+# Guard 1: `Auto` label must be present.
+if [[ ",${LABELS}," != *",Auto,"* ]]; then
+  FAIL_REASON="Auto label missing (labels: ${LABELS})"
 fi
 
 # Guard 2: Issue must not be in a terminal state.

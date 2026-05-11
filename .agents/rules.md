@@ -81,6 +81,15 @@
 - **DB:** NEVER manually `db push` remote. Prefer soft delete (`deleted_at`).
 - **PII:** NEVER log raw PII.
 
+### Dispatch & Remote Sessions
+
+> Full Dispatch behaviour / surfaces: `docs/dispatch.md`.
+
+- **Surfaces:** Cowork bash sandbox = isolated Linux (pip `--break-system-packages`, `uv` preferred). Computer use on terminals = tier `click`, no typing — auto-activation via `direnv`/`mise` required.
+- **Venvs:** NEVER commit `.venv/`. Host-built venvs do NOT work in sandbox.
+- **Preflight hook:** Dispatch sessions skip the Linear `Auto`/state guards via `BKIT_PREFLIGHT_BYPASS=dispatch`. Destruction guards remain in force. See `.claude/hooks/preflight.sh`.
+- **Keep-awake:** Desktop MUST stay awake and online for the entire Dispatch session.
+
 ### Naming Conventions
 
 - **Server actions/SDK:** `{crud}{TableName}{FieldName}` camel case.
