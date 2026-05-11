@@ -5,6 +5,7 @@ Verdict: PASS
 # BAR-167 — plan-v4 split index
 
 **Children (executable artifacts):**
+
 - [bar-167-drop-envelope-hybrid-plan-1.md](./bar-167-drop-envelope-hybrid-plan-1.md) — Sub-plan A (Phase 1: drop envelope, JSON primitives, Phase 1 docs).
 - [bar-167-drop-envelope-hybrid-plan-2.md](./bar-167-drop-envelope-hybrid-plan-2.md) — Sub-plan B (Phase 2: markers everywhere + manifest dispatch refactor).
 - [bar-167-drop-envelope-hybrid-plan-3.md](./bar-167-drop-envelope-hybrid-plan-3.md) — Sub-plan C (Phase 3: terminology sweep + schema cleanup + lint script).
@@ -97,6 +98,7 @@ sub-plan C (bar-167-drop-envelope-hybrid-plan-3.md, Phase 3)
 **Choice: pre-release tags per sub-plan landing — `2.0.0-alpha` (sub-plan A) → `2.0.0-beta` (sub-plan B) → `2.0.0` final (sub-plan C).**
 
 Rationale:
+
 - Each sub-plan is independently testable end-to-end; pre-release tags let consumers opt in to early phases (e.g. `app-gether-life` could test `2.0.0-alpha` for envelope migration before Phase 2 markers add complexity).
 - Reduces risk of a single 3-phase-wide ship cycle going red.
 - Simplifies rollback granularity: each sub-plan is its own `git revert` boundary.
@@ -124,6 +126,7 @@ The "net deletion ≥ 200 LOC" requirement applies to the **path-scoped** Phase 
 **Task count parity:** master enumerates 41 numbered runbook tasks plus 2 in-runbook items (`Sub-gate 2A` checkbox + `lint:no-tier-terms` script wrapped under Task 28) = 43. Sub-plans carry: A=24, B=14 (incl. Sub-gate 2A as gate-marker), C=5 (incl. `lint:no-tier-terms` script row + Task 28) → 24+14+5 = **43 = 43 ✓**.
 
 **Test Matrix row parity:**
+
 - Phase 1 rows (24 in master) → all in sub-plan A.
 - Phase 2 rows (7 in master) → all in sub-plan B.
 - Phase 3 rows (5 in master) → all in sub-plan C.

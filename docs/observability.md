@@ -42,11 +42,11 @@ Post-install findings are rendered via `formatChecklist(ctx.advisories)` (export
 
 Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN` at four surfaces and emits actionable advisory text. Detector names are the audit trail:
 
-| Detector | Surface |
-| --- | --- |
-| `detectShellToken` | Local shell env var |
-| `detectNpmrcAuth` | `.npmrc` auth token line |
-| `detectGhSecret` | GitHub Actions secret |
-| `detectVercelEnv` | Vercel preview + production env vars |
+| Detector           | Surface                              |
+| ------------------ | ------------------------------------ |
+| `detectShellToken` | Local shell env var                  |
+| `detectNpmrcAuth`  | `.npmrc` auth token line             |
+| `detectGhSecret`   | GitHub Actions secret                |
+| `detectVercelEnv`  | Vercel preview + production env vars |
 
 See `docs/deployments.md` for the full presence matrix and `docs/security.md` for token-handling rules.

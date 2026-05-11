@@ -1,4 +1,5 @@
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Sub-plan 3 — P3 (v0.8.x): Tier-1 to Tier-2 deep-merge for hooks/settings JSON via `__bkit__`
@@ -55,29 +56,29 @@ A consumer maintainer of a heavily-customised repo upgrades `@cbartens/bkit` to 
 
 ### Edge Cases
 
-| Scenario | Expected Behavior |
-| --- | --- |
-| Cursor v1 schema differs from bkit's shipped shape | P3.T0 spike must pass before A1 work |
-| Consumer pre-dates `__bkit__` envelope | Migration via P3.T6 lifts old shape into envelope |
-| `.cursor/hooks.json` schema vetoed in P3.T0 | Fix shipped shape in P3.T5 (one breaking change, not two) |
-| Cursor reserves a key clashing with `__bkit__` | P3.T0 must veto and propose alternative namespace |
-| Templates reverted to pre-`__bkit__` shape | `writeTier2Json` throws loudly (no silent corruption) |
+| Scenario                                           | Expected Behavior                                         |
+| -------------------------------------------------- | --------------------------------------------------------- |
+| Cursor v1 schema differs from bkit's shipped shape | P3.T0 spike must pass before A1 work                      |
+| Consumer pre-dates `__bkit__` envelope             | Migration via P3.T6 lifts old shape into envelope         |
+| `.cursor/hooks.json` schema vetoed in P3.T0        | Fix shipped shape in P3.T5 (one breaking change, not two) |
+| Cursor reserves a key clashing with `__bkit__`     | P3.T0 must veto and propose alternative namespace         |
+| Templates reverted to pre-`__bkit__` shape         | `writeTier2Json` throws loudly (no silent corruption)     |
 
 ### Derived Test Matrix
 
-| Test description | Runbook task | Type | Target file |
-| --- | --- | --- | --- |
-| `__bkit__` namespace extractor | P3.T2 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| JSON deep-merge primitive | P3.T1 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| `writeTier2Json` idempotent round-trip | P3.T3 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| `writeTier2Json` throws on missing `__bkit__` envelope | P3.T3 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| `bkit-tier1-defaults` snapshot equality vs git-history JSON | P3.T6a | Unit (Vitest) | `.agents/scripts/bkit-tier1-defaults.test.ts` |
-| Reclassed `.claude/settings.json` survives upgrade | P3.T4 | Integration (Vitest) | `.agents/scripts/bkit-modules.test.ts` |
-| Reclassed `.cursor/hooks.json` survives upgrade | P3.T5 | Integration (Vitest) | `.agents/scripts/bkit-modules.test.ts` |
-| Tier-1 to Tier-2 migration via versioned defaults | P3.T6 | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
-| Two-version upgrade-survival regression (gether/fraser-coast fixture) | P3.T9 | Integration (Vitest) | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` |
-| Vercel CLI hang guard (B3) | P3.T8 | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
-| `detectHooksConfigOverwriteRisk` removal | P3.T7 | Unit (Vitest) | `.agents/scripts/bkit-preflight.test.ts` |
+| Test description                                                      | Runbook task | Type                 | Target file                                                |
+| --------------------------------------------------------------------- | ------------ | -------------------- | ---------------------------------------------------------- |
+| `__bkit__` namespace extractor                                        | P3.T2        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                       |
+| JSON deep-merge primitive                                             | P3.T1        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                       |
+| `writeTier2Json` idempotent round-trip                                | P3.T3        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                       |
+| `writeTier2Json` throws on missing `__bkit__` envelope                | P3.T3        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                       |
+| `bkit-tier1-defaults` snapshot equality vs git-history JSON           | P3.T6a       | Unit (Vitest)        | `.agents/scripts/bkit-tier1-defaults.test.ts`              |
+| Reclassed `.claude/settings.json` survives upgrade                    | P3.T4        | Integration (Vitest) | `.agents/scripts/bkit-modules.test.ts`                     |
+| Reclassed `.cursor/hooks.json` survives upgrade                       | P3.T5        | Integration (Vitest) | `.agents/scripts/bkit-modules.test.ts`                     |
+| Tier-1 to Tier-2 migration via versioned defaults                     | P3.T6        | Unit (Vitest)        | `.agents/scripts/bkit-tiers.test.ts`                       |
+| Two-version upgrade-survival regression (gether/fraser-coast fixture) | P3.T9        | Integration (Vitest) | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` |
+| Vercel CLI hang guard (B3)                                            | P3.T8        | Unit (Vitest)        | `.agents/scripts/bkit-preflight.test.ts`                   |
+| `detectHooksConfigOverwriteRisk` removal                              | P3.T7        | Unit (Vitest)        | `.agents/scripts/bkit-preflight.test.ts`                   |
 
 ### 👤 Human Confirmation
 
@@ -109,11 +110,11 @@ This sub-plan introduces TWO Major-Changes-bar items requiring explicit human si
 
 ## Alternative Approaches & Recommendations
 
-| Rejected approach | Why rejected |
-| --- | --- |
-| Tier-2 via JSON-merge-patch (RFC 7396) | Cannot express "bkit owns these keys" without a namespace; chosen `__bkit__` envelope instead. |
-| Repurpose `detectHooksConfigOverwriteRisk` | Architecturally redundant once `__bkit__` envelope is canonical SoT; DELETE per P3.T1a contract spec. |
-| Two breaking changes (separate Cursor schema fix + reclass) | Bundle both in P3.T5 — one breaking change, not two. |
+| Rejected approach                                           | Why rejected                                                                                          |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Tier-2 via JSON-merge-patch (RFC 7396)                      | Cannot express "bkit owns these keys" without a namespace; chosen `__bkit__` envelope instead.        |
+| Repurpose `detectHooksConfigOverwriteRisk`                  | Architecturally redundant once `__bkit__` envelope is canonical SoT; DELETE per P3.T1a contract spec. |
+| Two breaking changes (separate Cursor schema fix + reclass) | Bundle both in P3.T5 — one breaking change, not two.                                                  |
 
 ## Out of Scope
 
@@ -126,11 +127,11 @@ Always squash. One PR for sub-plan-3 -> v0.8.x release. `gh pr merge --squash --
 
 ## Supersession Inventory
 
-| Existing artifact | Replaced by | Decision | Justification |
-| --- | --- | --- | --- |
-| `detectHooksConfigOverwriteRisk` blocker (`.agents/scripts/bkit-preflight.ts`) | Tier-2 deep-merge (P3.T1-T5) | DELETE | Architecturally impossible once hooks are Tier-2; intra-file delete in P3.T7. P3.T1a contract spec confirms DELETE (NOT repurpose). |
-| Tier-1 classification for `.cursor/hooks.json` | `writeTier2Json` (P3.T3) | DELETE | Intra-classification delete; migration P3.T6 lifts old shape into `__bkit__` envelope. |
-| Tier-1 classification for `.claude/settings.json` | `writeTier2Json` (P3.T3) | DELETE | Intra-classification delete; migration P3.T6 lifts old shape into `__bkit__` envelope. |
+| Existing artifact                                                              | Replaced by                  | Decision | Justification                                                                                                                       |
+| ------------------------------------------------------------------------------ | ---------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `detectHooksConfigOverwriteRisk` blocker (`.agents/scripts/bkit-preflight.ts`) | Tier-2 deep-merge (P3.T1-T5) | DELETE   | Architecturally impossible once hooks are Tier-2; intra-file delete in P3.T7. P3.T1a contract spec confirms DELETE (NOT repurpose). |
+| Tier-1 classification for `.cursor/hooks.json`                                 | `writeTier2Json` (P3.T3)     | DELETE   | Intra-classification delete; migration P3.T6 lifts old shape into `__bkit__` envelope.                                              |
+| Tier-1 classification for `.claude/settings.json`                              | `writeTier2Json` (P3.T3)     | DELETE   | Intra-classification delete; migration P3.T6 lifts old shape into `__bkit__` envelope.                                              |
 
 ## Security & Privacy
 
@@ -179,42 +180,42 @@ Always squash. One PR for sub-plan-3 -> v0.8.x release. `gh pr merge --squash --
 
 ## Architecture & Component Changes
 
-| Tag | File | Purpose |
-| --- | --- | --- |
-| [MODIFY] | `docs/decisions.md` | P3.T0 spike outcome; `__bkit__` namespace contract decision. |
-| [MODIFY] | `.agents/scripts/bkit-tiers.ts` | `deepMergeJson`, `extractBkitNamespace`, `applyBkitNamespace`, `writeTier2Json`, `migrateTier1JsonToTier2`. |
-| [MODIFY] | `.agents/scripts/bkit-tiers.test.ts` | Six concrete `.claude/settings.json` cases; `__bkit__` extraction; round-trip; migration. |
-| [NEW] | `.agents/scripts/bkit-tier1-defaults.ts` | **Versioned-defaults source-of-truth** (P3.T6a prerequisite). Exports `BKIT_TIER1_DEFAULTS_BY_VERSION: Record<semver, { '.claude/settings.json': JsonValue, '.cursor/hooks.json': JsonValue }>`. Snapshots committed at known prior versions (0.5.x, 0.6.x, 0.7.x). Sourced from `git show <tag>:.agents/templates/...`. |
-| [NEW] | `.agents/scripts/bkit-tier1-defaults.test.ts` | Snapshot equality vs git-history-extracted JSON. |
-| [MODIFY] | `.agents/templates/.claude/settings.json` | Restructured payload with `__bkit__` envelope. |
-| [MODIFY] | `.agents/templates/.cursor/hooks.json` | Same; corrected schema if P3.T0 says so. |
-| [MODIFY] | `.agents/scripts/bkit-modules.ts` | Claude/Cursor module dispatchers call `writeTier2Json`. |
-| [MODIFY] | `.agents/scripts/bkit-modules.test.ts` | Custom `hooks.Stop` + `loop_limit`/`failClosed` survive install. |
-| [NEW] | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` | Two-version upgrade; gether scenario. **References `tests/fixtures/heavy-customised-consumer/` from sub-plan-2 P2.T8a.** |
-| [MODIFY] | `.agents/scripts/bkit-preflight.ts` | Remove `detectHooksConfigOverwriteRisk` (P3.T7). |
-| [MODIFY] | `.agents/scripts/bkit-preflight.test.ts` | Remove obsolete tests; add Vercel CLI hang guard tests (B3). |
-| [MODIFY] | `docs/knowledge.md` | KN-8 update — Tier-2 deep-merge canonical for ownership-mixed JSON. |
-| [MODIFY] | `README.md` | `__bkit__` consumer-visible behaviour. |
-| [MODIFY] | `CHANGELOG.md` | v0.8.x entries. |
+| Tag      | File                                                       | Purpose                                                                                                                                                                                                                                                                                                                  |
+| -------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [MODIFY] | `docs/decisions.md`                                        | P3.T0 spike outcome; `__bkit__` namespace contract decision.                                                                                                                                                                                                                                                             |
+| [MODIFY] | `.agents/scripts/bkit-tiers.ts`                            | `deepMergeJson`, `extractBkitNamespace`, `applyBkitNamespace`, `writeTier2Json`, `migrateTier1JsonToTier2`.                                                                                                                                                                                                              |
+| [MODIFY] | `.agents/scripts/bkit-tiers.test.ts`                       | Six concrete `.claude/settings.json` cases; `__bkit__` extraction; round-trip; migration.                                                                                                                                                                                                                                |
+| [NEW]    | `.agents/scripts/bkit-tier1-defaults.ts`                   | **Versioned-defaults source-of-truth** (P3.T6a prerequisite). Exports `BKIT_TIER1_DEFAULTS_BY_VERSION: Record<semver, { '.claude/settings.json': JsonValue, '.cursor/hooks.json': JsonValue }>`. Snapshots committed at known prior versions (0.5.x, 0.6.x, 0.7.x). Sourced from `git show <tag>:.agents/templates/...`. |
+| [NEW]    | `.agents/scripts/bkit-tier1-defaults.test.ts`              | Snapshot equality vs git-history-extracted JSON.                                                                                                                                                                                                                                                                         |
+| [MODIFY] | `.agents/templates/.claude/settings.json`                  | Restructured payload with `__bkit__` envelope.                                                                                                                                                                                                                                                                           |
+| [MODIFY] | `.agents/templates/.cursor/hooks.json`                     | Same; corrected schema if P3.T0 says so.                                                                                                                                                                                                                                                                                 |
+| [MODIFY] | `.agents/scripts/bkit-modules.ts`                          | Claude/Cursor module dispatchers call `writeTier2Json`.                                                                                                                                                                                                                                                                  |
+| [MODIFY] | `.agents/scripts/bkit-modules.test.ts`                     | Custom `hooks.Stop` + `loop_limit`/`failClosed` survive install.                                                                                                                                                                                                                                                         |
+| [NEW]    | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` | Two-version upgrade; gether scenario. **References `tests/fixtures/heavy-customised-consumer/` from sub-plan-2 P2.T8a.**                                                                                                                                                                                                 |
+| [MODIFY] | `.agents/scripts/bkit-preflight.ts`                        | Remove `detectHooksConfigOverwriteRisk` (P3.T7).                                                                                                                                                                                                                                                                         |
+| [MODIFY] | `.agents/scripts/bkit-preflight.test.ts`                   | Remove obsolete tests; add Vercel CLI hang guard tests (B3).                                                                                                                                                                                                                                                             |
+| [MODIFY] | `docs/knowledge.md`                                        | KN-8 update — Tier-2 deep-merge canonical for ownership-mixed JSON.                                                                                                                                                                                                                                                      |
+| [MODIFY] | `README.md`                                                | `__bkit__` consumer-visible behaviour.                                                                                                                                                                                                                                                                                   |
+| [MODIFY] | `CHANGELOG.md`                                             | v0.8.x entries.                                                                                                                                                                                                                                                                                                          |
 
 ## Documentation Updates
 
-| File | Change required |
-| --- | --- |
-| `docs/knowledge.md` | KN-8 update: Tier-2 deep-merge canonical for ownership-mixed JSON; markers-as-SoT (BAR-138 lesson) reinforced. |
+| File                | Change required                                                                                                                                                      |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/knowledge.md` | KN-8 update: Tier-2 deep-merge canonical for ownership-mixed JSON; markers-as-SoT (BAR-138 lesson) reinforced.                                                       |
 | `docs/decisions.md` | (a) `__bkit__` namespace contract; (b) P3.T0 Cursor v1 schema spike outcome; (c) P3.T1a contract spec including `detectHooksConfigOverwriteRisk` DELETE disposition. |
-| `README.md` | `__bkit__` consumer-visible behaviour; migration notes. |
-| `CHANGELOG.md` | v0.8.x bullets per closed task. |
-| `.agents/docs.md` | Verify still accurate after sub-plan-3. |
+| `README.md`         | `__bkit__` consumer-visible behaviour; migration notes.                                                                                                              |
+| `CHANGELOG.md`      | v0.8.x bullets per closed task.                                                                                                                                      |
+| `.agents/docs.md`   | Verify still accurate after sub-plan-3.                                                                                                                              |
 
 ## Rollback Strategy
 
-| Axis | Action | Notes |
-| --- | --- | --- |
-| **Code** | `git revert <sub-plan-3 squash-merge SHA>` | Single squash commit; revert is atomic. |
-| **Templates** | Revert `.agents/templates/.claude/settings.json` and `.agents/templates/.cursor/hooks.json` to pre-`__bkit__` shape | Consumers running new bkit against old templates: `writeTier2Json` errors loud with "missing `__bkit__` envelope". |
-| **DB** | N/A | No DB. |
-| **Risk window** | Single PR | Per-phase revert window. |
+| Axis            | Action                                                                                                              | Notes                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Code**        | `git revert <sub-plan-3 squash-merge SHA>`                                                                          | Single squash commit; revert is atomic.                                                                            |
+| **Templates**   | Revert `.agents/templates/.claude/settings.json` and `.agents/templates/.cursor/hooks.json` to pre-`__bkit__` shape | Consumers running new bkit against old templates: `writeTier2Json` errors loud with "missing `__bkit__` envelope". |
+| **DB**          | N/A                                                                                                                 | No DB.                                                                                                             |
+| **Risk window** | Single PR                                                                                                           | Per-phase revert window.                                                                                           |
 
 ## Agent Execution Runbook
 

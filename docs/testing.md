@@ -22,11 +22,11 @@
 
 ## Tiers
 
-| Tier | Suffix | Scope | Where it runs |
-| --- | --- | --- | --- |
-| Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
+| Tier        | Suffix                  | Scope                                                                                                        | Where it runs               |
+| ----------- | ----------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| Unit        | `*.test.ts`             | Pure functions, single module. No subprocess, no `process.cwd()` change.                                     | Pre-push + CI               |
 | Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI (excluded from pre-push) |
-| E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
+| E2E         | (none yet)              | Full end-to-end against a real consumer repo.                                                                | Out of scope for bkit       |
 
 ## Consumer-runtime parity rule
 
@@ -52,18 +52,18 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 
 ## Test files added in v0.6.x → v1.0
 
-| File | Tier | Scope |
-| --- | --- | --- |
-| `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay. |
-| `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
-| `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`. |
-| `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
-| `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
-| `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
-| `bkit-tier1-defaults.test.ts` | Unit | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION). |
-| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival). |
-| `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
+| File                                                              | Tier               | Scope                                                                                                                                         |
+| ----------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bkit-doctor.integration.test.ts`                                 | Integration        | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay.                                                                                     |
+| `bkit-uninstall.test.ts`                                          | Unit               | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
+| `bkit-uninstall.surgical.integration.test.ts`                     | Integration        | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`.                                                                      |
+| `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env.                                                                              |
+| `bkit-manifest.test.ts`                                           | Unit               | Per-module install-write manifest assertions.                                                                                                 |
+| `bkit-package-json.test.ts`                                       | Unit               | `stripManagedKeys` manifest-driven cleanup.                                                                                                   |
+| `bkit-tier1-defaults.test.ts`                                     | Unit               | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION).                                                                                      |
+| `bkit-modules.upgrade.integration.test.ts`                        | Integration        | Two-version fully-managed → json-format migration (consumer key survival).                                                                    |
+| `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts`       | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics.                                                                                  |
+| `bkit-version.test.ts` (extended)                                 | Unit               | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads.                                                                  |
 
 The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
 
@@ -74,7 +74,11 @@ Use the project-local `tsx` binary directly. Do NOT invoke `node --import tsx/re
 ```ts
 const tsxBin = path.resolve(__dirname, "../../node_modules/.bin/tsx");
 if (!fs.existsSync(tsxBin)) return; // CI without devDeps — skip rather than fail
-const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], { cwd: tmpDir, encoding: "utf-8", timeout: 60_000 });
+const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
+  cwd: tmpDir,
+  encoding: "utf-8",
+  timeout: 60_000,
+});
 expect(result.status, `install crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
 ```
 

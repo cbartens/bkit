@@ -36,8 +36,8 @@ Used in `.github/workflows/release.yml` for `npm publish`. Set from `${{ secrets
 All subprocess calls from bkit scripts that interpolate variables MUST use `execFileSync` (not `execSync`) to bypass shell metacharacter interpretation. Pattern:
 
 ```ts
-execFileSync("vercel", ["env", "ls", env]);  // correct
-execSync(`vercel env ls ${env}`);            // PROHIBITED
+execFileSync("vercel", ["env", "ls", env]); // correct
+execSync(`vercel env ls ${env}`); // PROHIBITED
 ```
 
 Add runtime type-guards for any string passed to subprocess arguments, even TypeScript-typed ones (type erasure at runtime). See `docs/knowledge.md` KN-6.

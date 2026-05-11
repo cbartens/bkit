@@ -14,3 +14,6 @@ dist/
 pnpm-lock.yaml
 
 # bkit:end
+
+# bkit-repo only: AI-generated plan logs (width-sensitive, intentionally not consumer-template).
+docs/plans/logs/
