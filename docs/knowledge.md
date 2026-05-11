@@ -247,3 +247,25 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-167, KN-15, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-tiers.ts` (`writeTier2`, `writeTier1`)
+
+## KN-18: manifest format must match install dispatch (not intent) (2026-05-11)
+
+- **Symptom:** `bkit check` / `bkit uninstall` apply wrong strip/delete strategy for ci.yml, .vale.ini, slop-scan.config.json — all three call `writeTier3` (seed-or-print) but were classified `markered-text` or `json` in bkit-manifest.ts.
+- **Root cause:** Manifest format was set to reflect the intended future format (markered-text ownership) rather than the actual installed format (byte-equal-text / seed-or-print). Downstream dispatch in uninstall/check used manifest format, so it tried to strip a managed block that never existed.
+- **Fix:** Always set manifest `format` to match the *actual install function called*: `writeTier3` → `byte-equal-text`; `writeTier2`/`writeTier2JsonContained` → `markered-text`/`json`. When install strategy changes, update both the module code and the manifest entry atomically.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, `.agents/scripts/bkit-manifest.ts`, `.agents/scripts/bkit-modules.ts`
+
+## KN-19: malformed-JSON destination must throw, not silently overwrite (2026-05-11)
+
+- **Symptom:** `writeTier2JsonContained` silently overwrote a malformed-JSON destination file with the template, destroying any consumer content that was unrecoverable as JSON.
+- **Root cause:** Catch branch treated parse failure as "absent" and wrote the template wholesale — same as a fresh install. A corruption or partial write that left invalid JSON would be permanently lost without warning.
+- **Fix:** Throw `[bkit] <path> is malformed JSON — fix manually before running bkit install` when destination exists but fails JSON.parse. Matches the `malformed-package-json` blocker discipline. Fresh install (file absent) path is unchanged.
+- **Type:** incident
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-167, KN-8, `.agents/scripts/bkit-tiers.ts` (`writeTier2JsonContained`)

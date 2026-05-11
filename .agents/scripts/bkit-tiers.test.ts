@@ -817,19 +817,21 @@ describe("writeTier2JsonContained", () => {
     expect(ws.writes).toHaveLength(1);
   });
 
-  it("malformed destination → overwrites with template", () => {
+  it("malformed destination → throws with actionable error message (does NOT overwrite)", () => {
     const src = path.join(tmpDir, "template.json");
     const dst = path.join(tmpDir, "malformed.json");
     const template = { a: 1 };
+    const malformedContent = "{ not valid json";
     fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
-    fs.writeFileSync(dst, "{ not valid json", "utf-8");
+    fs.writeFileSync(dst, malformedContent, "utf-8");
     const ws = makeWriteSet();
 
-    writeTier2JsonContained(src, dst, false, ws);
-
-    const result = JSON.parse(fs.readFileSync(dst, "utf-8"));
-    expect(result.a).toBe(1);
-    expect(ws.writes).toHaveLength(1);
+    expect(() => writeTier2JsonContained(src, dst, false, ws)).toThrow(
+      /is malformed JSON — fix manually before running bkit install/,
+    );
+    // File must NOT be overwritten
+    expect(fs.readFileSync(dst, "utf-8")).toBe(malformedContent);
+    expect(ws.writes).toHaveLength(0);
   });
 
   it("dry-run: records write in WriteSet without touching disk", () => {

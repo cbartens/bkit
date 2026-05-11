@@ -66,7 +66,7 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 ];
 
 const CI_MANIFEST: ManifestEntry[] = [
-  { path: ".github/workflows/ci.yml", format: "markered-text", module: "ci" },
+  { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",
@@ -78,8 +78,8 @@ const CI_MANIFEST: ManifestEntry[] = [
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
-  { path: ".vale.ini", format: "markered-text", module: "lint" },
-  { path: "slop-scan.config.json", format: "json", module: "lint" },
+  { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
+  { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint" },
   { path: ".prettierignore", format: "markered-text", module: "lint" },
   // .vale/styles/House/ — fully managed as a directory; individual files
   // are enumerated at uninstall time.

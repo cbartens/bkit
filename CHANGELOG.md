@@ -15,6 +15,14 @@ Format: `## [version] — YYYY-MM-DD`
 - **`writeTier2Json` renamed to `writeTier2JsonContained`** — callers in `bkit-modules.ts` updated. (BAR-167)
 - **`bkit-tier1-defaults.ts` deleted** — sole consumer was `migrateTier1JsonToTier2`. (BAR-167)
 
+### Changed
+
+- **Added `bkit:start..bkit:end` markers to 12 Group A templates:** `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-shared-rules.mdc`, `.vale/styles/House/Filler.yml`, `.vale/styles/House/Hedging.yml`, `.vale/styles/House/LLMSlop.yml`, `.vale/styles/House/Verbose.yml`, `.agents/rules.md`, `.agents/docs.md`, `.agents/friction.md`, `.agents/skills.md`, `docs/plans/template.md`. (BAR-167)
+- **Added partial-ownership `bkit:start..bkit:end` markers to 3 Group B templates:** `.github/workflows/ci.yml`, `.vale.ini`, `.husky/pre-push`. (BAR-167)
+- **New `lint:no-tier-terms` script** enforces no `Tier [1-3]` terminology in docs. (BAR-167)
+- **Simplified `bkit-manifest.ts` schema:** `tier` integer removed; `format` field added (`json | markered-text | byte-equal-text`). (BAR-167)
+- **New advisory `tier2-text-drift`** emitted by `bkit check` when markered-text file content drifts from template block. (BAR-167)
+
 ### Changed (breaking)
 
 - **`.cursor/hooks.json` template migrated to Cursor v1 keyed-object schema.** Old shape: `{"hooks": [{event, command}]}`. New shape: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`. Existing consumers are migrated automatically on `bkit upgrade`. (BAR-167)

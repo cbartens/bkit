@@ -229,15 +229,10 @@ export function writeTier2JsonContained(
   try {
     existing = JSON.parse(dstRaw) as Record<string, JsonValue>;
   } catch {
-    // Malformed destination — treat as absent and overwrite
-    ensureDir(path.dirname(dstPath));
-    if (!dryRun) {
-      fs.writeFileSync(dstPath, JSON.stringify(template, null, 2) + "\n", "utf-8");
-      const srcMode = fs.statSync(srcPath).mode;
-      fs.chmodSync(dstPath, srcMode);
-    }
-    ws.writes.push({ path: dstPath, action: "write" });
-    return;
+    // Malformed destination — refuse to overwrite; require manual fix (matches malformed-package-json blocker discipline)
+    throw new Error(
+      `[bkit] ${dstPath} is malformed JSON — fix manually before running bkit install`,
+    );
   }
 
   // Check if existing already contains the template

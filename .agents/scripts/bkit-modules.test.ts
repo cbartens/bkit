@@ -224,25 +224,29 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     expect(paths).toContain(".cursor/hooks.json");
   });
 
-  it("markered-text entries: AGENTS.md, CLAUDE.md, ci.yml, .vale.ini use format markered-text", () => {
+  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore, .prettierignore, .husky files use format markered-text", () => {
     const allEntries = getInstallManifest([]);
     const markedEntries = allEntries.filter((e) => e.format === "markered-text");
     const paths = markedEntries.map((e) => e.path);
     expect(paths).toContain("AGENTS.md");
     expect(paths).toContain("CLAUDE.md");
-    expect(paths).toContain(".github/workflows/ci.yml");
-    expect(paths).toContain(".vale.ini");
     expect(paths).toContain(".gitignore");
     expect(paths).toContain(".prettierignore");
     expect(paths).toContain(".husky/pre-commit");
     expect(paths).toContain(".husky/pre-push");
+    // ci.yml and .vale.ini are byte-equal-text (seed-or-print) since v2.0.0
+    expect(paths).not.toContain(".github/workflows/ci.yml");
+    expect(paths).not.toContain(".vale.ini");
   });
 
-  it("byte-equal-text entries: .cursor/Dockerfile uses format byte-equal-text", () => {
+  it("byte-equal-text entries: .cursor/Dockerfile, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {
     const allEntries = getInstallManifest([]);
     const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
     const paths = byteEqualEntries.map((e) => e.path);
     expect(paths).toContain(".cursor/Dockerfile");
+    expect(paths).toContain(".github/workflows/ci.yml");
+    expect(paths).toContain(".vale.ini");
+    expect(paths).toContain("slop-scan.config.json");
   });
 
   it("every entry has a valid format value", () => {

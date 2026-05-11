@@ -11,7 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
-import { deepContains, type JsonValue } from "./bkit-tiers.js";
+import { deepContains, stripManagedBlock, type JsonValue } from "./bkit-tiers.js";
 import { extractManagedBlock, type MarkerStyle } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
 
@@ -61,11 +61,14 @@ function dedupeById(findings: PreflightFinding[]): PreflightFinding[] {
 /**
  * Strip out content inside bkit-managed block markers (both HTML and hash style).
  * Used by detectors that need to inspect only consumer-owned content.
+ *
+ * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts) to
+ * avoid the greedy-regex KN-8 hazard. Applies both marker styles sequentially so that
+ * files using either `<!-- bkit:start -->` or `# bkit:start` are stripped correctly.
  */
 export function stripBkitBlock(content: string): string {
-  return content
-    .replace(/<!--\s*bkit:start\s*-->[\s\S]*?<!--\s*bkit:end\s*-->/g, "")
-    .replace(/#\s*bkit:start[\s\S]*?#\s*bkit:end/g, "");
+  // Strip html-comment markers first, then hash-comment markers (line-anchored, KN-8 safe).
+  return stripManagedBlock(stripManagedBlock(content, "html-comment"), "hash-comment");
 }
 
 // ---------------------------------------------------------------------------

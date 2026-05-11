@@ -516,7 +516,8 @@ export function runClaudeModule(ctx: ModuleContext): void {
           console.log(`[bkit] migrated ${settingsDst} — ${variant} (v2.0.0)`);
         }
       } catch {
-        // Malformed JSON — fall through to writeTier2JsonContained which handles it
+        // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
+        // with a user-actionable error message requiring manual fix before re-running bkit install.
       }
     }
     const prevLen = ws.writes.length;
@@ -617,7 +618,8 @@ export function runCursorModule(ctx: ModuleContext): void {
           console.log(`[bkit] migrated ${hooksDst} — ${variant} (v2.0.0)`);
         }
       } catch {
-        // Malformed JSON — fall through to writeTier2JsonContained which handles it
+        // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
+        // with a user-actionable error message requiring manual fix before re-running bkit install.
       }
     }
     const prevLen = ws.writes.length;

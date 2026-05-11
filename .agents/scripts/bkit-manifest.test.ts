@@ -46,18 +46,18 @@ describe("getInstallManifest", () => {
     expect(versionEntry!.format).toBe("byte-equal-text");
   });
 
-  it("ci manifest includes ci.yml as markered-text", () => {
+  it("ci manifest includes ci.yml as byte-equal-text", () => {
     const entries = getInstallManifest(["ci"]);
     const ciEntry = entries.find((e) => e.path.includes("ci.yml"));
     expect(ciEntry).toBeDefined();
-    expect(ciEntry!.format).toBe("markered-text");
+    expect(ciEntry!.format).toBe("byte-equal-text");
   });
 
-  it("lint manifest includes .vale.ini as markered-text", () => {
+  it("lint manifest includes .vale.ini as byte-equal-text", () => {
     const entries = getInstallManifest(["lint"]);
     const valeEntry = entries.find((e) => e.path === ".vale.ini");
     expect(valeEntry).toBeDefined();
-    expect(valeEntry!.format).toBe("markered-text");
+    expect(valeEntry!.format).toBe("byte-equal-text");
   });
 
   it("lint manifest includes .prettierignore as markered-text", () => {
@@ -91,11 +91,11 @@ describe("getInstallManifest", () => {
     expect(settingsEntry!.format).toBe("json");
   });
 
-  it("lint manifest includes slop-scan.config.json as json", () => {
+  it("lint manifest includes slop-scan.config.json as byte-equal-text", () => {
     const entries = getInstallManifest(["lint"]);
     const slopEntry = entries.find((e) => e.path === "slop-scan.config.json");
     expect(slopEntry).toBeDefined();
-    expect(slopEntry!.format).toBe("json");
+    expect(slopEntry!.format).toBe("byte-equal-text");
   });
 
   it("cursor manifest includes Dockerfile as byte-equal-text", () => {
