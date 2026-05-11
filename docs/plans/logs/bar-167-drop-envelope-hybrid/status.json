@@ -236,7 +236,7 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-11T04:38:41Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
@@ -459,6 +459,14 @@
         "commitSha": "76fee502006707868a7f7706d93b787f9b248e47",
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-summary.md"
+        ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-11T06:45:52Z",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/20"
         ]
       }
     ]
