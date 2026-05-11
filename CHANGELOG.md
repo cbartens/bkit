@@ -18,6 +18,15 @@ Format: `## [version] — YYYY-MM-DD`
 
 - **`.prettierignore` bkit-managed block** narrowed — removed `.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`, and `docs/` from the canonical-overwrite ignore set so Prettier formats them in consumer repos. The affected paths are width-invariant under Prettier's default `proseWrap: "preserve"`: only one inline JSON example and one Markdown table in `workflows.md` were genuinely width-sensitive — both now wrapped with `<!-- prettier-ignore -->` (BAR-165 root-cause fix superseding the v1.1.1 ignore-list workaround). `templates.test.ts` BAR-165 invariant loop removed — no longer load-bearing.
 
+### Fixed
+
+- **`.npmrc` advisory copy: revert to plain `${GH_BKIT_TOKEN}` (reverses BAR-142 §B6).** The 2026-05-06 ship prescribed `_authToken=${GH_BKIT_TOKEN:-}` on the assumption pnpm parsed POSIX-style fallback. It does not: pnpm's npmrc env-var substitution only supports the simple `${VAR}` form and treats `GH_BKIT_TOKEN:-` as a literal var name, sending no auth header and producing an opaque 401 from the GH Packages registry — strictly worse than the original silent-fallback behaviour. Compounded by the fact that bkit's own `detectNpmrcAuth` validator (`bkit-postinstall.ts:45`) matches the plain form, so consumers who followed the buggy advisory failed bkit's own `npmrc-missing-gh-packages` check. Fixed the two advisory strings in `bkit-modules.ts` (first-install banner + CI guidance block) and the `gh-bkit-token-missing-shell` empty-token detect text. Flipped the enforcement test in `bkit-preflight.test.ts` to assert the plain form and explicitly forbid the broken `${VAR:-}` form across all script files.
+- **Phantom `.prettierignore` "block broadened" advisory.** `BKIT_PRETTIERIGNORE_PATHS` in `bkit-preflight.ts` had drifted from the actual template at `.agents/templates/.prettierignore` — it listed `.agents/` and `docs/` (no longer in the template) and was missing `.claude/` and `.cursor/`. Every install on a consumer whose block contained `.agents/skills/` falsely fired "block is being broadened on this install: .agents/skills/ → .agents/" even though the install wrote `.agents/skills/` straight back. The constant now mirrors the template exactly; regression test added.
+
+### Added
+
+- **AGENT NOTE on token-missing advisories** — appended `AGENT_INLINE_SOURCE_GUIDANCE` to both `gh-bkit-token-missing-shell` advisories (missing + empty) explaining the `set -a; source <env-file>; set +a; <cmd>` single-Bash-call pattern. AI coding agents whose permission rules block `Read`/`grep` on `.env*` can still load `GH_BKIT_TOKEN` into a single command's environment without the token text entering their context, since `source` is a shell builtin and bypasses the permission layer that gates file I/O.
+
 ---
 
 ## [2.0.2] — 2026-05-11

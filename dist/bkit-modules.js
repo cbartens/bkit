@@ -354,7 +354,7 @@ export function runCoreModule(ctx) {
                 "   - See README.md ## Consumer CI auth for full setup.\n\n" +
                 "2. Add a `.npmrc` at your repo root so pnpm can authenticate to GH Packages:\n" +
                 "     @cbartens:registry=https://npm.pkg.github.com\n" +
-                "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN:-}\n\n" +
+                "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
                 "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
                 "prepare) are auto-added by bkit when their parent module installs. Run\n" +
@@ -614,7 +614,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   1. Ensure a .npmrc file exists at the repo root with these two lines:
 
         @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN:-}
+        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
      Commit this .npmrc file — the CI runner reads it during pnpm install.
 

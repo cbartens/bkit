@@ -672,7 +672,16 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 });
 
 // ---------------------------------------------------------------------------
-// B6 — .npmrc inline action text + ${GH_BKIT_TOKEN:-} fallback (BAR-142 §B6)
+// B6 — .npmrc inline action text uses plain ${GH_BKIT_TOKEN} (BAR-142 §B6 reversal)
+//
+// pnpm's .npmrc env-var substitution only supports the simple `${VAR}` form,
+// NOT the POSIX `${VAR:-default}` bash fallback. The earlier B6 ship shipped
+// `${GH_BKIT_TOKEN:-}` on the assumption pnpm parsed it; in practice pnpm
+// treats `GH_BKIT_TOKEN:-` as the literal var name and sends no auth header
+// (opaque 401 from GH Packages). Worse: bkit's own `detectNpmrcAuth` validator
+// in bkit-postinstall.ts only matches the plain form — so a consumer following
+// the buggy advisory would fail bkit's `npmrc-missing-gh-packages` check.
+// This test now enforces the plain form everywhere in advisory text.
 // ---------------------------------------------------------------------------
 
 describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
@@ -683,16 +692,25 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
     expect(src).toContain("export GH_BKIT_TOKEN=$(gh auth token)");
   });
 
-  it("bkit-modules.ts .npmrc inline strings use ${GH_BKIT_TOKEN:-} POSIX fallback form", () => {
-    // Source-level check: both .npmrc inline literal locations in bkit-modules.ts
-    // must use the ${GH_BKIT_TOKEN:-} fallback (not bare ${GH_BKIT_TOKEN}).
+  it("bkit-modules.ts .npmrc inline advisory strings use plain ${GH_BKIT_TOKEN} (pnpm does not parse :-) ", () => {
     const src = fs.readFileSync(path.join(__dirname, "bkit-modules.ts"), "utf-8");
-    // Count occurrences of the fallback form
-    const fallbackCount = (src.match(/\$\{GH_BKIT_TOKEN:-\}/g) ?? []).length;
-    expect(fallbackCount).toBeGreaterThanOrEqual(2);
-    // Must NOT have bare ${GH_BKIT_TOKEN} in .npmrc inline strings (only in other contexts)
-    // The .npmrc auth token line must use the fallback form
-    expect(src).toContain("_authToken=${GH_BKIT_TOKEN:-}");
+    // Both .npmrc literal advisory locations must contain `_authToken=${GH_BKIT_TOKEN}` (plain form).
+    const plainAuthMatches = (src.match(/_authToken=\\?\$\{GH_BKIT_TOKEN\}/g) ?? []).length;
+    expect(plainAuthMatches).toBeGreaterThanOrEqual(2);
+    // The broken POSIX-fallback form must NOT appear anywhere — pnpm cannot parse it.
+    expect(src).not.toMatch(/_authToken=\\?\$\{GH_BKIT_TOKEN:-\}/);
+  });
+
+  it("no advisory string anywhere in scripts prescribes the broken ${GH_BKIT_TOKEN:-} form", () => {
+    const scripts = ["bkit-modules.ts", "bkit-postinstall.ts", "bkit-preflight.ts", "bkit-cli.ts"];
+    for (const f of scripts) {
+      const p = path.join(__dirname, f);
+      if (!fs.existsSync(p)) continue;
+      const src = fs.readFileSync(p, "utf-8");
+      expect(src, `${f} must not prescribe \${GH_BKIT_TOKEN:-} (pnpm cannot parse :-)`).not.toMatch(
+        /_authToken=\\?\$\{GH_BKIT_TOKEN:-\}/,
+      );
+    }
   });
 });
 

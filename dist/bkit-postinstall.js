@@ -355,7 +355,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-missing-shell",
             severity: "advisory",
             detect: 'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
-            action: "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset — pnpm's ${GH_BKIT_TOKEN:-} fallback will substitute empty string, which pnpm may accept or reject depending on version. Safest fix: set a real token.\n\n" +
+            action: "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
