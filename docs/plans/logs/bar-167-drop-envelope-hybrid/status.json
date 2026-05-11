@@ -321,6 +321,18 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-2.md"
         ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PENDING",
+        "attempt": 1,
+        "subPlan": 2,
+        "at": "2026-05-11T05:44:11Z",
+        "commitSha": "eeb8c9bce58f4549f2c799035efb4b2b190e073f",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-2-log.md"
+        ]
       }
     ]
   }
