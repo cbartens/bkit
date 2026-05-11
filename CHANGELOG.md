@@ -6,15 +6,17 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [2.0.3] — 2026-05-11
+## [2.0.3] — 2026-05-12
 
 ### Added
 
 - **`utility-new-release` agent prompt** (`.claude/agents/utility-new-release.md` + `.agents/templates/`) — codifies the dev → main → tag → publish flow so future cuts avoid the KN-20 silent-skip trap (explicit scrubbed squash body, post-tag Release-workflow verification).
+- **`lint-staged` adoption** — bkit pre-commit hook (consumer template + bkit-repo) now runs `pnpm lint-staged` so staged files are formatted via `prettier --write` at commit time. Pre-push keeps `pnpm format:check` as the safety net for hook-bypass cases (--no-verify, GitHub web edits, stale local config). Matches gether's pattern.
+- **`.lintstagedrc.json` seed** — `bkit install` writes the lint-staged config (`"*": "prettier --write --ignore-unknown"`) as Tier-3 (seed-or-print) and adds `lint-staged` to consumer devDependencies so the new pre-commit call resolves without manual setup.
 
 ### Changed
 
-- **`.prettierignore` bkit-managed block** narrowed — removed `.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`, and `docs/` from the canonical-overwrite ignore set so Prettier formats them in consumer repos. The affected paths are no longer width-sensitive after recent rewrites, so churn risk is acceptable.
+- **`.prettierignore` bkit-managed block** narrowed — removed `.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`, and `docs/` from the canonical-overwrite ignore set so Prettier formats them in consumer repos. The affected paths are width-invariant under Prettier's default `proseWrap: "preserve"`: only one inline JSON example and one Markdown table in `workflows.md` were genuinely width-sensitive — both now wrapped with `<!-- prettier-ignore -->` (BAR-165 root-cause fix superseding the v1.1.1 ignore-list workaround). `templates.test.ts` BAR-165 invariant loop removed — no longer load-bearing.
 
 ---
 
