@@ -308,7 +308,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🧠 Step 5 — Plan Execute
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Agent` tool:
-   Context: You are a subagent in the Build phase. Execute sub-plan {SUB_PLAN}/{SUB_COUNT}. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}`/`{SUB_COUNT}`. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/build-input.md`, `docs/plans/active/{FID}-plan.md`, `docs/plans/active/{FID}-plan-{SUB_PLAN}.md`.
    Update: Source files.
    Create: `docs/plans/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
