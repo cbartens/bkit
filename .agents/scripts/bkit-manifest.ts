@@ -13,12 +13,13 @@ export interface ManifestEntry {
   /** Destination path relative to consumer repo root (as written by install). */
   path: string;
   /**
-   * Tier classification:
-   *   1 = fully managed (always overwritten — uninstall deletes if unchanged)
-   *   2 = managed-block (uninstall strips bkit block, preserves consumer content)
-   *   3 = seed-or-print (uninstall deletes only if hash matches known-default hash)
+   * Format classification — determines the scope-extraction mechanism used by
+   * install/check/uninstall dispatch:
+   *   "json"           = deep-containment (writeTier2JsonContained / deepContains / stripTier2JsonScope)
+   *   "markered-text"  = marker block extraction + byte-equal (insert-or-replace / strip)
+   *   "byte-equal-text" = whole-file byte-equal (overwrite / hash-or-byte-equal delete)
    */
-  tier: 1 | 2 | 3;
+  format: "json" | "markered-text" | "byte-equal-text";
   /**
    * Module that owns this file.
    */
@@ -40,35 +41,35 @@ export type ModuleName = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hoo
 // ---------------------------------------------------------------------------
 
 const CORE_MANIFEST: ManifestEntry[] = [
-  { path: "AGENTS.md", tier: 2, module: "core" },
-  { path: "CLAUDE.md", tier: 2, module: "core" },
-  { path: ".gitignore", tier: 2, module: "core" },
-  { path: ".agents/.bkit-version", tier: 1, module: "core" },
+  { path: "AGENTS.md", format: "markered-text", module: "core" },
+  { path: "CLAUDE.md", format: "markered-text", module: "core" },
+  { path: ".gitignore", format: "markered-text", module: "core" },
+  { path: ".agents/.bkit-version", format: "byte-equal-text", module: "core" },
 ];
 
 const CLAUDE_MANIFEST: ManifestEntry[] = [
-  { path: ".claude/settings.json", tier: 1, module: "claude" },
-  { path: ".claude/hooks/preflight.sh", tier: 1, module: "claude" },
+  { path: ".claude/settings.json", format: "json", module: "claude" },
+  { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
   // Mirrors from .agents/ — managed dynamically; not listed individually here
   // because the exact set depends on the bkit-prefix prompt/workflow files at
   // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
 ];
 
 const CURSOR_MANIFEST: ManifestEntry[] = [
-  { path: ".cursor/hooks.json", tier: 1, module: "cursor" },
-  { path: ".cursor/hooks/preflight.sh", tier: 1, module: "cursor" },
-  { path: ".cursor/rules/00-shared-rules.mdc", tier: 1, module: "cursor" },
-  { path: ".cursor/settings.json", tier: 3, module: "cursor" },
-  { path: ".cursor/Dockerfile", tier: 3, module: "cursor" },
-  { path: ".cursor/environment.json", tier: 3, module: "cursor" },
+  { path: ".cursor/hooks.json", format: "json", module: "cursor" },
+  { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
+  { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
+  { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
+  { path: ".cursor/Dockerfile", format: "byte-equal-text", module: "cursor" },
+  { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 
 const CI_MANIFEST: ManifestEntry[] = [
-  { path: ".github/workflows/ci.yml", tier: 3, module: "ci" },
+  { path: ".github/workflows/ci.yml", format: "markered-text", module: "ci" },
   {
     path: "package.json",
-    tier: 2,
+    format: "markered-text",
     module: "ci",
     packageJsonKeys: {
       scripts: { typecheck: "tsc --noEmit" },
@@ -77,14 +78,14 @@ const CI_MANIFEST: ManifestEntry[] = [
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
-  { path: ".vale.ini", tier: 3, module: "lint" },
-  { path: "slop-scan.config.json", tier: 3, module: "lint" },
-  { path: ".prettierignore", tier: 2, module: "lint" },
-  // .vale/styles/House/ — T1 but managed as a directory; individual files
+  { path: ".vale.ini", format: "markered-text", module: "lint" },
+  { path: "slop-scan.config.json", format: "json", module: "lint" },
+  { path: ".prettierignore", format: "markered-text", module: "lint" },
+  // .vale/styles/House/ — fully managed as a directory; individual files
   // are enumerated at uninstall time.
   {
     path: "package.json",
-    tier: 2,
+    format: "markered-text",
     module: "lint",
     packageJsonKeys: {
       scripts: {
@@ -102,11 +103,11 @@ const LINT_MANIFEST: ManifestEntry[] = [
 ];
 
 const GIT_HOOKS_MANIFEST: ManifestEntry[] = [
-  { path: ".husky/pre-commit", tier: 2, module: "git-hooks" },
-  { path: ".husky/pre-push", tier: 2, module: "git-hooks" },
+  { path: ".husky/pre-commit", format: "markered-text", module: "git-hooks" },
+  { path: ".husky/pre-push", format: "markered-text", module: "git-hooks" },
   {
     path: "package.json",
-    tier: 2,
+    format: "markered-text",
     module: "git-hooks",
     packageJsonKeys: {
       scripts: { prepare: "husky" },

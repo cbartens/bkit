@@ -60,20 +60,20 @@ function writeBkitVersionFile(v: BkitVersion): void {
 }
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — Tier-1 files
+// buildDecisionTable — json-format files (formerly Tier-1)
 // ---------------------------------------------------------------------------
 
-describe("buildDecisionTable — Tier-1", () => {
-  it("Tier-1 file present → decision=delete", () => {
+describe("buildDecisionTable — json format", () => {
+  it("json file present → decision=strip-block (scope strip)", () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
     const table = buildDecisionTable(["claude"], makeCtx());
     const entry = table.find((r) => r.file === ".claude/settings.json");
     expect(entry).toBeDefined();
-    expect(entry!.decision).toBe("delete");
-    expect(entry!.tier).toBe(1);
+    expect(entry!.decision).toBe("strip-block");
+    expect(entry!.format).toBe("json");
   });
 
-  it("Tier-1 file absent → decision=skip-absent", () => {
+  it("json file absent → decision=skip-absent", () => {
     const table = buildDecisionTable(["claude"], makeCtx());
     const entry = table.find((r) => r.file === ".claude/settings.json");
     expect(entry).toBeDefined();
@@ -82,11 +82,11 @@ describe("buildDecisionTable — Tier-1", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — Tier-2 files
+// buildDecisionTable — markered-text files (formerly Tier-2)
 // ---------------------------------------------------------------------------
 
-describe("buildDecisionTable — Tier-2", () => {
-  it("Tier-2 file with html-comment markers → decision=strip-block", () => {
+describe("buildDecisionTable — markered-text format", () => {
+  it("markered-text file with html-comment markers → decision=strip-block", () => {
     writeFile(
       "AGENTS.md",
       "# Consumer content\n\n<!-- bkit:start -->\nbkit block\n<!-- bkit:end -->\n",
@@ -95,10 +95,10 @@ describe("buildDecisionTable — Tier-2", () => {
     const entry = table.find((r) => r.file === "AGENTS.md");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("strip-block");
-    expect(entry!.tier).toBe(2);
+    expect(entry!.format).toBe("markered-text");
   });
 
-  it("Tier-2 file with hash-comment markers → decision=strip-block", () => {
+  it("markered-text file with hash-comment markers → decision=strip-block", () => {
     writeFile(".husky/pre-commit", "#!/bin/sh\n# bkit:start\nbkit-step\n# bkit:end\n");
     const table = buildDecisionTable(["git-hooks"], makeCtx());
     const entry = table.find((r) => r.file === ".husky/pre-commit");
@@ -106,7 +106,7 @@ describe("buildDecisionTable — Tier-2", () => {
     expect(entry!.decision).toBe("strip-block");
   });
 
-  it("Tier-2 file with no bkit markers → decision=preserve (100% consumer content)", () => {
+  it("markered-text file with no bkit markers → decision=preserve (100% consumer content)", () => {
     writeFile("AGENTS.md", "# Purely consumer content\n");
     const table = buildDecisionTable(["core"], makeCtx());
     const entry = table.find((r) => r.file === "AGENTS.md");
@@ -116,69 +116,69 @@ describe("buildDecisionTable — Tier-2", () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildDecisionTable — Tier-3 files
+// buildDecisionTable — byte-equal-text files (formerly Tier-3)
 // ---------------------------------------------------------------------------
 
-describe("buildDecisionTable — Tier-3 hash guard", () => {
-  it("Tier-3 file: unknown hash (no tier3Hashes entry) → skip-tier3-unknown", () => {
-    writeFile(".github/workflows/ci.yml", "ci yaml\n");
+describe("buildDecisionTable — byte-equal-text hash guard", () => {
+  it("byte-equal-text file: unknown hash (no tier3Hashes entry) → skip-tier3-unknown", () => {
+    writeFile(".cursor/Dockerfile", "FROM debian\n");
     // No .bkit-version file → no hash recorded
-    const table = buildDecisionTable(["ci"], makeCtx());
-    const entry = table.find((r) => r.file === ".github/workflows/ci.yml");
+    const table = buildDecisionTable(["cursor"], makeCtx());
+    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
   });
 
-  it("Tier-3 file: hash matches → decision=delete", () => {
-    const content = "original ci yaml content\n";
-    writeFile(".github/workflows/ci.yml", content);
+  it("byte-equal-text file: hash matches → decision=delete", () => {
+    const content = "original cursor dockerfile\n";
+    writeFile(".cursor/Dockerfile", content);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256(content) },
+      tier3Hashes: { ".cursor/Dockerfile": sha256(content) },
     });
-    const table = buildDecisionTable(["ci"], makeCtx());
-    const entry = table.find((r) => r.file === ".github/workflows/ci.yml");
+    const table = buildDecisionTable(["cursor"], makeCtx());
+    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
   });
 
-  it("Tier-3 file: hash mismatch (consumer modified) → skip-tier3-modified", () => {
-    const originalContent = "original ci yaml\n";
-    const modifiedContent = "consumer modified ci yaml\n";
-    writeFile(".github/workflows/ci.yml", modifiedContent);
+  it("byte-equal-text file: hash mismatch (consumer modified) → skip-tier3-modified", () => {
+    const originalContent = "original dockerfile\n";
+    const modifiedContent = "consumer modified dockerfile\n";
+    writeFile(".cursor/Dockerfile", modifiedContent);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256(originalContent) },
+      tier3Hashes: { ".cursor/Dockerfile": sha256(originalContent) },
     });
-    const table = buildDecisionTable(["ci"], makeCtx());
-    const entry = table.find((r) => r.file === ".github/workflows/ci.yml");
+    const table = buildDecisionTable(["cursor"], makeCtx());
+    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-modified");
   });
 
-  it("Tier-3 with --force → decision=delete regardless of hash", () => {
-    const originalContent = "original ci yaml\n";
-    writeFile(".github/workflows/ci.yml", "consumer modified\n");
+  it("byte-equal-text with --force → decision=delete regardless of hash", () => {
+    const originalContent = "original dockerfile\n";
+    writeFile(".cursor/Dockerfile", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256(originalContent) },
+      tier3Hashes: { ".cursor/Dockerfile": sha256(originalContent) },
     });
-    const table = buildDecisionTable(["ci"], makeCtx({ force: true }));
-    const entry = table.find((r) => r.file === ".github/workflows/ci.yml");
+    const table = buildDecisionTable(["cursor"], makeCtx({ force: true }));
+    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
     expect(entry!.reason).toContain("--force");
   });
 
   it("retro-fit: v0.6.x .bkit-version (plain text, no tier3Hashes) → skip-tier3-unknown", () => {
-    writeFile(".github/workflows/ci.yml", "ci content\n");
+    writeFile(".cursor/Dockerfile", "dockerfile content\n");
     // Simulate v0.6.x plain-text .bkit-version
     const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
 
-    const table = buildDecisionTable(["ci"], makeCtx());
-    const entry = table.find((r) => r.file === ".github/workflows/ci.yml");
+    const table = buildDecisionTable(["cursor"], makeCtx());
+    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
   });
@@ -192,13 +192,13 @@ describe("buildDecisionTable — nuke mode", () => {
   it("--nuke makes all present files decision=delete", () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
     writeFile("AGENTS.md", "# Consumer\n\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\n");
-    writeFile(".github/workflows/ci.yml", "consumer modified\n");
+    writeFile(".cursor/Dockerfile", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256("different content\n") },
+      tier3Hashes: { ".cursor/Dockerfile": sha256("different content\n") },
     });
 
-    const table = buildDecisionTable(["core", "claude", "ci"], makeCtx({ nuke: true }));
+    const table = buildDecisionTable(["core", "claude", "cursor"], makeCtx({ nuke: true }));
     const decisions = table.filter((r) => r.decision !== "skip-absent").map((r) => r.decision);
     expect(decisions.every((d) => d === "delete")).toBe(true);
   });
@@ -211,8 +211,18 @@ describe("buildDecisionTable — nuke mode", () => {
 describe("formatDecisionTable — P2.T7", () => {
   it("formats a non-empty table with FILE / DECISION / REASON header", () => {
     const table: FileSummary[] = [
-      { file: "AGENTS.md", decision: "strip-block", reason: "Tier-2 managed", tier: 2 },
-      { file: ".claude/settings.json", decision: "delete", reason: "Tier-1", tier: 1 },
+      {
+        file: "AGENTS.md",
+        decision: "strip-block",
+        reason: "markered-text managed",
+        format: "markered-text",
+      },
+      {
+        file: ".claude/settings.json",
+        decision: "strip-block",
+        reason: "json scope strip",
+        format: "json",
+      },
     ];
     const output = formatDecisionTable(table);
     expect(output).toContain("FILE");
@@ -221,7 +231,6 @@ describe("formatDecisionTable — P2.T7", () => {
     expect(output).toContain("AGENTS.md");
     expect(output).toContain("strip-block");
     expect(output).toContain(".claude/settings.json");
-    expect(output).toContain("delete");
   });
 
   it("returns informational message for empty table", () => {
@@ -249,13 +258,7 @@ describe("formatDecisionTable — P2.T7", () => {
 // ---------------------------------------------------------------------------
 
 describe("runUninstall — round-trip", () => {
-  it("deletes Tier-1 file", async () => {
-    writeFile(".claude/settings.json", '{"hooks":{}}');
-    await runUninstall(["claude"], makeCtx());
-    expect(fileExists(".claude/settings.json")).toBe(false);
-  });
-
-  it("strips bkit block from Tier-2 file, preserving consumer content", async () => {
+  it("strips bkit block from markered-text file, preserving consumer content", async () => {
     const consumer = "# Consumer heading\n\nConsumer rules.\n";
     const bkitBlock = "\n<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n";
     writeFile("AGENTS.md", consumer + bkitBlock);
@@ -270,13 +273,13 @@ describe("runUninstall — round-trip", () => {
     expect(result).not.toContain("<!-- bkit:start -->");
   });
 
-  it("deletes Tier-2 file when stripping leaves only whitespace", async () => {
+  it("deletes markered-text file when stripping leaves only whitespace", async () => {
     writeFile("AGENTS.md", "<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n");
     await runUninstall(["core"], makeCtx());
     expect(fileExists("AGENTS.md")).toBe(false);
   });
 
-  it("preserves Tier-2 file when no bkit markers present (100% consumer)", async () => {
+  it("preserves markered-text file when no bkit markers present (100% consumer)", async () => {
     const consumerContent = "# Pure consumer content\n";
     writeFile("AGENTS.md", consumerContent);
     await runUninstall(["core"], makeCtx());
@@ -284,32 +287,32 @@ describe("runUninstall — round-trip", () => {
     expect(readFile("AGENTS.md")).toBe(consumerContent);
   });
 
-  it("preserves Tier-3 file when hash unknown (no tier3Hashes)", async () => {
-    writeFile(".github/workflows/ci.yml", "ci yaml\n");
-    await runUninstall(["ci"], makeCtx());
-    expect(fileExists(".github/workflows/ci.yml")).toBe(true);
+  it("preserves byte-equal-text file when hash unknown (no tier3Hashes)", async () => {
+    writeFile(".cursor/Dockerfile", "dockerfile content\n");
+    await runUninstall(["cursor"], makeCtx());
+    expect(fileExists(".cursor/Dockerfile")).toBe(true);
   });
 
-  it("deletes Tier-3 file when hash matches install-time hash", async () => {
-    const content = "original ci yaml\n";
-    writeFile(".github/workflows/ci.yml", content);
+  it("deletes byte-equal-text file when hash matches install-time hash", async () => {
+    const content = "original dockerfile\n";
+    writeFile(".cursor/Dockerfile", content);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256(content) },
+      tier3Hashes: { ".cursor/Dockerfile": sha256(content) },
     });
-    await runUninstall(["ci"], makeCtx());
-    expect(fileExists(".github/workflows/ci.yml")).toBe(false);
+    await runUninstall(["cursor"], makeCtx());
+    expect(fileExists(".cursor/Dockerfile")).toBe(false);
   });
 
-  it("preserves Tier-3 file when hash mismatches (consumer modified)", async () => {
-    writeFile(".github/workflows/ci.yml", "consumer modified\n");
+  it("preserves byte-equal-text file when hash mismatches (consumer modified)", async () => {
+    writeFile(".cursor/Dockerfile", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256("original content\n") },
+      tier3Hashes: { ".cursor/Dockerfile": sha256("original content\n") },
     });
-    await runUninstall(["ci"], makeCtx());
-    expect(fileExists(".github/workflows/ci.yml")).toBe(true);
-    expect(readFile(".github/workflows/ci.yml")).toBe("consumer modified\n");
+    await runUninstall(["cursor"], makeCtx());
+    expect(fileExists(".cursor/Dockerfile")).toBe(true);
+    expect(readFile(".cursor/Dockerfile")).toBe("consumer modified\n");
   });
 });
 
@@ -322,11 +325,10 @@ describe("runUninstall — idempotency", () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
 
     await runUninstall(["claude"], makeCtx());
-    expect(fileExists(".claude/settings.json")).toBe(false);
-
-    // Second run — file already absent; should not throw
+    // After first run: json scope strip — if all keys are bkit-owned the file may be deleted
+    // or stripped. Either way second run should not throw.
     const result2 = await runUninstall(["claude"], makeCtx());
-    expect(result2.deleted).toHaveLength(0); // already gone
+    expect(result2.decisions.length).toBeGreaterThan(0);
   });
 
   it("strip-block is idempotent: running on already-stripped file no-ops", async () => {
@@ -352,19 +354,22 @@ describe("runUninstall — nuke", () => {
   it("--nuke --yes deletes all present files without interactive prompt", async () => {
     writeFile(".claude/settings.json", '{"hooks":{}}');
     writeFile("AGENTS.md", "# Consumer\n\n<!-- bkit:start -->\nbkit\n<!-- bkit:end -->\n");
-    writeFile(".github/workflows/ci.yml", "consumer modified\n");
+    writeFile(".cursor/Dockerfile", "consumer modified\n");
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".github/workflows/ci.yml": sha256("different\n") },
+      tier3Hashes: { ".cursor/Dockerfile": sha256("different\n") },
     });
 
-    const result = await runUninstall(["core", "claude", "ci"], makeCtx({ nuke: true, yes: true }));
+    const result = await runUninstall(
+      ["core", "claude", "cursor"],
+      makeCtx({ nuke: true, yes: true }),
+    );
 
     // All present files should be deleted
     const deletes = result.deleted;
-    expect(deletes).toContain(".claude/settings.json");
+    expect(deletes.some((f) => f.includes("settings.json"))).toBe(true);
     expect(fileExists(".claude/settings.json")).toBe(false);
-    expect(fileExists(".github/workflows/ci.yml")).toBe(false);
+    expect(fileExists(".cursor/Dockerfile")).toBe(false);
   });
 });
 

@@ -209,6 +209,51 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
 // any install step runs.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Task 20 — single-dispatch on entry.format (BAR-167 Phase 2)
+// ---------------------------------------------------------------------------
+
+import { getInstallManifest } from "./bkit-manifest";
+
+describe("bkit-manifest: single dispatch on entry.format", () => {
+  it("json entries: settings.json and hooks.json use format json", () => {
+    const allEntries = getInstallManifest([]);
+    const jsonEntries = allEntries.filter((e) => e.format === "json");
+    const paths = jsonEntries.map((e) => e.path);
+    expect(paths).toContain(".claude/settings.json");
+    expect(paths).toContain(".cursor/hooks.json");
+  });
+
+  it("markered-text entries: AGENTS.md, CLAUDE.md, ci.yml, .vale.ini use format markered-text", () => {
+    const allEntries = getInstallManifest([]);
+    const markedEntries = allEntries.filter((e) => e.format === "markered-text");
+    const paths = markedEntries.map((e) => e.path);
+    expect(paths).toContain("AGENTS.md");
+    expect(paths).toContain("CLAUDE.md");
+    expect(paths).toContain(".github/workflows/ci.yml");
+    expect(paths).toContain(".vale.ini");
+    expect(paths).toContain(".gitignore");
+    expect(paths).toContain(".prettierignore");
+    expect(paths).toContain(".husky/pre-commit");
+    expect(paths).toContain(".husky/pre-push");
+  });
+
+  it("byte-equal-text entries: .cursor/Dockerfile uses format byte-equal-text", () => {
+    const allEntries = getInstallManifest([]);
+    const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
+    const paths = byteEqualEntries.map((e) => e.path);
+    expect(paths).toContain(".cursor/Dockerfile");
+  });
+
+  it("every entry has a valid format value", () => {
+    const allEntries = getInstallManifest([]);
+    const validFormats = new Set(["json", "markered-text", "byte-equal-text"]);
+    for (const entry of allEntries) {
+      expect(validFormats.has(entry.format)).toBe(true);
+    }
+  });
+});
+
 describe("BAR-164 — canonical CI template has no cross-org private `uses:` references", () => {
   it("scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines", () => {
     const sample = `

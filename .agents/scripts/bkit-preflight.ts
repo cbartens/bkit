@@ -1,16 +1,18 @@
 // bkit-preflight.ts — Phase 1: read-only detection BEFORE any writes.
 // No imports from bkit-modules.ts — this file is upstream of module dispatch.
 //
-// Allow-list for cross-module imports (BAR-167 Phase 1):
-//   readBkitVersion  — from bkit-version.ts (version pin reader)
-//   deepContains     — from bkit-tiers.ts (JSON containment primitive)
-//   getPkgRoot       — from bkit-paths.ts (package root resolver, no cycle)
+// Allow-list for cross-module imports (BAR-167 Phase 1+2):
+//   readBkitVersion       — from bkit-version.ts (version pin reader)
+//   deepContains          — from bkit-tiers.ts (JSON containment primitive)
+//   extractManagedBlock   — from bkit-install.ts (marker block extraction)
+//   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, type JsonValue } from "./bkit-tiers.js";
+import { extractManagedBlock, type MarkerStyle } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
 
 // ---------------------------------------------------------------------------
@@ -415,6 +417,63 @@ export function detectTier2JsonDrift(
 }
 
 /**
+ * Advisory: detect when a markered-text file's bkit-managed block differs from the
+ * template's marker block (Phase 2 — tier2-text-drift advisory, BAR-167).
+ *
+ * Fires when:
+ *   - Consumer file exists AND has bkit markers
+ *   - Template file exists AND has a bkit marker block
+ *   - The extracted consumer block != extracted template block (byte-equal check)
+ *
+ * Does NOT fire when markers are absent from consumer (that is the `markers-missing`
+ * case, surfaced separately by detectHuskyNoMarkers / future generic detector).
+ *
+ * Follows `[Context] Message` advisory format.
+ */
+export function detectTier2TextDrift(
+  cwd: string,
+  relPath: string,
+  pkgRoot: string,
+): PreflightFinding | null {
+  const absPath = path.join(cwd, relPath);
+  const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+  if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
+
+  const consumerContent = fs.readFileSync(absPath, "utf-8");
+  const templateContent = fs.readFileSync(templatePath, "utf-8");
+
+  // Detect marker style from the consumer file
+  let style: MarkerStyle | null = null;
+  if (/^<!-- bkit:start -->$/m.test(consumerContent)) style = "html-comment";
+  else if (/^# bkit:start$/m.test(consumerContent)) style = "hash-comment";
+  if (!style) return null; // no markers in consumer — not a drift (markers-missing case)
+
+  // Extract the block from both consumer and template
+  const consumerBlock = extractManagedBlock(consumerContent, style);
+  if (consumerBlock === null) return null; // consumer has markers but they're malformed
+
+  // Template may use the same or different marker style
+  let templateBlock = extractManagedBlock(templateContent, style);
+  if (templateBlock === null) {
+    // Try the other style in case template uses different style
+    const altStyle: MarkerStyle = style === "html-comment" ? "hash-comment" : "html-comment";
+    templateBlock = extractManagedBlock(templateContent, altStyle);
+  }
+  if (templateBlock === null) return null; // template has no block to compare against
+
+  if (consumerBlock === templateBlock) return null; // byte-equal — no drift
+
+  return {
+    id: "tier2-text-drift",
+    severity: "advisory",
+    detect: `[${relPath}] bkit-managed marker block content differs from template.`,
+    action:
+      `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
+      "Content outside the bkit:start/bkit:end markers is preserved.",
+  };
+}
+
+/**
  * Blocker: consumer's .bkit-version pinnedVersion < 0.8.0 AND no __bkit__ envelope.
  * This means the consumer is on a pre-envelope Tier-1 install and must route
  * through bkit v1.x before upgrading directly to v2.0.0.
@@ -547,6 +606,23 @@ export function runPreflight(
   for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
     const driftAdvisory = detectTier2JsonDrift(cwd, relPath, pkgRoot);
     if (driftAdvisory) advisories.push(driftAdvisory);
+  }
+
+  // Phase 2: markered-text block drift advisory (BAR-167)
+  // Check Group B files (partial-ownership) and key Group A files
+  const markeredTextPaths = [
+    ".github/workflows/ci.yml",
+    ".vale.ini",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".gitignore",
+    ".prettierignore",
+    ".husky/pre-commit",
+    ".husky/pre-push",
+  ];
+  for (const relPath of markeredTextPaths) {
+    const textDriftAdvisory = detectTier2TextDrift(cwd, relPath, pkgRoot);
+    if (textDriftAdvisory) advisories.push(textDriftAdvisory);
   }
 
   const huskyPreCommit = detectHuskyNoMarkers(cwd, "pre-commit");
