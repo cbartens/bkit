@@ -420,6 +420,17 @@
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-1.md",
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-2.md"
         ]
+      },
+      {
+        "step": "build-challenge-reconcile",
+        "status": "DONE",
+        "verdict": "FAIL",
+        "failures": 6,
+        "at": "2026-05-11T06:35:23Z",
+        "commitSha": "cece0d37c4862d23c9bf374dcb2aee6c9e4b6819",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-reconcile.md"
+        ]
       }
     ]
   }
