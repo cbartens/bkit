@@ -43,11 +43,11 @@ tools:
 5. Update **Create** output — apply each CRITICAL + consensus-OPTIONAL item via `Edit` as content becomes available.
 6. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.
 7. Identify OPTIONAL items in each Read critique — apply ONLY if all critiques agree (consensus required).
-8. Update **Create** output - set Verdict via `Edit`; mapping:
+8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = all CRITICAL items applied (OPTIONAL consensus respected).
    - `CONCERNS` = some OPTIONAL items skipped (no consensus).
    - `FAIL` = critiques contradictory, plan unanimously rejected, or post-edit template structure broken.
-9. Update Verdict `PENDING` in **Create** output via `Edit` with computed verdict.
+9. Update `Verdict` `PENDING` in **Create** output via `Edit` with computed `Verdict`.
 10. Re-read **Create** output; assert template structure intact per `docs/plans/template.md`. Failed → update Verdict to `FAIL`.
 
 **Output format:**

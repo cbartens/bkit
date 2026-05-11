@@ -39,7 +39,7 @@ maxTurns: 50
 5. Integration: ≥1 test hitting API vs local DB without ORM mocking (`npm run test:integration`).
 6. UI: Playwright for visual DOM only.
 7. Review core workflows/routes/components for coverage.
-8. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. Incomplete findings → not counted.
+8. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. **If** incomplete findings → not counted.
 9. Create/update report → `docs/audits/tests-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: **CRITICAL** → **HIGH** → **MEDIUM** → **LOW**.
 
 **Output format:**

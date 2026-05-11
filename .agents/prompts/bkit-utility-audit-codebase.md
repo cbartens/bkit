@@ -37,7 +37,7 @@ maxTurns: 50
 3. Run `pnpm outdated` to flag stale deps.
 4. Cross-check codebase domains (data, pipelines, webhooks, cron, blockers/ideas, testing, UI, observability) against their corresponding docs per `.agents/docs.md`. Flag gaps.
 5. Alternative approaches for scalability/performance/maintainability.
-6. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. Incomplete findings → not counted.
+6. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. **If** incomplete findings → not counted.
 7. Create/update report → `docs/audits/codebase-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: **CRITICAL** → **HIGH** → **MEDIUM** → **LOW**.
 
 **Output format:**

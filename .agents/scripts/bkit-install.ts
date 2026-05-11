@@ -544,6 +544,7 @@ function listFilesRecursive(dir: string): string[] {
 // in `.agents/templates/` and remapped at install time.
 const NPM_STRIP_REMAP: Record<string, string> = {
   gitignore: ".gitignore",
+  gitattributes: ".gitattributes",
   npmignore: ".npmignore",
 };
 

@@ -32,9 +32,9 @@ tools:
 3. Identify technology requirements.
 4. List `.agents/skills/` folder names ONLY — do NOT read folder contents. Folder name = skill identity for gap detection.
 5. Identify technology skill gaps - requirement NOT matched by any folder name.
-6. Per gap, run `npx skills find [technology]`. Relevance = skill matches a technology requirement. Multiple matches → pick best; install ONE per gap.
+6. Per gap, run `npx skills find [technology]`. Relevance = skill matches a technology requirement. **If** multiple matches → pick best; install ONE per gap.
 7. For each selected skill, run `npx skills add <owner/repo> -y`. Cap at 10 newly-installed skills.
-8. Nothing found → note as missing, do not block.
+8. **If** nothing found → note as missing, do not block.
 9. Produce **Create** output.
 
 **Output format:**

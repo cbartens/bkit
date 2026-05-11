@@ -38,8 +38,8 @@ tools:
 7. Copy ALL tasks, constraints, 🔒 Gates from master into sub-plans.
 8. Each sub-plan self-contained per `docs/plans/template.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master↔sub-plans. Relative paths.
-10. Self-verify (mandatory before verdict; max 2 fix iterations → else `FAIL`):
-    - Count tasks in original vs sum across sub-plans. Mismatch → fix in place, recount.
+10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
+    - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
     - Confirm every task, constraint, and 🔒 Gate appears in exactly one sub-plan.
     - Confirm each sub-plan's estimated tokens ≤100K.
     - Confirm master is high-level index with correct bidirectional links.
