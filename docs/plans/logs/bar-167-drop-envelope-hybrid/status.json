@@ -397,6 +397,17 @@
         "artifacts": [
           "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-3-1.md"
         ]
+      },
+      {
+        "step": "plan-verify-holistic",
+        "status": "DONE",
+        "verdict": "PASS",
+        "failures": 0,
+        "at": "2026-05-11T06:22:19Z",
+        "commitSha": "ca33d6c0ee0b69596866d6f0ac53f218180c6859",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-holistic.md"
+        ]
       }
     ]
   }
