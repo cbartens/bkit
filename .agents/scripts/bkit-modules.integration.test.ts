@@ -1229,66 +1229,70 @@ describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check st
 });
 
 // ---------------------------------------------------------------------------
-// Task 23b — .husky/pre-push marker survival
-// PREREQ: Sub-plan A Task 0d fixture (tests/fixtures/heavy-customised-prepush/.husky/pre-push)
+// .husky/pre-push Tier 3 migration (v2.0.4)
+// Was Task 23b (BAR-167 Tier-2 marker survival). Husky moved Tier 2 → Tier 3
+// in v2.0.4: writeTier3 doesn't touch existing files, so consumer content is
+// preserved trivially. Test now asserts the Tier-3 contract: existing file
+// unchanged + tier3-merge-suggested-pre-push advisory emitted.
+// PREREQ: tests/fixtures/heavy-customised-prepush/.husky/pre-push (still has
+// legacy markers — exercises the "consumer upgrading from <=2.0.3" path).
 // ---------------------------------------------------------------------------
 
-describe("Task 23b — .husky/pre-push marker survival", () => {
+describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
   const PREPUSH_FIXTURE = path.resolve("tests/fixtures/heavy-customised-prepush/.husky/pre-push");
 
-  it("fixture file exists (Task 0d prerequisite)", () => {
+  it("fixture file exists (legacy marker-block format, simulates upgrade-from-2.0.3 consumer)", () => {
     expect(fs.existsSync(PREPUSH_FIXTURE)).toBe(true);
   });
 
-  it("fixture has bkit:start / bkit:end markers", () => {
+  it("fixture has bkit:start / bkit:end markers (legacy Tier-2 shape)", () => {
     const content = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
     expect(content).toContain("# bkit:start");
     expect(content).toContain("# bkit:end");
   });
 
-  it("fixture contains bkit-repo only lines BELOW the closing marker", () => {
-    const content = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-    const endMarkerIdx = content.indexOf("# bkit:end");
-    expect(endMarkerIdx).toBeGreaterThan(0);
-    const afterEnd = content.slice(endMarkerIdx + "# bkit:end".length);
-    expect(afterEnd).toContain("# bkit-repo only");
-  });
-
-  it("runGitHooksModule preserves consumer's bkit-repo only lines below marker block", () => {
-    // Load the heavy-customised-prepush fixture
+  it("runGitHooksModule leaves existing .husky/pre-push UNCHANGED and emits Tier-3 advisory", () => {
+    // Seed consumer's pre-push with the legacy-format fixture
     const fixtureContent = fs.readFileSync(PREPUSH_FIXTURE, "utf-8");
-
-    // Seed the consumer's pre-push with the fixture content
     const huskyDir = path.join(tmpDir, ".husky");
     fs.mkdirSync(huskyDir, { recursive: true });
     const prePushPath = path.join(huskyDir, "pre-push");
     fs.writeFileSync(prePushPath, fixtureContent, "utf-8");
 
-    // Run the git-hooks module
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
     runGitHooksModule(ctx);
 
-    // The file should still exist
+    // File still exists AND content is byte-identical to the fixture (Tier 3
+    // never overwrites — consumer keeps every character including legacy markers
+    // and any bkit-repo-only lines below them).
     expect(fs.existsSync(prePushPath)).toBe(true);
     const resultContent = fs.readFileSync(prePushPath, "utf-8");
+    expect(resultContent).toBe(fixtureContent);
 
-    // Consumer's bkit-repo only lines below closing marker must be preserved
-    const endMarkerIdx = resultContent.indexOf("# bkit:end");
-    if (endMarkerIdx >= 0) {
-      const afterEnd = resultContent.slice(endMarkerIdx + "# bkit:end".length);
-      expect(afterEnd).toContain("# bkit-repo only");
-    }
+    // tier3-merge-suggested-pre-push advisory must be emitted on the ctx
+    // advisories array (templates differ — fixture has markers, template doesn't).
+    const ids = ctx.advisories.map((f) => f.id);
+    expect(ids).toContain("tier3-merge-suggested-pre-push");
+  });
 
-    // The bkit marker block content should be byte-identical to template
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const templatePrePush = fs.readFileSync(
-      path.join(pkgRoot, ".agents", "templates", ".husky", "pre-push"),
-      "utf-8",
-    );
-    const templateBlock = extractManagedBlock(templatePrePush, "hash-comment");
-    const consumerBlock = extractManagedBlock(resultContent, "hash-comment");
-    expect(consumerBlock).toBe(templateBlock);
+  it("runGitHooksModule SEEDS .husky/pre-push when absent (Tier 3 first-install path)", () => {
+    const huskyDir = path.join(tmpDir, ".husky");
+    const prePushPath = path.join(huskyDir, "pre-push");
+    // Ensure file is absent (clean install path)
+    if (fs.existsSync(prePushPath)) fs.unlinkSync(prePushPath);
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runGitHooksModule(ctx);
+
+    expect(fs.existsSync(prePushPath)).toBe(true);
+    const seeded = fs.readFileSync(prePushPath, "utf-8");
+    // Seeded content matches the canonical template (no bkit markers in Tier 3)
+    expect(seeded).not.toContain("# bkit:start");
+    expect(seeded).toContain("pnpm typecheck");
+    // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
+    const ids = ctx.advisories.map((f) => f.id);
+    expect(ids).not.toContain("tier3-merge-suggested-pre-push");
   });
 });

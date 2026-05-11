@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.4] — 2026-05-12
+
+### Changed
+
+- **`.husky/pre-commit` and `.husky/pre-push` migrated from Tier 2 (managed-block enforced) → Tier 3 (seed-or-print).** The `tier2-text-drift` gate failed `bkit check` in CI whenever a consumer customised the bkit-managed block, forcing them either back to the canonical content or to delete the block (which the next install would re-seed — there was no stable opt-out). The new tier ships the hook as a full-file template (no `bkit:start/bkit:end` markers): bkit seeds the canonical hook for new consumers and emits a `tier3-merge-suggested-pre-{commit,push}` advisory when one already exists, never enforcing drift. Declarative pattern files (`.gitignore`, `.prettierignore`) stay Tier 2 because their semantics genuinely require additive merging; imperative hook scripts don't. Migration is non-destructive — existing consumers with the legacy marker-block format keep their file unchanged on next install, get the advisory, can choose to migrate or ignore. **Manifest format flipped `markered-text` → `byte-equal-text`** for both husky paths; `bkit uninstall` now hash-guards deletion (preserves consumer-modified hooks rather than stripping a block). **Removed detectors:** `detectHuskyNoMarkers` and `detectHuskyBlockDuplicates` (and their `husky-no-markers-*` / `husky-block-duplicates-*` advisory IDs) — both keyed to the obsolete Tier-2 managed-block design.
+
+---
+
 ## [2.0.3] — 2026-05-12
 
 ### Added
@@ -17,6 +25,15 @@ Format: `## [version] — YYYY-MM-DD`
 ### Changed
 
 - **`.prettierignore` bkit-managed block** narrowed — removed `.agents/prompts.md`, `.agents/workflows.md`, `.agents/IDEs.md`, and `docs/` from the canonical-overwrite ignore set so Prettier formats them in consumer repos. The affected paths are width-invariant under Prettier's default `proseWrap: "preserve"`: only one inline JSON example and one Markdown table in `workflows.md` were genuinely width-sensitive — both now wrapped with `<!-- prettier-ignore -->` (BAR-165 root-cause fix superseding the v1.1.1 ignore-list workaround). `templates.test.ts` BAR-165 invariant loop removed — no longer load-bearing.
+
+### Fixed
+
+- **`.npmrc` advisory copy: revert to plain `${GH_BKIT_TOKEN}` (reverses BAR-142 §B6).** The 2026-05-06 ship prescribed `_authToken=${GH_BKIT_TOKEN:-}` on the assumption pnpm parsed POSIX-style fallback. It does not: pnpm's npmrc env-var substitution only supports the simple `${VAR}` form and treats `GH_BKIT_TOKEN:-` as a literal var name, sending no auth header and producing an opaque 401 from the GH Packages registry — strictly worse than the original silent-fallback behaviour. Compounded by the fact that bkit's own `detectNpmrcAuth` validator (`bkit-postinstall.ts:45`) matches the plain form, so consumers who followed the buggy advisory failed bkit's own `npmrc-missing-gh-packages` check. Fixed the two advisory strings in `bkit-modules.ts` (first-install banner + CI guidance block) and the `gh-bkit-token-missing-shell` empty-token detect text. Flipped the enforcement test in `bkit-preflight.test.ts` to assert the plain form and explicitly forbid the broken `${VAR:-}` form across all script files.
+- **Phantom `.prettierignore` "block broadened" advisory.** `BKIT_PRETTIERIGNORE_PATHS` in `bkit-preflight.ts` had drifted from the actual template at `.agents/templates/.prettierignore` — it listed `.agents/` and `docs/` (no longer in the template) and was missing `.claude/` and `.cursor/`. Every install on a consumer whose block contained `.agents/skills/` falsely fired "block is being broadened on this install: .agents/skills/ → .agents/" even though the install wrote `.agents/skills/` straight back. The constant now mirrors the template exactly; regression test added.
+
+### Added
+
+- **AGENT NOTE on token-missing advisories** — appended `AGENT_INLINE_SOURCE_GUIDANCE` to both `gh-bkit-token-missing-shell` advisories (missing + empty) explaining the `set -a; source <env-file>; set +a; <cmd>` single-Bash-call pattern. AI coding agents whose permission rules block `Read`/`grep` on `.env*` can still load `GH_BKIT_TOKEN` into a single command's environment without the token text entering their context, since `source` is a shell builtin and bypasses the permission layer that gates file I/O.
 
 ---
 

@@ -119,22 +119,8 @@ export function detectNotGitRepo(cwd: string, modules: Set<ModuleFlag>): Preflig
 // Advisory detectors
 // ---------------------------------------------------------------------------
 
-export function detectHuskyNoMarkers(
-  cwd: string,
-  hookName: "pre-commit" | "pre-push",
-): PreflightFinding | null {
-  const hookPath = path.join(cwd, ".husky", hookName);
-  if (!fs.existsSync(hookPath)) return null;
-  const content = fs.readFileSync(hookPath, "utf-8");
-  if (hasBkitMarkers(content)) return null;
-  const id = hookName === "pre-commit" ? "husky-no-markers-precommit" : "husky-no-markers-prepush";
-  return {
-    id,
-    severity: "advisory",
-    detect: `.husky/${hookName} exists but has no bkit-managed block markers.`,
-    action: `bkit will append its managed block to .husky/${hookName}. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.`,
-  };
-}
+// detectHuskyNoMarkers removed in v2.0.4 — husky hooks are Tier 3 (seed-or-print),
+// no markers expected. See runGitHooksModule + CHANGELOG 2.0.4 for the migration.
 
 export function detectPrettierignoreNoMarkers(cwd: string): PreflightFinding | null {
   const filePath = path.join(cwd, ".prettierignore");
@@ -226,47 +212,11 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
 }
 
 // ---------------------------------------------------------------------------
-// Husky/managed-file duplication advisories (BAR-141 iter 2)
+// (detectHuskyNoMarkers + detectHuskyBlockDuplicates removed in v2.0.4 along
+// with the Tier 2 → Tier 3 husky migration — the bkit hook no longer carries
+// markers, so neither the "missing markers" advisory nor the "managed block
+// duplicates consumer commands" advisory has anything to detect against.)
 // ---------------------------------------------------------------------------
-
-const HUSKY_BKIT_COMMANDS: Record<"pre-commit" | "pre-push", string[]> = {
-  "pre-commit": ["lint:prose", "lint:slop"],
-  "pre-push": ["typecheck", "test"],
-};
-
-/**
- * Detect when bkit's husky managed block will duplicate commands the consumer's
- * existing hook content already invokes (often via `turbo run` or `lint-staged`).
- * Result: every commit/push runs the same checks twice.
- */
-export function detectHuskyBlockDuplicates(
-  cwd: string,
-  hookName: "pre-commit" | "pre-push",
-): PreflightFinding | null {
-  const hookPath = path.join(cwd, ".husky", hookName);
-  if (!fs.existsSync(hookPath)) return null;
-  const content = fs.readFileSync(hookPath, "utf-8");
-
-  const userContent = stripBkitBlock(content);
-  if (!userContent.trim()) return null; // file only has bkit block — no duplication
-
-  const matched = HUSKY_BKIT_COMMANDS[hookName].filter((cmd) => userContent.includes(cmd));
-  if (matched.length === 0) return null;
-
-  const id =
-    hookName === "pre-commit"
-      ? "husky-block-duplicates-precommit"
-      : "husky-block-duplicates-prepush";
-  const triggerWord = hookName === "pre-commit" ? "commit" : "push";
-  return {
-    id,
-    severity: "advisory",
-    detect: `.husky/${hookName} consumer-owned content already references [${matched.join(", ")}]. bkit's managed block runs them again — double-work on every ${triggerWord}.`,
-    action:
-      `Decide:\n\n  (a) Keep both for safety (e.g. consumer's ${triggerWord} runs them via turbo/lint-staged but you want bkit's bare invocation as a fallback).\n` +
-      `  (b) Delete bkit's managed block (the # bkit:start..# bkit:end region) — your existing hook covers it. Most consumers running ${matched.join("/")} via turbo or another wrapper want option (b).`,
-  };
-}
 
 /**
  * Detect when a line bkit's .gitignore managed block contributes is already
@@ -303,19 +253,24 @@ export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | 
 }
 
 /**
- * Detect when bkit's installed `.prettierignore` block has narrower paths than
- * the bkit version about to be written, i.e. the new block broadens scope.
- * Example: old shipped `.agents/skills/` + `.agents/templates/`; new ships `.agents/`.
- * Consequence: consumer-owned files like `.agents/rules.md` newly stop being formatted.
+ * Detect when the consumer's installed `.prettierignore` bkit-managed block has
+ * paths narrower than the canonical bkit list (BKIT_PRETTIERIGNORE_PATHS), i.e.
+ * the new block broadens scope on this install.
+ *
+ * BKIT_PRETTIERIGNORE_PATHS MUST mirror the canonical block shipped in
+ * `.agents/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
+ * If it drifts broader, this detector fires every install with a phantom
+ * "broadening" that never actually happens.
  */
 const BKIT_PRETTIERIGNORE_PATHS = [
   "node_modules/",
   "dist/",
-  ".agents/",
+  ".agents/skills/",
+  ".claude/",
+  ".cursor/",
   ".github/",
   ".husky/_/",
   "*.tsbuildinfo",
-  "docs/",
   "pnpm-lock.yaml",
 ];
 
@@ -612,7 +567,9 @@ export function runPreflight(
   }
 
   // Phase 2: markered-text block drift advisory (BAR-167)
-  // Check Group B files (partial-ownership) and key Group A files
+  // Check Group B files (partial-ownership) and key Group A files.
+  // Husky hooks are Tier 3 (seed-or-print) as of v2.0.4 — their drift is handled
+  // by writeTier3's `tier3-merge-suggested-*` advisory in runGitHooksModule, not here.
   const markeredTextPaths = [
     ".github/workflows/ci.yml",
     ".vale.ini",
@@ -620,25 +577,11 @@ export function runPreflight(
     "CLAUDE.md",
     ".gitignore",
     ".prettierignore",
-    ".husky/pre-commit",
-    ".husky/pre-push",
   ];
   for (const relPath of markeredTextPaths) {
     const textDriftAdvisory = detectTier2TextDrift(cwd, relPath, pkgRoot);
     if (textDriftAdvisory) advisories.push(textDriftAdvisory);
   }
-
-  const huskyPreCommit = detectHuskyNoMarkers(cwd, "pre-commit");
-  if (huskyPreCommit) advisories.push(huskyPreCommit);
-
-  const huskyPrePush = detectHuskyNoMarkers(cwd, "pre-push");
-  if (huskyPrePush) advisories.push(huskyPrePush);
-
-  const huskyDupCommit = detectHuskyBlockDuplicates(cwd, "pre-commit");
-  if (huskyDupCommit) advisories.push(huskyDupCommit);
-
-  const huskyDupPush = detectHuskyBlockDuplicates(cwd, "pre-push");
-  if (huskyDupPush) advisories.push(huskyDupPush);
 
   const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
   if (gitignoreDup) advisories.push(gitignoreDup);

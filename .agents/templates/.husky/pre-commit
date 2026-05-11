@@ -1,6 +1,2 @@
 #!/usr/bin/env sh
-# bkit:start
-
 pnpm lint-staged && pnpm lint:prose && pnpm lint:slop
-
-# bkit:end

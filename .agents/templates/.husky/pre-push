@@ -1,6 +1,2 @@
 #!/usr/bin/env sh
-# bkit:start
-
 pnpm typecheck && pnpm test && pnpm format:check
-
-# bkit:end

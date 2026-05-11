@@ -98,10 +98,10 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry!.format).toBe("markered-text");
   });
 
-  it("markered-text file with hash-comment markers → decision=strip-block", () => {
-    writeFile(".husky/pre-commit", "#!/bin/sh\n# bkit:start\nbkit-step\n# bkit:end\n");
-    const table = buildDecisionTable(["git-hooks"], makeCtx());
-    const entry = table.find((r) => r.file === ".husky/pre-commit");
+  it("markered-text file with hash-comment markers → decision=strip-block (use a Group A file, since .husky/* moved to byte-equal-text in v2.0.4)", () => {
+    writeFile(".gitignore", "node_modules/\n# bkit:start\n.worktrees/\n# bkit:end\n");
+    const table = buildDecisionTable(["core"], makeCtx());
+    const entry = table.find((r) => r.file === ".gitignore");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("strip-block");
   });
