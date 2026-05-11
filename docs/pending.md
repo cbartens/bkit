@@ -30,36 +30,6 @@
 
 <!-- bkit:end -->
 
-## Consumer migration to @cbartens/bkit registry path — app-gether-life (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** normal
-- **Status:** open
-- **Description:** `app-gether-life` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
-- **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
-
-## Consumer migration to @cbartens/bkit registry path — www-visitfrasercoast-com (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** normal
-- **Status:** open
-- **Description:** `www-visitfrasercoast-com` still consumes `@cbartens/bkit` via `github:cbartens/bkit#vX.Y.Z` (v0.3.x). Migrate to `^0.4.0` from GH Packages registry: add `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com` + `_authToken`), expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, drop GHA `Configure private-repo auth` step, drop Vercel `installCommand` git-shim.
-- **Source:** phase
-- **Related:** BAR-138, DE-3, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`
-
-## bkit doctor verb — standalone preflight CLI subcommand (2026-05-06)
-
-- **Type:** feature
-- **Category:** dx
-- **Severity:** normal
-- **Status:** open
-- **Description:** Expose `runPreflight()` (built in BAR-141) as a standalone `pnpm bkit doctor` (or similar) CLI verb. Runs Phase 1 + Phase 3 detection without touching disk, prints the unified checklist, exits 0. Lets consumers diagnose drift between `bkit install` runs (e.g. stale version pin, missing token surfaces) without re-running a full install. Architecture is already factored — preflight is a pure function — so this is a thin CLI wrapper. Out of scope for BAR-141 (new CLI surface).
-- **Source:** phase
-- **Related:** BAR-141
-
 ## pnpm tag-drop README note for `@cbartens/bkit` install snippet (2026-05-06)
 
 - **Type:** issue
@@ -109,26 +79,6 @@
 - **Description:** Stderr conflict list is sufficient for v1.0. Rich three-way merge UI (e.g. patch preview, interactive resolution) deferred post-v1.0.
 - **Source:** phase
 - **Related:** BAR-142
-
-## `bkit init` scaffolder for consumer CI variants (2026-05-06)
-
-- **Type:** feature
-- **Category:** agentic
-- **Severity:** low
-- **Status:** deferred
-- **Description:** Composite vs. reusable workflow CI templating via `bkit init` is post-v1.0. Current `bkit install --ci` covers the common case.
-- **Source:** phase
-- **Related:** BAR-131
-
-## `setup-auth@v1` bash PAT-shim removal (2026-05-06)
-
-- **Type:** issue
-- **Category:** infra
-- **Severity:** low
-- **Status:** open
-- **Description:** Bash PAT-shim retained until v1.1.0 per Supersession Inventory. Create Linear issue post-v1.0 ship to track removal of `cbartens/bkit/.github/actions/setup-auth@v1`.
-- **Source:** phase
-- **Related:** BAR-131, BAR-142
 
 ## Wire staging primitives into bkit-modules.ts write call sites + add subprocess SIGTERM integration test (2026-05-08)
 
@@ -199,3 +149,33 @@
 - **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
 - **Source:** phase
 - **Related:** BAR-167, DE-7, DE-16
+
+## bkit upgrade --prune flag — deferred post-v2.0.0 (2026-05-11)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Add `bkit upgrade --prune` flag to remove consumer keys that were once part of the bkit-declared scope but have since been removed from the template. Currently `bkit upgrade` only deep-merges (adds/updates template keys) — it does not prune consumer keys that were bkit-written in a prior version but removed from the current template. The `--prune` flag would walk the prior-version template tree and delete any consumer keys that exactly match the prior template's values and are absent from the current template. Deferred from BAR-167 Phase 1 scope — prune semantics require prior-template-version tracking not yet implemented.
+- **Source:** phase
+- **Related:** BAR-167, DE-18, `.agents/scripts/bkit-upgrade.ts`
+
+## Drop decorative `.cursor/hooks.json` echo commands — deferred per Plan-Phase Decision 3 (2026-05-11)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** The `.cursor/hooks.json` template ships `echo '[bkit] session started'` and `echo '[bkit] session stopped'` hook commands. These are decorative (confirm hook firing) and produce visible output in the Cursor terminal. Plan-Phase Decision 3 resolved to KEEP these echoes (they provide actionable debugging value — consumer can confirm hooks fired). This entry tracks the open question: if consumer feedback emerges that the echoes are noisy/unwanted, add a bkit-config opt-out rather than removing from the template. No work required unless that feedback arrives.
+- **Source:** phase
+- **Related:** BAR-167, DE-18, `.agents/templates/.cursor/hooks.json`
+
+## BAR-167 Phase 2 — indented YAML marker drift detection not implemented (2026-05-11)
+
+- **Type:** issue
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
+- **Source:** phase
+- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`

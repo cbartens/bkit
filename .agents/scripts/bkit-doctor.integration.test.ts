@@ -141,3 +141,57 @@ function listFilesRecursive(dir: string): string[] {
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// BAR-167 Phase 1 — doctor surfaces tier2-json-drift and legacy-bkit-envelope advisories
+// ---------------------------------------------------------------------------
+
+import { detectLegacyBkitEnvelope, detectTier2JsonDrift, runPreflight } from "./bkit-preflight";
+
+describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
+  it("tier2-json-drift and legacy-bkit-envelope-detected surface through runPreflight", () => {
+    // Seed consumer with __bkit__ in settings.json (legacy envelope)
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      JSON.stringify({ __bkit__: { hooks: {} } }),
+      "utf-8",
+    );
+    // .cursor/hooks.json missing bkit content (tier2-json-drift)
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "hooks.json"),
+      JSON.stringify({ customKey: "consumer-only" }),
+      "utf-8",
+    );
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["claude", "cursor"]);
+    const { advisories } = runPreflight(modules, tmpDir, "2.0.0");
+
+    const ids = advisories.map((a) => a.id);
+    expect(ids).toContain("legacy-bkit-envelope-detected");
+    expect(ids).toContain("tier2-json-drift");
+  });
+
+  it("no drift/envelope advisories when consumer is schema-clean and fully contained", () => {
+    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+    const pkgRoot = path.resolve(scriptsDir, "..", "..");
+    const templateSettings = path.join(pkgRoot, ".agents", "templates", ".claude", "settings.json");
+    const templateHooks = path.join(pkgRoot, ".agents", "templates", ".cursor", "hooks.json");
+
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    // Copy templates as-is → fully contained, no envelope
+    fs.copyFileSync(templateSettings, path.join(tmpDir, ".claude", "settings.json"));
+    fs.copyFileSync(templateHooks, path.join(tmpDir, ".cursor", "hooks.json"));
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["claude", "cursor"]);
+    const { advisories } = runPreflight(modules, tmpDir, "2.0.0");
+
+    const ids = advisories.map((a) => a.id);
+    expect(ids).not.toContain("legacy-bkit-envelope-detected");
+    expect(ids).not.toContain("tier2-json-drift");
+  });
+});

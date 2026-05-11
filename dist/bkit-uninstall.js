@@ -1,17 +1,17 @@
 // bkit-uninstall.ts — Single owner of all uninstall logic. (P2.T5-P2.T8)
 //
 // runUninstall(modules, ctx) orchestrates:
-//   1. For each installed file:
-//      - Tier 1: delete if present (fully bkit-owned)
-//      - Tier 2: stripManagedBlock, remove file if empty remainder
-//      - Tier 3: shouldDeleteTier3 — delete only if hash matches install-time hash
+//   1. For each installed file — single dispatch on entry.format:
+//      - "json"            : stripTier2JsonScope (strip bkit-owned JSON scope)
+//      - "markered-text"   : stripManagedBlock, remove file if empty remainder
+//      - "byte-equal-text" : shouldDeleteTier3 — delete only if hash matches install-time hash
 //   2. package.json: stripManagedKeys for scripts/devDeps
 //   3. .agents/ mirror files (bkit-prefix .md files in .claude/ .cursor/)
 //
 // Flags:
 //   --dry-run       print decision table (FILE / DECISION / REASON) without writes
-//   --force         override tier-3 hash guard (force-delete even if consumer modified)
-//   --nuke          confirm prompt then wipe ALL bkit-written files (Tier 1+2+3)
+//   --force         override byte-equal-text hash guard (force-delete even if consumer modified)
+//   --nuke          confirm prompt then wipe ALL bkit-managed files regardless of format
 //   --yes           skip interactive confirm for --nuke
 //   --package       also strip managed package.json keys
 //   --keep-npmrc    skip .npmrc removal (default: skip anyway — .npmrc is not bkit-managed)
@@ -25,6 +25,7 @@ import { stripManagedBlock } from "./bkit-tiers.js";
 import { getInstallManifest } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
+import { getPkgRoot } from "./bkit-paths.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
 // ---------------------------------------------------------------------------
@@ -38,6 +39,57 @@ function detectMarkerStyle(content) {
     if (/^# bkit:start$/m.test(content))
         return "hash-comment";
     return null;
+}
+// ---------------------------------------------------------------------------
+// stripTier2JsonScope — remove bkit-owned JSON scope from consumer doc (BAR-167 Phase 1)
+//
+// Pure function — no file I/O.
+//
+// Algorithm:
+//   1. Deep-clone consumer to `out`.
+//   2. Walk template; for each leaf path `p`:
+//      - If `out[p]` deep-equals template[p] → delete it from `out`.
+//      - Else leave it (consumer has customised it — preserve).
+//   3. Prune empty intermediate objects ONLY where template populated them
+//      (NOT arrays; NOT consumer-only siblings).
+//   4. Return `out`.
+//
+// Consumer-only keys at any level are preserved byte-identical.
+// ---------------------------------------------------------------------------
+export function stripTier2JsonScope(consumerDoc, templateDoc) {
+    const out = JSON.parse(JSON.stringify(consumerDoc));
+    _stripScope(out, templateDoc);
+    return out;
+}
+function _stripScope(consumer, template) {
+    for (const key of Object.keys(template)) {
+        const tVal = template[key];
+        const cVal = consumer[key];
+        if (cVal === undefined)
+            continue; // consumer doesn't have it — nothing to strip
+        if (tVal !== null &&
+            typeof tVal === "object" &&
+            !Array.isArray(tVal) &&
+            cVal !== null &&
+            typeof cVal === "object" &&
+            !Array.isArray(cVal)) {
+            // Both plain objects — recurse into them
+            const tObj = tVal;
+            const cObj = cVal;
+            _stripScope(cObj, tObj);
+            // Prune empty intermediate only if template populated this key
+            if (Object.keys(cObj).length === 0) {
+                delete consumer[key];
+            }
+        }
+        else {
+            // Leaf (primitive, array, null) — remove if deep-equal to template
+            if (JSON.stringify(cVal) === JSON.stringify(tVal)) {
+                delete consumer[key];
+            }
+            // else: consumer has a different value — preserve it
+        }
+    }
 }
 // ---------------------------------------------------------------------------
 // Decision table builder (for --dry-run output and UninstallResult)
@@ -68,58 +120,61 @@ export function buildDecisionTable(modules, ctx) {
                 file: entry.path,
                 decision: "skip-absent",
                 reason: "file not found — nothing to do",
-                tier: entry.tier,
+                format: entry.format,
             });
             continue;
         }
         if (ctx.nuke) {
-            // Nuke: delete everything regardless of tier
+            // Nuke: delete everything regardless of format
             table.push({
                 file: entry.path,
                 decision: "delete",
                 reason: "--nuke: forcibly remove",
-                tier: entry.tier,
+                format: entry.format,
             });
             continue;
         }
-        switch (entry.tier) {
-            case 1: {
+        // Single dispatch on entry.format
+        switch (entry.format) {
+            case "json": {
+                // JSON deep-containment: strip bkit-owned scope from consumer doc
+                // For uninstall, treat as strip-block (handled in runUninstall via stripTier2JsonScope)
                 table.push({
                     file: entry.path,
-                    decision: "delete",
-                    reason: "Tier-1 (fully bkit-managed) — safe to delete",
-                    tier: 1,
+                    decision: "strip-block",
+                    reason: "json (deep-containment) — strip bkit-owned scope, preserve consumer keys",
+                    format: "json",
                 });
                 break;
             }
-            case 2: {
+            case "markered-text": {
                 const content = fs.readFileSync(absPath, "utf-8");
                 const style = detectMarkerStyle(content);
                 if (!style) {
                     table.push({
                         file: entry.path,
                         decision: "preserve",
-                        reason: "Tier-2 but no bkit markers found — 100% consumer content",
-                        tier: 2,
+                        reason: "markered-text but no bkit markers found — 100% consumer content",
+                        format: "markered-text",
                     });
                 }
                 else {
                     table.push({
                         file: entry.path,
                         decision: "strip-block",
-                        reason: "Tier-2 (managed-block) — strip bkit block, preserve consumer content",
-                        tier: 2,
+                        reason: "markered-text — strip bkit block, preserve consumer content",
+                        format: "markered-text",
                     });
                 }
                 break;
             }
-            case 3: {
+            case "byte-equal-text": {
                 if (ctx.force) {
                     table.push({
                         file: entry.path,
                         decision: "delete",
-                        reason: "--force: delete Tier-3 regardless of hash",
-                        tier: 3,
+                        reason: "--force: delete byte-equal-text regardless of hash",
+                        format: "byte-equal-text",
                     });
                     break;
                 }
@@ -128,24 +183,24 @@ export function buildDecisionTable(modules, ctx) {
                     table.push({
                         file: entry.path,
                         decision: "skip-tier3-unknown",
-                        reason: "Tier-3: no recorded hash (install pre-dates v0.7.x) — preserve",
-                        tier: 3,
+                        reason: "byte-equal-text: no recorded hash (install pre-dates v0.7.x) — preserve",
+                        format: "byte-equal-text",
                     });
                 }
                 else if (safe) {
                     table.push({
                         file: entry.path,
                         decision: "delete",
-                        reason: "Tier-3: content matches install-time hash — safe to delete",
-                        tier: 3,
+                        reason: "byte-equal-text: content matches install-time hash — safe to delete",
+                        format: "byte-equal-text",
                     });
                 }
                 else {
                     table.push({
                         file: entry.path,
                         decision: "skip-tier3-modified",
-                        reason: "Tier-3: content differs from install-time hash — consumer modified, preserve",
-                        tier: 3,
+                        reason: "byte-equal-text: content differs from install-time hash — consumer modified, preserve",
+                        format: "byte-equal-text",
                     });
                 }
                 break;
@@ -254,19 +309,50 @@ export async function runUninstall(modules, ctx) {
             case "strip-block": {
                 if (!ctx.dryRun) {
                     try {
-                        const content = fs.readFileSync(absPath, "utf-8");
-                        const style = detectMarkerStyle(content) ?? "html-comment";
-                        const stripped = stripManagedBlock(content, style);
-                        if (stripped.trim().length === 0) {
-                            // File is now empty → delete it
-                            fs.rmSync(absPath, { force: true });
-                            result.deleted.push(summary.file);
-                            console.log(`${ctx.logPrefix} delete (empty after strip): ${summary.file}`);
+                        if (summary.format === "json") {
+                            // JSON deep-containment: strip bkit-owned scope, preserve consumer keys
+                            const PKG_ROOT = getPkgRoot();
+                            const templatePath = path.join(PKG_ROOT, ".agents", "templates", summary.file);
+                            if (!fs.existsSync(templatePath)) {
+                                // No template — preserve as-is
+                                console.warn(`${ctx.logPrefix} no template found for ${summary.file} — preserving`);
+                                result.preserved.push(summary.file);
+                                break;
+                            }
+                            const raw = fs.readFileSync(absPath, "utf-8");
+                            const templateRaw = fs.readFileSync(templatePath, "utf-8");
+                            const consumerDoc = JSON.parse(raw);
+                            const templateDoc = JSON.parse(templateRaw);
+                            const stripped = stripTier2JsonScope(consumerDoc, templateDoc);
+                            const strippedJson = JSON.stringify(stripped, null, 2) + "\n";
+                            if (Object.keys(stripped).length === 0) {
+                                // All keys were bkit-owned → delete file
+                                fs.rmSync(absPath, { force: true });
+                                result.deleted.push(summary.file);
+                                console.log(`${ctx.logPrefix} delete (empty after JSON scope strip): ${summary.file}`);
+                            }
+                            else {
+                                fs.writeFileSync(absPath, strippedJson, "utf-8");
+                                result.stripped.push(summary.file);
+                                console.log(`${ctx.logPrefix} strip-json-scope: ${summary.file}`);
+                            }
                         }
                         else {
-                            fs.writeFileSync(absPath, stripped, "utf-8");
-                            result.stripped.push(summary.file);
-                            console.log(`${ctx.logPrefix} strip-block: ${summary.file}`);
+                            // markered-text: strip bkit marker block, preserve consumer content
+                            const content = fs.readFileSync(absPath, "utf-8");
+                            const style = detectMarkerStyle(content) ?? "html-comment";
+                            const stripped = stripManagedBlock(content, style);
+                            if (stripped.trim().length === 0) {
+                                // File is now empty → delete it
+                                fs.rmSync(absPath, { force: true });
+                                result.deleted.push(summary.file);
+                                console.log(`${ctx.logPrefix} delete (empty after strip): ${summary.file}`);
+                            }
+                            else {
+                                fs.writeFileSync(absPath, stripped, "utf-8");
+                                result.stripped.push(summary.file);
+                                console.log(`${ctx.logPrefix} strip-block: ${summary.file}`);
+                            }
                         }
                     }
                     catch (err) {

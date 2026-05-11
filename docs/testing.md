@@ -45,25 +45,24 @@ bkit's CI must catch any hard-fail that a downstream consumer would hit on `pnpm
 `tests/fixtures/heavy-customised-consumer/` is committed and consumed by:
 
 - `bkit-uninstall.surgical.integration.test.ts` — round-trip uninstall preserves consumer content byte-identically.
-- `bkit-modules.upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook + `failClosed` + `loop_limit` keys survive `__bkit__` Tier-2 deep-merge.
+- `bkit-modules.upgrade.integration.test.ts` — two-version (v0.5.x → v0.8.0) upgrade-survival regression: consumer Stop hook + `failClosed` + `loop_limit` keys survive deep-containment merge.
 - `bkit-upgrade.integration.test.ts` — drift detection against `canonicalHashes`; `--non-interactive` exits non-zero on conflicts.
 
-When adding new bkit-managed file types or new Tier-2 envelope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
+When adding new bkit-managed file types or new managed-scope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
 
 ## Test files added in v0.6.x → v1.0
 
 | File | Tier | Scope |
 | --- | --- | --- |
 | `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay. |
-| `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — Tier 1/2/3 decision matrix, dry-run, idempotency, `--nuke`. |
+| `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
 | `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`. |
 | `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
 | `bkit-tier1-defaults.test.ts` | Unit | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION). |
-| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version Tier-1 → Tier-2 migration (consumer key survival). |
+| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival). |
 | `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
-| `bkit-action-yaml.test.ts` | Unit | Offline YAML parse of `.github/actions/setup-auth/action.yml` (no network). |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
 
 The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**

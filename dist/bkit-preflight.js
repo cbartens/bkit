@@ -1,7 +1,17 @@
 // bkit-preflight.ts — Phase 1: read-only detection BEFORE any writes.
 // No imports from bkit-modules.ts — this file is upstream of module dispatch.
+//
+// Allow-list for cross-module imports (BAR-167 Phase 1+2):
+//   readBkitVersion       — from bkit-version.ts (version pin reader)
+//   deepContains          — from bkit-tiers.ts (JSON containment primitive)
+//   extractManagedBlock   — from bkit-install.ts (marker block extraction)
+//   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { readBkitVersion } from "./bkit-version.js";
+import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
+import { extractManagedBlock } from "./bkit-install.js";
+import { getPkgRoot } from "./bkit-paths.js";
 // ---------------------------------------------------------------------------
 // Internal helper
 // ---------------------------------------------------------------------------
@@ -35,11 +45,14 @@ function dedupeById(findings) {
 /**
  * Strip out content inside bkit-managed block markers (both HTML and hash style).
  * Used by detectors that need to inspect only consumer-owned content.
+ *
+ * Uses line-anchored marker detection (via stripManagedBlock from bkit-tiers.ts) to
+ * avoid the greedy-regex KN-8 hazard. Applies both marker styles sequentially so that
+ * files using either `<!-- bkit:start -->` or `# bkit:start` are stripped correctly.
  */
 export function stripBkitBlock(content) {
-    return content
-        .replace(/<!--\s*bkit:start\s*-->[\s\S]*?<!--\s*bkit:end\s*-->/g, "")
-        .replace(/#\s*bkit:start[\s\S]*?#\s*bkit:end/g, "");
+    // Strip html-comment markers first, then hash-comment markers (line-anchored, KN-8 safe).
+    return stripManagedBlock(stripManagedBlock(content, "html-comment"), "hash-comment");
 }
 // ---------------------------------------------------------------------------
 // Blocker detectors
@@ -298,6 +311,172 @@ export function detectPrettierignoreScopeNarrowing(cwd) {
     };
 }
 // ---------------------------------------------------------------------------
+// Phase 1 JSON advisories / blockers (BAR-167)
+// ---------------------------------------------------------------------------
+/**
+ * Advisory: detect __bkit__ envelope at top-level of a JSON file.
+ * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
+ * Action: run `pnpm bkit upgrade`.
+ */
+export function detectLegacyBkitEnvelope(cwd, relPath) {
+    const absPath = path.join(cwd, relPath);
+    if (!fs.existsSync(absPath))
+        return null;
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
+    }
+    catch {
+        return null; // malformed JSON — separate advisory
+    }
+    if (!("__bkit__" in doc))
+        return null;
+    return {
+        id: "legacy-bkit-envelope-detected",
+        severity: "advisory",
+        detect: `${relPath} contains a __bkit__ envelope from bkit ≤ v1.1.1. Run \`pnpm bkit upgrade\` to migrate.`,
+        action: "Run `pnpm bkit upgrade` to strip the __bkit__ envelope and migrate to v2.0.0 deep-containment schema. The upgrade is idempotent and preserves all consumer-owned keys.",
+    };
+}
+/**
+ * Advisory: detect when a JSON file is missing content the template owns.
+ * Runs deepContains(template, consumerFile) — fires when ok=false.
+ * Severity: advisory.
+ */
+export function detectTier2JsonDrift(cwd, relPath, pkgRoot) {
+    const absPath = path.join(cwd, relPath);
+    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
+        return null;
+    let consumerDoc;
+    let templateDoc;
+    try {
+        consumerDoc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
+        templateDoc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+    }
+    catch {
+        return null; // malformed JSON — handled elsewhere
+    }
+    const result = deepContains(templateDoc, consumerDoc);
+    if (result.ok)
+        return null;
+    const details = [
+        ...result.missing.map((p) => `missing: ${p}`),
+        ...result.mismatched.map((p) => `mismatched: ${p}`),
+    ]
+        .slice(0, 5)
+        .join("; ");
+    return {
+        id: `tier2-json-drift`,
+        severity: "advisory",
+        detect: `${relPath} is missing bkit-owned content: ${details}.`,
+        action: "Run `pnpm bkit install` to restore the bkit-owned scope. Consumer-only keys outside the template tree will be preserved.",
+    };
+}
+/**
+ * Advisory: detect when a markered-text file's bkit-managed block differs from the
+ * template's marker block (Phase 2 — tier2-text-drift advisory, BAR-167).
+ *
+ * Fires when:
+ *   - Consumer file exists AND has bkit markers
+ *   - Template file exists AND has a bkit marker block
+ *   - The extracted consumer block != extracted template block (byte-equal check)
+ *
+ * Does NOT fire when markers are absent from consumer (that is the `markers-missing`
+ * case, surfaced separately by detectHuskyNoMarkers / future generic detector).
+ *
+ * Follows `[Context] Message` advisory format.
+ */
+export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
+    const absPath = path.join(cwd, relPath);
+    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
+        return null;
+    const consumerContent = fs.readFileSync(absPath, "utf-8");
+    const templateContent = fs.readFileSync(templatePath, "utf-8");
+    // Detect marker style from the consumer file
+    let style = null;
+    if (/^<!-- bkit:start -->$/m.test(consumerContent))
+        style = "html-comment";
+    else if (/^# bkit:start$/m.test(consumerContent))
+        style = "hash-comment";
+    if (!style)
+        return null; // no markers in consumer — not a drift (markers-missing case)
+    // Extract the block from both consumer and template
+    const consumerBlock = extractManagedBlock(consumerContent, style);
+    if (consumerBlock === null)
+        return null; // consumer has markers but they're malformed
+    // Template may use the same or different marker style
+    let templateBlock = extractManagedBlock(templateContent, style);
+    if (templateBlock === null) {
+        // Try the other style in case template uses different style
+        const altStyle = style === "html-comment" ? "hash-comment" : "html-comment";
+        templateBlock = extractManagedBlock(templateContent, altStyle);
+    }
+    if (templateBlock === null)
+        return null; // template has no block to compare against
+    if (consumerBlock === templateBlock)
+        return null; // byte-equal — no drift
+    return {
+        id: "tier2-text-drift",
+        severity: "advisory",
+        detect: `[${relPath}] bkit-managed marker block content differs from template.`,
+        action: `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
+            "Content outside the bkit:start/bkit:end markers is preserved.",
+    };
+}
+/**
+ * Blocker: consumer's .bkit-version pinnedVersion < 0.8.0 AND no __bkit__ envelope.
+ * This means the consumer is on a pre-envelope Tier-1 install and must route
+ * through bkit v1.x before upgrading directly to v2.0.0.
+ */
+export function detectPreEnvelopeBkitVersion(cwd) {
+    const versionFilePath = path.join(cwd, ".agents", ".bkit-version");
+    const bkitVer = readBkitVersion(versionFilePath);
+    if (!bkitVer?.pinnedVersion)
+        return null;
+    const pinnedVersion = bkitVer.pinnedVersion;
+    // semverLt: pinnedVersion < 0.8.0
+    if (!semverLt(pinnedVersion, "0.8.0"))
+        return null;
+    // Check that neither JSON file has __bkit__ (confirms pre-envelope install)
+    const jsonFiles = [".claude/settings.json", ".cursor/hooks.json"];
+    const hasEnvelope = jsonFiles.some((relPath) => {
+        const absPath = path.join(cwd, relPath);
+        if (!fs.existsSync(absPath))
+            return false;
+        try {
+            const doc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
+            return "__bkit__" in doc;
+        }
+        catch {
+            return false;
+        }
+    });
+    if (hasEnvelope)
+        return null; // consumer already has envelope — not a pre-envelope install
+    return {
+        id: "pre-envelope-bkit-version-detected",
+        severity: "blocker",
+        detect: `On-disk pinnedVersion (${pinnedVersion}) is < 0.8.0 and no __bkit__ envelope found. Direct upgrade to v2.0.0 is not supported from pre-v0.8.0.`,
+        action: "Route through bkit v1.x first: bump `@cbartens/bkit` to `^1.1.1`, run `pnpm install && pnpm bkit upgrade`, then bump to `^2.0.0` and run again.",
+    };
+}
+/** Returns true if semver versionA < versionB (basic semver, no pre-release). */
+function semverLt(a, b) {
+    const pa = a.replace(/^v/, "").split(".").map(Number);
+    const pb = b.replace(/^v/, "").split(".").map(Number);
+    for (let i = 0; i < 3; i++) {
+        const av = pa[i] ?? 0;
+        const bv = pb[i] ?? 0;
+        if (av < bv)
+            return true;
+        if (av > bv)
+            return false;
+    }
+    return false;
+}
+// ---------------------------------------------------------------------------
 // Internal semver comparison helper
 // ---------------------------------------------------------------------------
 /** Returns true if versionA > versionB (basic semver, no pre-release). */
@@ -358,7 +537,41 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
     const notGitRepo = detectNotGitRepo(cwd, modules);
     if (notGitRepo)
         blockers.push(notGitRepo);
+    // Phase 1: pre-envelope blocker (must upgrade through v1.x first)
+    const preEnvelope = detectPreEnvelopeBkitVersion(cwd);
+    if (preEnvelope)
+        blockers.push(preEnvelope);
     // --- Advisory detectors ---
+    // Phase 1: legacy envelope advisory (fires before JSON drift)
+    const pkgRoot = getPkgRoot();
+    for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
+        const envelopeAdvisory = detectLegacyBkitEnvelope(cwd, relPath);
+        if (envelopeAdvisory)
+            advisories.push(envelopeAdvisory);
+    }
+    // Phase 1: JSON containment drift advisory
+    for (const relPath of [".claude/settings.json", ".cursor/hooks.json"]) {
+        const driftAdvisory = detectTier2JsonDrift(cwd, relPath, pkgRoot);
+        if (driftAdvisory)
+            advisories.push(driftAdvisory);
+    }
+    // Phase 2: markered-text block drift advisory (BAR-167)
+    // Check Group B files (partial-ownership) and key Group A files
+    const markeredTextPaths = [
+        ".github/workflows/ci.yml",
+        ".vale.ini",
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".gitignore",
+        ".prettierignore",
+        ".husky/pre-commit",
+        ".husky/pre-push",
+    ];
+    for (const relPath of markeredTextPaths) {
+        const textDriftAdvisory = detectTier2TextDrift(cwd, relPath, pkgRoot);
+        if (textDriftAdvisory)
+            advisories.push(textDriftAdvisory);
+    }
     const huskyPreCommit = detectHuskyNoMarkers(cwd, "pre-commit");
     if (huskyPreCommit)
         advisories.push(huskyPreCommit);

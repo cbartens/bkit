@@ -7,6 +7,7 @@ import {
   parseBkitVersion,
   readBkitVersion,
   serializeBkitVersion,
+  writeBkitVersion,
   sha256,
   hashFile,
   shouldDeleteTier3,
@@ -215,6 +216,49 @@ describe("shouldDeleteTier3", () => {
     const filePath = path.join(tmpDir, "ci.yml");
     fs.writeFileSync(filePath, "yaml content\n", "utf-8");
     expect(shouldDeleteTier3(".github/workflows/ci.yml", filePath, {})).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Schema cleanup: tier3Hashes narrowing (BAR-167 sub-plan C Task 25)
+// ---------------------------------------------------------------------------
+
+describe("Phase 3 — tier3Hashes narrowing (backward-compat reader)", () => {
+  it("parseBkitVersion reads a v2.0.0 .bkit-version JSON missing tier3Hashes → returns tier3Hashes: {} (backward-compat for one minor version)", () => {
+    // Simulates a v2.0.0 consumer file that was written by the narrowed writer when
+    // no byte-equal-text files were installed yet (sparse map = {}).
+    const json = JSON.stringify({ pinnedVersion: "2.0.0", canonicalHashes: {} });
+    const result = parseBkitVersion(json);
+    expect(result).not.toBeNull();
+    expect(result!.pinnedVersion).toBe("2.0.0");
+    // Absent tier3Hashes field → default {} (backward-compat)
+    expect(result!.tier3Hashes).toEqual({});
+    // shouldDeleteTier3 with empty tier3Hashes → preserve-default (false for all paths)
+    expect(shouldDeleteTier3(".cursor/Dockerfile", "/fake/path", result!.tier3Hashes)).toBe(false);
+  });
+
+  it("writeBkitVersion emits tier3Hashes containing only byte-equal-text entries when explicitly narrowed", () => {
+    const versionFile = path.join(tmpDir, ".bkit-version");
+    // Only byte-equal-text path in the map (json/markered-text paths excluded).
+    const narrowedTier3: Record<string, string> = {
+      ".cursor/Dockerfile": sha256("dockerfile content\n"),
+    };
+    const v: BkitVersion = {
+      pinnedVersion: "2.0.0",
+      tier3Hashes: narrowedTier3,
+      canonicalHashes: {},
+    };
+    writeBkitVersion(versionFile, v);
+    const result = parseBkitVersion(fs.readFileSync(versionFile, "utf-8"));
+    expect(result).not.toBeNull();
+    // Only Dockerfile hash present — json/markered-text paths (e.g. .cursor/hooks.json) absent
+    expect(result!.tier3Hashes).toEqual(narrowedTier3);
+    expect(result!.tier3Hashes[".cursor/hooks.json"]).toBeUndefined();
+    expect(result!.tier3Hashes[".claude/settings.json"]).toBeUndefined();
+    // Dockerfile hash present → shouldDeleteTier3 can return true when on-disk matches
+    const dockerfilePath = path.join(tmpDir, "Dockerfile");
+    fs.writeFileSync(dockerfilePath, "dockerfile content\n", "utf-8");
+    expect(shouldDeleteTier3(".cursor/Dockerfile", dockerfilePath, result!.tier3Hashes)).toBe(true);
   });
 });
 

@@ -6,10 +6,11 @@
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import { writeTier1, writeTier2, writeTier3, writeTier2Json, migrateTier1JsonToTier2, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
+import { getPkgRoot } from "./bkit-paths.js";
+import { getInstallManifest } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -65,13 +66,8 @@ function removeOrphans(destDir, sourceFiles, dryRun, prefix) {
     }
     return removed;
 }
-// Resolve the package root at runtime (same logic as bkit-init.ts).
-export function getPkgRoot() {
-    const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-    return scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)
-        ? path.resolve(scriptDir, "..", "..")
-        : path.resolve(scriptDir, "..");
-}
+// Re-export getPkgRoot from bkit-paths (lifted there to break the preflight ↔ modules cycle).
+export { getPkgRoot } from "./bkit-paths.js";
 // ---------------------------------------------------------------------------
 // Core template files — directories/basenames owned ONLY by core module.
 // These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
@@ -279,12 +275,22 @@ export function runCoreModule(ctx) {
     postDispatch.push(() => {
         // Read existing file to check whether an update is needed.
         const existingVersion = readBkitVersion(versionFile);
-        const tier3Hashes = existingVersion?.tier3Hashes ?? {};
+        const existingTier3Hashes = existingVersion?.tier3Hashes ?? {};
         const existingCanonical = existingVersion?.canonicalHashes ?? {};
+        // Build the set of consumer-relative paths that have format "byte-equal-text".
+        // tier3Hashes is narrowed (v2.0.0+) to only these paths — json and markered-text
+        // formats use deepContains / marker extraction for drift detection, so they do NOT
+        // need a hash entry. ".agents/.bkit-version" is excluded (it is the version file
+        // itself, not a consumer-facing file).
+        const byteEqualPaths = new Set(getInstallManifest()
+            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".agents", ".bkit-version"))
+            .map((e) => e.path));
         // Build new canonicalHashes entries from ws.writes (files written in this run).
         // ws.writes is fully populated by the time postDispatch runs.
         // Exclude .bkit-version itself and .agents/ internal files (not consumer-facing).
         const newCanonicalEntries = {};
+        // Also record hashes for byte-equal-text files written in this run.
+        const newTier3Entries = {};
         for (const entry of ws.writes) {
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
@@ -295,9 +301,24 @@ export function runCoreModule(ctx) {
             if (!fs.existsSync(absPath))
                 continue;
             const hash = hashFile(absPath);
-            if (hash)
+            if (hash) {
                 newCanonicalEntries[relPath] = hash;
+                // Narrow tier3Hashes to byte-equal-text format only.
+                if (byteEqualPaths.has(relPath)) {
+                    newTier3Entries[relPath] = hash;
+                }
+            }
         }
+        // tier3Hashes: start from existing byte-equal-text entries only (drop any legacy wider entries),
+        // then merge new writes. Backward-compat: preserve existing entries for known byte-equal-text
+        // paths (uninstall safety — shouldDeleteTier3 needs the hash if the file was written before
+        // this narrowing landed).
+        const narrowedExistingTier3 = {};
+        for (const [p, h] of Object.entries(existingTier3Hashes)) {
+            if (byteEqualPaths.has(p))
+                narrowedExistingTier3[p] = h;
+        }
+        const tier3Hashes = { ...narrowedExistingTier3, ...newTier3Entries };
         // Merge: existing hashes preserved, new writes overwrite (hashes stay current).
         const canonicalHashes = {
             ...existingCanonical,
@@ -368,40 +389,54 @@ export function runClaudeModule(ctx) {
     }
     const PKG_ROOT = getPkgRoot();
     const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
-    // Tier 2 JSON — deep-merge: settings.json (reclassified from Tier-1 in v0.8.0)
-    // Auto-migrate from Tier-1 shape (no __bkit__ envelope) before writing.
+    // Tier 2 JSON (contained) — deep-containment: settings.json
+    // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
     const settingsSrc = path.join(claudeTemplates, "settings.json");
     const settingsDst = ".claude/settings.json";
     if (fs.existsSync(settingsSrc)) {
-        // Run migration first (idempotent if already migrated)
-        const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
-        if (fs.existsSync(versionFile) && !dryRun) {
-            const parsed = readBkitVersion(versionFile);
-            const onDiskVersion = parsed?.pinnedVersion ?? "";
-            if (onDiskVersion) {
-                const migrated = migrateTier1JsonToTier2(settingsDst, ".claude/settings.json", onDiskVersion);
-                if (migrated) {
-                    console.log(`${logPrefix} ${tag}claude: ${settingsDst} (migrated Tier-1 → Tier-2)`);
+        // Run migration first (idempotent — strips __bkit__ envelope if present)
+        if (fs.existsSync(settingsDst) && !dryRun) {
+            try {
+                const raw = fs.readFileSync(settingsDst, "utf-8");
+                const doc = JSON.parse(raw);
+                const templateRaw = fs.readFileSync(settingsSrc, "utf-8");
+                const template = JSON.parse(templateRaw);
+                const result = migrateLegacyBkitEnvelope(doc, template);
+                if (result.stripped) {
+                    // Write migrated doc atomically via temp file + rename
+                    const tmpPath = `${settingsDst}.bkit-migrate-tmp`;
+                    fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
+                    fs.renameSync(tmpPath, settingsDst);
+                    const variant = result.schemaFlipped
+                        ? "schema flip applied (flat-array → keyed-object)"
+                        : "stripped __bkit__ envelope";
+                    console.log(`[bkit] migrated ${settingsDst} — ${variant} (v2.0.0)`);
                 }
+            }
+            catch {
+                // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
+                // with a user-actionable error message requiring manual fix before re-running bkit install.
             }
         }
         const prevLen = ws.writes.length;
-        writeTier2Json(settingsSrc, settingsDst, dryRun, ws);
+        writeTier2JsonContained(settingsSrc, settingsDst, dryRun, ws);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}claude: ${settingsDst}`);
         }
     }
-    // Tier 1 — fully managed: preflight hook (remains Tier-1)
-    const tier1Files = [
-        [path.join(claudeTemplates, "hooks", "preflight.sh"), ".claude/hooks/preflight.sh"],
-    ];
-    for (const [src, dst] of tier1Files) {
-        if (!fs.existsSync(src))
-            continue;
-        const prevLen = ws.writes.length;
-        writeTier1(src, dst, tokens, dryRun, ws);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}claude: ${dst}`);
+    // Markered-text — manifest format: "markered-text" — preflight hook.
+    // Uses writeTier2 (html-comment markers: # <!-- bkit:start --> / # <!-- bkit:end -->)
+    // to update only the bkit-managed block, preserving any consumer content outside markers.
+    // Changed from writeTier1 to align install dispatch with manifest format classification.
+    {
+        const src = path.join(claudeTemplates, "hooks", "preflight.sh");
+        const dst = ".claude/hooks/preflight.sh";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
+            }
         }
     }
 }
@@ -445,48 +480,70 @@ export function runCursorModule(ctx) {
             console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
         }
     }
-    // Tier 2 JSON — deep-merge: hooks.json (reclassified from Tier-1 in v0.8.0)
+    // Tier 2 JSON (contained) — deep-containment: hooks.json
+    // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
     const PKG_ROOT = getPkgRoot();
     const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
     const hooksSrc = path.join(cursorTemplates, "hooks.json");
     const hooksDst = ".cursor/hooks.json";
     if (fs.existsSync(hooksSrc)) {
-        // Auto-migrate from Tier-1 shape before writing
-        const versionFile = path.join(process.cwd(), ".agents", ".bkit-version");
-        if (fs.existsSync(versionFile) && !dryRun) {
-            const parsed = readBkitVersion(versionFile);
-            const onDiskVersion = parsed?.pinnedVersion ?? "";
-            if (onDiskVersion) {
-                const migrated = migrateTier1JsonToTier2(hooksDst, ".cursor/hooks.json", onDiskVersion);
-                if (migrated) {
-                    console.log(`${logPrefix} ${tag}cursor: ${hooksDst} (migrated Tier-1 → Tier-2)`);
+        // Run migration first (idempotent — strips __bkit__ envelope if present)
+        if (fs.existsSync(hooksDst) && !dryRun) {
+            try {
+                const raw = fs.readFileSync(hooksDst, "utf-8");
+                const doc = JSON.parse(raw);
+                const templateRaw = fs.readFileSync(hooksSrc, "utf-8");
+                const template = JSON.parse(templateRaw);
+                const result = migrateLegacyBkitEnvelope(doc, template);
+                if (result.stripped) {
+                    // Write migrated doc atomically via temp file + rename
+                    const tmpPath = `${hooksDst}.bkit-migrate-tmp`;
+                    fs.writeFileSync(tmpPath, JSON.stringify(result.outDoc, null, 2) + "\n", "utf-8");
+                    fs.renameSync(tmpPath, hooksDst);
+                    const variant = result.schemaFlipped
+                        ? "schema flip applied (flat-array → keyed-object)"
+                        : "stripped __bkit__ envelope";
+                    console.log(`[bkit] migrated ${hooksDst} — ${variant} (v2.0.0)`);
                 }
+            }
+            catch {
+                // Malformed JSON in migration — skip migration; writeTier2JsonContained below will throw
+                // with a user-actionable error message requiring manual fix before re-running bkit install.
             }
         }
         const prevLen = ws.writes.length;
-        writeTier2Json(hooksSrc, hooksDst, dryRun, ws);
+        writeTier2JsonContained(hooksSrc, hooksDst, dryRun, ws);
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
         }
     }
-    // Tier 1 — fully managed: preflight, shared rules (remain Tier-1)
-    const tier1Files = [
-        [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
-        [
-            path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
-            ".cursor/rules/00-shared-rules.mdc",
-        ],
-    ];
-    for (const [src, dst] of tier1Files) {
-        if (!fs.existsSync(src))
-            continue;
-        const prevLen = ws.writes.length;
-        writeTier1(src, dst, tokens, dryRun, ws);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+    // Markered-text — manifest format: "markered-text" — preflight hook + shared rules.
+    // Both files use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
+    // Uses writeTier2 to update only the bkit-managed block; consumer content outside
+    // markers is preserved. Changed from writeTier1 to align dispatch with manifest format.
+    {
+        const markeredFiles = [
+            [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
+            [
+                path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
+                ".cursor/rules/00-shared-rules.mdc",
+            ],
+        ];
+        for (const [src, dst] of markeredFiles) {
+            if (!fs.existsSync(src))
+                continue;
+            const prevLen = ws.writes.length;
+            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}cursor: ${dst}`);
+            }
         }
     }
-    // Tier 3 — seed-or-print: settings.json + consumer infra files
+    // Byte-equal-text — manifest format: "byte-equal-text" — seed-or-print for consumer infra.
+    // Uses writeTier3 semantics: seed if absent, emit AI-actionable advisory if present and
+    // differing. These files are consumer-configurable; bkit does not force-overwrite them.
+    // The manifest classifies them "byte-equal-text" for check/uninstall dispatch; install
+    // intentionally uses seed-or-print to preserve consumer modifications on upgrade.
     const tier3Files = [
         [
             path.join(cursorTemplates, "settings.json"),

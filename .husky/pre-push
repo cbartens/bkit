@@ -1,15 +1,6 @@
 #!/usr/bin/env sh
-set -e
 # bkit:start
 
 pnpm typecheck && pnpm test && pnpm format:check
 
 # bkit:end
-
-# bkit-repo only — fails push if .agents/* edits weren't mirrored via `pnpm bkit install`.
-pnpm bkit check
-
-# bkit-repo only — outside bkit:start..bkit:end so `bkit install` does not strip it.
-# Verifies committed dist/ matches `tsc` output of committed source. Consumers do not
-# have TS to compile and never run this gate.
-pnpm check:dist

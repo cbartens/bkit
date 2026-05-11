@@ -57,7 +57,7 @@ Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be acc
 
 The bkit repo's `.husky/pre-push` runs `pnpm bkit check` AFTER the templated `# bkit:end` marker, guarded by `set -e` above `# bkit:start`. Failing exit aborts the push when `.agents/*` was edited without `bkit install` regenerating `.claude/*` / `.cursor/*` / `.husky/*` mirrors.
 
-- Lives **outside** the bkit:start/end block so Tier-2 re-install preserves it AND it does not leak into consumer repos via `.agents/templates/.husky/pre-push`.
+- Lives **outside** the bkit:start/end block so markered-text re-install preserves it AND it does not leak into consumer repos via `.agents/templates/.husky/pre-push`.
 - Consumers don't get this gate — they don't typically edit `.agents/*` source, so adding it to the template is pure ~1s push overhead with no detected pain.
 - Fix on failure: run `pnpm bkit install`, stage the regenerated `.claude/*` / `.cursor/*` / `.husky/*` files, commit, push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
 
@@ -74,11 +74,27 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 
 All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `[skip build] [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
 
+### Manual CI trigger on feat branches (`workflow_dispatch`)
+
+`ci.yml` includes `workflow_dispatch:` with no inputs. CI only auto-fires on push to `main`/`dev` or on a PR targeting those branches — feat branches without an open PR (or with a conflicted PR) produce no automatic run.
+
+**To trigger CI manually on a feat branch:**
+
+```bash
+gh workflow run ci.yml --ref feat/{FID}
+# then watch:
+gh run list --branch feat/{FID} --limit 3
+```
+
+Or use the GitHub Actions tab → "CI" → "Run workflow" → select the branch.
+
+This mirrors the pattern in `app-gether-life/.github/workflows/ci.yml`.
+
 ### `bkit install` three-phase contract
 
 bkit's installer runs in three phases:
 
-1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: `detectHooksConfigOverwriteRisk` was removed in v0.8.0 — Tier-2 `__bkit__` deep-merge guarantees consumer-key survival without a preflight gate (see KN-8, DE-8).
+1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: `detectHooksConfigOverwriteRisk` was removed in v0.8.0 — deep-containment merge guarantees consumer-key survival without a preflight gate (see KN-8, DE-8).
 2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
 3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. Skipped in `bkit check` (dry-run) — only Phase 1 advisories render. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 

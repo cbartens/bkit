@@ -7,11 +7,10 @@ import {
   writeTier1,
   writeTier2,
   writeTier3,
-  writeTier2Json,
+  writeTier2JsonContained,
+  migrateLegacyBkitEnvelope,
+  deepContains,
   deepMergeJson,
-  extractBkitNamespace,
-  applyBkitNamespace,
-  migrateTier1JsonToTier2,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
   stripManagedBlock,
@@ -672,156 +671,177 @@ describe("deepMergeJson", () => {
 });
 
 // ---------------------------------------------------------------------------
-// extractBkitNamespace + applyBkitNamespace (P3.T2)
+// deepContains — JSON containment primitive (BAR-167 Phase 1)
+// Eight matrix rows from the Derived Test Matrix
 // ---------------------------------------------------------------------------
 
-describe("extractBkitNamespace", () => {
-  it("returns the __bkit__ envelope when present", () => {
-    const doc = { __bkit__: { hooks: { SessionStart: [] } }, other: "key" };
-    const result = extractBkitNamespace(doc as Record<string, JsonValue>);
-    expect(result).not.toBeNull();
-    expect(result!.hooks).toBeDefined();
+describe("deepContains", () => {
+  it("(1) ok=true when consumer is a superset of template (objects nested 4 levels)", () => {
+    const template: JsonValue = { a: { b: { c: { d: 1 } } } };
+    const consumer: JsonValue = { a: { b: { c: { d: 1, e: 2 } }, extra: true }, other: "x" };
+    const result = deepContains(template, consumer);
+    expect(result.ok).toBe(true);
+    expect(result.missing).toHaveLength(0);
+    expect(result.mismatched).toHaveLength(0);
   });
 
-  it("returns null when __bkit__ is absent", () => {
-    const doc = { hooks: { SessionStart: [] } };
-    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  it("(2) ok=false with missing paths when a template key is absent from consumer", () => {
+    const template: JsonValue = { a: 1, b: { c: 2 } };
+    const consumer: JsonValue = { a: 1 };
+    const result = deepContains(template, consumer);
+    expect(result.ok).toBe(false);
+    expect(result.missing).toContain("b");
   });
 
-  it("returns null when __bkit__ is null", () => {
-    const doc = { __bkit__: null };
-    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  it("(3) ok=false with mismatched paths when a leaf primitive differs", () => {
+    const template: JsonValue = { a: 1, b: "hello" };
+    const consumer: JsonValue = { a: 1, b: "world" };
+    const result = deepContains(template, consumer);
+    expect(result.ok).toBe(false);
+    expect(result.mismatched).toContain("b");
   });
 
-  it("returns null when __bkit__ is an array (not a plain object)", () => {
-    const doc = { __bkit__: [1, 2, 3] };
-    expect(extractBkitNamespace(doc as Record<string, JsonValue>)).toBeNull();
+  it("(4) array-of-primitives uses subset semantics", () => {
+    const template: JsonValue = { tags: ["a", "b"] };
+    const consumer: JsonValue = { tags: ["a", "b", "c"] };
+    expect(deepContains(template, consumer).ok).toBe(true);
+
+    const template2: JsonValue = { tags: ["x"] };
+    const consumer2: JsonValue = { tags: ["a", "b"] };
+    expect(deepContains(template2, consumer2).ok).toBe(false);
+  });
+
+  it("(5) array-of-objects uses order-insensitive deep-equal element-wise containment", () => {
+    const template: JsonValue = {
+      hooks: [{ event: "sessionStart", command: "echo start" }],
+    };
+    const consumer: JsonValue = {
+      hooks: [
+        { event: "sessionStop", command: "echo stop" },
+        { event: "sessionStart", command: "echo start" },
+      ],
+    };
+    expect(deepContains(template, consumer).ok).toBe(true);
+  });
+
+  it("(6) array-of-objects asymmetric size: template 1 element, consumer 2 elements → ok=true", () => {
+    const template: JsonValue = { items: [{ id: 1, name: "foo" }] };
+    const consumer: JsonValue = {
+      items: [
+        { id: 2, name: "bar" },
+        { id: 1, name: "foo" },
+      ],
+    };
+    expect(deepContains(template, consumer).ok).toBe(true);
+  });
+
+  it("(7) mixed-array (primitives + objects) uses element-wise per-type semantics; missing reports element index path", () => {
+    const template: JsonValue = ["alpha", { type: "command", command: "run" }];
+    const consumer: JsonValue = ["alpha", "beta"];
+    const result = deepContains(template, consumer);
+    expect(result.ok).toBe(false);
+    // Object element missing
+    expect(result.missing.some((p) => p.includes("[1]"))).toBe(true);
+  });
+
+  it("(8) null-input boundary cases: (null,null)→ok; (null,obj)→ok; (obj,null)→missing", () => {
+    expect(deepContains(null, null).ok).toBe(true);
+    expect(deepContains(null, { a: 1 }).ok).toBe(true);
+    const res = deepContains({ a: 1 }, null);
+    expect(res.ok).toBe(false);
+    expect(res.missing.length).toBeGreaterThan(0);
   });
 });
 
-describe("applyBkitNamespace", () => {
-  it("returns { ...consumer, __bkit__: bkitPayload }", () => {
-    const consumer = { hooks: { Stop: [] }, other: "value" };
-    const payload = { hooks: { SessionStart: [] } };
-    const result = applyBkitNamespace(
-      consumer as Record<string, JsonValue>,
-      payload as Record<string, JsonValue>,
-    );
-    expect(result.__bkit__).toEqual(payload);
-    expect(result.other).toBe("value");
-    expect((result as Record<string, JsonValue>).hooks).toEqual({ Stop: [] });
-  });
-
-  it("replaces existing __bkit__ envelope", () => {
-    const consumer = { __bkit__: { old: true }, hooks: { Stop: [] } };
-    const newPayload = { hooks: { SessionStart: [] } };
-    const result = applyBkitNamespace(
-      consumer as Record<string, JsonValue>,
-      newPayload as Record<string, JsonValue>,
-    );
-    expect(result.__bkit__).toEqual(newPayload);
-  });
-
-  it("does NOT mutate consumer", () => {
-    const consumer = { hooks: { Stop: [] } };
-    const payload = { hooks: {} };
-    const consumerCopy = JSON.parse(JSON.stringify(consumer)) as Record<string, JsonValue>;
-    applyBkitNamespace(consumer as Record<string, JsonValue>, payload as Record<string, JsonValue>);
-    expect(consumer).toEqual(consumerCopy);
-  });
-});
-
 // ---------------------------------------------------------------------------
-// writeTier2Json — idempotent round-trip + throw on missing envelope (P3.T3)
+// writeTier2JsonContained — deep-containment JSON helper (BAR-167 Phase 1)
 // ---------------------------------------------------------------------------
 
-describe("writeTier2Json", () => {
-  it("writes template when dest is absent", () => {
+describe("writeTier2JsonContained", () => {
+  it("writes template as-is when destination is missing", () => {
     const src = path.join(tmpDir, "settings.json");
     const dst = path.join(tmpDir, ".claude", "settings.json");
-    const template = {
-      __bkit__: { hooks: { SessionStart: [{ type: "command" }] } },
-      $schema: "https://example.com/schema.json",
-    };
+    const template = { hooks: { SessionStart: [{ type: "command" }] } };
     fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
     const ws = makeWriteSet();
 
-    writeTier2Json(src, dst, false, ws);
+    writeTier2JsonContained(src, dst, false, ws);
 
     expect(fs.existsSync(dst)).toBe(true);
     const written = JSON.parse(fs.readFileSync(dst, "utf-8"));
-    expect(written.__bkit__).toBeDefined();
+    expect(written["__bkit__"]).toBeUndefined();
+    expect(written.hooks.SessionStart).toBeDefined();
     expect(ws.writes).toHaveLength(1);
     expect(ws.writes[0]!.action).toBe("write");
   });
 
-  it("deep-merges: consumer keys preserved; __bkit__ from template wins", () => {
+  it("deep-merges and idempotents on re-run with identical state", () => {
     const src = path.join(tmpDir, "settings.json");
     const dst = path.join(tmpDir, "settings-out.json");
-    const template = {
-      __bkit__: { hooks: { SessionStart: [{ command: "new-preflight.sh" }] } },
-    };
+    const template = { hooks: { SessionStart: [{ command: "bash preflight.sh" }] } };
+    // Consumer already contains template
     const existing = {
-      __bkit__: { hooks: { SessionStart: [{ command: "old-preflight.sh" }] } },
-      hooks: { Stop: [{ command: "postflight.sh" }] },
-      customKey: "consumer-value",
+      hooks: {
+        SessionStart: [{ command: "bash preflight.sh" }],
+        Stop: [{ command: "echo consumer" }],
+      },
     };
     fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
     fs.writeFileSync(dst, JSON.stringify(existing, null, 2) + "\n", "utf-8");
     const ws = makeWriteSet();
 
-    writeTier2Json(src, dst, false, ws);
+    writeTier2JsonContained(src, dst, false, ws);
+
+    expect(ws.writes).toHaveLength(0); // already contained → no-op
+    // Consumer Stop hook preserved
+    const result = JSON.parse(fs.readFileSync(dst, "utf-8"));
+    expect(result.hooks.Stop).toBeDefined();
+  });
+
+  it("schema-flip: type-mismatched same-path values → template wins on deep-merge", () => {
+    const src = path.join(tmpDir, "hooks-template.json");
+    const dst = path.join(tmpDir, "hooks-out.json");
+    // Template uses keyed-object hooks; consumer has array hooks
+    const template = { version: 1, hooks: { sessionStart: [{ command: "echo start" }] } };
+    const existing = { hooks: [{ event: "sessionStart", command: "echo old" }], failClosed: true };
+    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    fs.writeFileSync(dst, JSON.stringify(existing, null, 2) + "\n", "utf-8");
+    const ws = makeWriteSet();
+
+    writeTier2JsonContained(src, dst, false, ws);
 
     const result = JSON.parse(fs.readFileSync(dst, "utf-8"));
-    // __bkit__ updated from template
-    expect(result.__bkit__.hooks.SessionStart[0].command).toBe("new-preflight.sh");
-    // consumer keys preserved
-    expect(result.hooks.Stop).toBeDefined();
-    expect(result.customKey).toBe("consumer-value");
+    // Template hooks (keyed-object) wins; consumer failClosed preserved
+    expect(result.hooks).toEqual(template.hooks);
+    expect(result.failClosed).toBe(true);
     expect(ws.writes).toHaveLength(1);
-    expect(ws.writes[0]!.action).toBe("update");
   });
 
-  it("is idempotent: no write when merged result equals on-disk content", () => {
-    const src = path.join(tmpDir, "settings.json");
-    const dst = path.join(tmpDir, "settings-out.json");
-    const template = {
-      __bkit__: { hooks: { SessionStart: [] } },
-    };
-    const existing = {
-      __bkit__: { hooks: { SessionStart: [] } },
-      hooks: { Stop: [] },
-    };
+  it("malformed destination → throws with actionable error message (does NOT overwrite)", () => {
+    const src = path.join(tmpDir, "template.json");
+    const dst = path.join(tmpDir, "malformed.json");
+    const template = { a: 1 };
+    const malformedContent = "{ not valid json";
     fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
-    // Write existing as the expected merged output
-    const merged = { ...existing, __bkit__: template.__bkit__ };
-    fs.writeFileSync(dst, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+    fs.writeFileSync(dst, malformedContent, "utf-8");
     const ws = makeWriteSet();
 
-    writeTier2Json(src, dst, false, ws);
-
-    expect(ws.writes).toHaveLength(0); // idempotent — no write
-  });
-
-  it("THROWS when template is missing __bkit__ envelope (rollback safety)", () => {
-    const src = path.join(tmpDir, "settings.json");
-    const dst = path.join(tmpDir, "settings-out.json");
-    // Template without __bkit__ — simulates rollback to pre-v0.8.0
-    const template = { hooks: { SessionStart: [] } };
-    fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
-    const ws = makeWriteSet();
-
-    expect(() => writeTier2Json(src, dst, false, ws)).toThrow(/missing the __bkit__ envelope/);
+    expect(() => writeTier2JsonContained(src, dst, false, ws)).toThrow(
+      /is malformed JSON — fix manually before running bkit install/,
+    );
+    // File must NOT be overwritten
+    expect(fs.readFileSync(dst, "utf-8")).toBe(malformedContent);
+    expect(ws.writes).toHaveLength(0);
   });
 
   it("dry-run: records write in WriteSet without touching disk", () => {
     const src = path.join(tmpDir, "settings.json");
     const dst = path.join(tmpDir, "dry-out.json");
-    const template = { __bkit__: { hooks: { SessionStart: [] } } };
+    const template = { hooks: { SessionStart: [] } };
     fs.writeFileSync(src, JSON.stringify(template, null, 2) + "\n", "utf-8");
     const ws = makeWriteSet();
 
-    writeTier2Json(src, dst, true, ws);
+    writeTier2JsonContained(src, dst, true, ws);
 
     expect(fs.existsSync(dst)).toBe(false);
     expect(ws.writes).toHaveLength(1);
@@ -829,84 +849,100 @@ describe("writeTier2Json", () => {
 });
 
 // ---------------------------------------------------------------------------
-// migrateTier1JsonToTier2 — versioned defaults SoT migration (P3.T6)
+// migrateLegacyBkitEnvelope — strip __bkit__ envelope (BAR-167 Phase 1)
+// Four sub-cases
 // ---------------------------------------------------------------------------
 
-describe("migrateTier1JsonToTier2", () => {
-  it("migrates .claude/settings.json without __bkit__ (v0.5.0 on-disk version)", () => {
-    const filePath = path.join(tmpDir, "settings.json");
-    // Simulate a consumer file written by bkit v0.5.0 (Tier-1, no __bkit__)
-    const tier1Content = {
-      $schema: "https://json.schemastore.org/claude-code-settings.json",
+describe("migrateLegacyBkitEnvelope", () => {
+  it("no-op when __bkit__ is absent: stripped=false", () => {
+    const doc: Record<string, JsonValue> = { hooks: { SessionStart: [] }, custom: "x" };
+    const template: Record<string, JsonValue> = { hooks: { SessionStart: [] } };
+    const result = migrateLegacyBkitEnvelope(doc, template);
+    expect(result.stripped).toBe(false);
+    expect(result.outDoc).toEqual(doc);
+  });
+
+  it("strips __bkit__; retains top-level keys; deepMerged=false when contained", () => {
+    const doc: Record<string, JsonValue> = {
+      __bkit__: { hooks: { SessionStart: [] } },
+      hooks: { SessionStart: [], Stop: [{ command: "echo stop" }] },
+    };
+    const template: Record<string, JsonValue> = { hooks: { SessionStart: [] } };
+    const result = migrateLegacyBkitEnvelope(doc, template);
+    expect(result.stripped).toBe(true);
+    expect(result.deepMerged).toBe(false);
+    expect(result.outDoc["__bkit__"]).toBeUndefined();
+    const hooks = result.outDoc.hooks as Record<string, JsonValue>;
+    expect(hooks.Stop).toBeDefined();
+  });
+
+  it("deepMerged=true when post-strip consumer is missing template scope", () => {
+    const doc: Record<string, JsonValue> = {
+      __bkit__: { hooks: { SessionStart: [{ command: "old" }] } },
+      // Post-strip: no top-level hooks key → missing template scope
+    };
+    const template: Record<string, JsonValue> = { hooks: { SessionStart: [{ command: "new" }] } };
+    const result = migrateLegacyBkitEnvelope(doc, template);
+    expect(result.stripped).toBe(true);
+    expect(result.deepMerged).toBe(true);
+    const hooks = result.outDoc.hooks as Record<string, JsonValue>;
+    expect(hooks.SessionStart).toBeDefined();
+  });
+
+  it("schemaFlipped=true when post-strip value type-flips against template — uses Task-0c fixture", () => {
+    // MUST use Task-0c fixture cursor-hooks.json BEFORE shape (flat-array hooks)
+    const fixturePath = path.resolve(
+      __dirname,
+      "../../tests/fixtures/heavy-customised-consumer-v1-envelope/cursor-hooks.json",
+    );
+    expect(fs.existsSync(fixturePath)).toBe(true);
+    const doc = JSON.parse(fs.readFileSync(fixturePath, "utf-8")) as Record<string, JsonValue>;
+    // Template uses Cursor v1 keyed-object (hooks: {sessionStart: [...], sessionStop: [...]})
+    const template: Record<string, JsonValue> = {
+      version: 1,
       hooks: {
-        SessionStart: [
-          { hooks: [{ type: "command", command: "bash .claude/hooks/preflight.sh" }] },
-        ],
-        Stop: [{ hooks: [{ type: "command", command: "postflight.sh" }] }],
+        sessionStart: [{ command: "echo start" }],
+        sessionStop: [{ command: "echo stop" }],
       },
     };
-    fs.writeFileSync(filePath, JSON.stringify(tier1Content, null, 2) + "\n", "utf-8");
-
-    const changed = migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0");
-
-    expect(changed).toBe(true);
-    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    // __bkit__ envelope now present
-    expect(result.__bkit__).toBeDefined();
-    // bkit-owned keys moved under __bkit__
-    expect(result.__bkit__.hooks).toBeDefined();
-    expect(result.__bkit__.hooks.SessionStart).toBeDefined();
-    // Consumer Stop hook preserved at top level (outside __bkit__)
-    expect(result.hooks).toBeDefined();
-    expect(result.hooks.Stop).toBeDefined();
+    const result = migrateLegacyBkitEnvelope(doc, template);
+    expect(result.stripped).toBe(true);
+    // The fixture has flat-array hooks; template has keyed-object hooks → type flip
+    expect(result.schemaFlipped).toBe(true);
+    expect(result.deepMerged).toBe(true);
   });
+});
 
-  it("is idempotent: re-running on already-migrated file returns false (no write)", () => {
-    const filePath = path.join(tmpDir, "settings-migrated.json");
-    const alreadyMigrated = {
-      __bkit__: { hooks: { SessionStart: [] } },
-      hooks: { Stop: [] },
-    };
-    fs.writeFileSync(filePath, JSON.stringify(alreadyMigrated, null, 2) + "\n", "utf-8");
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Phase 3 — bkit-tiers.ts doc-block terminology check (BAR-167 sub-plan C Task 26)
+// ---------------------------------------------------------------------------
 
-    const changed = migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0");
-
-    expect(changed).toBe(false);
-    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    // Content unchanged
-    expect(result).toEqual(alreadyMigrated);
+describe("Phase 3 — bkit-tiers.ts doc-block no Tier 1/2/3 strings", () => {
+  it("bkit-tiers.ts contains no 'Tier 1', 'Tier 2', or 'Tier 3' strings (single-model semantics)", () => {
+    const tiersPath = path.resolve(__dirname, "./bkit-tiers.ts");
+    expect(fs.existsSync(tiersPath)).toBe(true);
+    const content = fs.readFileSync(tiersPath, "utf-8");
+    // Reject any match of "Tier 1", "Tier 2", "Tier 3" (case-sensitive)
+    const matches = content.match(/Tier [123]/g);
+    expect(matches).toBeNull();
   });
+});
 
-  it("returns false when file does not exist", () => {
-    const filePath = path.join(tmpDir, "nonexistent.json");
-    expect(migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.5.0")).toBe(false);
-  });
+// ---------------------------------------------------------------------------
+// cursor-v1-schema static sanity block (BAR-167 Phase 1)
+// ---------------------------------------------------------------------------
 
-  it("returns false for pre-0.5.0 version (0.4.1) — no registered defaults", () => {
-    const filePath = path.join(tmpDir, "old-settings.json");
-    fs.writeFileSync(filePath, JSON.stringify({ hooks: { SessionStart: [] } }), "utf-8");
-    expect(migrateTier1JsonToTier2(filePath, ".claude/settings.json", "0.4.1")).toBe(false);
-  });
-
-  it("migrates .cursor/hooks.json with consumer failClosed field preserved", () => {
-    const filePath = path.join(tmpDir, "hooks.json");
-    const tier1Content = {
-      hooks: [
-        { event: "sessionStart", command: "echo '[bkit] session started'" },
-        { event: "sessionStop", command: "echo '[bkit] session stopped'" },
-      ],
-      failClosed: true,
-      loop_limit: 5,
-    };
-    fs.writeFileSync(filePath, JSON.stringify(tier1Content, null, 2) + "\n", "utf-8");
-
-    const changed = migrateTier1JsonToTier2(filePath, ".cursor/hooks.json", "0.5.0");
-
-    expect(changed).toBe(true);
-    const result = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    expect(result.__bkit__).toBeDefined();
-    // Consumer fields preserved outside envelope
-    expect(result.failClosed).toBe(true);
-    expect(result.loop_limit).toBe(5);
+describe("cursor-v1-schema", () => {
+  it("parsed template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__, no flat-array hooks", () => {
+    const templatePath = path.resolve(__dirname, "../../.agents/templates/.cursor/hooks.json");
+    expect(fs.existsSync(templatePath)).toBe(true);
+    const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+    expect(doc.version).toBe(1);
+    expect(typeof doc.hooks).toBe("object");
+    expect(Array.isArray(doc.hooks)).toBe(false);
+    expect(Array.isArray(doc.hooks.sessionStart)).toBe(true);
+    expect(Array.isArray(doc.hooks.sessionStop)).toBe(true);
+    expect(doc["__bkit__"]).toBeUndefined();
   });
 });

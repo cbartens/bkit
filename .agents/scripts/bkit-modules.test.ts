@@ -193,60 +193,13 @@ describe("runCoreModule first-install advisory (BAR-141: structured finding)", (
 });
 
 // ---------------------------------------------------------------------------
-// P3.T4 + P3.T5 — reclassification verification (source-level)
-// .claude/settings.json and .cursor/hooks.json use writeTier2Json (not writeTier1)
+// P3.T4 + P3.T5 — superseded by BAR-167 Phase 1
+// .claude/settings.json and .cursor/hooks.json now use writeTier2JsonContained +
+// migrateLegacyBkitEnvelope (no __bkit__ envelope). Tests for the new primitives
+// live in bkit-tiers.test.ts and the integration coverage is in
+// bkit-modules.integration.test.ts. These blocks have been removed to avoid
+// asserting deleted symbols (writeTier2Json, migrateTier1JsonToTier2, __bkit__).
 // ---------------------------------------------------------------------------
-
-describe("P3.T4 — .claude/settings.json reclassified to Tier-2 JSON deep-merge (v0.8.0)", () => {
-  it("bkit-modules.ts calls writeTier2Json for .claude/settings.json (not writeTier1)", () => {
-    // Claude settings.json must use deep-merge path
-    expect(MODULES_SRC).toContain("writeTier2Json");
-    // The call must reference settings.json in the claude module context
-    const claudeModuleIdx = MODULES_SRC.indexOf("runClaudeModule");
-    const settingsIdx = MODULES_SRC.indexOf('"settings.json"', claudeModuleIdx);
-    const tier2JsonIdx = MODULES_SRC.indexOf("writeTier2Json", claudeModuleIdx);
-    expect(settingsIdx).toBeGreaterThan(-1);
-    expect(tier2JsonIdx).toBeGreaterThan(-1);
-  });
-
-  it("bkit-modules.ts calls migrateTier1JsonToTier2 for .claude/settings.json", () => {
-    expect(MODULES_SRC).toContain("migrateTier1JsonToTier2");
-    expect(MODULES_SRC).toContain('".claude/settings.json"');
-  });
-
-  it(".claude/settings.json template has __bkit__ envelope", () => {
-    // Source-level check: the template must have __bkit__ for writeTier2Json to work
-    const templatePath = path.resolve(".agents/templates/.claude/settings.json");
-    if (!fs.existsSync(templatePath)) return; // skip if template not accessible
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
-    expect(template.__bkit__).toBeDefined();
-    expect(template.__bkit__.hooks).toBeDefined();
-    expect(template.__bkit__.hooks.SessionStart).toBeDefined();
-  });
-});
-
-describe("P3.T5 — .cursor/hooks.json reclassified to Tier-2 JSON deep-merge (v0.8.0)", () => {
-  it("bkit-modules.ts calls writeTier2Json for .cursor/hooks.json (not writeTier1)", () => {
-    expect(MODULES_SRC).toContain("writeTier2Json");
-    const cursorModuleIdx = MODULES_SRC.indexOf("runCursorModule");
-    const hooksIdx = MODULES_SRC.indexOf('"hooks.json"', cursorModuleIdx);
-    const tier2JsonIdx = MODULES_SRC.indexOf("writeTier2Json", cursorModuleIdx);
-    expect(hooksIdx).toBeGreaterThan(-1);
-    expect(tier2JsonIdx).toBeGreaterThan(-1);
-  });
-
-  it("bkit-modules.ts calls migrateTier1JsonToTier2 for .cursor/hooks.json", () => {
-    expect(MODULES_SRC).toContain('".cursor/hooks.json"');
-  });
-
-  it(".cursor/hooks.json template has __bkit__ envelope", () => {
-    const templatePath = path.resolve(".agents/templates/.cursor/hooks.json");
-    if (!fs.existsSync(templatePath)) return;
-    const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
-    expect(template.__bkit__).toBeDefined();
-    expect(template.__bkit__.hooks).toBeDefined();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // BAR-164 — installer guard: canonical CI template must not contain a
@@ -255,6 +208,55 @@ describe("P3.T5 — .cursor/hooks.json reclassified to Tier-2 JSON deep-merge (v
 // resolve such references and CI fails with "repository not found" before
 // any install step runs.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Task 20 — single-dispatch on entry.format (BAR-167 Phase 2)
+// ---------------------------------------------------------------------------
+
+import { getInstallManifest } from "./bkit-manifest";
+
+describe("bkit-manifest: single dispatch on entry.format", () => {
+  it("json entries: settings.json and hooks.json use format json", () => {
+    const allEntries = getInstallManifest([]);
+    const jsonEntries = allEntries.filter((e) => e.format === "json");
+    const paths = jsonEntries.map((e) => e.path);
+    expect(paths).toContain(".claude/settings.json");
+    expect(paths).toContain(".cursor/hooks.json");
+  });
+
+  it("markered-text entries: AGENTS.md, CLAUDE.md, .gitignore, .prettierignore, .husky files use format markered-text", () => {
+    const allEntries = getInstallManifest([]);
+    const markedEntries = allEntries.filter((e) => e.format === "markered-text");
+    const paths = markedEntries.map((e) => e.path);
+    expect(paths).toContain("AGENTS.md");
+    expect(paths).toContain("CLAUDE.md");
+    expect(paths).toContain(".gitignore");
+    expect(paths).toContain(".prettierignore");
+    expect(paths).toContain(".husky/pre-commit");
+    expect(paths).toContain(".husky/pre-push");
+    // ci.yml and .vale.ini are byte-equal-text (seed-or-print) since v2.0.0
+    expect(paths).not.toContain(".github/workflows/ci.yml");
+    expect(paths).not.toContain(".vale.ini");
+  });
+
+  it("byte-equal-text entries: .cursor/Dockerfile, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {
+    const allEntries = getInstallManifest([]);
+    const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
+    const paths = byteEqualEntries.map((e) => e.path);
+    expect(paths).toContain(".cursor/Dockerfile");
+    expect(paths).toContain(".github/workflows/ci.yml");
+    expect(paths).toContain(".vale.ini");
+    expect(paths).toContain("slop-scan.config.json");
+  });
+
+  it("every entry has a valid format value", () => {
+    const allEntries = getInstallManifest([]);
+    const validFormats = new Set(["json", "markered-text", "byte-equal-text"]);
+    for (const entry of allEntries) {
+      expect(validFormats.has(entry.format)).toBe(true);
+    }
+  });
+});
 
 describe("BAR-164 — canonical CI template has no cross-org private `uses:` references", () => {
   it("scanForeignBkitUses flags `uses: cbartens/bkit/...@<ref>` lines", () => {

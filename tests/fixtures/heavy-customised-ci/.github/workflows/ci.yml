@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
+      - uses: pnpm/action-setup@v4
+
+      # bkit:start
+      - name: Install Dependencies
+        # `.npmrc` references ${GH_BKIT_TOKEN} for the @cbartens scope (npm.pkg.github.com).
+        # Passing the secret as env is sufficient — no separate auth action is needed.
+        # cbartens/bkit is private and cross-org for any consumer outside cbartens/, so a
+        # `uses: cbartens/bkit/...@<ref>` reference cannot be resolved by the runner's
+        # GITHUB_TOKEN at action-resolution time. See README §"Consumer CI auth".
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+
+      - name: Run Typecheck
+        run: pnpm typecheck
+
+      - name: Run Vitest Tests
+        run: pnpm test
+
+      - name: Run Prettier Format Check
+        run: pnpm format:check
+
+      - name: Run Vale Prose Lint
+        run: pnpm lint:prose
+
+      - name: Run Slop Scan
+        run: pnpm lint:slop
+
+      - name: Run Bkit Check
+        run: pnpm bkit check
+      # bkit:end
+
+  consumer-job:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consumer Custom Step
+        run: echo 'consumer-only step outside bkit markers'

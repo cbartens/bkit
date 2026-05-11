@@ -63,34 +63,33 @@ pnpm exec bkit check --full
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
-## `__bkit__` envelope — consumer-visible behaviour (v0.8.0+)
+## JSON ownership model — deep-containment (v2.0.0+)
 
-Starting v0.8.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **Tier-2 JSON deep-merge** instead of full-overwrite. bkit's managed content lives inside a `__bkit__` top-level key (the "envelope"). Consumer-added keys live **outside** `__bkit__` and survive every `bkit install` upgrade.
+Starting v2.0.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment** instead of the former `__bkit__` envelope. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` upgrade byte-identically — no special key or wrapper is required.
 
 ```json
-// .claude/settings.json (v0.8.0+)
+// .claude/settings.json (v2.0.0+)
 {
-  "__bkit__": {
-    "hooks": {
-      "SessionStart": [{ "hooks": [{ "type": "command", "command": "bash .claude/hooks/preflight.sh" }] }]
-    }
-  },
   "hooks": {
-    "SessionStart": [...],
+    "SessionStart": [
+      { "hooks": [{ "type": "command", "command": "bash .claude/hooks/preflight.sh" }] }
+    ],
     "Stop": [{ "hooks": [{ "type": "command", "command": "postflight.sh" }] }]
-  }
+  },
+  "failClosed": true
 }
 ```
 
+In this example, `hooks.SessionStart` is the bkit-declared scope (from the template). `hooks.Stop` and `failClosed` are consumer-added keys — bkit never touches them.
+
 **Rules:**
 
-- Consumer keys outside `__bkit__` survive every `bkit install` upgrade byte-identically.
-- `bkit install` updates **only** `__bkit__` on subsequent installs; consumer keys are never touched.
-- `__bkit__` is a **public contract** — once shipped (v0.8.0), the key name is stable.
+- Consumer keys outside the template tree survive every `bkit install` upgrade byte-identically.
+- `bkit install` uses `deepContains(template, consumer)` to check that every template leaf is present. On drift, it deep-merges template-wins — consumer-only siblings are preserved.
+- `bkit check` surfaces a `tier2-json-drift` advisory when `deepContains` fails; exits 0 so the consumer can review before next install.
+- `.cursor/hooks.json` uses the Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
 
-**Upgrading from v0.7.x or earlier:** `bkit install` auto-migrates existing files (no manual steps required). Consumer-added keys are preserved. Re-running is idempotent.
-
-**Rollback safety:** If a template is accidentally reverted to a pre-v0.8.0 shape (missing `__bkit__`), `bkit install` throws an explicit error instead of silently corrupting consumer files. Restore the `__bkit__` key in the template to unblock.
+**Upgrading from v0.8.0–v1.1.1 (legacy `__bkit__` envelope):** Run `pnpm bkit upgrade` after bumping to v2.0.0. bkit automatically strips the `__bkit__` block, verifies deep-containment, and logs `[bkit] migrated <file> — stripped __bkit__ envelope (v2.0.0)`. Consumer-added keys are preserved. Re-running is idempotent. See [CHANGELOG v2.0.0](./CHANGELOG.md) for full breaking-change details.
 
 ## Consumer CI auth
 
@@ -259,7 +258,7 @@ pnpm exec bkit uninstall --ci --lint
 # Also strip managed package.json scripts/devDeps
 pnpm exec bkit uninstall --package
 
-# Force-delete Tier-3 files even if consumer modified them
+# Force-delete byte-equal-text files even if consumer modified them
 pnpm exec bkit uninstall --force
 
 # Delete ALL bkit files regardless of consumer modifications (confirm prompt)
@@ -268,13 +267,13 @@ pnpm exec bkit uninstall --nuke
 pnpm exec bkit uninstall --nuke --yes
 ```
 
-### Tier semantics during uninstall
+### Format semantics during uninstall
 
-| Tier                   | Behaviour                                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tier-1 (fully managed) | Always deleted (bkit owns 100% of the file).                                                                                                                   |
-| Tier-2 (managed-block) | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
-| Tier-3 (seed-or-print) | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
+| Format            | Behaviour                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fully-managed`   | Always deleted (bkit owns 100% of the file).                                                                                                                   |
+| `markered-text`   | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
+| `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
 
 ### Idempotency
 

@@ -236,13 +236,320 @@
   {
     "workflow": "build",
     "startedAt": "2026-05-11T04:38:41Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "start-workflow",
         "status": "DONE",
         "at": "2026-05-11T04:38:43Z",
         "commitSha": "7fcb89c8f1e229402b07f2410f1640ebc4f16edf",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-11T04:41:10Z",
+        "commitSha": "015f2f0f8cdd0026f676dc84d3a188a1b3ec5237",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-input.md"
+        ]
+      },
+      {
+        "step": "branch-sync",
+        "status": "DONE",
+        "at": "2026-05-11T04:41:37Z",
+        "commitSha": "6573de9139e4e600bb667221953df940aabb61cf",
+        "artifacts": []
+      },
+      {
+        "step": "install-skills",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-11T04:43:57Z",
+        "commitSha": "2fb865f698b6aa1b3e9adae49e5d2c724b03ea62",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-install-skills.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PENDING",
+        "attempt": 1,
+        "subPlan": 1,
+        "at": "2026-05-11T05:08:25Z",
+        "commitSha": "bd90b5669fec41495cea688eeec8857f1bea1310",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "FAIL",
+        "attempt": 1,
+        "subPlan": 1,
+        "failures": 12,
+        "at": "2026-05-11T05:13:52Z",
+        "commitSha": "786489dc584207eab14323539367d4379e5ca31d",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-1.md"
+        ]
+      },
+      {
+        "step": "plan-gaps-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 1,
+        "strategy": "STANDARD",
+        "at": "2026-05-11T05:24:23Z",
+        "commitSha": "874801f57583986965fb17542deef6266abc9284",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-gaps-remediate-1-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 2,
+        "subPlan": 1,
+        "failures": 0,
+        "at": "2026-05-11T05:26:45Z",
+        "commitSha": "6a04e9a05e5a25017c57b7986f8daac277dba49e",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-1-2.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PENDING",
+        "attempt": 1,
+        "subPlan": 2,
+        "at": "2026-05-11T05:44:11Z",
+        "commitSha": "eeb8c9bce58f4549f2c799035efb4b2b190e073f",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-2-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "subPlan": 2,
+        "failures": 7,
+        "at": "2026-05-11T05:48:15Z",
+        "commitSha": "12e6160a716e11a8418502eed1a8b96222ca7ba3",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-1.md"
+        ]
+      },
+      {
+        "step": "plan-gaps-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 2,
+        "strategy": "STANDARD",
+        "at": "2026-05-11T06:00:42Z",
+        "commitSha": "899c2a4de0c0e8f15b2cf0bc2f563f8c452f4f18",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-gaps-remediate-2-1-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 2,
+        "subPlan": 2,
+        "failures": 0,
+        "at": "2026-05-11T06:02:47Z",
+        "commitSha": "7dfc1e4b5155852e627ab6d66f94a89aa6c43582",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-2-2.md"
+        ]
+      },
+      {
+        "step": "plan-execute",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 3,
+        "at": "2026-05-11T06:14:13Z",
+        "commitSha": "98713caa614f73c73f15531ddc3818dddc65190c",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-execute-3-log.md"
+        ]
+      },
+      {
+        "step": "plan-verify",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "subPlan": 3,
+        "failures": 0,
+        "at": "2026-05-11T06:18:47Z",
+        "commitSha": "162c3923210eb0abb29dc0b045751bca74a798ad",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-3-1.md"
+        ]
+      },
+      {
+        "step": "plan-verify-holistic",
+        "status": "DONE",
+        "verdict": "PASS",
+        "failures": 0,
+        "at": "2026-05-11T06:22:19Z",
+        "commitSha": "ca33d6c0ee0b69596866d6f0ac53f218180c6859",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-plan-verify-holistic.md"
+        ]
+      },
+      {
+        "step": "build-challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "failures": 6,
+        "at": "2026-05-11T06:28:13Z",
+        "commitSha": "9c57df691d645e445471c3efe38908ef6de57df4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-1.md",
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-2.md"
+        ]
+      },
+      {
+        "step": "build-challenge-reconcile",
+        "status": "DONE",
+        "verdict": "FAIL",
+        "failures": 6,
+        "at": "2026-05-11T06:35:23Z",
+        "commitSha": "cece0d37c4862d23c9bf374dcb2aee6c9e4b6819",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-reconcile.md"
+        ]
+      },
+      {
+        "step": "build-challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "strategy": "STANDARD",
+        "attempt": 1,
+        "at": "2026-05-11T06:40:11Z",
+        "commitSha": "23cb9b9de4c878a2a120775116ba13b72f571ae4",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-challenge-remediate-1-log.md"
+        ]
+      },
+      {
+        "step": "run-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "at": "2026-05-11T06:40:49Z",
+        "artifacts": []
+      },
+      {
+        "step": "build-summary",
+        "status": "DONE",
+        "verdict": "SHIP",
+        "at": "2026-05-11T06:42:14Z",
+        "commitSha": "76fee502006707868a7f7706d93b787f9b248e47",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/build-summary.md"
+        ]
+      },
+      {
+        "step": "create-pr",
+        "status": "DONE",
+        "at": "2026-05-11T06:45:52Z",
+        "artifacts": [
+          "https://github.com/cbartens/bkit/pull/20"
+        ]
+      }
+    ]
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-11T10:00:44Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "start-workflow",
+        "status": "DONE",
+        "at": "2026-05-11T10:00:45Z",
+        "commitSha": "6139a0f6a75db7cc8d6cef4163f53834b453c69f",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-11T10:00:48Z",
+        "commitSha": "70d50caa0ac69591490c7203869d522ecf3219af",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-input.md"
+        ]
+      },
+      {
+        "step": "conflict-resolve",
+        "status": "DONE",
+        "verdict": "PASS",
+        "at": "2026-05-11T10:09:21Z",
+        "commitSha": "1581a00abdfb1a273a778402d316dc5af4edf896",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-conflict-resolve.md"
+        ]
+      },
+      {
+        "step": "switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-11T10:12:32Z",
+        "commitSha": "31648c1e9324a03f5c9cc6b3ae47865319da9927",
+        "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-11T10:15:17Z",
+        "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-11T10:15:17Z",
+        "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-summary.md"
+        ]
+      },
+      {
+        "step": "archive-docs",
+        "status": "DONE",
+        "at": "2026-05-11T10:16:05Z",
+        "commitSha": "15dc0b1c5d1a6d627e5fe175d6bfb2c35c39b097",
+        "artifacts": []
+      },
+      {
+        "step": "worktree-cleanup",
+        "status": "DONE",
+        "at": "2026-05-11T10:17:03Z",
+        "commitSha": "6ab5c99d3f5617c4f538220486d8634cafed97fb",
+        "artifacts": []
+      },
+      {
+        "step": "close-workflow",
+        "status": "DONE",
+        "at": "2026-05-11T10:17:18Z",
+        "commitSha": "801212c8155526ad19d459df1ee2db5d6fa719f5",
         "artifacts": []
       }
     ]

@@ -1,3 +1,4 @@
+# bkit:start
 extends: existence
 message: "LLM slop: '%s' — rewrite in direct voice."
 level: error
@@ -9,3 +10,4 @@ tokens:
   - don't hesitate to
   - let me know if
   - let me explain
+# bkit:end

@@ -33,12 +33,12 @@ cbartens/bkit (this repo)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Tier 1/2/3 file-write primitives + writeTier2Json deep-merge
-│   ├── bkit-tier1-defaults.ts # Versioned defaults SoT (v0.5.x–v0.7.x) for Tier-1→Tier-2 migration
+│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / byte-equal-text) + deepContains/writeTier2JsonContained (v2.0.0+)
+│   │                       # bkit-tier1-defaults.ts DELETED (v2.0.0) — sole consumer migrateTier1JsonToTier2 removed (superseded by format-aware containment)
 │   ├── bkit-tokens.ts      # Token resolver (node version, pnpm major, git branch, etc.)
 │   ├── bkit-version.ts     # .bkit-version JSON schema (pinnedVersion, tier3Hashes, canonicalHashes)
 │   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + key stripping)
-│   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical Tier-1/2/3 removal
+│   ├── bkit-uninstall.ts   # `bkit uninstall` orchestrator — surgical format-aware removal
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
 │   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
@@ -61,10 +61,10 @@ pnpm bkit install [--module-flags] [--auto-revert]
     │
     ├─ Phase 2: Dispatch (writes — STAGED, v0.9.0+)
     │   ├─ Each module writes to .bkit-staging/<module>/  (atomic-rename on commit)
-    │   ├─ Tier 1 modules  → full overwrite (bkit fully owns file)
-    │   ├─ Tier 2 text     → managed-block merge (bkit owns marker region; consumer owns rest)
-    │   ├─ Tier 2 JSON     → __bkit__ envelope deep-merge (writeTier2Json; v0.8.0+)
-    │   ├─ Tier 3 modules  → seed-or-print (write only if absent; print diff otherwise)
+    │   ├─ fully-managed    → full overwrite (bkit fully owns file)
+    │   ├─ markered-text   → managed-block merge (bkit owns marker region; consumer owns rest)
+    │   ├─ json            → deep-containment merge (writeTier2JsonContained; v2.0.0+)
+    │   ├─ byte-equal-text → seed-or-print (write only if absent; print diff otherwise)
     │   └─ On any error    → discardAllStaging removes .bkit-staging/ — consumer files untouched
     │
     └─ Phase 3: Post-install re-detection + commit
@@ -82,7 +82,7 @@ CLI verbs:
 - `pnpm bkit install` — runs all three phases.
 - `pnpm bkit check` — runs only Phase 1 (read-only); exits 1 on any drift without writes.
 - `pnpm bkit doctor` (v0.6.0+) — runs Phase 1 + Phase 3 detection; never writes; always exits 0.
-- `pnpm bkit uninstall` (v0.7.0+) — surgical Tier-1 delete / Tier-2 managed-block strip / Tier-3 hash-guarded delete; `--dry-run`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
+- `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
 - `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
 ## Consumer Integration Model
@@ -92,14 +92,14 @@ Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^1.0.0" }
 ├── .npmrc                  # @cbartens:registry=npm.pkg.github.com + GH_BKIT_TOKEN ref
 ├── .bkitignore             # (optional, v0.7.0+) consumer escape hatch — picomatch globs
-├── .claude/settings.json   # Tier 2 JSON — { ...consumer, __bkit__: { ...bkitOwned } } (v0.8.0+)
-├── .cursor/hooks.json      # Tier 2 JSON — same __bkit__ envelope contract
+├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer; v2.0.0+)
+├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment (v2.0.0+)
 └── .agents/                # Populated by `pnpm bkit install`
     ├── .bkit-version       # JSON: { pinnedVersion, tier3Hashes, canonicalHashes }
-    ├── rules.md            # Tier 2 managed-block — bkit block + consumer Project section
-    ├── workflows/          # Tier 1 — bkit owns completely (bkit-*.md files)
-    ├── prompts/            # Tier 1 — bkit owns completely (bkit-*.md files)
-    └── templates/          # Tier 3 seed — bkit writes once; consumer customises after
+    ├── rules.md            # markered-text — bkit block + consumer Project section
+    ├── workflows/          # fully-managed — bkit owns completely (bkit-*.md files)
+    ├── prompts/            # fully-managed — bkit owns completely (bkit-*.md files)
+    └── templates/          # byte-equal-text seed — bkit writes once; consumer customises after
 ```
 
 IDE mirrors are regenerated by bkit from `.agents/`:

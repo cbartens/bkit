@@ -845,7 +845,10 @@ async function main() {
             const uninstallCtx = {
                 cwd: process.cwd(),
                 dryRun: false,
-                force: false,
+                // force: true — auto-revert must delete byte-equal-text files (e.g. .bkit-version)
+                // that were just written in this install run. Without force, shouldDeleteTier3 skips
+                // them when tier3Hashes has no recorded hash (newly-written file).
+                force: true,
                 nuke: false,
                 yes: true,
                 stripPackage: false,

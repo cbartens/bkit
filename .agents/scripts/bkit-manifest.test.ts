@@ -19,7 +19,7 @@ describe("getInstallManifest", () => {
     // Every entry has required fields
     for (const e of entries) {
       expect(e.path).toBeTruthy();
-      expect([1, 2, 3]).toContain(e.tier);
+      expect(["json", "markered-text", "byte-equal-text"]).toContain(e.format);
       expect(e.module).toBeTruthy();
     }
   });
@@ -39,56 +39,70 @@ describe("getInstallManifest", () => {
     expect(modules.has("core")).toBe(false);
   });
 
-  it("core manifest includes .bkit-version as tier-1", () => {
+  it("core manifest includes .bkit-version as byte-equal-text", () => {
     const entries = getInstallManifest(["core"]);
     const versionEntry = entries.find((e) => e.path.includes(".bkit-version"));
     expect(versionEntry).toBeDefined();
-    expect(versionEntry!.tier).toBe(1);
+    expect(versionEntry!.format).toBe("byte-equal-text");
   });
 
-  it("ci manifest includes ci.yml as tier-3", () => {
+  it("ci manifest includes ci.yml as byte-equal-text", () => {
     const entries = getInstallManifest(["ci"]);
     const ciEntry = entries.find((e) => e.path.includes("ci.yml"));
     expect(ciEntry).toBeDefined();
-    expect(ciEntry!.tier).toBe(3);
+    expect(ciEntry!.format).toBe("byte-equal-text");
   });
 
-  it("lint manifest includes .vale.ini as tier-3", () => {
+  it("lint manifest includes .vale.ini as byte-equal-text", () => {
     const entries = getInstallManifest(["lint"]);
     const valeEntry = entries.find((e) => e.path === ".vale.ini");
     expect(valeEntry).toBeDefined();
-    expect(valeEntry!.tier).toBe(3);
+    expect(valeEntry!.format).toBe("byte-equal-text");
   });
 
-  it("lint manifest includes .prettierignore as tier-2", () => {
+  it("lint manifest includes .prettierignore as markered-text", () => {
     const entries = getInstallManifest(["lint"]);
     const prettierEntry = entries.find((e) => e.path === ".prettierignore");
     expect(prettierEntry).toBeDefined();
-    expect(prettierEntry!.tier).toBe(2);
+    expect(prettierEntry!.format).toBe("markered-text");
   });
 
-  it("git-hooks manifest includes .husky files as tier-2", () => {
+  it("git-hooks manifest includes .husky files as markered-text", () => {
     const entries = getInstallManifest(["git-hooks"]);
     const preCommit = entries.find((e) => e.path === ".husky/pre-commit");
     const prePush = entries.find((e) => e.path === ".husky/pre-push");
     expect(preCommit).toBeDefined();
-    expect(preCommit!.tier).toBe(2);
+    expect(preCommit!.format).toBe("markered-text");
     expect(prePush).toBeDefined();
-    expect(prePush!.tier).toBe(2);
+    expect(prePush!.format).toBe("markered-text");
   });
 
-  it("cursor manifest includes hooks.json as tier-1", () => {
+  it("cursor manifest includes hooks.json as json", () => {
     const entries = getInstallManifest(["cursor"]);
     const hooksEntry = entries.find((e) => e.path === ".cursor/hooks.json");
     expect(hooksEntry).toBeDefined();
-    expect(hooksEntry!.tier).toBe(1);
+    expect(hooksEntry!.format).toBe("json");
   });
 
-  it("claude manifest includes settings.json as tier-1", () => {
+  it("claude manifest includes settings.json as json", () => {
     const entries = getInstallManifest(["claude"]);
     const settingsEntry = entries.find((e) => e.path === ".claude/settings.json");
     expect(settingsEntry).toBeDefined();
-    expect(settingsEntry!.tier).toBe(1);
+    expect(settingsEntry!.format).toBe("json");
+  });
+
+  it("lint manifest includes slop-scan.config.json as byte-equal-text", () => {
+    const entries = getInstallManifest(["lint"]);
+    const slopEntry = entries.find((e) => e.path === "slop-scan.config.json");
+    expect(slopEntry).toBeDefined();
+    expect(slopEntry!.format).toBe("byte-equal-text");
+  });
+
+  it("cursor manifest includes Dockerfile as byte-equal-text", () => {
+    const entries = getInstallManifest(["cursor"]);
+    const dockerEntry = entries.find((e) => e.path === ".cursor/Dockerfile");
+    expect(dockerEntry).toBeDefined();
+    expect(dockerEntry!.format).toBe("byte-equal-text");
   });
 });
 
@@ -111,6 +125,15 @@ describe("getModuleManifest", () => {
       const entries = getModuleManifest(m);
       for (const e of entries) {
         expect(e.module).toBe(m);
+      }
+    }
+  });
+
+  it("all entries have valid format field", () => {
+    for (const m of ALL_MODULES) {
+      const entries = getModuleManifest(m);
+      for (const e of entries) {
+        expect(["json", "markered-text", "byte-equal-text"]).toContain(e.format);
       }
     }
   });
