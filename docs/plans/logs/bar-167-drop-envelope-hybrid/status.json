@@ -508,6 +508,28 @@
         "at": "2026-05-11T10:12:32Z",
         "commitSha": "31648c1e9324a03f5c9cc6b3ae47865319da9927",
         "artifacts": []
+      },
+      {
+        "step": "update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-11T10:15:17Z",
+        "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-update-docs.md"
+        ]
+      },
+      {
+        "step": "summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-11T10:15:17Z",
+        "commitSha": "b1518fb59ae5acf0f9a95919f689905db7b5d565",
+        "artifacts": [
+          "docs/plans/logs/bar-167-drop-envelope-hybrid/ship-summary.md"
+        ]
       }
     ]
   }
