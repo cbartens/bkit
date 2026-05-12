@@ -50,35 +50,35 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[Built features, tasks completed, gates passed; initially set to `PENDING`]
+[Built features, tasks completed, gates passed; initially set to `PENDING`.]
 
 ## Implementation Quality
 
-[Per verify-plan log: code matches plan tasks? Per challenge log: architecture respected, no new violations? Per challenge-tests log: coverage adequate for changed files? Cite log paths; initially set to `PENDING`]
+[Per verify-plan log: code matches plan tasks? Per challenge log: architecture respected, no new violations? Per challenge-tests log: coverage adequate for changed files? Cite log paths; initially set to `PENDING`.]
 
 ## Verification Status
 
-[All verified? Gaps resolved? Attempt count; initially set to `PENDING`]
+[All verified? Gaps resolved? Attempt count; initially set to `PENDING`.]
 
 ## Test Status
 
-[Pass first run or fixed? What broke?; initially set to `PENDING`]
+[Pass first run or fixed? What broke?; initially set to `PENDING`.]
 
 ## Challenge
 
-[Issues? Severity? Resolved or deferred?; initially set to `PENDING`]
+[Issues? Severity? Resolved or deferred?; initially set to `PENDING`.]
 
 ## Generated Tests
 
-[Edge cases added? Bugs caught? Challenge phase skipped or no findings → "No additional tests beyond plan-mandated ones."; initially set to `PENDING`]
+[Edge cases added? Bugs caught? Challenge phase skipped or no findings → "No additional tests beyond plan-mandated ones."; initially set to `PENDING`.]
 
 ## Risks
 
-[Informational — unknowns / edge cases / integration concerns to track but no action this cycle; initially set to `PENDING`]
+[Informational — unknowns / edge cases / integration concerns to track but no action this cycle; initially set to `PENDING`.]
 
 ## Action Items
 
-[Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution before ship (distinct from Risks above); initially set to `PENDING`]
+[Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution before ship (distinct from Risks above); initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

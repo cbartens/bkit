@@ -50,35 +50,35 @@ tools:
 
 ## Acceptance Scenario
 
-[Narrative (2–3 sentences, user POV) + Success Criteria (≤5 high-level, measurable; NO tests, NO implementation) + Key Edge Cases (design-shaping only). NO Concrete Example, NO Test Matrix (expanded later); initially set to `PENDING`]
+[Narrative (2–3 sentences, user POV) + Success Criteria (≤5 high-level, measurable; NO tests, NO implementation) + Key Edge Cases (design-shaping only). NO Concrete Example, NO Test Matrix (expanded later); initially set to `PENDING`.]
 
 ## Architecture
 
-[Components, boundaries, integration points; initially set to `PENDING`]
+[Components, boundaries, integration points; initially set to `PENDING`.]
 
 ## Data Model
 
-[Schema, fields, relationships; initially set to `PENDING`]
+[Schema, fields, relationships; initially set to `PENDING`.]
 
 ## Components / Flows
 
-[UI / service / job structure as relevant; initially set to `PENDING`]
+[UI / service / job structure as relevant; initially set to `PENDING`.]
 
 ## Decisions
 
-[Table: Decided / Alternatives / Why; initially set to `PENDING`]
+[Table: Decided / Alternatives / Why; initially set to `PENDING`.]
 
 ## Approaches Considered
 
-[Table: Approach / Verdict (KEPT | REJECTED | MERGED) / Why; initially set to `PENDING`]
+[Table: Approach / Verdict (KEPT | REJECTED | MERGED) / Why; initially set to `PENDING`.]
 
 ## Trade-offs Accepted
 
-[Per chosen approach: what we gain, what we sacrifice vs alternatives; initially set to `PENDING`]
+[Per chosen approach: what we gain, what we sacrifice vs alternatives; initially set to `PENDING`.]
 
 ## Risks & Open Questions
 
-[Unknowns, dependencies, assumptions; initially set to `PENDING`]
+[Unknowns, dependencies, assumptions; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after generating design and producing output. Do NOT write plans, code.**

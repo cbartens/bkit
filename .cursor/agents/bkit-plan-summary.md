@@ -51,31 +51,31 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[What's planned to build, key tasks, gates; initially set to `PENDING`]
+[What's planned to build, key tasks, gates; initially set to `PENDING`.]
 
 ## Plan Quality
 
-[Well-scoped? Dependencies clear? Gates correct?; initially set to `PENDING`]
+[Well-scoped? Dependencies clear? Gates correct?; initially set to `PENDING`.]
 
 ## Completeness
 
-[Plan-level: scope covered? Testing adequate? Docs planned?; initially set to `PENDING`]
+[Plan-level: scope covered? Testing adequate? Docs planned?; initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` `Acceptance Scenario` spec? — terse verdict. Note unchecked human-confirmation gates as expected pre-review state, NOT a downgrade trigger; initially set to `PENDING`]
+[Adheres to `docs/plans/template.md` `Acceptance Scenario` spec? — terse verdict. Note unchecked human-confirmation gates as expected pre-review state, NOT a downgrade trigger; initially set to `PENDING`.]
 
 ## Design Alignment
 
-[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope ⊆ design scope?; initially set to `PENDING`]
+[Plan's `Acceptance Scenario` narrative + success criteria match design doc verbatim? Plan scope ⊆ design scope?; initially set to `PENDING`.]
 
 ## Risks
 
-[Unknowns, dependencies, assumptions; initially set to `PENDING`]
+[Unknowns, dependencies, assumptions; initially set to `PENDING`.]
 
 ## Action Items
 
-[Only if `CONCERNS`/`FAIL` — specific revisions needed before building; initially set to `PENDING`]
+[Only if `CONCERNS`/`FAIL` — specific revisions needed before building; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

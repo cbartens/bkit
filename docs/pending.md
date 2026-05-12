@@ -170,6 +170,17 @@
 - **Source:** phase
 - **Related:** BAR-167, DE-18, `.agents/templates/.cursor/hooks.json`
 
+## Enable `main` branch protection ruleset on `cbartens/bkit` (2026-05-12)
+
+- **Type:** issue
+- **Category:** infra
+- **Severity:** normal
+- **Status:** deferred
+- **Description:** `main` currently has no GitHub-side protection — both classic branch protection (`repos/.../branches/main/protection`) and rulesets (`repos/.../rulesets`) return `403 Upgrade to GitHub Pro or make this repository public`. Dev→main PR flow is enforced only by bkit workflow discipline, not by GitHub. Apply the ruleset once the repo is either made public or upgraded to GitHub Pro. Ruleset JSON staged at `/tmp/main-ruleset.json`: target `refs/heads/main`, enforcement `active`, rules = `deletion` + `non_fast_forward` + `pull_request` (1 approval, no stale-dismiss, no code-owner, no last-push-approval, no thread resolution) + `required_status_checks` (non-strict, context `run-tests`), zero bypass actors. CI job name `run-tests` already matches (`.github/workflows/ci.yml`). Apply with `gh api -X POST repos/cbartens/bkit/rulesets --input /tmp/main-ruleset.json`.
+- **Workaround:** Agents follow bkit workflow rules — never push directly to `main`; PRs always base=main head=dev (or feature→dev→main); humans approve+merge; surface PR URL and stop if blocked.
+- **Source:** human
+- **Related:** `.github/workflows/ci.yml`
+
 ## BAR-167 Phase 2 — indented YAML marker drift detection not implemented (2026-05-11)
 
 - **Type:** issue

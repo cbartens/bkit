@@ -54,35 +54,35 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[Problem, approach, key decisions; initially set to `PENDING`]
+[Problem, approach, key decisions; initially set to `PENDING`.]
 
 ## Design Quality
 
-[Well-reasoned? Trade-off gaps? Missing edge cases?; initially set to `PENDING`]
+[Well-reasoned? Trade-off gaps? Missing edge cases?; initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` § Acceptance Scenario → Spec? Missing/vague → CONCERNS + concrete action items; initially set to `PENDING`]
+[Adheres to `docs/plans/template.md` § Acceptance Scenario → Spec? Missing/vague → CONCERNS + concrete action items; initially set to `PENDING`.]
 
 ## Feasibility
 
-[Spike matches design? Spike `FAIL` → lead with that; initially set to `PENDING`]
+[Spike matches design? Spike `FAIL` → lead with that; initially set to `PENDING`.]
 
 ## Synthesis Coverage
 
-[Brainstorms proposed N approaches; synthesis kept M; dropped which/why. Reasonable, or did good options get lost?; initially set to `PENDING`]
+[Brainstorms proposed N approaches; synthesis kept M; dropped which/why. Reasonable, or did good options get lost?; initially set to `PENDING`.]
 
 ## Risks
 
-[Unknowns, dependencies, assumptions; initially set to `PENDING`]
+[Unknowns, dependencies, assumptions; initially set to `PENDING`.]
 
 ## Scope
 
-[Creep vs original brief; initially set to `PENDING`]
+[Creep vs original brief; initially set to `PENDING`.]
 
 ## Action Items
 
-[Only if `CONCERNS`/`FAIL` — specific revisions needed before planning; initially set to `PENDING`]
+[Only if `CONCERNS`/`FAIL` — specific revisions needed before planning; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

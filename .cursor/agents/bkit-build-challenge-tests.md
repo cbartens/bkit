@@ -52,11 +52,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 # Build Challenge Testing
 
-[Brief: which edge-case tests were added and what they cover; initially set to `PENDING`]
+[Brief: which edge-case tests were added and what they cover; initially set to `PENDING`.]
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None; initially set to `PENDING`]
+[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None; initially set to `PENDING`.]
 
 ## Bugs Discovered
 

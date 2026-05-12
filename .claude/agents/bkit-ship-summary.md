@@ -54,15 +54,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[Lines changed, files touched, key changes; initially set to `PENDING`]
+[Lines changed, files touched, key changes; initially set to `PENDING`.]
 
 ## CI Status
 
-[Green first attempt → "Green, no retries." Else: retries / what broke / fixed / link to failing runs; initially set to `PENDING`]
+[Green first attempt → "Green, no retries." Else: retries / what broke / fixed / link to failing runs; initially set to `PENDING`.]
 
 ## Action Items
 
-[Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). "None" if pure clean ship; initially set to `PENDING`]
+[Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). "None" if pure clean ship; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**
