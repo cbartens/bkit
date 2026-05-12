@@ -15,6 +15,7 @@ bkit-ci-router — new autonomous routing workflow that closes the manual gap be
 See: docs/plans/active/bar-148-option-1-plan.md
 
 Five phases:
+
 - Phase A: Templates and source artifacts (A1–A9)
 - Phase B: Installer module wiring (B1–B4)
 - Phase C: Tests covering 18-row derived test matrix (C1a–C9g)

@@ -111,6 +111,7 @@
 - **Related:** BAR-148, DE-14
 
 ## BAR-155 deferred — `task-range` parameter for `bkit-build-plan-execute` (2026-05-09)
+
 ## MAX_DEBUG_ATTEMPT default reconsideration in light of auto-routing (2026-05-09)
 
 - **Type:** feature

@@ -150,6 +150,7 @@ Root cause of the misclassification: the orchestrator's continuation prompt expl
 - **Suggested fix:** Add explicit "you MUST complete and write the full verdict before returning" instruction to plan-verify prompt.
 - **Related:** bar-136-ws11-summary-email, BAR-136
 - **Recovery:** Overwrite PENDING file and re-invoke subagent for same VERIFY_ATTEMPT=1.
+
 ## bkit-build-challenge subagent budget exhaustion (BAR-93 re-run) (2026-05-08)
 
 - **Repo:** app-gether-life

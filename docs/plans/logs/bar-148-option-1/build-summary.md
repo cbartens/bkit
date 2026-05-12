@@ -11,6 +11,7 @@ BAR-148 bkit-ci-router implementation completed end-to-end. The feature adds an 
 **Built features:** All 18 test-matrix rows (A1–A9 templates/artifacts, B1–B4 installer module wiring, C1a–C9g test coverage across 27 test files, D1–D7 documentation updates, E1–E3 mirror regen). Phases A–E completed per plan specification. Plan literal text substituted `bkit-design.md` for missing `bkit-review.md` (5 orchestrators exist: plan, build, ship, debug, design); substitution documented in checklist and execute log, internal consistency verified.
 
 **Gates passed:**
+
 - Gate 1 (human acceptance): `👤 Acceptance Scenario confirmed [x]`, `👤 Breaking Changes confirmed [x]`
 - Gate 2 (implementation): 47 checklist tasks verified complete against codebase
 - Gate 3 (documentation): All D1–D7 tasks verified; `.agents/docs.md` remains accurate
@@ -19,6 +20,7 @@ BAR-148 bkit-ci-router implementation completed end-to-end. The feature adds an 
 ## Implementation Quality
 
 Per `/docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md`: all Phase A–E artifacts verified against codebase:
+
 - A1–A3: Templates (router YAML + orchestrator `.md`) created; YAML valid, orchestrator has all 7 steps with gates/Failure Path
 - A4–A8: Schema propagation (Path A): all 5 orchestrators write `issueId`/`commentId` to `status.json` at Start Workflow; router Step 1 reads these fields
 - B1–B4: Installer module `runAutoModule` wired into module registry/dispatch order (position: after `ci`, before `lint`); canonical hashes recording active
@@ -35,6 +37,7 @@ Per `/docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md`: all Phase A–
 ## Verification Status
 
 All verified. Gaps from previous build cycle (debug attempt 1) resolved:
+
 - **FID directory-scan orphaned bug (prior CRITICAL):** Fully eradicated. All three files (canonical, claude mirror, cursor mirror) now use sed-based branch-prefix-strip `FID=$(echo "$BRANCH" | sed 's|^feat/||')`. No alphabetical directory-scan remains anywhere in repo.
 - **Stale-cursor-mirror drift (prior CRITICAL):** Fixed by adding `.cursor/commands/bkit-ci-router.md` to `ROUTER_FILES` regression test array (C1 phase finding F1). Test now iterates all 3 files; cursor mirror is in the verification loop.
 - **Silent-skip test masking (prior finding F2):** Fixed by replacing conditional skips in C3 `bkit-install.integration.test.ts` with unconditional assertions. Test now fails if `runAutoModule` regresses.
@@ -44,6 +47,7 @@ All verified. Gaps from previous build cycle (debug attempt 1) resolved:
 ## Test Status
 
 **All tests pass, first run after fixes.** Test results:
+
 - `pnpm test`: 27 test files, 814 tests (813 pass + 1 todo), 0 failures
 - `pnpm typecheck`: clean output, zero errors
 - `pnpm lint`: no errors reported in build logs
@@ -54,11 +58,13 @@ No test rework required post-fix. Verification run confirmed fixes (F1 cursor mi
 
 Two findings during build-challenge (attempt 0, verdict CONCERNS):
 
-**F1 — MEDIUM — Cursor mirror regression-test gap (mechanical).** Root: `ROUTER_FILES` array in `release-workflow.test.ts` contained only canonical + claude mirror, not cursor. Cursor mirror could drift silently. 
+**F1 — MEDIUM — Cursor mirror regression-test gap (mechanical).** Root: `ROUTER_FILES` array in `release-workflow.test.ts` contained only canonical + claude mirror, not cursor. Cursor mirror could drift silently.
+
 - **Status:** RESOLVED. Added `.cursor/commands/bkit-ci-router.md` entry to array. Test now covers all 3 files with 21 total assertions (7 per file).
 - **Remediation verified:** build-challenge-tests.md confirms 21 assertions executing; cursor mirror now in loop.
 
 **F2 — LOW — C3 test silent-skip branches (mechanical).** Root: two conditional `if (!fs.existsSync(...)) return;` branches in `bkit-install.integration.test.ts` masked regressions in `runAutoModule` or `recordCanonicalHash`.
+
 - **Status:** RESOLVED. Replaced both conditionals with unconditional `expect(fs.existsSync(...)).toBe(true)` assertions. Test now fails if template/hash-record path breaks.
 - **Remediation verified:** build-challenge-tests.md reports 4 new unconditional expects. Any regression to `runAutoModule` now causes test failure.
 
@@ -67,6 +73,7 @@ Two findings during build-challenge (attempt 0, verdict CONCERNS):
 ## Generated Tests
 
 No new test files added this cycle. The 18 test-matrix rows were implemented during plan-execute phase (Phase C) across existing test infrastructure:
+
 - Unit tests: `bkit-modules.test.ts` (C1a/C1b/C1c), `bkit-action-yaml.test.ts` (C5/C5b), `templates.test.ts` (C6), `release-workflow.test.ts` (C7-C9g)
 - Integration tests: `bkit-modules.integration.test.ts` (C2), `bkit-install.integration.test.ts` (C3), `bkit-dry-run-parity.integration.test.ts` (C4)
 

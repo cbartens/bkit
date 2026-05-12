@@ -47,9 +47,18 @@ Re-probe (attempt 2) of BAR-148 Option 1 implementation post-3rd-fix-cycle. Call
 
   ```ts
   const ROUTER_FILES = [
-    { label: ".agents/workflows/bkit-ci-router.md (canonical)", filePath: path.resolve(".agents/workflows/bkit-ci-router.md") },
-    { label: ".claude/commands/bkit-ci-router.md (mirror)",      filePath: path.resolve(".claude/commands/bkit-ci-router.md") },
-    { label: ".cursor/commands/bkit-ci-router.md (mirror)",      filePath: path.resolve(".cursor/commands/bkit-ci-router.md") },
+    {
+      label: ".agents/workflows/bkit-ci-router.md (canonical)",
+      filePath: path.resolve(".agents/workflows/bkit-ci-router.md"),
+    },
+    {
+      label: ".claude/commands/bkit-ci-router.md (mirror)",
+      filePath: path.resolve(".claude/commands/bkit-ci-router.md"),
+    },
+    {
+      label: ".cursor/commands/bkit-ci-router.md (mirror)",
+      filePath: path.resolve(".cursor/commands/bkit-ci-router.md"),
+    },
   ];
   ```
 
@@ -92,7 +101,9 @@ Re-probe (attempt 2) of BAR-148 Option 1 implementation post-3rd-fix-cycle. Call
   expect(fs.existsSync(versionFile)).toBe(true);
 
   const bkitVersion = readBkitVersion(versionFile);
-  const routerKey = Object.keys(bkitVersion?.canonicalHashes ?? {}).find((k) => k.includes("bkit-ci-router.yml"));
+  const routerKey = Object.keys(bkitVersion?.canonicalHashes ?? {}).find((k) =>
+    k.includes("bkit-ci-router.yml"),
+  );
   expect(routerKey).toBeDefined();
   expect(bkitVersion?.canonicalHashes?.[routerKey!]).toMatch(/^[0-9a-f]{64}$/);
   expect(fs.existsSync(path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"))).toBe(true);
@@ -100,7 +111,7 @@ Re-probe (attempt 2) of BAR-148 Option 1 implementation post-3rd-fix-cycle. Call
 
 ## Notes (informational, not findings)
 
-- **Router strict-`commentId` precondition couples to upstream best-effort `save_comment` (architectural).** Step 1 sub-step 4 raises Failure Path if `.[-1].commentId == ""`. But sub-step 7 then calls `save_comment({ issueId, body })` to CREATE a new comment anyway (capturing the new id into `{COMMENT_ID}`), so the upstream `commentId` is not actually consumed for any append. If upstream's `save_comment` retry-once-then-continue policy left `commentId` empty, the router refuses to dispatch — even though it could have functioned without the upstream commentId. This couples router liveness to upstream Linear API success, contradicting the plan's stated "save_* is best-effort; NEVER gate" rule (line 23). Out of mechanical scope; flag for follow-up plan if observed in production.
+- **Router strict-`commentId` precondition couples to upstream best-effort `save_comment` (architectural).** Step 1 sub-step 4 raises Failure Path if `.[-1].commentId == ""`. But sub-step 7 then calls `save_comment({ issueId, body })` to CREATE a new comment anyway (capturing the new id into `{COMMENT_ID}`), so the upstream `commentId` is not actually consumed for any append. If upstream's `save_comment` retry-once-then-continue policy left `commentId` empty, the router refuses to dispatch — even though it could have functioned without the upstream commentId. This couples router liveness to upstream Linear API success, contradicting the plan's stated "save\_\* is best-effort; NEVER gate" rule (line 23). Out of mechanical scope; flag for follow-up plan if observed in production.
 - **GHA pwn-request surface (architectural — same as prior challenge).** `bkit-ci-router.yml` triggers on `workflow_run`, then `actions/checkout@v4 with ref: ${{ github.event.workflow_run.head_sha }}` checks out the head SHA (potentially attacker-controlled if a fork PR triggered upstream CI), then `pnpm install --frozen-lockfile` executes lifecycle scripts, all in a context where `ANTHROPIC_API_KEY` and `GH_BKIT_TOKEN` secrets are available BEFORE any label gate runs (label gate is Step 3 of the orchestrator, executed inside `claude-code-action@v1`, which runs AFTER `pnpm install`). Mitigations: `feat/**` branch filter is convention-only; `frozen-lockfile` blocks dep-tampering but not lifecycle scripts. Defending requires architectural changes (e.g., move `actions/checkout` until after a label-gate job that uses a different runner context, or `pnpm install --ignore-scripts`, or `pull_request_target` patterns). Out of scope for current cycle.
 - **FID format validation gap (LOW — informational, not exploitable in practice).** Router accepts any branch matching `^feat/.+`; FID = `$BRANCH` minus `feat/` prefix. Upstream `bkit-build.md:97` enforces `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`, but the router's branch-derived FID has only the empty/equality guards. Git refname rules block `..` and most metacharacters, so path-traversal is not exploitable, but a malformed branch (e.g. `feat/UPPERCASE`) would yield a FID that doesn't match the canonical pattern; subsequent file-existence checks would fail naturally. Defense-in-depth only; not in scope.
 - **Stale-run guard variable mismatch (LOW — informational, same as prior).** Step 4 compares `gh run list --branch ... --limit 1`'s `headSha` against `gh pr view`'s `headRefOid`. The intent ("is THIS router invocation for a stale SHA?") would be more directly satisfied by `CI_RUN_HEAD_SHA == PR_HEAD_SHA`. Functionally OK because `cancel-in-progress: true` mitigates the race window, but the variable choice still doesn't directly express the intent. Out of scope.

@@ -114,9 +114,7 @@
         "status": "DONE",
         "at": "2026-05-09T00:26:59Z",
         "commitSha": "5b76764e94ed406ec86143a53de372d535cc39dc",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -131,9 +129,7 @@
         "attempt": 1,
         "at": "2026-05-09T00:29:23Z",
         "commitSha": "d7b4ad8290b50c40b607359bc15f99c767aed46e",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -143,9 +139,7 @@
         "subPlan": 1,
         "at": "2026-05-09T00:47:00Z",
         "commitSha": "06511c1cecc9ea07fe2a9b8c664467105c0f061d",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"]
       },
       {
         "step": "plan-verify",
@@ -156,9 +150,7 @@
         "failures": 0,
         "at": "2026-05-09T00:51:44Z",
         "commitSha": "c2538202f4121559597af14c7cd696dd645da1d9",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"]
       },
       {
         "step": "build-challenge",
@@ -168,9 +160,7 @@
         "failures": 1,
         "at": "2026-05-09T00:58:55Z",
         "commitSha": "2b6f10c430a3fecf5fcb8463e32c8ed6fd99d948",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge.md"]
       },
       {
         "step": "build-challenge-remediate",
@@ -179,9 +169,7 @@
         "attempt": 1,
         "at": "2026-05-09T01:01:24Z",
         "commitSha": "8a3e0febbfeea0f3961b594501b057f53d08a7c3",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"]
       },
       {
         "step": "build-challenge-tests",
@@ -190,9 +178,7 @@
         "attempt": 1,
         "at": "2026-05-09T01:03:13Z",
         "commitSha": "4dd07d8b8247483cdcfdcb67ad70a8f01fe971a1",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-tests.md"]
       },
       {
         "step": "build-challenge",
@@ -202,9 +188,7 @@
         "failures": 1,
         "at": "2026-05-09T01:12:03Z",
         "commitSha": "8e1c805957b3b7e607b2eb59e13e205e86a5ad0f",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge.md"]
       }
     ]
   },
@@ -225,9 +209,7 @@
         "status": "DONE",
         "at": "2026-05-09T01:28:16Z",
         "commitSha": "2a3832b53aea44b0351d400360a06046df1f8754",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/debug-input-0.md"
-        ],
+        "artifacts": ["docs/plans/logs/bar-148-option-1/debug-input-0.md"],
         "debugMode": "local",
         "observeMode": "off"
       },
@@ -239,9 +221,7 @@
         "strategy": "STANDARD",
         "at": "2026-05-09T01:31:30Z",
         "commitSha": "7ce94713083bea29d31f12d772f177faf632612a",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/debug-failure-diagnose-0.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/debug-failure-diagnose-0.md"]
       },
       {
         "step": "failure-remediate",
@@ -250,9 +230,7 @@
         "attempt": 0,
         "at": "2026-05-09T01:38:10Z",
         "commitSha": "94480f9142294a0866c7891ba12292351234cf87",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/debug-failure-remediate-0-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/debug-failure-remediate-0-log.md"]
       },
       {
         "step": "run-tests",
@@ -279,9 +257,7 @@
         "attempt": 1,
         "at": "2026-05-09T01:41:14Z",
         "commitSha": "35adffd2e5f9dcebb8b5b4381fa7c9f40abeec3f",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/debug-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/debug-summary.md"]
       },
       {
         "step": "close-workflow",
@@ -310,9 +286,7 @@
         "status": "DONE",
         "at": "2026-05-09T02:10:56Z",
         "commitSha": "597a560149952a8963150960542ea2d66f37aeac",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -327,9 +301,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:12:47Z",
         "commitSha": "0e7df2ad34644446289e3ef11a1045d1e0a38499",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -339,9 +311,7 @@
         "subPlan": 1,
         "at": "2026-05-09T02:14:47Z",
         "commitSha": "d7bfba7d88bd5aed93343baaca1dc0fe125a18fd",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"]
       },
       {
         "step": "plan-verify",
@@ -352,9 +322,7 @@
         "failures": 0,
         "at": "2026-05-09T02:17:26Z",
         "commitSha": "70b3103502badc6646d8872713a8f1ce952fa884",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"]
       },
       {
         "step": "build-challenge",
@@ -364,9 +332,7 @@
         "failures": 1,
         "at": "2026-05-09T02:22:14Z",
         "commitSha": "359ecbf4ff1af5e1f695d6b64352f7885850d4bb",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge.md"]
       },
       {
         "step": "build-challenge-remediate",
@@ -375,9 +341,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:33:06Z",
         "commitSha": "4e956181c4fc5ed89151b900094b753da25d59b3",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"]
       },
       {
         "step": "build-challenge-tests",
@@ -386,9 +350,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:36:18Z",
         "commitSha": "347aaa9aefecc1f1ef88971904945f320a080e93",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-tests.md"]
       },
       {
         "step": "build-challenge",
@@ -398,9 +360,7 @@
         "failures": 1,
         "at": "2026-05-09T02:41:57Z",
         "commitSha": "5398e820c943ee096dad394f410ce7c26accbace",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge.md"]
       }
     ]
   },
@@ -421,9 +381,7 @@
         "status": "DONE",
         "at": "2026-05-09T02:46:23Z",
         "commitSha": "ba3ae217261cf46593dbc37ba6de4ad789382bf7",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-input.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-input.md"]
       },
       {
         "step": "branch-sync",
@@ -438,9 +396,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:46:23Z",
         "commitSha": "ba3ae217261cf46593dbc37ba6de4ad789382bf7",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-install-skills.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-install-skills.md"]
       },
       {
         "step": "plan-execute",
@@ -450,9 +406,7 @@
         "subPlan": 1,
         "at": "2026-05-09T02:46:23Z",
         "commitSha": "ba3ae217261cf46593dbc37ba6de4ad789382bf7",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-execute-1-log.md"]
       },
       {
         "step": "plan-verify",
@@ -463,9 +417,7 @@
         "failures": 0,
         "at": "2026-05-09T02:46:23Z",
         "commitSha": "ba3ae217261cf46593dbc37ba6de4ad789382bf7",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-plan-verify-1-1.md"]
       },
       {
         "step": "build-challenge",
@@ -475,9 +427,7 @@
         "failures": 2,
         "at": "2026-05-09T02:51:55Z",
         "commitSha": "62182719e8511df7ad89940e49a050d8f7ef8058",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge.md"]
       },
       {
         "step": "build-challenge-remediate",
@@ -486,9 +436,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:54:09Z",
         "commitSha": "dc765b06a33e6643e6cbd92f108c190b39be32d0",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-remediate-log.md"]
       },
       {
         "step": "build-challenge-tests",
@@ -497,9 +445,7 @@
         "attempt": 1,
         "at": "2026-05-09T02:56:05Z",
         "commitSha": "ca37c7e751181d8e4ad22fb9a6f0a8605f0bc20a",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-challenge-tests.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-challenge-tests.md"]
       },
       {
         "step": "run-tests",
@@ -518,18 +464,14 @@
         "attempt": 1,
         "at": "2026-05-09T02:58:24Z",
         "commitSha": "9cd6b5bbb715b5348387c2541409acf78147decc",
-        "artifacts": [
-          "docs/plans/logs/bar-148-option-1/build-summary.md"
-        ]
+        "artifacts": ["docs/plans/logs/bar-148-option-1/build-summary.md"]
       },
       {
         "step": "create-pr",
         "status": "DONE",
         "at": "2026-05-09T02:58:53Z",
         "commitSha": "546e6639a08808866dc2bdb78cdd896c0769dc24",
-        "artifacts": [
-          "https://github.com/cbartens/bkit/pull/12"
-        ]
+        "artifacts": ["https://github.com/cbartens/bkit/pull/12"]
       },
       {
         "step": "close-workflow",

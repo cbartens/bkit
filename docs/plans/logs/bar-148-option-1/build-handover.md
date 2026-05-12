@@ -14,10 +14,10 @@ The BAR-148 bkit-ci-router feature is built and tested, but one ordering bug in 
 
 ## Attempt History
 
-| # | Strategy | What was tried | Why it failed |
-|---|---|---|---|
-| 0 | STANDARD | Challenge Run 1: checked C9f test and all 5 orchestrators for correctness | Found C9f test used `.not.toContain("MAX_DEBUG_ATTEMPT")` which would false-fail because prose mentions the constant. Also flagged the `commentId` ordering bug (F1) as CRITICAL. |
-| 1 | PIVOT | Remediation: fixed C9f test at `release-workflow.test.ts:412-416` — replaced the string-contains assertion with two regex assertions targeting only shell variable expansions and comparisons | C9f fix was correct and verified. F1 (commentId ordering) was not remediated — it was identified as the next required fix, but the build-challenge re-run confirmed it as the sole blocker. |
+| #   | Strategy | What was tried                                                                                                                                                                                | Why it failed                                                                                                                                                                               |
+| --- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | STANDARD | Challenge Run 1: checked C9f test and all 5 orchestrators for correctness                                                                                                                     | Found C9f test used `.not.toContain("MAX_DEBUG_ATTEMPT")` which would false-fail because prose mentions the constant. Also flagged the `commentId` ordering bug (F1) as CRITICAL.           |
+| 1   | PIVOT    | Remediation: fixed C9f test at `release-workflow.test.ts:412-416` — replaced the string-contains assertion with two regex assertions targeting only shell variable expansions and comparisons | C9f fix was correct and verified. F1 (commentId ordering) was not remediated — it was identified as the next required fix, but the build-challenge re-run confirmed it as the sole blocker. |
 
 ## Verified Resolutions (DO NOT ROLL BACK)
 
@@ -37,13 +37,13 @@ All five orchestrators write `commentId` into `status.json` before the `save_com
 
 Exact locations (status-init line number vs. `save_comment` line number):
 
-| Orchestrator | Status init (commentId written) | `save_comment` (ID resolved) |
-|---|---|---|
-| `.agents/workflows/bkit-build.md` | line 103-104 | line 115 |
-| `.agents/workflows/bkit-debug.md` | line 113-114 | line 126 |
-| `.agents/workflows/bkit-plan.md` | line 83-84 | line 95 |
-| `.agents/workflows/bkit-design.md` | line 82-83 | line 94 |
-| `.agents/workflows/bkit-ship.md` | line 102-103 | line 114 |
+| Orchestrator                       | Status init (commentId written) | `save_comment` (ID resolved) |
+| ---------------------------------- | ------------------------------- | ---------------------------- |
+| `.agents/workflows/bkit-build.md`  | line 103-104                    | line 115                     |
+| `.agents/workflows/bkit-debug.md`  | line 113-114                    | line 126                     |
+| `.agents/workflows/bkit-plan.md`   | line 83-84                      | line 95                      |
+| `.agents/workflows/bkit-design.md` | line 82-83                      | line 94                      |
+| `.agents/workflows/bkit-ship.md`   | line 102-103                    | line 114                     |
 
 In each file, the `jq` block uses `--arg cid "{COMMENT_ID}"` to write `commentId` into the initial status entry. At that point `{COMMENT_ID}` is an unresolved placeholder (value: empty string). The `save_comment` call that returns and captures the real `{COMMENT_ID}` comes 2 sub-steps later and never writes back.
 

@@ -1,6 +1,7 @@
 # Debug Input — bar-148-option-1 — Attempt 0
 
 ## Session Parameters
+
 - **Debug:** local
 - **Observe:** off
 - **Attempt:** 0
@@ -32,6 +33,7 @@ Exact locations:
 ## Recommended Fix (from build-handover.md)
 
 **Option 3 (split write + C8 ordering test):**
+
 1. Split the status-init write into two `jq` passes in all 5 orchestrators: first pass writes the initial entry without `commentId` (or with `commentId: ""`), second pass immediately after `save_comment` patches `commentId` with the real value.
 2. Extend `release-workflow.test.ts` C8 to assert that the `save_comment` line index < `commentId`-write line index in each orchestrator.
 
@@ -41,13 +43,17 @@ Exact locations:
 - All Phase A–E build work: templates, installer module, tests C1a–C9g, docs D1–D7, mirror regen — all complete and committed.
 
 ## CI Logs
+
 N/A (DEBUG_MODE=local)
 
 ## Plan
+
 `docs/plans/active/bar-148-option-1-plan.md`
 
 ## Issue Description
+
 See BAR-148 Linear issue — bkit-ci-router feature implementing auto-routing from CI completion to bkit-ship or bkit-debug via claude-code-action.
 
 ## Prior Comments
+
 See Linear issue BAR-148 comments — build workflow comment (id: 6f232e86-3acb-48dc-b403-b52bc353c3e2) contains full build history and handover.

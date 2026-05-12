@@ -14,10 +14,10 @@ This is debug attempt 0; no prior debug diagnoses or remediations exist.
 
 Prior build-challenge history (from `status.json` and `build-handover.md`):
 
-| # | Strategy | Tried | Result |
-|---|---|---|---|
-| 0 | STANDARD | Build Challenge attempt 0 — flagged C9f false-fail (`.not.toContain("MAX_DEBUG_ATTEMPT")` matches prose) AND F1 (commentId ordering) as CRITICAL. | FAIL — 1 critical (C9f), 1 critical (F1). |
-| 1 | PIVOT (remediate C9f) | Build Challenge Remediate — replaced C9f assertion with two regex assertions (`/\$\{?MAX_DEBUG_ATTEMPT\}?/` and `/MAX_DEBUG_ATTEMPT\s*[<>=!-]/`). Tests passed. F1 deliberately deferred to debug workflow. | C9f PASS (commit `8a3e0febbfeea0f3961b594501b057f53d08a7c3`); re-run challenge attempt 1 confirmed F1 as sole remaining blocker. |
+| #   | Strategy              | Tried                                                                                                                                                                                                       | Result                                                                                                                           |
+| --- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | STANDARD              | Build Challenge attempt 0 — flagged C9f false-fail (`.not.toContain("MAX_DEBUG_ATTEMPT")` matches prose) AND F1 (commentId ordering) as CRITICAL.                                                           | FAIL — 1 critical (C9f), 1 critical (F1).                                                                                        |
+| 1   | PIVOT (remediate C9f) | Build Challenge Remediate — replaced C9f assertion with two regex assertions (`/\$\{?MAX_DEBUG_ATTEMPT\}?/` and `/MAX_DEBUG_ATTEMPT\s*[<>=!-]/`). Tests passed. F1 deliberately deferred to debug workflow. | C9f PASS (commit `8a3e0febbfeea0f3961b594501b057f53d08a7c3`); re-run challenge attempt 1 confirmed F1 as sole remaining blocker. |
 
 Verified resolutions to PRESERVE (do not roll back): C9f regex fix at `.agents/scripts/release-workflow.test.ts:417-418`; all Phase A–E build artefacts (templates, installer, tests C1a–C9g, docs D1–D7, mirror regen).
 
@@ -29,13 +29,13 @@ In each of the five existing workflow orchestrators, the `jq` block that initial
 
 Verified line numbers (read directly from each file):
 
-| File | Status-init `jq` block (writes empty `commentId`) | `save_comment` (resolves `{COMMENT_ID}`) |
-|---|---|---|
-| `.agents/workflows/bkit-build.md` | lines 99–113 (specifically `--arg cid "{COMMENT_ID}"` at line 103) | line 115 |
-| `.agents/workflows/bkit-debug.md` | lines 108–124 (specifically `--arg cid "{COMMENT_ID}"` at line 113) | line 126 |
-| `.agents/workflows/bkit-plan.md` | lines 78–92 (specifically `--arg cid "{COMMENT_ID}"` at line 83) | line 95 |
-| `.agents/workflows/bkit-design.md` | lines 77–91 (specifically `--arg cid "{COMMENT_ID}"` at line 82) | line 94 |
-| `.agents/workflows/bkit-ship.md` | lines 97–111 (specifically `--arg cid "{COMMENT_ID}"` at line 102) | line 114 |
+| File                               | Status-init `jq` block (writes empty `commentId`)                   | `save_comment` (resolves `{COMMENT_ID}`) |
+| ---------------------------------- | ------------------------------------------------------------------- | ---------------------------------------- |
+| `.agents/workflows/bkit-build.md`  | lines 99–113 (specifically `--arg cid "{COMMENT_ID}"` at line 103)  | line 115                                 |
+| `.agents/workflows/bkit-debug.md`  | lines 108–124 (specifically `--arg cid "{COMMENT_ID}"` at line 113) | line 126                                 |
+| `.agents/workflows/bkit-plan.md`   | lines 78–92 (specifically `--arg cid "{COMMENT_ID}"` at line 83)    | line 95                                  |
+| `.agents/workflows/bkit-design.md` | lines 77–91 (specifically `--arg cid "{COMMENT_ID}"` at line 82)    | line 94                                  |
+| `.agents/workflows/bkit-ship.md`   | lines 97–111 (specifically `--arg cid "{COMMENT_ID}"` at line 102)  | line 114                                 |
 
 These line numbers match the build-handover.md table exactly (the handover cites the `--arg cid` line specifically).
 
@@ -46,6 +46,7 @@ C8 tests at `.agents/scripts/release-workflow.test.ts:285-313` did NOT catch thi
 **Proximate cause (mechanical):** Each orchestrator interpolates `{COMMENT_ID}` into the status-init `jq` invocation before the in-session `save_comment` call has produced a value. Because `status.json` is written via `mv` (atomic), and never re-patched after `save_comment`, the empty placeholder is the value that lives on disk and is consumed by the router.
 
 **Design fragility:** The Path A schema enhancement (`status.json` carries `issueId` + `commentId`) was retro-fitted into the existing pre-`save_comment` status-init block. `issueId` happens to work because `{ISSUE_ID}` is resolved much earlier (Step 4 in every orchestrator: `get_issue` or `save_issue` returns `id`). `commentId` does not work because `save_comment` is intentionally placed AFTER the status-init commit (the comment is the user-facing artefact for the start-workflow step, posted only once the workflow entry is committed). Two non-trivial constraints collide:
+
 1. The status-init must commit before `save_comment` so the comment can link to the committed `status.json`.
 2. The router consumer requires `commentId` populated in the same `status.json` it reads.
 
@@ -100,6 +101,7 @@ In `.agents/scripts/release-workflow.test.ts`, after the existing C8 block at li
 - The character index of the LAST `--arg cid` (or `commentId =` / `commentId:$cid`) usage in the file is GREATER THAN the character index of the first `save_comment(` literal — i.e., the resolved `commentId` is written AFTER `save_comment` resolves it.
 
 Skeleton pseudocode:
+
 ```ts
 it(`${name} writes commentId AFTER save_comment captures it`, () => {
   const filePath = path.resolve(`.agents/workflows/${name}`);
@@ -159,6 +161,7 @@ pnpm turbo lint typecheck test --filter='...[origin/dev]'
 ```
 
 Expected outcomes:
+
 - Step 1 / 2: in each orchestrator, the `save_comment` line number must be LESS than the line containing `--arg cid "{COMMENT_ID}"` or `.[-1].commentId = $cid`.
 - Step 3: all C8 cases (including the new ordering assertion) PASS; the existing C9f assertions remain green.
 - Step 4: all lint/typecheck/test green.

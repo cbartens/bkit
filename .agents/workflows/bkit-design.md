@@ -96,6 +96,7 @@ description: "Design Feature — Autonomous design phase"
 6. **If** existing `docs/plans/drafts/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
 8. Update status and commit:
+
    ```bash
    STATUS="docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
@@ -112,11 +113,11 @@ description: "Design Feature — Autonomous design phase"
    git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
    ```
 
-11. Patch `commentId` now that `{COMMENT_ID}` is resolved:
-    ```bash
-    t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
-    git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
-    ```
+9. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+   ```bash
+   t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"
+   ```
 
 ### 🔒 Gate 1 — Start Workflow
 

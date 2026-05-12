@@ -308,6 +308,7 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-187, BAR-183, BAR-184, `.agents/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`
+
 ## KN-15: Stale-CI-run dispatch hazard — router must compare head SHA before dispatching (2026-05-09)
 
 - **Symptom:** `bkit-ci-router` fires for a `workflow_run` completion whose `head_sha` is no longer the PR's current head — i.e., new commits pushed after the CI run started. Dispatching `/bkit-ship` against a stale SHA can attempt to merge an outdated branch.

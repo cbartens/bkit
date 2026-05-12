@@ -126,6 +126,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 9. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path** with `Missing FID slug`.
 11. Update status and commit:
+
     ```bash
     STATUS="docs/plans/logs/{FID}/status.json"
     [ -f "$STATUS" ] || echo '[]' > "$STATUS"
@@ -143,7 +144,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
     git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
     ```
 
-14. Patch `commentId` now that `{COMMENT_ID}` is resolved:
+12. Patch `commentId` now that `{COMMENT_ID}` is resolved:
     ```bash
     t=$(mktemp); jq --arg cid "{COMMENT_ID}" '.[-1].commentId = $cid' "$STATUS" > "$t" && mv "$t" "$STATUS"
     git add "$STATUS" && git commit -m "chore({FID}): start-workflow commentId patch [skip build] [skip ci]"

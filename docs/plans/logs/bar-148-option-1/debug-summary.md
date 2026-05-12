@@ -1,5 +1,7 @@
 <!-- verdict:start -->
+
 Verdict: PASS
+
 <!-- verdict:end -->
 
 # Debug Summary
@@ -19,10 +21,12 @@ Build workflow (attempt 1) failed at Step 9 (Build Challenge) due to a critical 
 ## Remediation Status
 
 **Fix applied:** Yes — all five orchestrators patched (`bkit-build.md`, `bkit-debug.md`, `bkit-plan.md`, `bkit-design.md`, `bkit-ship.md`). Each file now:
+
 1. Omits `commentId` from the initial status-init `jq` invocation (set to empty string).
 2. Adds a second `jq` patch immediately after the `save_comment` call that writes `.[-1].commentId = $cid` and commits.
 
 **Tests passing:** Yes — 795 tests pass, including:
+
 - C8b: 5 new ordering-constraint assertions (one per orchestrator) verifying `lastIndexOf('--arg cid') > indexOf('save_comment(')`.
 - All existing C1a–C9g tests remain green.
 - No test regressions.
@@ -38,6 +42,7 @@ Observe cycle not used (DEBUG_MODE=local; remediation was mechanical code edit w
 ## Risks
 
 **None identified.** The fix:
+
 - Is minimal and surgical (only touches the specific ordering violation).
 - Preserves the existing two-commit convention (init + patch as separate commits).
 - Adds test coverage (C8b) to prevent regression.
