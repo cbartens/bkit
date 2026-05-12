@@ -818,7 +818,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 4. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
-6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` ≠ `dev` → **Failure Path**.
+6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
 7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -837,7 +837,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Create PR
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] PR base verified (`PR_BASE` = `dev`)
+- [ ] PR base verified (`PR_BASE` = dev)
 - [ ] Workflow status updated (step `create-pr` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
