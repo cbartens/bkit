@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---
@@ -36,19 +37,21 @@ maxTurns: 50
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
+4. Read `docs/knowledge.md` fully → collect entries with symptom / error-class / workflow-step matching the failure → cite matches in `Prior Knowledge` → use entries to seed hypotheses; do NOT derive from scratch unless necessary.
+5. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+6. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted diagnosis.
    - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-6. Check dep versions (`npx {TOOL} --version`, `brew info`, `pnpm outdated`) before assuming code bugs.
-7. Read CI/CD logs from input Context (NEVER `/tmp/`).
-8. Read `.agents/docs.md` § Observability for filter syntax (logging, traces, CDC).
-9. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
-10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
-11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
-12. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`. Check existing entries first to avoid duplicates.
-13. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Check dep versions (`npx {TOOL} --version`, `brew info`, `pnpm outdated`) before assuming code bugs.
+8. Read CI/CD logs from input Context (NEVER `/tmp/`).
+9. Read `.agents/docs.md` § Observability for filter syntax (logging, traces, CDC).
+10. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
+11. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
+12. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
+13. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.  
+14. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`. Check existing entries first to avoid duplicates.
+15. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
     - `FAIL` = unable to diagnose → orchestrator routes to Failure Path → `bkit-debug-abort-handover`.
     - `CONCERNS` = ambiguous root cause but plausible fix path.
@@ -70,6 +73,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 [What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`]
 
+## Prior Knowledge
+
+[Matched `docs/knowledge.md` entries that informed this diagnosis - per line `KN-{N}: <one-line summary> — applied as <how>` or "No issues found."; initially set to `PENDING`.]
+
 ## Failures
 
 [Error summary + relationships between failures; initially set to `PENDING`]
@@ -89,6 +96,28 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Verification Commands
 
 [Commands the remediator should run to confirm the fix; initially set to `PENDING`]
+
+## Hypotheses
+
+[Append-only ReAct blocks. One `Hypothesis {N}` per hypothesis. Refuted hypotheses MUST remain; do NOT delete. Empty in stub; populated via Bash `echo >>` as work progresses.]
+
+### Hypothesis {N}: [one-line claim]
+
+#### Reason
+
+[why this hypothesis given symptoms / prior knowledge]
+
+#### Act
+
+[test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
+
+#### Observe
+
+[concrete output; do NOT paraphrase]
+
+#### Result
+
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
 ```
 
 > ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**

@@ -282,9 +282,11 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 
 **Implementation Tasks (Examples):**
 
-- [ ] **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]
-- [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]
-- [ ] **Task 3:** [e.g., Update React component `page.tsx`]
+> Every task MUST include a `**Done when:**` line — terse, testable, codebase-verifiable criterion (file exists / function signature matches / test passes / specific behaviour observable). Plan-verify reads this line and asserts against it before ticking `[x]`. No task without `Done when:`.
+
+- [ ] **Task 1:** [e.g., Create DB migration (`npx supabase db diff`)]. **Done when:** [e.g., `supabase/migrations/{timestamp}_add_items_status.sql` exists; `npx supabase db push --local` applies cleanly].
+- [ ] **Task 2:** [e.g., Implement backend API action `action.ts`]. **Done when:** [e.g., `packages/api/src/items/setStatus.ts` exports `setStatus` with Zod-validated input; integration test in `packages/api/items.integration.test.ts` passes].
+- [ ] **Task 3:** [e.g., Update React component `page.tsx`]. **Done when:** [e.g., `apps/web/app/items/page.tsx` renders status badge; Playwright spec `apps/web/e2e/items.spec.ts` confirms user-visible state].
 
 ### 🔒 Gate 2: Code Implementation Check
 

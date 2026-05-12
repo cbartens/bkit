@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---
@@ -38,10 +39,10 @@ maxTurns: 50
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Cross-reference each `[DEBUG-OBSERVE]` line from inputs back to its hypothesis.
+5. Cross-reference each `[DEBUG-OBSERVE]` line from inputs back to its `Hypothesis {N}` from any prior diagnosis.
 6. Read CI/CD logs from input Context (NEVER `/tmp/`).
 7. Extract every `[DEBUG-OBSERVE]` line — group by source location; >100 hits → sample evenly per location and note `(N total, M sampled)` in `Evidence Extracted`.
-8. Reconcile evidence with prior hypotheses: What is now confirmed, what is rejected, what new behaviour emerged, where the root cause is now narrowed.
+8. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.
 9. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = at least one hypothesis confirmed/rejected with concrete evidence (root cause may or may not be fully refined).
    - `FAIL` = no useful evidence captured (logs missing, agent never ran, all observations inconclusive).
@@ -68,17 +69,9 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 [`[DEBUG-OBSERVE]` lines grouped by location, with values/timing]
 
-## Confirmed Hypotheses
-
-[Prior diagnoses now backed by evidence; initially set to `PENDING`]
-
-## Rejected Hypotheses
-
-[Prior diagnoses contradicted by evidence; initially set to `PENDING`]
-
 ## New Observations
 
-[Behaviour revealed only by instrumentation; initially set to `PENDING`]
+[Behaviour revealed by instrumentation that does NOT map to any prior or new hypothesis; initially set to `PENDING`]
 
 ## Refined Root Cause
 
@@ -87,6 +80,28 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Recommended Next Steps
 
 [For the next agent / human picking up; initially set to `PENDING`]
+
+## Hypotheses
+
+[Append-only ReAct blocks. One `Hypothesis {N}` per hypothesis. Refuted hypotheses MUST remain; do NOT delete. Empty in stub; populated via Bash `echo >>` as work progresses.]
+
+### Hypothesis {N}: [one-line claim]
+
+#### Reason
+
+[why this hypothesis given symptoms / prior knowledge]
+
+#### Act
+
+[test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
+
+#### Observe
+
+[concrete `[DEBUG-OBSERVE]` values; do NOT paraphrase]
+
+#### Result
+
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
 ```
 
 > ⛔ **STOP after analysing evidence and producing output. Do NOT revert, commit, handover — caller orchestrates the next step.**

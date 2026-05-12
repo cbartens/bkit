@@ -70,9 +70,17 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ### WS-{N}: [Workstream Name]
 
-**Scope:** [what this workstream covers]
-**Requires:** [] | [WS-N, ...]
-**Rationale:** [why this is a logical unit]
+#### Scope
+
+[what this workstream covers]
+
+#### Requires
+
+[] | [WS-N, ...]
+
+#### Rationale
+
+[why this is a logical unit]
 ```
 
 > ⛔ **STOP after decomposing design and producing output. Do NOT write plans, code.**
