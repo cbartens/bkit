@@ -2,7 +2,7 @@
   "pinnedVersion": "2.0.4",
   "tier3Hashes": {},
   "canonicalHashes": {
-    "docs/deployments.md": "558e4cf9bdf763e340b49be12d45102837f25ca7d59e4a0a036a02c6fb3ce569",
+    "docs/deployments.md": "8a4316338b307a2114679960cd3293cf4ccc3df12d641ae8f297ddf016ad6b21",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
     ".claude/settings.json": "94ed3bbc81cdef80974be1a363a13c304bca20befff0292183903818cc89900e",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -35,6 +35,7 @@
     "gitattributes": "c1b6f47d9ef1abc3726b77c857431cc507d9c85bc8a3be5e729c76a5d75ba44e",
     "docs/plans/template.md": "8e149180c113f24ad5576ee504349f008163f9583635b1efa4174b609674ed67",
     "docs/dispatch.md": "f5b8265f91b58e26c5b84f3b76916653d1898f75a3327445f283b220a3689da6",
-    ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f"
+    ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
+    "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8"
   }
 }

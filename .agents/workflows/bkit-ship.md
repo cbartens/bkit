@@ -190,7 +190,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
-5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
+5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
 7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
@@ -223,6 +223,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
 - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
+- [ ] PR base verified (`PR_BASE` = dev)
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)

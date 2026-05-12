@@ -10,6 +10,7 @@ import {
   detectShellToken,
   detectNpmrcAuth,
   detectGhSecret,
+  detectMainBranchProtection,
   detectVercelProject,
   detectVercelEnv,
   detectCiYmlMissingTokenEnv,
@@ -152,6 +153,35 @@ describe("detectGhSecret", () => {
       throw new Error("command not found: gh");
     });
     expect(detectGhSecret()).toBe("unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectMainBranchProtection
+// ---------------------------------------------------------------------------
+
+describe("detectMainBranchProtection", () => {
+  it("returns 'present' when gh api returns 200", () => {
+    execFileSync.mockReturnValue(Buffer.from('{"required_status_checks":null}'));
+    expect(detectMainBranchProtection()).toBe("present");
+  });
+
+  it("returns 'missing' when gh api stderr contains 'Branch not protected'", () => {
+    execFileSync.mockImplementation(() => {
+      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("gh: Branch not protected (HTTP 404)\n");
+      throw err;
+    });
+    expect(detectMainBranchProtection()).toBe("missing");
+  });
+
+  it("returns 'unknown' when gh is unauthenticated / not a git repo", () => {
+    execFileSync.mockImplementation(() => {
+      const err = new Error("auth required") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
+      throw err;
+    });
+    expect(detectMainBranchProtection()).toBe("unknown");
   });
 });
 

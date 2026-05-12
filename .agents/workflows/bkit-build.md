@@ -822,7 +822,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```
 4. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
-6. Update status and commit:
+6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
+7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -831,7 +832,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 17 — Create PR
    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
@@ -840,6 +841,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Create PR
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
+- [ ] PR base verified (`PR_BASE` = dev)
 - [ ] Workflow status updated (step `create-pr` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
