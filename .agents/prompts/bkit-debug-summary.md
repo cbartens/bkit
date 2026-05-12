@@ -53,27 +53,27 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Overview
 
-[What failed, attempt count, outcome — resolved, aborted, or observe cycle; initially set to `PENDING`]
+[What failed, attempt count, outcome — resolved, aborted, or observe cycle; initially set to `PENDING`.]
 
 ## Diagnosis Status
 
-[Root cause identified? Strategy used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`]
+[Root cause identified? Strategy used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`.]
 
 ## Remediation Status
 
-[Fix applied? Tests passing? Or aborted at attempt N?; initially set to `PENDING`]
+[Fix applied? Tests passing? Or aborted at attempt N?; initially set to `PENDING`.]
 
 ## Observation
 
-[Observe cycle used? Evidence gathered? Logging stripped? No observe cycle ran → "Observe cycle not used."; initially set to `PENDING`]
+[Observe cycle used? Evidence gathered? Logging stripped? No observe cycle ran → "Observe cycle not used."; initially set to `PENDING`.]
 
 ## Risks
 
-[Informational — unresolved issues, fragile fixes, env/timing concerns to track but no action this cycle; initially set to `PENDING`]
+[Informational — unresolved issues, fragile fixes, env/timing concerns to track but no action this cycle; initially set to `PENDING`.]
 
 ## Action Items
 
-[Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution or handover instructions (distinct from Risks above); initially set to `PENDING`]
+[Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution or handover instructions (distinct from Risks above); initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

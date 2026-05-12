@@ -67,11 +67,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`]
+[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
 
 ## Prior Attempts Reviewed
 
-[What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`]
+[What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`.]
 
 ## Prior Knowledge
 
@@ -79,23 +79,23 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Failures
 
-[Error summary + relationships between failures; initially set to `PENDING`]
+[Error summary + relationships between failures; initially set to `PENDING`.]
 
 ## Root Cause
 
-[Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`]
+[Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`.]
 
 ## Recommended Fix
 
-[Prioritized fix instructions: file, line, code-level guidance; initially set to `PENDING`]
+[Prioritized fix instructions: file, line, code-level guidance; initially set to `PENDING`.]
 
 ## Suggested Tests
 
-[Edge cases / regression tests that should be added; initially set to `PENDING`]
+[Edge cases / regression tests that should be added; initially set to `PENDING`.]
 
 ## Verification Commands
 
-[Commands the remediator should run to confirm the fix; initially set to `PENDING`]
+[Commands the remediator should run to confirm the fix; initially set to `PENDING`.]
 
 ## Hypotheses
 
@@ -117,7 +117,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**

@@ -62,15 +62,15 @@ Failures: <integer ≥ 0>
 
 ## CRITICAL
 
-[Gaps that block plan progress — missing build task, missing verification task, broken matrix↔runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed; initially set to `PENDING`]
+[Gaps that block plan progress — missing build task, missing verification task, broken matrix↔runbook mapping, missing supersession-inventory entry, scope creep currently in plan to be removed; initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Improvements — risk mitigation, edge cases worth covering; initially set to `PENDING`]
+[Improvements — risk mitigation, edge cases worth covering; initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`]
+[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after auditing scope and producing output. Do NOT code, edit plan.**

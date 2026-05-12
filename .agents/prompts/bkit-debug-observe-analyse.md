@@ -59,11 +59,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`]
+[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
 
 ## Instrumentation Recap
 
-[What was logged + where (mapped from instrumentation report); initially set to `PENDING`]
+[What was logged + where (mapped from instrumentation report); initially set to `PENDING`.]
 
 ## Evidence Extracted
 
@@ -71,15 +71,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## New Observations
 
-[Behaviour revealed by instrumentation that does NOT map to any prior or new hypothesis; initially set to `PENDING`]
+[Behaviour revealed by instrumentation that does NOT map to any prior or new hypothesis; initially set to `PENDING`.]
 
 ## Refined Root Cause
 
-[Updated analysis; initially set to `PENDING`]
+[Updated analysis; initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[For the next agent / human picking up; initially set to `PENDING`]
+[For the next agent / human picking up; initially set to `PENDING`.]
 
 ## Hypotheses
 
@@ -101,7 +101,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after analysing evidence and producing output. Do NOT revert, commit, handover — caller orchestrates the next step.**

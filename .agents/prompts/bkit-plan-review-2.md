@@ -62,15 +62,15 @@ Failures: <integer ≥ 0>
 
 ## CRITICAL
 
-[Gaps that block plan progress — drift from source, missing requirements, vague Acceptance Scenario, dep mismatches; initially set to `PENDING`]
+[Gaps that block plan progress — drift from source, missing requirements, vague Acceptance Scenario, dep mismatches; initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Improvements — readability, alternative approaches, risk mitigations, identified edge cases; initially set to `PENDING`]
+[Improvements — readability, alternative approaches, risk mitigations, identified edge cases; initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`]
+[Plan-expansion suggestions outside current plan scope; not applied to plan; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after reviewing plan and producing output. Do NOT code, edit plan.**

@@ -58,23 +58,23 @@ Failures: <integer ≥ 0>
 
 ## Scope
 
-[`Single` (one sub-plan) or `Holistic` (master + all sub-plans); initially set to `PENDING`]
+[`Single` (one sub-plan) or `Holistic` (master + all sub-plans); initially set to `PENDING`.]
 
 ## Sub-Plans Verified
 
-[Count, or "N/A" for Single scope. Holistic: count MUST match number of `docs/plans/active/{FID}-plan-*.md` files; mismatch → `CONCERNS`; initially set to `PENDING`]
+[Count, or "N/A" for Single scope. Holistic: count MUST match number of `docs/plans/active/{FID}-plan-*.md` files; mismatch → `CONCERNS`; initially set to `PENDING`.]
 
 ## Integration Gaps
 
-[Count + description (Holistic only), or "N/A"; initially set to `PENDING`]
+[Count + description (Holistic only), or "N/A"; initially set to `PENDING`.]
 
 ## Previously Attempted
 
-[Reference to prior verification attempts, or "N/A"; initially set to `PENDING`]
+[Reference to prior verification attempts, or "N/A"; initially set to `PENDING`.]
 
 ## Notes
 
-[Brief summary; initially set to `PENDING`]
+[Brief summary; initially set to `PENDING`.]
 
 ## Identified Gaps Log
 

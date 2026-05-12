@@ -46,7 +46,7 @@ tools:
 10. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
 11. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
 12. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
-13. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.  
+13. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.
 14. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`. Check existing entries first to avoid duplicates.
 15. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
@@ -64,11 +64,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`]
+[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
 
 ## Prior Attempts Reviewed
 
-[What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`]
+[What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`.]
 
 ## Prior Knowledge
 
@@ -76,23 +76,23 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Failures
 
-[Error summary + relationships between failures; initially set to `PENDING`]
+[Error summary + relationships between failures; initially set to `PENDING`.]
 
 ## Root Cause
 
-[Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`]
+[Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`.]
 
 ## Recommended Fix
 
-[Prioritized fix instructions: file, line, code-level guidance; initially set to `PENDING`]
+[Prioritized fix instructions: file, line, code-level guidance; initially set to `PENDING`.]
 
 ## Suggested Tests
 
-[Edge cases / regression tests that should be added; initially set to `PENDING`]
+[Edge cases / regression tests that should be added; initially set to `PENDING`.]
 
 ## Verification Commands
 
-[Commands the remediator should run to confirm the fix; initially set to `PENDING`]
+[Commands the remediator should run to confirm the fix; initially set to `PENDING`.]
 
 ## Hypotheses
 
@@ -114,7 +114,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**

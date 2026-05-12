@@ -45,35 +45,35 @@ maxTurns: 25
 
 ## The Short Version
 
-[2-3 non-engineer sentences: what's broken, why unfixable; initially set to `PENDING`]
+[2-3 non-engineer sentences: what's broken, why unfixable; initially set to `PENDING`.]
 
 ## What's Actually Happening
 
-[Causal chain: Symptom → Trigger → Proximate cause → Root cause (design fragility) → Contributing factors (env, timing, races); initially set to `PENDING`]
+[Causal chain: Symptom → Trigger → Proximate cause → Root cause (design fragility) → Contributing factors (env, timing, races); initially set to `PENDING`.]
 
 ## Attempt History
 
-[Table of attempts: Strategy (STANDARD/PIVOT/FINAL), what was tried, why it failed; initially set to `PENDING`]
+[Table of attempts: Strategy (STANDARD/PIVOT/FINAL), what was tried, why it failed; initially set to `PENDING`.]
 
 ## Verified Resolutions (DO NOT ROLL BACK)
 
-[Changes that ARE working — must NOT be reverted; initially set to `PENDING`]
+[Changes that ARE working — must NOT be reverted; initially set to `PENDING`.]
 
 ## Persistent Errors
 
-[Failed jobs/requirements, files, exact error messages, event sequence; initially set to `PENDING`]
+[Failed jobs/requirements, files, exact error messages, event sequence; initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[3-4 options ranked effort/impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`]
+[3-4 options ranked effort/impact. Each: ✅ FIXES, ❌ DOES NOT FIX, ⚠️ COST; initially set to `PENDING`.]
 
 ## Recommended Path
 
-[Which option and why; initially set to `PENDING`]
+[Which option and why; initially set to `PENDING`.]
 
 ## Reference Docs
 
-[Prior diagnoses, prior remediations, CI runs, observability evidence; initially set to `PENDING`]
+[Prior diagnoses, prior remediations, CI runs, observability evidence; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after producing handover output. Do NOT fix, change code.**

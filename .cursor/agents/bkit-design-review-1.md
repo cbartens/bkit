@@ -66,43 +66,43 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Ecosystem Search
 
-[Per major capability: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification); initially set to `PENDING`]
+[Per major capability: What exists (name, maturity, adoption), fit (constraints, trade-offs, gaps), recommendation (USE-AS-IS | ADAPT | BUILD-CUSTOM — with justification); initially set to `PENDING`.]
 
 ## Stack Feasibility
 
-[Buildable with approved stack? Constraints?; initially set to `PENDING`]
+[Buildable with approved stack? Constraints?; initially set to `PENDING`.]
 
 ## Library / API Evaluation
 
-[Maturity, bundle size, type coverage, license; initially set to `PENDING`]
+[Maturity, bundle size, type coverage, license; initially set to `PENDING`.]
 
 ## Integration Risk
 
-[Monorepo fit, systems touched, blast radius; initially set to `PENDING`]
+[Monorepo fit, systems touched, blast radius; initially set to `PENDING`.]
 
 ## PoC Approach
 
-[Description of minimal proof (do not build); initially set to `PENDING`]
+[Description of minimal proof (do not build); initially set to `PENDING`.]
 
 ## Unknowns & Blockers
 
-[Items needing experimentation before proceeding; initially set to `PENDING`]
+[Items needing experimentation before proceeding; initially set to `PENDING`.]
 
 ## Verdict Reasoning
 
-[Why PASS / CONCERNS / FAIL; initially set to `PENDING`]
+[Why PASS / CONCERNS / FAIL; initially set to `PENDING`.]
 
 ## CRITICAL
 
-[Findings the design MUST address before it can proceed; initially set to `PENDING`]
+[Findings the design MUST address before it can proceed; initially set to `PENDING`.]
 
 ## OPTIONAL
 
-[Findings worth incorporating into design but not blockers; initially set to `PENDING`]
+[Findings worth incorporating into design but not blockers; initially set to `PENDING`.]
 
 ## OUT OF SCOPE
 
-[Findings outside current design scope — defer to future work; initially set to `PENDING`]
+[Findings outside current design scope — defer to future work; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after reviewing design and producing output. Do NOT code, install.**

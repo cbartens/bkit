@@ -42,7 +42,7 @@ maxTurns: 50
 5. Cross-reference each `[DEBUG-OBSERVE]` line from inputs back to its `Hypothesis {N}` from any prior diagnosis.
 6. Read CI/CD logs from input Context (NEVER `/tmp/`).
 7. Extract every `[DEBUG-OBSERVE]` line — group by source location; >100 hits → sample evenly per location and note `(N total, M sampled)` in `Evidence Extracted`.
-8. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`. 
+8. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.
 9. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = at least one hypothesis confirmed/rejected with concrete evidence (root cause may or may not be fully refined).
    - `FAIL` = no useful evidence captured (logs missing, agent never ran, all observations inconclusive).
@@ -59,11 +59,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`]
+[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
 
 ## Instrumentation Recap
 
-[What was logged + where (mapped from instrumentation report); initially set to `PENDING`]
+[What was logged + where (mapped from instrumentation report); initially set to `PENDING`.]
 
 ## Evidence Extracted
 
@@ -71,15 +71,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## New Observations
 
-[Behaviour revealed by instrumentation that does NOT map to any prior or new hypothesis; initially set to `PENDING`]
+[Behaviour revealed by instrumentation that does NOT map to any prior or new hypothesis; initially set to `PENDING`.]
 
 ## Refined Root Cause
 
-[Updated analysis; initially set to `PENDING`]
+[Updated analysis; initially set to `PENDING`.]
 
 ## Recommended Next Steps
 
-[For the next agent / human picking up; initially set to `PENDING`]
+[For the next agent / human picking up; initially set to `PENDING`.]
 
 ## Hypotheses
 
@@ -101,7 +101,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`]
+CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after analysing evidence and producing output. Do NOT revert, commit, handover — caller orchestrates the next step.**
