@@ -123,18 +123,18 @@ description: "Plan Feature — Autonomous plan generation"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
    fi
    ```
 2. Create/resume the worktree:
    ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    git worktree prune
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
      git fetch origin dev
-     git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
+     git rebase --rebase-merges origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
    else
      if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
        git worktree add "$WORKTREE_PATH" "feat/{FID}"
@@ -195,7 +195,7 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 3 — Generate Plan
 
 1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-input.md`.
    Create: `docs/plans/logs/{FID}/plan-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -228,11 +228,11 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-review-1`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-input.md`.
      Create: `docs/plans/logs/{FID}/plan-review-1.md`.
    - **Subagent:** Invoke `@bkit-plan-review-2`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-input.md`.
      Create: `docs/plans/logs/{FID}/plan-review-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -267,7 +267,7 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 5 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
-   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-review-1.md`, `docs/plans/logs/{FID}/plan-review-2.md`.
    Create: `docs/plans/logs/{FID}/plan-v2-reviewed.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -303,11 +303,11 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-plan-scope-check-1`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/logs/{FID}/plan-scope-check-1.md`.
    - **Subagent:** Invoke `@bkit-plan-scope-check-2`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v2-reviewed.md`.
      Create: `docs/plans/logs/{FID}/plan-scope-check-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -342,7 +342,7 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 7 — Apply Scope
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Agent` tool:
-   Context: You are a subagent in the Plan phase applying scope-check critiques. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase applying scope-check critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-v2-reviewed.md`, `docs/plans/logs/{FID}/plan-scope-check-1.md`, `docs/plans/logs/{FID}/plan-scope-check-2.md`.
    Update: `docs/pending.md` (APPEND scope expansions if any).
    Create: `docs/plans/logs/{FID}/plan-v3-checked.md`.
@@ -379,7 +379,7 @@ description: "Plan Feature — Autonomous plan generation"
 ## 🧠 Step 8 — Complexity Check
 
 1. **Subagent:** Invoke `@bkit-plan-complexity-check` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/logs/{FID}/plan-complexity-check.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -414,7 +414,7 @@ description: "Plan Feature — Autonomous plan generation"
 **Run only if** Step 8 `COMPLEXITY_VERDICT` = SPLIT.
 
 1. **Subagent:** Invoke `@bkit-plan-complexity-split` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase. Single versioned output: parent in `plan-v4-split.md`, child sub-plans in `plan-v4-1.md`, `plan-v4-2.md`, ..., `plan-v4-N.md`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/plan-v3-checked.md`.
    Create: `docs/plans/logs/{FID}/plan-v4-split.md` (parent index with verdict header), `docs/plans/logs/{FID}/plan-v4-1.md` ... `docs/plans/logs/{FID}/plan-v4-N.md` (children).
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -454,7 +454,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Resolve highest plan version: `PLAN_FINAL=$(ls docs/plans/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-plan-summary` using `Agent` tool:
-   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Plan phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{PLAN_FINAL}` (highest v{N}), glob `docs/plans/logs/{FID}/plan-v4-*.md` (children if SPLIT), `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/plan-input.md`, glob `docs/plans/logs/{FID}/plan-*.md`.
    Create: `docs/plans/logs/{FID}/plan-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.

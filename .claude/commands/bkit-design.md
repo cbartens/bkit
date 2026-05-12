@@ -120,18 +120,18 @@ description: "Design Feature — Autonomous design phase"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
    fi
    ```
 2. Create/resume the worktree:
    ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    git worktree prune
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
      git fetch origin dev
-     git rebase origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
+     git rebase --rebase-merges origin/dev || { echo "Rebase conflict — resolve manually"; exit 1; }
    else
      if git show-ref --verify --quiet "refs/heads/feat/{FID}"; then
        git worktree add "$WORKTREE_PATH" "feat/{FID}"
@@ -192,11 +192,11 @@ description: "Design Feature — Autonomous design phase"
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -227,7 +227,7 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 4 — Generate Design
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
    Create: `docs/plans/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -260,11 +260,11 @@ description: "Design Feature — Autonomous design phase"
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-review-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-review-1.md`.
    - **Subagent:** Invoke `@bkit-design-review-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-review-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -302,7 +302,7 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 6 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-design-update` using `Agent` tool:
-   Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/design-v1-draft.md`, `docs/plans/logs/{FID}/design-review-1.md`, `docs/plans/logs/{FID}/design-review-2.md`.
    Create: `docs/plans/logs/{FID}/design-v2-reviewed.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -337,7 +337,7 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 7 — Design Organise
 
 1. **Subagent:** Invoke `@bkit-design-organise` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/logs/{FID}/design-v3-organised.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -374,7 +374,7 @@ description: "Design Feature — Autonomous design phase"
 
 1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/design-*.md`.
    Create: `docs/plans/logs/{FID}/design-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
