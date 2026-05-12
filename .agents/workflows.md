@@ -88,7 +88,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 **Pre-worktree divergence guard (BAR-184):** ALL phase workflows (`design`, `plan`, `build`, `debug`, `ship`) Step 1 makes ZERO commits on `dev` and asserts `git rev-list --count origin/dev..dev` = 0 as a pre-flight. Step 1's `start-workflow` status.json entry is deferred to Step 2 inside `.worktrees/{FID}`. `bkit-ship` Step 7 (Switch to Dev) additionally re-asserts the guard and uses `git pull --ff-only`, routing to Failure Path on divergence. Rationale: workflow commits on local `dev` pre-worktree never reach `origin/dev` directly — they accumulate locally until the feature PR squash-merges, at which point local `dev` diverges from the squash commit and any subsequent ship's `git pull` hits status.json rebase conflicts. Six ship-cycle friction recurrences surfaced the symptom; the divergence accumulates silently in plan/design/build/debug runs and surfaces at the next ship pre-flight.
 
-**Extension under BAR-183 (status.json on dev for plan/design):** plan/design write `status.json` to the `dev` branch from inside the worktree using `git -C "$REPO_ROOT" …` and push immediately on every mutation. This does NOT reintroduce the BAR-184 failure mode: every dev commit is pushed in the same step, so `git rev-list --count origin/dev..dev` stays 0 between mutations. Pull/push failures route to Failure Path explicitly. Build/debug/ship continue to keep `status.json` on `feat/{FID}` (their dev path is the PR squash-merge).
+**Extension under BAR-183 + BAR-187 (status.json on dev for ALL workflows):** all five workflows write `status.json` to `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (dev's working copy) — file-only between steps, uncommitted. The file is committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success) OR Failure Path (failure). Mid-workflow dev pushes = 0. BAR-184 holds: per-step commits happen INSIDE the worktree on `feat/{FID}`, never on `dev`. Outside-worktree progress reads: `cat $REPO_ROOT/docs/plans/logs/{FID}/status.json` — works from anywhere on the machine without git knowledge.
 
 ### Execution Protocol — canonical invariants
 
@@ -106,7 +106,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | **No improv** | No ad-hoc task lists, no skipping, no alternative approaches, no scope beyond the file. |
 | **Git** | Pre `add`/`commit`: log `git status --short`; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Pre `push`: assert `{BRANCH}` non-empty. |
 | **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
-| **Status** | `docs/plans/logs/{FID}/status.json` is central state file; ONE entry per step (see § status.json). |
+| **Status** | `$REPO_ROOT/docs/plans/logs/{FID}/status.json` is central state file (dev's working copy, all workflows); ONE entry per step with `parentSha` captured at step START (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
 | **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Ship`, `Merged`) are mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — added without dropping phase (see § Linear Integration). |
 | **Comments** | ONE Linear comment per workflow run; Step 1 creates, all later steps append (see § Linear Comment Lifecycle). |
@@ -116,17 +116,16 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 
 ### `status.json` — workflow state SoT
 
-`docs/plans/logs/{FID}/status.json` is canonical workflow-state source of truth. Written by workflows only; agents MUST NOT read or write it. Enables resume of interrupted run without re-reading the plan.
+`$REPO_ROOT/docs/plans/logs/{FID}/status.json` is canonical workflow-state source of truth. Written by workflows only; agents MUST NOT read or write it. Enables resume of interrupted run without re-reading the plan.
 
-**Branch placement (BAR-183):** `status.json` lives on different branches depending on the workflow's dev relationship:
+**Branch placement (BAR-187 — all workflows on dev):**
 
 <!-- prettier-ignore -->
-| Workflow | Branch | Mechanism |
+| Workflow | Location | Mechanism |
 | --- | --- | --- |
-| `bkit-plan`, `bkit-design` | `dev` (mid-run) | dev-bound workflows (merge `feat/{FID}` → `dev` at close, no PR). Status mutations run via `git -C "$REPO_ROOT"` from the worktree cwd; every status commit is followed by `git -C "$REPO_ROOT" pull --ff-only origin dev && git -C "$REPO_ROOT" push origin dev` (failure → Failure Path). Linear comment URLs reference `dev` (stable). |
-| `bkit-build`, `bkit-debug`, `bkit-ship` | `feat/{FID}` (mid-run); reaches `dev` only via ship squash-merge | PR-bound workflows. Status mutations stay on the worktree branch (current behaviour). Linear comment URLs reference `{BRANCH}` = feat. |
+| All five (`plan`, `design`, `build`, `debug`, `ship`) | `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success) OR Failure Path (failure). Outside-worktree progress reads via `cat`. |
 
-Rationale: plan/design merge to dev directly with no review gate, so writing `status.json` to dev mid-run matches their existing trust boundary and collapses the cwd-mismatch class of bugs (BAR-183). Build/debug/ship push status updates to dev outside their PR would breach the "every dev change reviewed" boundary, so they retain feat-branch placement; their lock cwd issue is solved via the absolute-path mechanism in § Concurrency lock.
+Rationale: single canonical location enables `cat $REPO_ROOT/docs/plans/logs/{FID}/status.json` outside-worktree progress reads from anywhere on the machine without git knowledge. Per-step writes accumulate locally; one dev push at termination with `[skip ci]` (except plan/design close-workflow on success, which is the substantive feature commit and runs CI). Resume reads the on-disk file directly — works across crashes.
 
 **Shape (JSON array — one element per workflow run):**
 
@@ -138,11 +137,12 @@ Rationale: plan/design merge to dev directly with no review gate, so writing `st
     "startedAt": "2026-04-27T14:02:11Z",
     "status": "IN_PROGRESS",
     "steps": [
-      { "step": "start-workflow", "status": "DONE", "at": "2026-04-27T14:02:11Z", "artifacts": [] },
+      { "step": "start-workflow", "status": "DONE", "at": "2026-04-27T14:02:11Z", "parentSha": "a1b2c3d", "artifacts": [] },
       {
         "step": "worktree-setup",
         "status": "DONE",
         "at": "2026-04-27T14:02:34Z",
+        "parentSha": "a1b2c3d",
         "artifacts": ["docs/plans/logs/xxx-123/build-input.md"]
       },
       {
@@ -150,6 +150,7 @@ Rationale: plan/design merge to dev directly with no review gate, so writing `st
         "status": "DONE",
         "verdict": "PASS",
         "at": "2026-04-27T14:08:02Z",
+        "parentSha": "f4e5d6c",
         "artifacts": ["docs/plans/logs/xxx-123/build-verify-plan-N-1.md"]
       }
     ]
@@ -166,15 +167,15 @@ Rationale: plan/design merge to dev directly with no review gate, so writing `st
 | `status` | `IN_PROGRESS`, `DONE`, `FAILED` |
 | `steps[].step` | kebab-case slug of step name (e.g. `start-workflow`, `plan-verify`, `update-docs-summary`) |
 | `steps[].status` | `DONE` (only `DONE` is appended; in-progress is implicit by absence of next step) |
+| `steps[].parentSha` | `git rev-parse HEAD` captured at step START, before any commit the step produces (forensic only) |
 | `steps[].verdict` | optional — `PASS` / `CONCERNS` / `FAIL` for verdict-bearing steps |
 | `steps[].artifacts` | absolute `docs/plans/logs/{FID}/...` paths (or PR URL for create-pr) |
 
-**Init / append patterns** (every command uses these verbatim; `$STATUS` is absolute (`$REPO_ROOT/...`) for plan/design and relative (worktree cwd) for build/debug/ship — see Branch placement table above):
+**Init / append patterns** (every workflow uses these verbatim; `$STATUS` is always absolute (`$REPO_ROOT/...`)):
 
 ```bash
 # init or append a workflow entry (idempotent guard against double-start)
-# plan/design: STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-# build/debug/ship: STATUS="docs/plans/logs/{FID}/status.json"
+STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
 mkdir -p "$(dirname "$STATUS")"
 [ -f "$STATUS" ] || echo '[]' > "$STATUS"
 if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] \
@@ -182,8 +183,11 @@ if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] \
   t=$(mktemp); jq '. + [{workflow:"build", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
 fi
 
-# append a step
-t=$(mktemp); jq '.[-1].steps += [{step:"verify-plan", status:"DONE", verdict:$v, at:(now|todate), artifacts:["..."]}]' --arg v "$VERIFY_VERDICT" "$STATUS" > "$t" && mv "$t" "$STATUS"
+# append a step (parentSha captured BEFORE the step's commit, if any)
+PARENT_SHA=$(git rev-parse HEAD)
+t=$(mktemp); jq --arg p "$PARENT_SHA" --arg v "$VERIFY_VERDICT" \
+  '.[-1].steps += [{step:"verify-plan", status:"DONE", verdict:$v, at:(now|todate), parentSha:$p, artifacts:["..."]}]' \
+  "$STATUS" > "$t" && mv "$t" "$STATUS"
 
 # mark workflow done (close-workflow)
 t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
@@ -191,14 +195,11 @@ t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$S
 # mark workflow failed (Failure Path)
 t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
 
-# plan/design only: every status mutation is followed by
-git -C "$REPO_ROOT" pull --ff-only origin dev || exit 1
-git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-git -C "$REPO_ROOT" commit -m "chore({FID}): {step} status"
-git -C "$REPO_ROOT" push origin dev || exit 1
+# NO per-step dev push. status.json mutation is file-only between steps.
+# Single dev commit + push happens at close-workflow OR Failure Path (see workflow files).
 ```
 
-**Resume rule:** read last array element. `status=IN_PROGRESS` → resume after last `DONE` step (re-run if its gate artifacts missing on disk). `status=DONE` or `status=FAILED` → start new workflow entry.
+**Resume rule:** read last array element from `cat "$REPO_ROOT/$STATUS_REL"` (works whether the file is committed or uncommitted, since dev's working copy is canonical). `status=IN_PROGRESS` → resume after last `DONE` step (re-run if its gate artifacts missing on disk). `status=DONE` or `status=FAILED` → start new workflow entry.
 
 ### Concurrency lock
 
@@ -211,10 +212,7 @@ LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
 STATUS_REL="docs/plans/logs/{FID}/status.json"
 if [ -f "$LOCK" ]; then
   LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-  case "$LOCK_WORKFLOW" in
-    plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
-    *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
-  esac
+  STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
   LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
   LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
   LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
@@ -228,7 +226,7 @@ fi
 printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
 ```
 
-**Staleness rule (BAR-183 Q3):** the lock body's `{workflow}` field gates which `status.json` to consult — `plan`/`design` read main repo's wc (dev branch); others read `feat/{FID}:` via `git show`. `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step ≥30min idle → orphaned, clean and proceed. Lock with no matching workflow entry in `status.json` is treated as stale and cleaned.
+**Staleness rule (BAR-187):** all workflows read `status.json` via `cat "$REPO_ROOT/$STATUS_REL"` (single canonical location, no branch-dependent fallback). `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step ≥30min idle → orphaned, clean and proceed. Lock with no matching workflow entry in `status.json` is treated as stale and cleaned.
 
 ### Linear Comment Lifecycle
 
@@ -397,7 +395,7 @@ Canonical patterns:
 - `[ ] Artifact written (docs/plans/logs/{FID}/{file}.md, non-empty)` — artifact existence
 - `[ ] {VARIABLE} extracted` — verdict / value capture
 - `[ ] Verdict valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})` — verdict-bearing-step validation
-- `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with commitSha[, verdict, attempt, …])` — status.json mutation
+- `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with parentSha[, verdict, attempt, …])` — status.json mutation
 - `[ ] Issue update attempted (state X, label Y)` — Linear `save_issue`
 - `[ ] Issue comment attempted (Step {N} section)` — Linear `save_comment`
 
