@@ -188,6 +188,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set([
     ".agents/prompts.md",
     ".agents/workflows.md",
     ".agents/IDEs.md",
+    ".agents/cloud.md",
 ]);
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
