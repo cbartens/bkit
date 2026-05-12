@@ -76,6 +76,10 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/preflight.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/cloud-bootstrap.sh"
           }
         ]
       }

@@ -1,6 +1,0 @@
-# direnv config — copy to `.envrc` and run `direnv allow` once.
-# Required for Claude Cowork Dispatch (computer-use) sessions: tier `click`
-# terminals cannot type `source venv/bin/activate`. See docs/dispatch.md.
-
-use node
-[ -d .venv ] && source .venv/bin/activate

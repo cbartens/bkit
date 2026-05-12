@@ -63,16 +63,6 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 fi
 
-# Dispatch bypass — when BKIT_PREFLIGHT_BYPASS=dispatch is set, skip the Linear
-# Auto/state guards. Used for Cowork Dispatch sessions (phone-triggered)
-# that may not carry an Auto-labelled issue. Destruction guards (paths,
-# .env, secrets) are unaffected — those live elsewhere in the agent stack.
-# Brew check above still runs on Darwin regardless of bypass.
-if [[ "${BKIT_PREFLIGHT_BYPASS:-}" == "dispatch" ]]; then
-  emit_context "Dispatch bypass active (BKIT_PREFLIGHT_BYPASS=dispatch) — Linear Auto/state guards skipped for ${LINEAR_ISSUE_ID}. Destruction guards remain in force."
-  exit 0
-fi
-
 # LINEAR_API_KEY required to call the Linear GraphQL API.
 if [[ -z "${LINEAR_API_KEY:-}" ]]; then
   echo "Guard pre-check: FAIL — LINEAR_API_KEY not set; cannot validate ${LINEAR_ISSUE_ID}." >&2
