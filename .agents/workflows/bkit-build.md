@@ -865,7 +865,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Create PR
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] PR body contains plan-link URL (wrapped in `<!-- bkit:start -->` / `<!-- bkit:end -->` markers)
 - [ ] Workflow status updated (step `create-pr` recorded with `commitSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
