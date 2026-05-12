@@ -629,7 +629,7 @@
    fi
    ```
 4. Set `TRIGGER_PR`:
-   - **If** `CURRENT` = dev|main → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
+   - **If** `CURRENT` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
 5. **If** `TRIGGER_PR` = 1 → create PR:
