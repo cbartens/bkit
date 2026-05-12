@@ -368,7 +368,7 @@ export function runCoreModule(ctx) {
 // ---------------------------------------------------------------------------
 const BKIT_PREFIX = "bkit-";
 export function runClaudeModule(ctx) {
-    const { dryRun, tokens, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const pairs = [
         [".agents/workflows", ".claude/commands"],
@@ -437,6 +437,38 @@ export function runClaudeModule(ctx) {
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }
+        }
+    }
+    // Byte-equal-text — cloud-bootstrap.sh (Tier 3 seed-or-print).
+    // SessionStart hook for Claude Code on the web. Consumer-configurable: most
+    // repos need to swap `pnpm install` for their package manager or drop
+    // `vale sync` if they don't ship .vale.ini. Tier 3 seeds bkit's reference on
+    // first install and prints merge instructions if the consumer has their own.
+    {
+        const src = path.join(claudeTemplates, "hooks", "cloud-bootstrap.sh");
+        const dst = ".claude/hooks/cloud-bootstrap.sh";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            const result = writeTier3(src, dst, dryRun, advisories, ws, CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
+                if (!dryRun && fs.existsSync(dst)) {
+                    fs.chmodSync(dst, 0o755);
+                }
+            }
+            else if (result.suggested) {
+                console.log(`${logPrefix} ${tag}claude: ${dst} (exists; AI merge instructions printed)`);
+            }
+            // Always emit cloud-env-customize advisory pointing consumers at
+            // `.agents/cloud.md` for the paste-into-claude.ai recipe. The hook is
+            // half the picture; the cloud-side setup script + env vars are the
+            // other half and live in the Claude app, not the repo.
+            advisories.push({
+                id: "cloud-env-customize",
+                severity: "advisory",
+                detect: "Claude Code on the web cloud environments are configured in the Claude app, not the repo. The cloud-bootstrap.sh hook handles project install (pnpm install + vale sync) but the binaries it depends on (vale, gh) must be installed by the cloud env's setup script.",
+                action: "(1) Customize `.claude/hooks/cloud-bootstrap.sh` for your stack: swap `pnpm install --frozen-lockfile` for npm/yarn/bun if needed, drop `vale sync` if you don't use vale, add any other project-specific install steps. (2) Open claude.ai/code → environment selector → + Add environment, and paste the recipe (Name / Network access / Environment variables / Setup script) from `.agents/cloud.md`. First session is slow (snapshot builds); subsequent sessions start from cache.",
+            });
         }
     }
 }
@@ -754,6 +786,31 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   --- begin bkit reference .husky/pre-push ---
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .husky/pre-push ---
+`;
+const CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS = `[bkit] .claude/hooks/cloud-bootstrap.sh exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  bkit's reference cloud-bootstrap.sh is a Claude Code on the web SessionStart
+  hook that runs project install (\`pnpm install --frozen-lockfile\` + \`vale sync\`)
+  only when CLAUDE_CODE_REMOTE=true. Local sessions short-circuit.
+
+  Common consumer customizations:
+  - Swap pnpm for npm / yarn / bun if your repo uses a different package manager.
+  - Drop the \`vale sync\` block if your repo has no .vale.ini.
+  - Add project-specific install commands (e.g. \`bundle install\`, \`go mod download\`,
+    \`uv sync\`) inside the CLAUDE_CODE_REMOTE guard.
+  - Keep the guard (\`if [ "\${CLAUDE_CODE_REMOTE:-}" != "true" ]; then exit 0; fi\`)
+    so the hook stays a no-op locally and only fires in cloud sessions.
+
+  Companion config lives in the Claude app (claude.ai/code), not the repo. See
+  \`.agents/cloud.md\` for the paste-in recipe (Name / Network access /
+  Environment variables / Setup script) — the cloud env's setup script is what
+  installs vale, gh, and pinned pnpm onto the snapshot.
+
+  --- begin bkit reference .claude/hooks/cloud-bootstrap.sh ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .claude/hooks/cloud-bootstrap.sh ---
 `;
 const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
 
