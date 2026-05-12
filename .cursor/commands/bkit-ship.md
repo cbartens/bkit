@@ -63,13 +63,11 @@
 9. `git commit -m "docs({FID}): ship aborted [skip build] [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-
-```comment
-### Workflow Handover
-[ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/ship-handover.md)
-{FID-ship-handover.md content verbatim}
-```
-
+    ```comment
+    ### Workflow Handover
+    [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/ship-handover.md)
+    {FID-ship-handover.md content verbatim}
+    ```
 12. **STOP**, no further downstream steps.
 
 ---

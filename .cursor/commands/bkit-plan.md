@@ -96,13 +96,12 @@
 8. Extract parent design `FID` from issue `DESCRIPTION` as `PARENT_FID`.
 9. Add `Plan` phase to `{LABELS}` and drop old phase → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
 10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-
-```comment
-## Plan Workflow
-### Step 1 — Start Workflow
-[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{PARENT_FID}-design.md)}
-```
+    ```comment
+    ## Plan Workflow
+    ### Step 1 — Start Workflow
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    Parent design: {None|[{PARENT_FID}-design.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/drafts/{PARENT_FID}-design.md)}
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
