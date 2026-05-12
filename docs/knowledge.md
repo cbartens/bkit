@@ -284,6 +284,18 @@
 - **Source:** phase
 - **Related:** BAR-186, feedback memory `skip-ci commits must not be HEAD when PR is created`, `.github/workflows/release.yml`, commit `05a3e6b chore(release): 2.0.2 (#26)`
 
+## KN-22: pnpm 10 narrows manifest range on `pnpm update @cbartens/bkit` (2026-05-12)
+
+- **Category:** install / consumer-upgrade
+- **Symptom:** Consumer running `pnpm update @cbartens/bkit` (pnpm 10.33.0) to bump 2.0.3 → 2.0.5 sees `package.json` rewritten from `"@cbartens/bkit": "^2"` to `"^2.0.5"`. `pnpm-lock.yaml` also records `specifier: ^2.0.5` instead of `^2`. Future minor/patch bumps no longer satisfied by the manifest range — consumer is silently pinned to an exact minor.
+- **Root cause:** pnpm 10 changed the default `pnpm update <pkg>` behaviour from "lockfile-only re-resolve" to "rewrite manifest specifier to the resolved minor". Observed on `app-gether-life` during 2.0.3 → 2.0.5 upgrade (commit `2e8af1a1`).
+- **Fix or rule:** After `pnpm update @cbartens/bkit`, verify the manifest range is still `"^2"`. If pnpm narrowed it, restore the manifest by hand and re-resolve the lockfile with `pnpm install --frozen-lockfile=false`. Verify with `grep -A2 "'@cbartens/bkit'" pnpm-lock.yaml` → `specifier: ^2`. README upgrade callout documents the check-and-restore sequence.
+- **Type:** rule
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** consumer-friction
+- **Related:** BAR-155 comment 2026-05-12, README upgrade callout, BAR-189
+
 ## KN-21: Workflow status.json on dev for all five workflows; single termination commit + push (2026-05-12)
 
 - **Category:** workflow

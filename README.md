@@ -61,6 +61,18 @@ pnpm exec bkit check --full
 
 > **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** Plain `pnpm add -D @cbartens/bkit@<new-version>` (or `pnpm update`) only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate ("DRIFT DETECTED" on `.agents/.bkit-version`). Commit the resync changes alongside the version bump in the same PR. This applies to every version change — initial 0.3.x → 0.4.0 / 1.x → 2.0.0 cutovers **and** routine 2.0.x → 2.0.y upgrades.
 
+> **⚠️ pnpm 10: `pnpm update @cbartens/bkit` overwrites the manifest range.** pnpm 10 rewrites `package.json` from `"@cbartens/bkit": "^2"` to the resolved exact-minor (e.g. `"^2.0.5"`) and pins the lockfile specifier to match. To preserve a major-floating range, restore the manifest and re-resolve the lockfile after `pnpm update`:
+>
+> ```bash
+> pnpm update @cbartens/bkit
+> # Check whether pnpm 10 narrowed the manifest range
+> grep '"@cbartens/bkit"' package.json   # expect "^2", not "^2.x.y"
+> # If narrowed: edit package.json back to "^2", then re-resolve:
+> pnpm install --frozen-lockfile=false
+> # Verify lockfile specifier:
+> grep -A2 "'@cbartens/bkit'" pnpm-lock.yaml   # expect specifier: ^2
+> ```
+
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
 ## JSON ownership model — deep-containment (v2.0.0+)

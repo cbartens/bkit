@@ -6,6 +6,24 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.6] — 2026-05-12
+
+### Changed
+
+- **Pre-worktree commit hygiene (BAR-190).** `bkit-{ship,design,plan,build}` Step 2.1 pre-worktree commit now always carries `[skip build] [skip ci]`. `bkit-ship` Step 2.1 staging tightened to an allow-list (`docs/`, `.agents/friction.md`) matching the design/plan/build 1.1.2 fix. Step 7 Switch-to-Dev tolerates `AHEAD>0` when every ahead commit is `[skip ci]`-tagged (rebase + silent push); non-skip-ci ahead commits still route to Failure Path. Step 11 Close Workflow adds a detection guard that looks up the squash-merge SHA's CI run and fails to Failure Path if the run was cancelled or its `test*` job was skipped; Gate 11 documents the check.
+- **Worktree-safe repo-root resolution (BAR-155).** All 5 phase workflows and `.agents/workflows.md` replace `$(git rev-parse --show-toplevel)` with `$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")` so orchestrators whose cwd is already inside a worktree don't double-nest `.worktrees/`. `bkit-ship` Step 4 wraps `gh pr merge` in a `cd "$(dirname …)"` subshell so `--delete-branch` stops failing with `fatal: 'dev' is already used by worktree`.
+- **Cross-workflow rebase alignment (BAR-155).** `--rebase-merges` ported from `bkit-ship` to `bkit-{debug,build,design,plan}` Step 2 worktree-resume `git rebase origin/dev`, per the Workflow Authoring Rules.
+
+### Fixed
+
+- **Vale self-trigger on compress-markdown prompt (BAR-189).** `bkit-utility-compress-markdown.md` enumerates hedging/verbose phrases verbatim as examples to strip, so `House.Hedging` and `House.Verbose` self-fired on every consumer running `pnpm lint:prose`. Adds a scoped exemption (mirrors the existing `skills/` pattern) in both the bkit `.vale.ini` and the `templates/.vale.ini` shipped to consumers.
+
+### Docs
+
+- **README upgrade callout — pnpm 10 manifest narrowing (KN-22).** `pnpm update @cbartens/bkit` on pnpm 10 silently rewrites `package.json` from `"^2"` to the resolved exact minor (e.g. `"^2.0.5"`) and pins the lockfile specifier to match. README now documents the check-and-restore sequence (`grep '"@cbartens/bkit"' package.json` → if narrowed, edit back to `"^2"` and `pnpm install --frozen-lockfile=false`). KN-22 captures the root cause for future reference.
+
+---
+
 ## [2.0.5] — 2026-05-12
 
 ### Added
