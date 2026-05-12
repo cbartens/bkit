@@ -6,6 +6,28 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.0.5] — 2026-05-12
+
+### Added
+
+- **PR-base gates (BAR-170).** `bkit-build` Step 17 asserts `gh pr view --json baseRefName` = `dev` after PR creation; `bkit-ship` Step 2 reads `baseRefName` upfront and routes wrong-base to Failure Path. Prevents the BAR-95-class incident where a `feat/*` PR landed directly on `main`. Install-time advisory `main-branch-protection-missing` surfaces when `main` has no branch protection.
+- **Rollback runbook (BAR-170).** `docs/deployments.md` ships a one-shot `bash scripts/rollback-main.sh <green-sha>` automating the GitHub protection save → disable → ref-reset → restore dance, plus a manual 5-step playbook fallback. `CORE_TEMPLATE_DIRS` extended with `scripts` so utility scripts propagate to consumers.
+- **CI SHA-cache skip (BAR-170).** Pre-test step queries `gh run list` for prior green runs on the same SHA within 7 days; if found, all subsequent steps skip via per-step `if:` gating. Saves 10–20 min on rollback re-runs without disturbing required status checks.
+- **Revert-branch pre-push bypass (BAR-170).** `.husky/pre-push` template detects `revert-*` branches or `Revert "*"` HEAD commits and downgrades to typecheck + format:check (test suite skipped), so recovery pushes can land when the source state is transitionally inconsistent.
+- **ReAct `## Hypotheses` blocks (BAR-168).** Append-only ReAct sections added to `debug-failure-diagnose` and `debug-observe-analyse` outputs (`### Hypothesis {N} / #### Reason / #### Act / #### Observe / #### Result`). Refuted entries retained for future grep. `Result` enum: `CONFIRMED | REFUTED | INCONCLUSIVE | PENDING`.
+- **`## Prior Knowledge` section in diagnose output (BAR-168).** Agent must cite matched `docs/knowledge.md` KN-N entries (or "No issues found.") — proves the agent used what the workflow matrix already mandates reading.
+- **`**Done when:**` line per plan task (BAR-168 stage 1).** `bkit-plan-generate` mandates a Done-when criterion derived from the Derived Test Matrix where applicable. Enforcement gates (review / scope-check / verify) deferred.
+- **Debug close-workflow opens PR when none exists (BAR-188).** When `/bkit-build` fails its summary gate no PR opens against `dev`, so subsequent `/bkit-debug` remediation pushes never trigger CI (feature branches are excluded from consumer workflow `push:` triggers). Step 11 now derives `TRIGGER_PR` via a three-way check: dev/main → push fires CI; feature + PR exists → push fires `pull_request`; feature + no PR (`DEBUG_MODE=local`) → `gh pr create --base dev`.
+
+### Changed
+
+- **Workflow commit/push count halved (BAR-187).** Per-step double-commit pattern (work + status) collapsed via `parentSha` captured at step START instead of post-commit `commitSha`. `Step.commitSha` → `Step.parentSha` in `.agents/scripts/bkit-status.ts`. Per-step writes are file-only between steps (uncommitted on dev); dev commit + push happens exactly once per run, at Close Workflow or Failure Path with `[skip ci]` on status-only commits. plan/design success uses `git merge --squash feat/{FID}` → one `docs({FID}): {phase} DONE` commit on dev. Ship close batches Steps 7-10 into a single `docs({FID}): ship DONE [skip ci]` commit.
+- **`status.json` canonical location unified (BAR-187).** All five workflows now write to `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (BAR-183 generalized from plan/design to build/debug/ship). Outside-worktree progress is readable via `cat` without entering the worktree or running `git show`.
+- **`Failed` Linear label cleared on recovery (workflows).** `/bkit-debug` Step 1 and `/bkit-ship` Step 11 drop the `Failed` label if present, so a recovered or shipped issue does not carry a stale Failure Path marker. Failure Paths still re-add `Failed` on a new failure. Bundled tightening: every workflow's Failure Path note reworded from "additive — phase label persists" to "prior phase label persists".
+- **Top-level docs and `.agents/` prose compressed.** Dense rewrites with explicit `<!-- prettier-ignore -->` markers around width-sensitive blocks. No semantic change.
+
+---
+
 ## [2.0.4] — 2026-05-12
 
 ### Changed
