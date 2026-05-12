@@ -73,7 +73,7 @@ export { getPkgRoot } from "./bkit-paths.js";
 // These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
 // ---------------------------------------------------------------------------
 // Top-level template directories/files that belong to core (not other modules)
-const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents"]);
+const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", "scripts"]);
 // Top-level template files (non-directory) that belong to core
 const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore"]);
 // Template subdirectories that belong to non-core modules (skip in core pass)

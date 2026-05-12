@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main, dev]
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
@@ -21,22 +25,51 @@ jobs:
       # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
       - uses: pnpm/action-setup@v4
 
+      - name: Check SHA Cache
+        # Skip the suite when this SHA already has a successful run for this
+        # workflow within the last 7 days. Helps after a rollback force-push.
+        id: cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --status success \
+            --limit 50 \
+            --json headSha,createdAt \
+            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+            2>/dev/null || echo 0)
+          if [ "${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install Dependencies
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Run Typecheck
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
 
       - name: Run Vitest Tests
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm test
 
       - name: Run Prettier Format Check
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm format:check
 
       - name: Run Vale Prose Lint
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:prose
 
       - name: Run Slop Scan
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:slop
 
       # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
@@ -44,7 +77,9 @@ jobs:
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
       - name: Verify Dist Freshness
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm check:dist
 
       - name: Run Bkit Check
+        if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
