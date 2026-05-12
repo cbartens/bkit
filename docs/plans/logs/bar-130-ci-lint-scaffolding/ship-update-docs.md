@@ -53,12 +53,13 @@ No stale docs found.
 
 ## Learnings extracted (verification)
 
-| Learning                                                                                                 | Persistence path                                  | Verified status            |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------- |
-| KN-3: pnpm/action-setup@v4 dual-SoT abort + fix rule (drop `with.version:`, let `packageManager` be SoT) | `docs/knowledge.md` lines 49–59                   | Present and correct        |
-| `{{PNPM_VERSION}}` is dead code post-hotfix; retire in v0.2                                              | `docs/pending.md` lines 53–61                     | Present and correct        |
-| Hotfix scope record (second ship cycle, no version bump)                                                 | `docs/completed.md` (appended this run)           | Added                      |
-| Squash-merge rebase friction for hotfix branches                                                         | `.agents/friction.md` (debug log noted RECOVERED) | Out of docs subagent scope |
+<!-- prettier-ignore -->
+| Learning | Persistence path | Verified status |
+| --- | --- | --- |
+| KN-3: pnpm/action-setup@v4 dual-SoT abort + fix rule (drop `with.version:`, let `packageManager` be SoT) | `docs/knowledge.md` lines 49–59 | Present and correct |
+| `{{PNPM_VERSION}}` is dead code post-hotfix; retire in v0.2 | `docs/pending.md` lines 53–61 | Present and correct |
+| Hotfix scope record (second ship cycle, no version bump) | `docs/completed.md` (appended this run) | Added |
+| Squash-merge rebase friction for hotfix branches | `.agents/friction.md` (debug log noted RECOVERED) | Out of docs subagent scope |
 
 ## Verification
 

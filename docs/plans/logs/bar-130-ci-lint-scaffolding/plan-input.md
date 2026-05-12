@@ -132,12 +132,13 @@ Sits inside the bkit-managed block before the `pnpm install` step. README adds a
 6. **Dry-run parity** (absorbed from BAR-131 #3) → `bkit check` write-set must match `bkit install` write-set. Today the templates-pass dry-run misses managed-block "append at EOF" writes; live install does the append, dry-run doesn't predict it (reproduced in `app-gether-life`: `check` reported 14 writes, `install` performed 15 — the extra was a `.gitignore` append-block). Fix: simulate the append rule in the dry-run path of `bkit-install.ts`. Regression test: install once → check → install with mock fs → assert dry-run write set ≡ real install write set.
 7. **Token substitution** (absorbed from BAR-112) → `{{TOKEN}}` placeholders in templates, auto-detected from project state, sensible defaults if detection fails. Non-interactive only — no prompted fallback in v0.1.2. Token list:
 
-| Token                | Source priority                                                                | Default if all fail |
-| -------------------- | ------------------------------------------------------------------------------ | ------------------- |
-| `{{NODE_VERSION}}`   | `.nvmrc` (extract major) → `package.json.engines.node` (parse range, take min) | `22`                |
-| `{{PNPM_VERSION}}`   | `package.json.packageManager` (e.g. `"pnpm@10.4.1"`, extract major)            | `10`                |
-| `{{DEFAULT_BRANCH}}` | `git symbolic-ref refs/remotes/origin/HEAD` (strip prefix)                     | `main`              |
-| `{{PROJECT_NAME}}`   | `package.json.name`                                                            | error — required    |
+<!-- prettier-ignore -->
+| Token | Source priority | Default if all fail |
+| --- | --- | --- |
+| `{{NODE_VERSION}}` | `.nvmrc` (extract major) → `package.json.engines.node` (parse range, take min) | `22` |
+| `{{PNPM_VERSION}}` | `package.json.packageManager` (e.g. `"pnpm@10.4.1"`, extract major) | `10` |
+| `{{DEFAULT_BRANCH}}` | `git symbolic-ref refs/remotes/origin/HEAD` (strip prefix) | `main` |
+| `{{PROJECT_NAME}}` | `package.json.name` | error — required |
 
 Substitution happens once per install at template-write time, not at template-read time. Consumers see resolved values in the seeded file; no token leaks. If a consumer's project state changes (e.g. they bump Node), re-running `bkit install` updates the managed-block with the new value (Tier 2 idempotence handles this naturally).
 

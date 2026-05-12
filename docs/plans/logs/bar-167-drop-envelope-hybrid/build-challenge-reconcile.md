@@ -167,13 +167,14 @@ Heavy-customised fixture has `NODE_AUTH_TOKEN` inside the bkit marker block, ill
 
 ## Summary
 
-| Category                        | Count                                     |
-| ------------------------------- | ----------------------------------------- |
-| MAJOR (CRITICAL severity, real) | 4 (MAJOR-1, MAJOR-2, MAJOR-3, MAJOR-4)    |
-| MAJOR (HIGH severity, real)     | 2 (MAJOR-5, MAJOR-6)                      |
-| MAJOR false-positive            | 0                                         |
-| MINOR real                      | 10 (MINOR-1, 2, 3, 4, 5, 7, 8, 9, 10, 11) |
-| MINOR deferred                  | 2 (MINOR-6, MINOR-12)                     |
+<!-- prettier-ignore -->
+| Category | Count |
+| --- | --- |
+| MAJOR (CRITICAL severity, real) | 4 (MAJOR-1, MAJOR-2, MAJOR-3, MAJOR-4) |
+| MAJOR (HIGH severity, real) | 2 (MAJOR-5, MAJOR-6) |
+| MAJOR false-positive | 0 |
+| MINOR real | 10 (MINOR-1, 2, 3, 4, 5, 7, 8, 9, 10, 11) |
+| MINOR deferred | 2 (MINOR-6, MINOR-12) |
 
 All six MAJOR findings from challenge-1 were verified REAL via targeted greps. Challenge-2's nine MINOR findings merged into the MINOR set (Findings 5 and 8 collapsed into MINOR-3 with challenge-1 MINOR-3; Finding 7 collapsed into MINOR-4 with challenge-1 MINOR-4).
 

@@ -20,15 +20,16 @@
 
 ## Verification commands
 
-| Command               | Exit | Detail                                                        |
-| --------------------- | ---- | ------------------------------------------------------------- |
-| `pnpm typecheck`      | 0    | clean                                                         |
-| `pnpm test`           | 0    | 157 passed, 0 todo, 7 files                                   |
-| `pnpm format:check`   | 0    | clean                                                         |
-| `pnpm lint:slop`      | 0    | 3 pre-existing in `.agents/skills/`; no v4-3 surface findings |
-| `pnpm build`          | 0    | dist clean — no `bkit-init.js`                                |
-| `pnpm pack --dry-run` | 0    | only `dist/`, `.agents/`, `README.md`, `package.json` ship    |
-| `pnpm tsx ... check`  | 1    | DRIFT DETECTED — 4 writes pending; see Concerns               |
+<!-- prettier-ignore -->
+| Command | Exit | Detail |
+| --- | --- | --- |
+| `pnpm typecheck` | 0 | clean |
+| `pnpm test` | 0 | 157 passed, 0 todo, 7 files |
+| `pnpm format:check` | 0 | clean |
+| `pnpm lint:slop` | 0 | 3 pre-existing in `.agents/skills/`; no v4-3 surface findings |
+| `pnpm build` | 0 | dist clean — no `bkit-init.js` |
+| `pnpm pack --dry-run` | 0 | only `dist/`, `.agents/`, `README.md`, `package.json` ship |
+| `pnpm tsx ... check` | 1 | DRIFT DETECTED — 4 writes pending; see Concerns |
 
 ## Concerns
 

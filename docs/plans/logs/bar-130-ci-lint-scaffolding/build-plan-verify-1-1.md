@@ -7,15 +7,16 @@
 
 ## Sub-plan checklist coverage
 
-| Item                                                                                         | Status                      | Evidence                                                                                                                                   |
-| -------------------------------------------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| DoD #5 — bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test + format:check | Covered                     | `.github/workflows/ci.yml` lines 43-72 — Typecheck, Run Tests, Format Check, Install Vale, Prose Lint, Slop Scan, Self-Test steps in order |
-| Task 7.1 — `.github/workflows/ci.yml` w/ markers + Option A (`pnpm tsx`)                     | Covered                     | `.github/workflows/ci.yml` line 1 (`# bkit:start`), line 73 (`# bkit:end`), line 72 (`pnpm tsx .agents/scripts/bkit-install.ts check`)     |
-| Task 7.2 — `.vale.ini` + `.vale/styles/House/` slim scope                                    | Covered                     | `.vale.ini` lines 6-7 `[.agents/**]`, lines 29-34 `[*.md]`; `.vale/styles/House/LLMSlop.yml` exists                                        |
-| Task 7.3 — `slop-scan.config.json` + `.prettierignore`                                       | Covered                     | `slop-scan.config.json` (32 lines), `.prettierignore` (8 lines wrapped in markers)                                                         |
-| Task 7.4 — `prettier` devDep + format/format:check/lint:slop/lint:prose scripts              | Covered                     | `package.json` lines 30-33, devDep `prettier ^3.5.3` line 37                                                                               |
-| Gate 1, 2, 3, 4                                                                              | Ticked                      | plan-1 lines 167-171, 269, 281-282, 295-297                                                                                                |
-| CI on PR (line 293) + Manual Step 3 (line 306)                                               | Unticked (correct — pre-PR) | Branch not yet merged                                                                                                                      |
+<!-- prettier-ignore -->
+| Item | Status | Evidence |
+| --- | --- | --- |
+| DoD #5 — bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test + format:check | Covered | `.github/workflows/ci.yml` lines 43-72 — Typecheck, Run Tests, Format Check, Install Vale, Prose Lint, Slop Scan, Self-Test steps in order |
+| Task 7.1 — `.github/workflows/ci.yml` w/ markers + Option A (`pnpm tsx`) | Covered | `.github/workflows/ci.yml` line 1 (`# bkit:start`), line 73 (`# bkit:end`), line 72 (`pnpm tsx .agents/scripts/bkit-install.ts check`) |
+| Task 7.2 — `.vale.ini` + `.vale/styles/House/` slim scope | Covered | `.vale.ini` lines 6-7 `[.agents/**]`, lines 29-34 `[*.md]`; `.vale/styles/House/LLMSlop.yml` exists |
+| Task 7.3 — `slop-scan.config.json` + `.prettierignore` | Covered | `slop-scan.config.json` (32 lines), `.prettierignore` (8 lines wrapped in markers) |
+| Task 7.4 — `prettier` devDep + format/format:check/lint:slop/lint:prose scripts | Covered | `package.json` lines 30-33, devDep `prettier ^3.5.3` line 37 |
+| Gate 1, 2, 3, 4 | Ticked | plan-1 lines 167-171, 269, 281-282, 295-297 |
+| CI on PR (line 293) + Manual Step 3 (line 306) | Unticked (correct — pre-PR) | Branch not yet merged |
 
 ## Diff review (in-scope files only)
 

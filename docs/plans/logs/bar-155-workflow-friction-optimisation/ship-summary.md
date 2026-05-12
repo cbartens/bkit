@@ -8,14 +8,15 @@ Verdict: PASS
 
 BAR-155 shipped six friction-reduction fixes to bkit `.agents/` prompts and workflows:
 
-| Fix  | Scope                                                                                                                    | Files touched                                                                                             |
-| ---- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| 1b   | Freeform stub-first directive (`echo {finding} >> {output}`, eager `Verdict:` flip-on-FAIL)                              | 4 target prompts (`bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests`) |
-| 2    | Deterministic task-count gate (>15 tasks → SPLIT) in `bkit-plan` Step 8                                                  | 2 files (`bkit-plan.md` workflow, `bkit-plan-complexity-check.md` prompt)                                 |
-| 3    | Scoped BAR-N detection (>1 in `## Linear Issue:` section only) in `bkit-plan` Step 3                                     | 1 file (`bkit-plan.md` workflow)                                                                          |
-| 4a–d | Parallel challenge pair (`-1`/`-2`) + reconciler (`-reconcile`) replacing single agent; `bkit-build.md` Steps 9–18 wired | 8 files (3 new challenge prompts, 1 deleted, 2 workflows, 2 index docs)                                   |
-| 5    | Rebase failure routing via sentinel file (`.rebase-failed`) instead of bare `exit 1`                                     | 1 file (`bkit-ship.md` workflow)                                                                          |
-| 6    | Always-on long-branch advisory in `bkit-build` Step 1                                                                    | 1 file (`bkit-build.md` workflow)                                                                         |
+<!-- prettier-ignore -->
+| Fix | Scope | Files touched |
+| --- | --- | --- |
+| 1b | Freeform stub-first directive (`echo {finding} >> {output}`, eager `Verdict:` flip-on-FAIL) | 4 target prompts (`bkit-build-challenge-1`, `-2`, `bkit-build-plan-verify`, `bkit-build-challenge-tests`) |
+| 2 | Deterministic task-count gate (>15 tasks → SPLIT) in `bkit-plan` Step 8 | 2 files (`bkit-plan.md` workflow, `bkit-plan-complexity-check.md` prompt) |
+| 3 | Scoped BAR-N detection (>1 in `## Linear Issue:` section only) in `bkit-plan` Step 3 | 1 file (`bkit-plan.md` workflow) |
+| 4a–d | Parallel challenge pair (`-1`/`-2`) + reconciler (`-reconcile`) replacing single agent; `bkit-build.md` Steps 9–18 wired | 8 files (3 new challenge prompts, 1 deleted, 2 workflows, 2 index docs) |
+| 5 | Rebase failure routing via sentinel file (`.rebase-failed`) instead of bare `exit 1` | 1 file (`bkit-ship.md` workflow) |
+| 6 | Always-on long-branch advisory in `bkit-build` Step 1 | 1 file (`bkit-build.md` workflow) |
 
 PR #17 **squash-merged** to `dev` at **2026-05-10T11:03:09Z**, SHA `21c9bdc`. All six fixes landed atomically in single commit.
 

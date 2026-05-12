@@ -6,24 +6,25 @@
 
 ## DoD bullet coverage (per parent index Cross-cutting table)
 
-| #   | DoD bullet                                                                                  | Owner       | Status                                                                         |
-| --- | ------------------------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------ |
-| 1   | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test                        | v4-1        | ✓ — `.github/workflows/ci.yml` lines 43-72 sequence verified                   |
-| 2   | `bkit install` (no flags) seeds full stack across 3 tiers                                   | v4-3        | ✓ — `resolveModules` (`bkit-cli.ts:33-43`) maps empty/`full` → all six modules |
-| 3   | `bkit install --claude` seeds only `.claude/**` + core                                      | v4-3        | ✓ — `bkit-modules.integration.test.ts` `--claude` only test                    |
-| 4   | `bkit install --ci --lint` seeds CI + lint + core                                           | v4-3        | ✓ — integration test present                                                   |
-| 5   | `bkit install --ci` on existing customised `ci.yml` injects bkit-managed block w/ tokens    | v4-2        | ✓ — `writeTier2` + Task 6.1b end-to-end test                                   |
-| 6   | `bkit install` on existing `slop-scan.config.json` (Tier 3) preserves + prints              | v4-2        | ✓ — `writeTier3` print-only path verified                                      |
-| 7   | `bkit install` second run zero diff                                                         | v4-3        | ✓ — idempotence integration test                                               |
-| 8   | `bkit check --full` ≡ `bkit install --full` writeset (14-vs-15 regression)                  | v4-2        | ✓ — `bkit-dry-run-parity.integration.test.ts` 4 active rules                   |
-| 9   | Token-substituted `ci.yml` has consumer's `.nvmrc` + default branch                         | v4-2        | ✓ — `resolveTokens` chain + `applyTokens` write-time                           |
-| 10  | `bkit init` deprecation stub                                                                | v4-3        | ✓ — `parseArgs` `deprecations.initVerb` + `printDeprecationWarnings`           |
-| 11  | `bkit install --host=claude` deprecation stub                                               | v4-3        | ✓ — `deprecations.hostFlag` path                                               |
-| 12  | Seeded `ci.yml` includes auth-shim + README documents `BKIT_READ_TOKEN`                     | v4-2 + v4-3 | ✓ — template line 23 auth-shim asserted; README §Consumer CI auth lines 72-112 |
-| 13  | `app-gether-life` re-installs at v0.1.2 (Gate 4.5a)                                         | v4-3        | DEFERRED — post-PR human run                                                   |
-| 14  | Second consumer onboards via `install --full` (Gate 4.5b)                                   | v4-3        | DEFERRED — post-PR human run                                                   |
-| 15  | `package.json` bumped to `0.1.2`; tag pushed                                                | v4-3        | ✓ version 0.1.2 (line 3); tag handed to bkit-ship                              |
-| 16  | README + `.agents/README.md` document three-tier model + module-flag CLI + init deprecation | v4-3        | ✓ — both rewritten                                                             |
+<!-- prettier-ignore -->
+| # | DoD bullet | Owner | Status |
+| --- | --- | --- | --- |
+| 1 | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test | v4-1 | ✓ — `.github/workflows/ci.yml` lines 43-72 sequence verified |
+| 2 | `bkit install` (no flags) seeds full stack across 3 tiers | v4-3 | ✓ — `resolveModules` (`bkit-cli.ts:33-43`) maps empty/`full` → all six modules |
+| 3 | `bkit install --claude` seeds only `.claude/**` + core | v4-3 | ✓ — `bkit-modules.integration.test.ts` `--claude` only test |
+| 4 | `bkit install --ci --lint` seeds CI + lint + core | v4-3 | ✓ — integration test present |
+| 5 | `bkit install --ci` on existing customised `ci.yml` injects bkit-managed block w/ tokens | v4-2 | ✓ — `writeTier2` + Task 6.1b end-to-end test |
+| 6 | `bkit install` on existing `slop-scan.config.json` (Tier 3) preserves + prints | v4-2 | ✓ — `writeTier3` print-only path verified |
+| 7 | `bkit install` second run zero diff | v4-3 | ✓ — idempotence integration test |
+| 8 | `bkit check --full` ≡ `bkit install --full` writeset (14-vs-15 regression) | v4-2 | ✓ — `bkit-dry-run-parity.integration.test.ts` 4 active rules |
+| 9 | Token-substituted `ci.yml` has consumer's `.nvmrc` + default branch | v4-2 | ✓ — `resolveTokens` chain + `applyTokens` write-time |
+| 10 | `bkit init` deprecation stub | v4-3 | ✓ — `parseArgs` `deprecations.initVerb` + `printDeprecationWarnings` |
+| 11 | `bkit install --host=claude` deprecation stub | v4-3 | ✓ — `deprecations.hostFlag` path |
+| 12 | Seeded `ci.yml` includes auth-shim + README documents `BKIT_READ_TOKEN` | v4-2 + v4-3 | ✓ — template line 23 auth-shim asserted; README §Consumer CI auth lines 72-112 |
+| 13 | `app-gether-life` re-installs at v0.1.2 (Gate 4.5a) | v4-3 | DEFERRED — post-PR human run |
+| 14 | Second consumer onboards via `install --full` (Gate 4.5b) | v4-3 | DEFERRED — post-PR human run |
+| 15 | `package.json` bumped to `0.1.2`; tag pushed | v4-3 | ✓ version 0.1.2 (line 3); tag handed to bkit-ship |
+| 16 | README + `.agents/README.md` document three-tier model + module-flag CLI + init deprecation | v4-3 | ✓ — both rewritten |
 
 ## Cross-sub-plan integration checks
 

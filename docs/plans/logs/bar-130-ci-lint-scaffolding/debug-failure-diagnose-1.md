@@ -16,8 +16,9 @@ N/A — first debug attempt for this failure (DEBUG_ATTEMPT=0, TEST_ATTEMPT=1). 
 
 Single hard failure, action-level (not code-level), in the post-merge `dev` CI run on commit `8646711`:
 
-| Job          | Step         | Action                 | Outcome                                                                 |
-| ------------ | ------------ | ---------------------- | ----------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| Job | Step | Action | Outcome |
+| --- | --- | --- | --- |
 | `bkit-gates` | `Setup pnpm` | `pnpm/action-setup@v4` | Self-installer aborts with `Error: Multiple versions of pnpm specified` |
 
 Verbatim error:

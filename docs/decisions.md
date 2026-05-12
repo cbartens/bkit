@@ -47,9 +47,9 @@
 
 - **Category:** agentic
 - **Status:** active
-- **Decision:** Extend `.agents/.bkit-version` from a plain-text semver pin to a JSON object `{ pinnedVersion: string; tier3Hashes: Record<path, sha256> }`. The sha256 map records the content hash of each Tier-3 file at install time. During `bkit uninstall`, `shouldDeleteTier3` checks whether the current on-disk content matches the recorded hash — if so, the file is safe to delete; if not (consumer modified), it is preserved. Backward-compat reader parses old plain-text payloads as `{ pinnedVersion, tier3Hashes: {} }` (unknown → preserve-default).
-- **Why:** Tier-3 files (seed-or-print) are deleted during uninstall only if they are still in the exact state bkit wrote them. Without a recorded hash, `bkit uninstall` cannot distinguish between a default-seeded `ci.yml` (safe to delete) and a consumer-customised one (must preserve). Plain-text format is insufficient; JSON is human-readable and extensible.
-- **Discarded:** (1) Keep plain-text; detect "default content" by re-rendering the template at uninstall time — fails for Tier-3 files with token substitution that bkit can no longer re-compute (consumer tokens may have changed). (2) Store hashes in a separate `.bkit-hashes.json` — two files to keep in sync; `.bkit-version` is the natural home.
+- **Decision:** Extend `.agents/.bkit-version` from a plain-text semver pin to a JSON object `{ pinnedVersion: string; tier3Hashes: Record<path, sha256> }`. The sha256 map records the content hash of each Tier-3 file at install time. During `bkit uninstall`, `shouldDeleteTier3` checks whether current on-disk content matches the recorded hash — if so, safe to delete; if not (consumer modified), preserved. Backward-compat reader parses old plain-text payloads as `{ pinnedVersion, tier3Hashes: {} }` (unknown → preserve-default).
+- **Why:** Tier-3 files (seed-or-print) are deleted during uninstall only if still in the exact state bkit wrote them. Without a recorded hash, `bkit uninstall` cannot distinguish a default-seeded `ci.yml` (safe to delete) from a consumer-customised one (must preserve). Plain-text format is insufficient; JSON is human-readable and extensible.
+- **Discarded:** (1) Keep plain-text; detect "default content" by re-rendering the template at uninstall time — fails for Tier-3 files with token substitution bkit can no longer re-compute (consumer tokens may have changed). (2) Store hashes in a separate `.bkit-hashes.json` — two files to keep in sync; `.bkit-version` is the natural home.
 - **Source:** phase
 - **Related:** BAR-139, `.agents/scripts/bkit-version.ts`, `.agents/scripts/bkit-uninstall.ts`
 
@@ -58,7 +58,7 @@
 - **Category:** agentic
 - **Status:** active
 - **Decision:** `.bkitignore` is a new public file at the consumer repo root. Syntax: `#` comment, blank-line ignore, [picomatch](https://github.com/micromatch/picomatch) glob, optional `:dotted.key` suffix for per-key exclusion. Per-key is opt-in behind `BKIT_BKITIGNORE_PER_KEY=1` env var (off by default). Once shipped, the file and its syntax are a public contract.
-- **Why:** Consumers legitimately override bkit-managed files (e.g. custom ci.yml jobs, additional `.claude/settings.json` hook events). `bkit check` currently reports false-positive drift for these. `.bkitignore` gives consumers a declarative escape hatch without touching the managed file itself. Per-key is opt-in because implementation cost is high and per-file covers the majority use-cases (gether-life scenario).
+- **Why:** Consumers legitimately override bkit-managed files (e.g. custom ci.yml jobs, additional `.claude/settings.json` hook events). `bkit check` currently reports false-positive drift for these. `.bkitignore` gives consumers a declarative escape hatch without touching the managed file itself. Per-key is opt-in because implementation cost is high and per-file covers the majority use-cases.
 - **Discarded:** (1) Make per-key the default — implementation cost likely high; opt-in via env covers the primary use case. (2) Use a custom DSL instead of gitignore-style — picomatch is well-understood, has no shell-out, and is a pure-regex library (security: no injection risk). (3) Store in `.agents/.bkitignore` — consumer-owned files belong at repo root, not in the `.agents/` subtree (which is bkit-managed).
 - **Source:** phase
 - **Related:** BAR-142 §A2, `.agents/scripts/bkit-bkitignore.ts`, `docs/pending.md` (per-key deferred)
@@ -67,8 +67,8 @@
 
 - **Category:** agentic
 - **Status:** active
-- **Decision:** Replace `ModuleContext.printSink: string[]` with `ModuleContext.advisories: PreflightFinding[]` (shape: `{id, severity, detect, action}`). Install is restructured into three phases: Phase 1 preflight (read-only, blockers short-circuit before any writes), Phase 2 dispatch (unchanged), Phase 3 post-install re-detection (token surfaces, ci.yml, vale sync, devDeps). Findings deduplicated by `id` — Phase 3 wins on conflict.
-- **Why:** `printSink: string[]` was unparseable by downstream tooling, emitted advisory strings during module execution (before post-install state was accurate), and had no structured `id` for deduplication. The structured shape enables: (1) stable `id` registry for downstream automation; (2) blocker short-circuit before any writes; (3) accurate post-install re-detection; (4) unified banner formatter reusable by BAR-139 (`bkit uninstall`).
+- **Decision:** Replace `ModuleContext.printSink: string[]` with `ModuleContext.advisories: PreflightFinding[]` (shape: `{id, severity, detect, action}`). Install restructured into three phases: Phase 1 preflight (read-only, blockers short-circuit before any writes), Phase 2 dispatch (unchanged), Phase 3 post-install re-detection (token surfaces, ci.yml, vale sync, devDeps). Findings deduplicated by `id` — Phase 3 wins on conflict.
+- **Why:** `printSink: string[]` was unparseable by downstream tooling, emitted advisory strings during module execution (before post-install state was accurate), and had no structured `id` for deduplication. Structured shape enables: (1) stable `id` registry for downstream automation; (2) blocker short-circuit before any writes; (3) accurate post-install re-detection; (4) unified banner formatter reusable by BAR-139 (`bkit uninstall`).
 - **Discarded:** (1) Keep `printSink` + add parallel `findings: PreflightFinding[]` — two sinks → drift risk; downstream tooling has to merge two shapes. (2) `--strict` flag promoting advisories to blockers — out of scope; consumer can use `bkit check` (exit-1-on-drift). (3) Auto-apply advisory fixes — violates consumer-value-wins principle.
 - **Source:** phase
 - **Related:** BAR-141, `docs/plans/active/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4
@@ -113,8 +113,8 @@
 - **Category:** agentic
 - **Status:** active
 - **Decision:** `bkit install` writes each module's output to `.bkit-staging/<module>/` before committing. After ALL modules complete without error, `commitStaging` atomically renames staged files to consumer destinations. On any mid-install failure, `discardAllStaging` removes all staging dirs — consumer files left byte-identical to pre-install state.
-- **Why:** Prior to v0.9.0, a crash mid-install (e.g. `bkit-design-organise` lookup miss, BAR-141 regression) could leave partial writes in consumer dirs. The staging design makes mid-failure the common case trivially safe: no staged file ever reaches a consumer destination unless the entire install succeeds.
-- **Discarded:** (1) Backup-then-restore: copies all destination files before writing, restores on failure. Rejected — requires the same file I/O as install, doubles disk use, and restoration is error-prone on large installs. (2) Transactional DB: overkill for a CLI file installer.
+- **Why:** Prior to v0.9.0, a crash mid-install (e.g. `bkit-design-organise` lookup miss, BAR-141 regression) could leave partial writes in consumer dirs. Staging makes mid-failure the common case trivially safe: no staged file ever reaches a consumer destination unless the entire install succeeds.
+- **Discarded:** (1) Backup-then-restore — requires the same file I/O as install, doubles disk use, and restoration is error-prone on large installs. (2) Transactional DB — overkill for a CLI file installer.
 - **Key APIs:** `getStagingDir(module, cwd)`, `initStagingDir(stagingDir)`, `commitStaging(stagingDir, cwd)`, `discardStaging(stagingDir)`, `discardAllStaging(cwd)` — all exported from `bkit-install.ts`.
 - **Source:** phase
 - **Related:** BAR-142 §A4, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-install.integration.test.ts`
@@ -174,8 +174,8 @@
 - **Category:** agentic
 - **Status:** active
 - **Decision:** `bkit-build` closes at Step 17 unchanged. The post-CI router runs as a fresh orchestrator (`/bkit-ci-router`) in a brand-new Claude Code session dispatched by GHA. State handoff is via canonical disk artifacts (`status.json`, plan files, Linear comment-id) — already the documented contract. Router context is small by design: read `status.json`, head-SHA stale-run guard, label gate, dispatch.
-- **Why:** Chaining `bkit-ship` (~12 steps) or `bkit-debug` (loop bounded by `MAX_DEBUG_ATTEMPT`) into the same orchestrator session compounds context-window pressure: cumulative `COMMENT_BODY` per step, repeated `status.json` re-reads, gate verifications quoting earlier SHAs / PR numbers verbatim. The fresh-session split keeps every orchestrator's context bounded; downstream skills already implement Resume from `status.json`.
-- **Discarded:** (1) Step 18 in `bkit-build` (chained orchestrator). Re-evaluate only if context budget grows materially and Resume contract is no longer canonical. (2) Embedded sub-agent inside `bkit-build` Failure Path — same context-window concern; Failure Path is for handover, not happy-path routing.
+- **Why:** Chaining `bkit-ship` (~12 steps) or `bkit-debug` (loop bounded by `MAX_DEBUG_ATTEMPT`) into the same orchestrator session compounds context-window pressure: cumulative `COMMENT_BODY` per step, repeated `status.json` re-reads, gate verifications quoting earlier SHAs / PR numbers verbatim. Fresh-session split keeps every orchestrator's context bounded; downstream skills already implement Resume from `status.json`.
+- **Discarded:** (1) Step 18 in `bkit-build` (chained orchestrator) — re-evaluate only if context budget grows materially and Resume contract is no longer canonical. (2) Embedded sub-agent inside `bkit-build` Failure Path — same context-window concern; Failure Path is for handover, not happy-path routing.
 - **Source:** phase
 - **Related:** BAR-148, DE-14, `.agents/workflows/bkit-build.md` (Step 17 unchanged), `.agents/workflows.md` § "Resume" / § "status.json"
 

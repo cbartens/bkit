@@ -57,6 +57,28 @@ export function detectGhSecret(secretName = "GH_BKIT_TOKEN") {
     }
 }
 /**
+ * Detect whether branch protection is configured on `main`.
+ * Returns "present" | "missing" | "unknown".
+ * "unknown" if gh CLI is unavailable, unauthenticated, or not a GitHub repo;
+ * "missing" if the API returns 404 (no protection rule); "present" otherwise.
+ */
+export function detectMainBranchProtection() {
+    try {
+        execFileSync("gh", ["api", "repos/{owner}/{repo}/branches/main/protection"], {
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 5000,
+        });
+        return "present";
+    }
+    catch (err) {
+        const stderr = err.stderr?.toString() ?? "";
+        if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
+            return "missing";
+        }
+        return "unknown";
+    }
+}
+/**
  * Detect whether a Vercel project exists in the consumer's repo.
  * Heuristic: presence of vercel.json at root or under apps/<name>/.
  */
@@ -412,6 +434,24 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             });
         }
         // "unknown" → silent skip (CLI absent / unauthed)
+    }
+    // Main branch protection — bkit's PR-base gates (build Step 17, ship Step 2)
+    // assert feat/* PRs target dev. To enforce at the GitHub layer (so direct
+    // pushes / mis-targeted PRs are rejected before the workflow runs), main
+    // needs branch protection restricting merges to PRs from dev.
+    const protectionStatus = detectMainBranchProtection();
+    if (protectionStatus === "missing") {
+        phase3.push({
+            id: "main-branch-protection-missing",
+            severity: "advisory",
+            detect: "main has no branch protection rule.",
+            action: "bkit's build and ship workflows now require feat/* PRs to target dev (base=dev). To enforce at the GitHub layer:\n\n" +
+                "    Settings → Branches → Add rule → Branch name pattern: main\n" +
+                "    - Require a pull request before merging\n" +
+                "    - Require status checks: run-tests\n" +
+                "    - Restrict who can push: only allow PRs from dev\n\n" +
+                "Without this, a misconfigured agent or manual gh pr create --base main can still squash a feat/* branch directly into production. Any open PRs targeting main directly will fail the new workflow gates — retarget to dev or close.",
+        });
     }
     // ci.yml missing token env
     const ciYml = detectCiYmlMissingTokenEnv(cwd);

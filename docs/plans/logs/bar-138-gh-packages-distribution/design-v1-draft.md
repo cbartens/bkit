@@ -53,22 +53,24 @@ Not applicable — this feature touches build, distribution, and CLI text. No pe
 
 **Manifest field deltas (`package.json`):**
 
-| Field            | Before (v0.3.x)                                                                  | After (v0.4.0)                                                         |
-| ---------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `private`        | `true`                                                                           | `false`                                                                |
-| `description`    | "...installed as a git dependency from a private GitHub repo (no npm registry)." | rewritten to drop the lie; describes registry distribution             |
-| `repository.url` | `git+https://github.com/cbartens/bkit.git`                                       | `https://github.com/cbartens/bkit.git`                                 |
-| `publishConfig`  | (absent)                                                                         | `{ "registry": "https://npm.pkg.github.com", "access": "restricted" }` |
-| `version`        | `0.3.0`                                                                          | bumped to `0.4.0-pre.1` → `0.4.0-pre.2` → `0.4.0` per cadence          |
+<!-- prettier-ignore -->
+| Field | Before (v0.3.x) | After (v0.4.0) |
+| --- | --- | --- |
+| `private` | `true` | `false` |
+| `description` | "...installed as a git dependency from a private GitHub repo (no npm registry)." | rewritten to drop the lie; describes registry distribution |
+| `repository.url` | `git+https://github.com/cbartens/bkit.git` | `https://github.com/cbartens/bkit.git` |
+| `publishConfig` | (absent) | `{ "registry": "https://npm.pkg.github.com", "access": "restricted" }` |
+| `version` | `0.3.0` | bumped to `0.4.0-pre.1` → `0.4.0-pre.2` → `0.4.0` per cadence |
 
 **Print-constant edit targets (`bkit-modules.ts`):**
 
-| Constant                               | Action                                                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS`   | Replace body — `.npmrc` setup + new PAT scope (`read:packages` / Packages: read). Same trigger condition.                                   |
-| `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS`   | Replace body — same shape, new copy.                                                                                                        |
-| `VERCEL_AUTH_INSTRUCTIONS`             | Replace body — Vercel env-var-only (no `installCommand` shim). Heuristic (`detectVercelProject`) unchanged.                                 |
-| `CI_YML_MERGE_INSTRUCTIONS`            | Replace body — `.npmrc`-based merge guidance for an existing consumer ci.yml.                                                               |
+<!-- prettier-ignore -->
+| Constant | Action |
+| --- | --- |
+| `GH_BKIT_TOKEN_MISSING_INSTRUCTIONS` | Replace body — `.npmrc` setup + new PAT scope (`read:packages` / Packages: read). Same trigger condition. |
+| `GH_BKIT_TOKEN_UNKNOWN_INSTRUCTIONS` | Replace body — same shape, new copy. |
+| `VERCEL_AUTH_INSTRUCTIONS` | Replace body — Vercel env-var-only (no `installCommand` shim). Heuristic (`detectVercelProject`) unchanged. |
+| `CI_YML_MERGE_INSTRUCTIONS` | Replace body — `.npmrc`-based merge guidance for an existing consumer ci.yml. |
 | First-install banner (`runCoreModule`) | Drop the `onlyBuiltDependencies: ["@cbartens/bkit"]` line — registry packages with no lifecycle hooks do not need it; carrying it is noise. |
 
 ## Components / Flows
@@ -98,50 +100,53 @@ Not applicable — this feature touches build, distribution, and CLI text. No pe
 
 **Pre-release validation cadence (matches design-input order):**
 
-| Tag            | Scope                                                    | Validation goal                                                          |
-| -------------- | -------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `v0.4.0-pre.1` | publishConfig + release.yml only                         | First-ever publish to GH Packages registry; isolates pipeline-auth bugs. |
-| `v0.4.0-pre.2` | + installer prints + README rewrite + ADR                | Validates message rendering with the new install flow.                   |
-| `v0.4.0`       | merge of pre.1 + pre.2; no further code changes vs pre.2 | Production cut after scratch-consumer smoke.                             |
+<!-- prettier-ignore -->
+| Tag | Scope | Validation goal |
+| --- | --- | --- |
+| `v0.4.0-pre.1` | publishConfig + release.yml only | First-ever publish to GH Packages registry; isolates pipeline-auth bugs. |
+| `v0.4.0-pre.2` | + installer prints + README rewrite + ADR | Validates message rendering with the new install flow. |
+| `v0.4.0` | merge of pre.1 + pre.2; no further code changes vs pre.2 | Production cut after scratch-consumer smoke. |
 
 ## Decisions
 
-| Decided                                                                                                                         | Alternatives                                                                                   | Why                                                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Tag-push trigger** (`on: push: tags: ['v*']`) — single `release.yml`, built-in `GITHUB_TOKEN` with `packages: write`          | `release: published` event (manual UI step); reusable composite workflow shared with `ci.yml`  | Smallest surface; matches design-input snippet; pre-release tags fire same pipeline with zero extra ceremony; built-in token avoids PAT plumbing. Reusable composite is YAGNI at 2 callers.                                                                          |
-| **Hard cutover, atomic PR** — flip `private`, add `publishConfig`, new workflow, replace prints, rewrite docs all in one branch | Feature-flag gating two-phase rollout; dual-publish (git + registry) transition window         | Design-input explicitly excludes dual-publish and backward-compat. Flag gating creates a window of contradictory installer guidance. v0.3.x stays consumable from git for un-migrated consumers — that is the backward-compat story; nothing extra needed in v0.4.0. |
-| **Status quo `dist/`** — keep committed `dist/`, gate publish on `pnpm check:dist`, no `prepublishOnly`                         | Re-introduce `prepublishOnly: tsc`, drop committed `dist/`; build in CI + `.gitignore` `dist/` | Honors BAR-130 v0.3.0 "no lifecycle hooks" invariant. Even `prepublishOnly` (which fires only on `npm publish`) erodes the invariant — the next contributor adds a `prepare` and re-summons the OOM. Repo-cleanliness gain does not outweigh invariant erosion.      |
-| **Two pre-release tags** — `pre.1` (pipeline only) then `pre.2` (prints + docs)                                                 | Single shot validated locally via `npm pack`; one combined `pre.1` covering everything         | Local `npm pack` does not exercise GH Packages auth or `GITHUB_TOKEN` scoping. Splitting prints from pipeline isolates failure surface; first-ever registry publish is the highest-risk step and deserves its own gate.                                              |
-| **Drop `git+` prefix** from `repository.url` → `https://github.com/cbartens/bkit.git`                                           | Leave `git+https://...` as-is                                                                  | Free hygiene win; standard npm convention; helps GH Packages "linked repository" UX pick up the source repo.                                                                                                                                                         |
-| **`npm publish`** in release workflow (not `pnpm publish`)                                                                      | `pnpm publish`                                                                                 | Matches GitHub Packages docs. Avoids pnpm's stricter publish lifecycle hooks and the `--no-git-checks` flag dance. `setup-node` registry-url wiring assumes `npm`.                                                                                                   |
-| **Surgical string-constant edits** in `bkit-modules.ts` — touch only the four print constants + first-install banner            | Refactor `checkBkitTokenSecret`/`detectVercelProject` into a separate auth-check module        | Auth-check logic is correct and unchanged — only the surrounding instruction copy differs. Surgical edits are lower risk; isolates the diff to text.                                                                                                                 |
-| **Drop `onlyBuiltDependencies: ["@cbartens/bkit"]` line** from first-install banner                                             | Keep the line                                                                                  | The entry was a lifecycle-hook OOM workaround (BAR-130 #5). v0.3.0 dropped `prepare`; registry packages with no lifecycle hooks do not need it. Keeping it is noise and confuses new consumers.                                                                      |
-| **Reuse `GH_BKIT_TOKEN` name**; expand PAT scope to include `read:packages` (classic) / Packages: read (fine-grained)           | Introduce a new env var (e.g. `BKIT_NPM_TOKEN`)                                                | Design-input explicit; avoids forcing consumers to rotate two secrets simultaneously. The same secret authenticates both the (legacy) git-clone path on v0.3.x consumers and the (new) registry path on v0.4.0 consumers — eases mid-flight migration.               |
-| **Update CI template + `CI_YML_MERGE_INSTRUCTIONS` in the same commit** as installer text                                       | Separate commits                                                                               | Template and AI-merge instructions must remain consistent; splitting them creates a window where the seed describes the new pattern but the merge instructions describe the old one.                                                                                 |
-| **No backward-compat dual-path detection** in installer prints                                                                  | Detect `github:cbartens/bkit#...` vs `@cbartens/bkit@^X.Y.Z` and print conditionally           | Design-input mandates "v0.4.0 is the cutover, no dual-publish". Same logic applies to print copy. Detection adds a dead-code branch every future change has to honor.                                                                                                |
-| **Add ADR `DE-3`** to `docs/decisions.md`                                                                                       | Skip ADR                                                                                       | Distribution model is architectural; future contributors will ask "why not npmjs?" / "why not vendoring?". Documents the rejected alternatives (npmjs cost, git-dep fragility, tarball-release URL clunk, vendoring per-repo work).                                  |
+<!-- prettier-ignore -->
+| Decided | Alternatives | Why |
+| --- | --- | --- |
+| **Tag-push trigger** (`on: push: tags: ['v*']`) — single `release.yml`, built-in `GITHUB_TOKEN` with `packages: write` | `release: published` event (manual UI step); reusable composite workflow shared with `ci.yml` | Smallest surface; matches design-input snippet; pre-release tags fire same pipeline with zero extra ceremony; built-in token avoids PAT plumbing. Reusable composite is YAGNI at 2 callers. |
+| **Hard cutover, atomic PR** — flip `private`, add `publishConfig`, new workflow, replace prints, rewrite docs all in one branch | Feature-flag gating two-phase rollout; dual-publish (git + registry) transition window | Design-input explicitly excludes dual-publish and backward-compat. Flag gating creates a window of contradictory installer guidance. v0.3.x stays consumable from git for un-migrated consumers — that is the backward-compat story; nothing extra needed in v0.4.0. |
+| **Status quo `dist/`** — keep committed `dist/`, gate publish on `pnpm check:dist`, no `prepublishOnly` | Re-introduce `prepublishOnly: tsc`, drop committed `dist/`; build in CI + `.gitignore` `dist/` | Honors BAR-130 v0.3.0 "no lifecycle hooks" invariant. Even `prepublishOnly` (which fires only on `npm publish`) erodes the invariant — the next contributor adds a `prepare` and re-summons the OOM. Repo-cleanliness gain does not outweigh invariant erosion. |
+| **Two pre-release tags** — `pre.1` (pipeline only) then `pre.2` (prints + docs) | Single shot validated locally via `npm pack`; one combined `pre.1` covering everything | Local `npm pack` does not exercise GH Packages auth or `GITHUB_TOKEN` scoping. Splitting prints from pipeline isolates failure surface; first-ever registry publish is the highest-risk step and deserves its own gate. |
+| **Drop `git+` prefix** from `repository.url` → `https://github.com/cbartens/bkit.git` | Leave `git+https://...` as-is | Free hygiene win; standard npm convention; helps GH Packages "linked repository" UX pick up the source repo. |
+| **`npm publish`** in release workflow (not `pnpm publish`) | `pnpm publish` | Matches GitHub Packages docs. Avoids pnpm's stricter publish lifecycle hooks and the `--no-git-checks` flag dance. `setup-node` registry-url wiring assumes `npm`. |
+| **Surgical string-constant edits** in `bkit-modules.ts` — touch only the four print constants + first-install banner | Refactor `checkBkitTokenSecret`/`detectVercelProject` into a separate auth-check module | Auth-check logic is correct and unchanged — only the surrounding instruction copy differs. Surgical edits are lower risk; isolates the diff to text. |
+| **Drop `onlyBuiltDependencies: ["@cbartens/bkit"]` line** from first-install banner | Keep the line | The entry was a lifecycle-hook OOM workaround (BAR-130 #5). v0.3.0 dropped `prepare`; registry packages with no lifecycle hooks do not need it. Keeping it is noise and confuses new consumers. |
+| **Reuse `GH_BKIT_TOKEN` name**; expand PAT scope to include `read:packages` (classic) / Packages: read (fine-grained) | Introduce a new env var (e.g. `BKIT_NPM_TOKEN`) | Design-input explicit; avoids forcing consumers to rotate two secrets simultaneously. The same secret authenticates both the (legacy) git-clone path on v0.3.x consumers and the (new) registry path on v0.4.0 consumers — eases mid-flight migration. |
+| **Update CI template + `CI_YML_MERGE_INSTRUCTIONS` in the same commit** as installer text | Separate commits | Template and AI-merge instructions must remain consistent; splitting them creates a window where the seed describes the new pattern but the merge instructions describe the old one. |
+| **No backward-compat dual-path detection** in installer prints | Detect `github:cbartens/bkit#...` vs `@cbartens/bkit@^X.Y.Z` and print conditionally | Design-input mandates "v0.4.0 is the cutover, no dual-publish". Same logic applies to print copy. Detection adds a dead-code branch every future change has to honor. |
+| **Add ADR `DE-3`** to `docs/decisions.md` | Skip ADR | Distribution model is architectural; future contributors will ask "why not npmjs?" / "why not vendoring?". Documents the rejected alternatives (npmjs cost, git-dep fragility, tarball-release URL clunk, vendoring per-repo work). |
 
 ## Approaches Considered
 
-| Approach                                                                | Verdict                                             | Why                                                                                                                                                                  |
-| ----------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A1** Tag-push triggered `release.yml`, built-in `GITHUB_TOKEN`        | KEPT                                                | Smallest surface; matches design-input snippet; pre-release tags reuse same pipeline.                                                                                |
-| **B1** `release: published` event (GitHub Releases UI)                  | REJECTED                                            | Doubles human gate per ship; awkward for `pre.*` validation tags; no real benefit over tag-push for a single-maintainer package.                                     |
-| **C1** Reusable composite workflow shared by `ci.yml` and `release.yml` | REJECTED                                            | YAGNI at 2 callers; ~5 LOC of duplication does not justify `workflow_call` indirection.                                                                              |
-| **A2** Hard cutover, replace prints in v0.4.0                           | KEPT                                                | Aligns with "no dual-publish" mandate; single source of truth; print messages double as the migration prompt for downstream agents.                                  |
-| **B2** Dual-path detection of consumer install model                    | REJECTED                                            | Adds a dead branch; mis-fires confuse consumers; design-input forbids backward-compat.                                                                               |
-| **A3** Keep committed `dist/` + `check:dist` gate                       | KEPT                                                | Honors BAR-130 v0.3.0 "no lifecycle hooks" invariant; existing safety net.                                                                                           |
-| **B3** `prepublishOnly: tsc`, drop committed `dist/`                    | REJECTED                                            | Even though `prepublishOnly` is technically safe for `npm publish` only, re-adding any lifecycle hook erodes the invariant the team paid OOM debugging to establish. |
-| **C3** Build in CI, attach tarball to release, `.gitignore` `dist/`     | REJECTED                                            | Local dev breaks until `pnpm build` runs; loses git-inspectable tarball auditability; tempts a `postinstall: pnpm build` re-introducing the banned hook.             |
-| **A4** Two pre-release tags (`pre.1` pipeline, `pre.2` prints)          | KEPT                                                | Matches implementation order; isolates pipeline-auth bugs from message-rendering bugs; cheap insurance for first-ever registry publish.                              |
-| **B4** Single shot, validate locally with `npm pack`                    | REJECTED                                            | Does not exercise GH Packages auth or `GITHUB_TOKEN` scoping; first registry interaction would be the production cut.                                                |
-| **C4** One combined `pre.1` covering pipeline + prints                  | REJECTED                                            | Pipeline + message bugs intermix on failure; loses the design-input's deliberate sequencing.                                                                         |
-| **A5** Drop `git+` prefix from `repository.url`                         | KEPT                                                | Free hygiene win; standard npm convention; helps GH Packages "linked repository" UX.                                                                                 |
-| **B5** Leave `git+https://...` as-is                                    | REJECTED                                            | Mild aesthetic clutter; design-input explicitly flagged as optional cleanup.                                                                                         |
-| **B (gated dual-phase with feature flag)** from brainstorm-2            | REJECTED                                            | Same reasoning as B2 — flag introduces dead code, creates a contradictory-instruction window between phases.                                                         |
-| **C (dual-publish transition period)** from brainstorm-2                | REJECTED                                            | Design-input forbids; v0.3.x staying consumable from git is sufficient backward-compat.                                                                              |
-| **`npm publish` over `pnpm publish`**                                   | KEPT (MERGED from brainstorm-2 implementation note) | Matches GH Packages docs; avoids pnpm publish lifecycle hook surprises; `setup-node` `registry-url` wiring assumes `npm`.                                            |
-| **Drop `onlyBuiltDependencies` line from first-install banner**         | KEPT (MERGED from brainstorm-2 implementation note) | BAR-130 #5 workaround obsolete post-v0.3.0; carrying it is noise.                                                                                                    |
+<!-- prettier-ignore -->
+| Approach | Verdict | Why |
+| --- | --- | --- |
+| **A1** Tag-push triggered `release.yml`, built-in `GITHUB_TOKEN` | KEPT | Smallest surface; matches design-input snippet; pre-release tags reuse same pipeline. |
+| **B1** `release: published` event (GitHub Releases UI) | REJECTED | Doubles human gate per ship; awkward for `pre.*` validation tags; no real benefit over tag-push for a single-maintainer package. |
+| **C1** Reusable composite workflow shared by `ci.yml` and `release.yml` | REJECTED | YAGNI at 2 callers; ~5 LOC of duplication does not justify `workflow_call` indirection. |
+| **A2** Hard cutover, replace prints in v0.4.0 | KEPT | Aligns with "no dual-publish" mandate; single source of truth; print messages double as the migration prompt for downstream agents. |
+| **B2** Dual-path detection of consumer install model | REJECTED | Adds a dead branch; mis-fires confuse consumers; design-input forbids backward-compat. |
+| **A3** Keep committed `dist/` + `check:dist` gate | KEPT | Honors BAR-130 v0.3.0 "no lifecycle hooks" invariant; existing safety net. |
+| **B3** `prepublishOnly: tsc`, drop committed `dist/` | REJECTED | Even though `prepublishOnly` is technically safe for `npm publish` only, re-adding any lifecycle hook erodes the invariant the team paid OOM debugging to establish. |
+| **C3** Build in CI, attach tarball to release, `.gitignore` `dist/` | REJECTED | Local dev breaks until `pnpm build` runs; loses git-inspectable tarball auditability; tempts a `postinstall: pnpm build` re-introducing the banned hook. |
+| **A4** Two pre-release tags (`pre.1` pipeline, `pre.2` prints) | KEPT | Matches implementation order; isolates pipeline-auth bugs from message-rendering bugs; cheap insurance for first-ever registry publish. |
+| **B4** Single shot, validate locally with `npm pack` | REJECTED | Does not exercise GH Packages auth or `GITHUB_TOKEN` scoping; first registry interaction would be the production cut. |
+| **C4** One combined `pre.1` covering pipeline + prints | REJECTED | Pipeline + message bugs intermix on failure; loses the design-input's deliberate sequencing. |
+| **A5** Drop `git+` prefix from `repository.url` | KEPT | Free hygiene win; standard npm convention; helps GH Packages "linked repository" UX. |
+| **B5** Leave `git+https://...` as-is | REJECTED | Mild aesthetic clutter; design-input explicitly flagged as optional cleanup. |
+| **B (gated dual-phase with feature flag)** from brainstorm-2 | REJECTED | Same reasoning as B2 — flag introduces dead code, creates a contradictory-instruction window between phases. |
+| **C (dual-publish transition period)** from brainstorm-2 | REJECTED | Design-input forbids; v0.3.x staying consumable from git is sufficient backward-compat. |
+| **`npm publish` over `pnpm publish`** | KEPT (MERGED from brainstorm-2 implementation note) | Matches GH Packages docs; avoids pnpm publish lifecycle hook surprises; `setup-node` `registry-url` wiring assumes `npm`. |
+| **Drop `onlyBuiltDependencies` line from first-install banner** | KEPT (MERGED from brainstorm-2 implementation note) | BAR-130 #5 workaround obsolete post-v0.3.0; carrying it is noise. |
 
 ## Trade-offs Accepted
 

@@ -1,6 +1,6 @@
 # bkit
 
-Agent workflow system that wires Claude Code (and Cursor) into a five-phase Linear-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
+Agent workflow system wiring Claude Code (and Cursor) into a five-phase Linear-integrated dev cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
 > [!IMPORTANT]
 > **`GH_BKIT_TOKEN` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
@@ -17,7 +17,7 @@ Agent workflow system that wires Claude Code (and Cursor) into a five-phase Line
 bkit is distributed via the **GitHub Packages npm registry** (`https://npm.pkg.github.com`). Add to a consumer repo:
 
 ```bash
-pnpm add -D @cbartens/bkit@^0.4.0
+pnpm add -D @cbartens/bkit@^2.0.0
 ```
 
 ### Adding a new consumer — checklist
@@ -34,11 +34,11 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 6   | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars                                             | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7   | Push to a feature branch and verify CI runs green                                                          | —                                               |
 
-The seeded `.github/workflows/ci.yml` carries the install step env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret you set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
+The seeded `.github/workflows/ci.yml` carries the install step env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
 
 ### Then in the consumer repo
 
-Run `bkit install` once to seed the full stack (agent files, CI, lint, git-hooks). After that, re-run `install` after package updates. Use `bkit check` as a CI drift gate.
+Run `bkit install` once to seed the full stack (agent files, CI, lint, git-hooks). Re-run after package updates. Use `bkit check` as a CI drift gate.
 
 ```bash
 # First install — seeds full stack (all modules: core + claude + cursor + ci + lint + git-hooks)
@@ -59,13 +59,13 @@ pnpm exec bkit check --full
 
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
 
-> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** Plain `pnpm add -D @cbartens/bkit@<new-version>` (or `pnpm update`) only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate ("DRIFT DETECTED" on `.agents/.bkit-version`). Commit the resync changes alongside the version bump in the same PR. This applies to every version change — initial 0.3.x → 0.4.0 cutover **and** routine 0.4.x → 0.4.y upgrades.
+> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** Plain `pnpm add -D @cbartens/bkit@<new-version>` (or `pnpm update`) only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate ("DRIFT DETECTED" on `.agents/.bkit-version`). Commit the resync changes alongside the version bump in the same PR. This applies to every version change — initial 0.3.x → 0.4.0 / 1.x → 2.0.0 cutovers **and** routine 2.0.x → 2.0.y upgrades.
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
 ## JSON ownership model — deep-containment (v2.0.0+)
 
-Starting v2.0.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment** instead of the former `__bkit__` envelope. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` upgrade byte-identically — no special key or wrapper is required.
+Starting v2.0.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment** instead of the former `__bkit__` envelope. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` upgrade byte-identically — no special key or wrapper required.
 
 ```json
 // .claude/settings.json (v2.0.0+)
@@ -136,7 +136,7 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 - `<command>` (e.g. `pnpm view @cbartens/bkit`, `pnpm exec bkit check`) inherits `GH_BKIT_TOKEN` via the environment.
 - Verify the token loaded **without leaking the value**: `echo "len=${#GH_BKIT_TOKEN}"`.
 
-**Caveat:** shell state does not persist between separate Bash tool calls. The `source` and the consuming command must run in the **same** invocation — chain them with `;` or `&&`. When directing another agent, name the file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; the registry needs `GH_BKIT_TOKEN`"_).
+**Caveat:** shell state does not persist between separate Bash tool calls. The `source` and the consuming command MUST run in the **same** invocation — chain with `;` or `&&`. When directing another agent, name the file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; the registry needs `GH_BKIT_TOKEN`"_).
 
 ## Consumer Vercel auth
 
@@ -225,7 +225,7 @@ For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 
 ## Doctor
 
-`bkit doctor` is a **read-only diagnostic verb** — it runs Phase 1 preflight + Phase 3 token-surface detectors without writing any files and exits 0.
+`bkit doctor` is a **read-only diagnostic verb** — runs Phase 1 preflight + Phase 3 token-surface detectors without writing any files and exits 0.
 
 ```bash
 # Diagnose drift without running install
@@ -239,7 +239,7 @@ Use `bkit doctor` to:
 - Preview all advisories that `bkit install` would show post-install, without triggering writes.
 - Verify the environment is ready before running `bkit install` on a new machine.
 
-`bkit doctor` always exits 0. If advisories are found they are printed in the same checklist banner format as `bkit install`. If none are found, it prints `[bkit-doctor] No advisories found.`
+`bkit doctor` always exits 0. Advisories found → printed in the same checklist banner format as `bkit install`. None found → prints `[bkit-doctor] No advisories found.`
 
 ## Uninstall
 
@@ -298,7 +298,7 @@ Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-p
 pnpm exec bkit install --auto-revert
 ```
 
-This is useful in CI scripts where you want to guarantee a clean state on failure.
+Useful in CI scripts to guarantee a clean state on failure.
 
 ## .bkitignore
 
@@ -326,7 +326,7 @@ Create a `.bkitignore` file at your repo root to suppress `bkit check` drift for
 
 ### Per-key mode
 
-Per-key (`:dotted.key`) matching is off by default. Enable it with the env var:
+Per-key (`:dotted.key`) matching is off by default. Enable with:
 
 ```bash
 BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
@@ -336,7 +336,7 @@ This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/
 
 ## Upgrade (v0.9.0+)
 
-`bkit upgrade` diffs old vs new template content against your consumer drift and applies non-conflicting changes. Files you have modified since install are flagged as conflicts — never silently overwritten.
+`bkit upgrade` diffs old vs new template content against your consumer drift and applies non-conflicting changes. Files modified since install are flagged as conflicts — never silently overwritten.
 
 ```bash
 # Review what would change (no writes)

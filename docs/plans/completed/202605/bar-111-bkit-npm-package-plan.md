@@ -66,35 +66,37 @@ This plan is a **trimmed, single-repo runbook**. It absorbs the executable parts
 
 ### Edge Cases
 
-| Scenario                                                                           | Expected Behavior                                                                                                                          |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `init` re-run on a repo that already has `.agents/`                                | Additive only. No overwrites inside `.agents/`. Logs `[skip]`/`[add]` per file.                                                            |
-| `install` when `.agents/` is missing                                               | Exit 1, message `not initialized — run bkit init first`.                                                                                   |
-| `install` when user has files outside generator paths                              | Untouched.                                                                                                                                 |
-| New version of `@bartens/bkit` adds a workflow `.agents/workflows/bkit-foo.md`     | Install's payload pass overwrites + adds it; mirrored to host dirs.                                                                        |
-| New version of `@bartens/bkit` removes a workflow                                  | Install's payload pass prunes the orphan from `.agents/{workflows,prompts}/` (only `bkit-*.md` files; non-prefixed files preserved).       |
-| Consumer adds `.agents/workflows/my-cmd.md` (no `bkit-` prefix)                    | Preserved on every install. Not mirrored to `.{claude,cursor}/commands/` either — bkit only manages the `bkit-` namespace.                 |
-| Consumer edits `.agents/workflows/bkit-build.md`                                   | Overwritten on next install (bkit IP). Customisations belong in `## Project Rules` of `.agents/rules.md` or in non-prefixed sibling files. |
-| `check` drift                                                                      | Exit non-zero, print path-by-path diff summary, instruct `bkit install`.                                                                   |
-| `check` when `.agents/.bkit-version` missing                                       | Exit non-zero with `not initialized` message.                                                                                              |
-| `## Project Rules` outside `<!-- bkit:start -->`/`<!-- bkit:end -->` in `rules.md` | Always preserved across `init` and `install`.                                                                                              |
-| Existing `.gitignore` without bkit markers                                         | Append managed block at EOF; preserve all prior content.                                                                                   |
-| Existing `.gitignore` with bkit markers                                            | Regen content between markers only; preserve outside.                                                                                      |
-| Cursor T3 unknown agent name                                                       | Fail-fast with explicit `model lookup miss for {agent}` — do NOT default-substitute.                                                       |
+<!-- prettier-ignore -->
+| Scenario | Expected Behavior |
+| --- | --- |
+| `init` re-run on a repo that already has `.agents/` | Additive only. No overwrites inside `.agents/`. Logs `[skip]`/`[add]` per file. |
+| `install` when `.agents/` is missing | Exit 1, message `not initialized — run bkit init first`. |
+| `install` when user has files outside generator paths | Untouched. |
+| New version of `@bartens/bkit` adds a workflow `.agents/workflows/bkit-foo.md` | Install's payload pass overwrites + adds it; mirrored to host dirs. |
+| New version of `@bartens/bkit` removes a workflow | Install's payload pass prunes the orphan from `.agents/{workflows,prompts}/` (only `bkit-*.md` files; non-prefixed files preserved). |
+| Consumer adds `.agents/workflows/my-cmd.md` (no `bkit-` prefix) | Preserved on every install. Not mirrored to `.{claude,cursor}/commands/` either — bkit only manages the `bkit-` namespace. |
+| Consumer edits `.agents/workflows/bkit-build.md` | Overwritten on next install (bkit IP). Customisations belong in `## Project Rules` of `.agents/rules.md` or in non-prefixed sibling files. |
+| `check` drift | Exit non-zero, print path-by-path diff summary, instruct `bkit install`. |
+| `check` when `.agents/.bkit-version` missing | Exit non-zero with `not initialized` message. |
+| `## Project Rules` outside `<!-- bkit:start -->`/`<!-- bkit:end -->` in `rules.md` | Always preserved across `init` and `install`. |
+| Existing `.gitignore` without bkit markers | Append managed block at EOF; preserve all prior content. |
+| Existing `.gitignore` with bkit markers | Regen content between markers only; preserve outside. |
+| Cursor T3 unknown agent name | Fail-fast with explicit `model lookup miss for {agent}` — do NOT default-substitute. |
 
 ### Naming (decided facts)
 
-| Concern                   | Decision                                                                                     |
-| ------------------------- | -------------------------------------------------------------------------------------------- |
-| Package name              | `@bartens/bkit`                                                                              |
-| Repo                      | `https://github.com/cbartens/bkit` (on disk `~/Documents/GitHub/bkit`)                       |
-| CLI binary                | `bkit`                                                                                       |
-| Version pin file          | `.agents/.bkit-version`                                                                      |
-| Managed-block markers     | `<!-- bkit:start -->` / `<!-- bkit:end -->` (inside `.gitignore` etc., prefixed with `# `)   |
-| Top-level repo dirs       | `agents/`, `hosts/`, `templates/` (project-root tmpls + `templates/<host>/` subdirs), `cli/` |
-| Subagent prompt dir       | `agents/prompts/` (NOT `subagents/`)                                                         |
-| Workflow dir              | `agents/workflows/` (NOT `commands/`)                                                        |
-| Initial published version | `0.1.0`                                                                                      |
+<!-- prettier-ignore -->
+| Concern | Decision |
+| --- | --- |
+| Package name | `@bartens/bkit` |
+| Repo | `https://github.com/cbartens/bkit` (on disk `~/Documents/GitHub/bkit`) |
+| CLI binary | `bkit` |
+| Version pin file | `.agents/.bkit-version` |
+| Managed-block markers | `<!-- bkit:start -->` / `<!-- bkit:end -->` (inside `.gitignore` etc., prefixed with `# `) |
+| Top-level repo dirs | `agents/`, `hosts/`, `templates/` (project-root tmpls + `templates/<host>/` subdirs), `cli/` |
+| Subagent prompt dir | `agents/prompts/` (NOT `subagents/`) |
+| Workflow dir | `agents/workflows/` (NOT `commands/`) |
+| Initial published version | `0.1.0` |
 
 ---
 
@@ -356,10 +358,11 @@ Belt-and-braces alongside `package.json#files` whitelist. List `cli/`, `hosts/`,
 
 ## Rollback
 
-| Axis        | Action                                                                                                                            |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| Axis | Action |
+| --- | --- |
 | Bad publish | `npm deprecate @bartens/bkit@0.1.0 "rolled back"`; if within 72h, `npm unpublish @bartens/bkit@0.1.0`; publish `0.1.1` reverting. |
-| Bad code    | `git revert {COMMIT}` per phase commit.                                                                                           |
+| Bad code | `git revert {COMMIT}` per phase commit. |
 
 ## Open questions (resolve before Phase 1)
 

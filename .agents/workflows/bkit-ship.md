@@ -19,8 +19,9 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step Steps 1-6: file-only write on dev working copy + commit on `feat/{FID}`. Steps 7-11 on `dev`: per-step file-only write; commit + push deferred to Close Workflow. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): ship DONE [skip ci]`; Failure Path → `chore({FID}): ship FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -36,19 +37,22 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Failure Path
 
-1. Update status and commit:
+1. Update status, commit, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    git rebase --abort 2>/dev/null || true
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   rm -f "docs/plans/logs/{FID}/.rebase-failed"
-   git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
+   rm -f "$REPO_ROOT/docs/plans/logs/{FID}/.rebase-failed"
+   git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
+   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
@@ -67,13 +71,11 @@ description: "Ship Feature — Autonomous merge and archive"
 9. `git commit -m "docs({FID}): ship aborted [skip build] [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-
-```comment
-### Workflow Handover
-[ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/ship-handover.md)
-{FID-ship-handover.md content verbatim}
-```
-
+    ```comment
+    ### Workflow Handover
+    [ship-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/ship-handover.md)
+    {FID-ship-handover.md content verbatim}
+    ```
 12. **STOP**, no further downstream steps.
 
 ---
@@ -91,10 +93,7 @@ description: "Ship Feature — Autonomous merge and archive"
    STATUS_REL="docs/plans/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-     case "$LOCK_WORKFLOW" in
-       plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
-       *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
-     esac
+     STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
      LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
      LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
      LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
@@ -115,7 +114,7 @@ description: "Ship Feature — Autonomous merge and archive"
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
 6. **If** existing `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-8. Add `Ship` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
+8. Add `Ship` phase to `{LABELS}` and drop old phase → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
 9. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
    ```comment
    ## Ship Workflow
@@ -191,28 +190,25 @@ description: "Ship Feature — Autonomous merge and archive"
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
-5. `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` empty → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
+5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
 7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 8. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "ship" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"ship", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
-   START_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$START_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-input.md"]}]' \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): worktree-setup status"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -227,9 +223,10 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] On branch that passed eligibility
 - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
+- [ ] PR base verified (`PR_BASE` = dev)
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
-- [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `start-workflow` + `worktree-setup` recorded with `commitSha`)
+- [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -248,13 +245,12 @@ description: "Ship Feature — Autonomous merge and archive"
 4. **If** `RESOLVE_VERDICT` = PASS → `rm -f "docs/plans/logs/{FID}/.rebase-failed"`. **Else** → **Failure Path**.
 5. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$RESOLVE_VERDICT" \
-     '.[-1].steps += [{step:"conflict-resolve", status:"DONE", verdict:$v, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-conflict-resolve.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$RESOLVE_VERDICT" \
+     '.[-1].steps += [{step:"conflict-resolve", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-conflict-resolve.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): conflict-resolve status"
+   git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve"
    ```
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -268,7 +264,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] `RESOLVE_VERDICT` extracted
 - [ ] Verdict valid (`RESOLVE_VERDICT` in `PASS|FAIL`)
 - [ ] Sentinel cleared on PASS
-- [ ] Workflow status updated (step `conflict-resolve` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `conflict-resolve` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -301,13 +297,12 @@ description: "Ship Feature — Autonomous merge and archive"
 5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$MERGE_VERDICT" --argjson a "$MERGE_ATTEMPT" --argjson f "$MERGE_FAILURES" \
-     '.[-1].steps += [{step:"merge-pr", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$MERGE_VERDICT" --argjson a "$MERGE_ATTEMPT" --argjson f "$MERGE_FAILURES" \
+     '.[-1].steps += [{step:"merge-pr", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -328,7 +323,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Verdicts extracted (`MERGE_VERDICT`, `MERGE_FAILURES`)
 - [ ] Verdict valid (`MERGE_VERDICT` in `PASS|FAIL`)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
-- [ ] Workflow status updated (step `merge-pr` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `merge-pr` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 4` section)
 
 ---
@@ -345,13 +340,12 @@ description: "Ship Feature — Autonomous merge and archive"
 3. Read `ship-failure-diagnose-{MERGE_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$MERGE_ATTEMPT" \
-     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-failure-diagnose-'"${MERGE_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$MERGE_ATTEMPT" \
+     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-failure-diagnose-'"${MERGE_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -365,7 +359,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] `DIAGNOSE_VERDICT` extracted
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
-- [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `failure-diagnose` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 
 ---
@@ -394,13 +388,12 @@ description: "Ship Feature — Autonomous merge and archive"
 5. Read `ship-failure-remediate-{MERGE_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${MERGE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$MERGE_ATTEMPT" --arg strat "$STRATEGY" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-failure-remediate-'"${MERGE_ATTEMPT}"'-log.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$MERGE_ATTEMPT" --arg strat "$STRATEGY" \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-failure-remediate-'"${MERGE_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT}"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -414,7 +407,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
-- [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`, `strategy`)
+- [ ] Workflow status updated (step `failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -433,15 +426,13 @@ description: "Ship Feature — Autonomous merge and archive"
    pnpm install --frozen-lockfile
    ```
    **If** exit non-zero → **Failure Path**.
-2. Update status and commit:
+2. Update status (file-only; commit deferred to Close Workflow):
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): switch-to-dev work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"switch-to-dev", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"switch-to-dev", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): switch-to-dev status [skip build] [skip ci]"
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -453,7 +444,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 - [ ] On `dev` branch
 - [ ] `dev` up to date with origin
-- [ ] Workflow status updated (step `switch-to-dev` recorded with `commitSha`)
+- [ ] Workflow status updated (step `switch-to-dev` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 7` section)
 
 ---
@@ -479,19 +470,16 @@ description: "Ship Feature — Autonomous merge and archive"
    if [ "$COMPLETED_HIT" -gt 0 ]; then UPDATE_DOCS_VERDICT=PASS; else UPDATE_DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-4. Update status and commit:
+4. Update status (file-only; commit deferred to Close Workflow):
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): update-docs summary work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     --arg uv "$UPDATE_DOCS_VERDICT" \
-     --arg sv "$SUMMARY_VERDICT" \
-     '.[-1].steps += [
-       {step:"update-docs", status:"DONE", verdict:$uv, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-update-docs.md"]},
-       {step:"summary", status:"DONE", verdict:$sv, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/ship-summary.md"]}
-     ]' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): update-docs summary status [skip build] [skip ci]"
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg uv "$UPDATE_DOCS_VERDICT" \
+     '.[-1].steps += [{step:"update-docs", status:"DONE", verdict:$uv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-update-docs.md"]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
+     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-summary.md"]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -511,7 +499,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Artifact written (`ship-summary.md`, non-empty)
 - [ ] Verdicts extracted (`UPDATE_DOCS_VERDICT`, `SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (steps `update-docs` and `summary` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (steps `update-docs` and `summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -531,17 +519,14 @@ description: "Ship Feature — Autonomous merge and archive"
      grep -q "$skill" .agents/skills.md || rm -rf ".agents/skills/$skill"
    done
    ```
-6. Update status and commit:
+6. Update status (file-only; commit + push deferred to Close Workflow):
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    git status --short
-   git add -A && git commit --allow-empty -m "docs({FID}): archive docs work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"archive-docs", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"archive-docs", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): archive docs status [skip build] [skip ci]"
-   git push origin dev
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -555,7 +540,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Feature-specific skills pruned
 - [ ] Logs at `docs/plans/logs/{FID}/` retained for manual cleanup
 - [ ] Archive commit pushed to `dev`
-- [ ] Workflow status updated (step `archive-docs` recorded with `commitSha`)
+- [ ] Workflow status updated (step `archive-docs` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
@@ -582,15 +567,13 @@ description: "Ship Feature — Autonomous merge and archive"
    git push origin --delete "feat/{FID}" 2>/dev/null || true
    git fetch --prune origin 2>/dev/null || true
    ```
-4. Update status and commit:
+4. Update status (file-only; commit deferred to Close Workflow):
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-cleanup work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-cleanup", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"worktree-cleanup", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): worktree-cleanup status [skip build] [skip ci]"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -603,7 +586,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] `git worktree prune` executed
 - [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
-- [ ] Workflow status updated (step `worktree-cleanup` recorded with `commitSha`)
+- [ ] Workflow status updated (step `worktree-cleanup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 10` section)
 
 ---
@@ -611,22 +594,23 @@ description: "Ship Feature — Autonomous merge and archive"
 ## 🤖 Step 11 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status and commit:
+2. Update status, batch-commit Steps 7-10 dev work, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   git -C "$REPO_ROOT" add -A
+   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE [skip ci]"
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
+   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-3. Add `Merged` phase to `{LABELS}`, drop old → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
+3. Add `Merged` phase to `{LABELS}`, drop old phase and drop `Failed` if present → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 11 — Close Workflow
@@ -638,6 +622,6 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] All documents archived and logs retained for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Workflow status updated (`ship` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (state `Done`, label `Merged`)
+- [ ] Workflow status updated (`ship` `DONE`, step `close-workflow` recorded with `parentSha`)
+- [ ] Issue update attempted (state `Done`, label `Merged` added and `Failed` dropped if present)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

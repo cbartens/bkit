@@ -19,8 +19,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE [skip ci]`; Failure Path → `chore({FID}): debug FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -36,19 +37,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ## 🤖 Failure Path
 
-1. Update status and commit:
+1. Update status, commit, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    git rebase --abort 2>/dev/null || true
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   rm -f "docs/plans/logs/{FID}/.rebase-failed"
-   git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
+   rm -f "$REPO_ROOT/docs/plans/logs/{FID}/.rebase-failed"
+   git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
+   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Workflow Failure
@@ -67,13 +71,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 9. `git commit -m "docs({FID}): debug aborted [skip build] [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-
-```comment
-### Workflow Handover
-[debug-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-handover.md)
-{FID-debug-handover.md content verbatim}
-```
-
+    ```comment
+    ### Workflow Handover
+    [debug-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-handover.md)
+    {FID-debug-handover.md content verbatim}
+    ```
 12. **STOP**, no further downstream steps.
 
 ---
@@ -91,10 +93,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    STATUS_REL="docs/plans/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-     case "$LOCK_WORKFLOW" in
-       plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
-       *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
-     esac
+     STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
      LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
      LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
      LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
@@ -116,8 +115,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` non-empty → `DEBUG_MODE` = pr. **Else** → `DEBUG_MODE` = local.
 7. Extract `DEBUG_ATTEMPT` and `PRIOR_OBSERVE_MODE` from most recent `workflow == "debug"` entry:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   [ -f ".worktrees/{FID}/$STATUS" ] && STATUS=".worktrees/{FID}/$STATUS"
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    DEBUG_ATTEMPT=$(jq -r '[.[] | select(.workflow=="debug")] | last.debugAttempt // 0' "$STATUS" 2>/dev/null || echo 0)
    PRIOR_OBSERVE_MODE=$(jq -r '[.[] | select(.workflow=="debug") | .steps[] | select(.step=="worktree-setup")] | last.observeMode // "off"' "$STATUS" 2>/dev/null || echo off)
    ```
@@ -127,14 +125,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID` and `docs/plans/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-11. Add `Debug` to `{LABELS}` (additive — phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
+11. Add `Debug` to `{LABELS}` and drop `Failed` if present (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
 12. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-
-```comment
-## Debug Workflow
-### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
-[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-```
+    ```comment
+    ## Debug Workflow
+    ### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -146,7 +143,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
-- [ ] Issue update attempted (state `In Progress`, `Debug` added additively — prior phase label persists)
+- [ ] Issue update attempted (state `In Progress`, label `Debug` added and `Failed` dropped if present)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -207,24 +204,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. Create: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md` + `CI_LOGS`.
 8. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "debug" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"debug", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
-   START_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$START_SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg dm "$DEBUG_MODE" --arg om "$OBSERVE_MODE" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-input-'"${DEBUG_ATTEMPT}"'.md"], debugMode:$dm, observeMode:$om}]' \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg dm "$DEBUG_MODE" --arg om "$OBSERVE_MODE" \
+     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-input-'"${DEBUG_ATTEMPT}"'.md"], debugMode:$dm, observeMode:$om}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): worktree-setup status"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -240,7 +234,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] On branch that passed eligibility
 - [ ] Counters initialised (`TEST_ATTEMPT` = 0)
 - [ ] Artifact written (`debug-input-{DEBUG_ATTEMPT}.md`, non-empty)
-- [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `start-workflow` + `worktree-setup` recorded with `commitSha`, `worktree-setup` with `debugMode`, `observeMode`)
+- [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`, `worktree-setup` with `debugMode`, `observeMode`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -268,13 +262,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 5. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
-     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
+     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -289,7 +282,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DIAGNOSE_VERDICT` extracted
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
-- [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`, `strategy`)
+- [ ] Workflow status updated (step `failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -307,13 +300,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. Read `debug-failure-remediate-{TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -326,7 +318,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifact written (`debug-failure-remediate-{TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
-- [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `failure-remediate` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 4` section)
 
 ---
@@ -359,13 +351,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
-     '.[-1].steps += [{step:"run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
+     '.[-1].steps += [{step:"run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -382,7 +373,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `TEST_ATTEMPT` incremented
 - [ ] Tests executed (PR debug or full suite)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
-- [ ] Workflow status updated (step `run-tests` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `run-tests` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 - [ ] Loop branch decided (FAIL and `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 3)
 
@@ -395,14 +386,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 1. Increment `DEBUG_ATTEMPT` + 1.
 2. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
-     '.[-1].steps += [{step:"push-remediation", status:"DONE", attempt:$da, at:$t, commitSha:$sha, artifacts:[]}]
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson da "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"push-remediation", status:"DONE", attempt:$da, at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): push-remediation attempt ${DEBUG_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}"
    ```
 3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -415,7 +405,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` incremented
 - [ ] Commit pushed to branch
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
-- [ ] Workflow status updated (step `push-remediation` recorded with `commitSha`)
+- [ ] Workflow status updated (step `push-remediation` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -432,13 +422,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. Read `debug-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): summary work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-summary.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
+     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): summary status [skip build] [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -458,7 +447,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
 
 ---
@@ -487,13 +476,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    **If** pass → `OBSERVE_INSTRUMENT_VERDICT` = PASS. **Else** `OBSERVE_INSTRUMENT_VERDICT` = FAIL → **Failure Path**.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT} work [skip build]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_INSTRUMENT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
-     '.[-1].steps += [{step:"observe-instrument", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-observe-instrument-'"${DEBUG_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_INSTRUMENT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"observe-instrument", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-observe-instrument-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -512,7 +500,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `OBSERVE_INSTRUMENT_VERDICT` extracted
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `[skip ci]`)
-- [ ] Workflow status updated (step `observe-instrument` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `observe-instrument` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -529,13 +517,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. Read `debug-observe-analyse-{DEBUG_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `OBSERVE_ANALYSE_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): observe-analyse attempt ${DEBUG_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_ANALYSE_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
-     '.[-1].steps += [{step:"observe-analyse", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-observe-analyse-'"${DEBUG_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_ANALYSE_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"observe-analyse", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-observe-analyse-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): observe-analyse attempt ${DEBUG_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): observe-analyse attempt ${DEBUG_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -550,7 +537,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `OBSERVE_ANALYSE_VERDICT` extracted
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
-- [ ] Workflow status updated (step `observe-analyse` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `observe-analyse` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
@@ -578,13 +565,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    **If** `OBSERVE_REVERT_VERDICT` = FAIL → **Failure Path**.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): observe-revert attempt ${DEBUG_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_REVERT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
-     '.[-1].steps += [{step:"observe-revert", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/debug-observe-revert-'"${DEBUG_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_REVERT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
+     '.[-1].steps += [{step:"observe-revert", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-observe-revert-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): observe-revert attempt ${DEBUG_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): observe-revert attempt ${DEBUG_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -598,7 +584,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifact written (`debug-observe-revert-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Markers cleared (`git grep 'DEBUG-OBSERVE'` → no matches)
 - [ ] `OBSERVE_REVERT_VERDICT` extracted
-- [ ] Workflow status updated (step `observe-revert` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `observe-revert` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 10` section)
 - [ ] Routed to **Failure Path**
 
@@ -609,37 +595,79 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status and commit:
+2. Update status, commit on feat, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status trigger CI"
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    ```
-3. **Mode-aware Linear update:**
-   - **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-   - **If** `OBSERVE_MODE` = instrument → leave issue as `In Progress` with `Debug` label; instrumented CI run is in flight and the next debug invocation continues the workflow.
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 11 — Close Workflow
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
+3. Capture branch state:
+   ```bash
+   CURRENT=$(git branch --show-current)
+   PR_URL=""
+   PR_NUMBER=""
+   EXISTING_PR=""
+   if [ "$CURRENT" != "dev" ] && [ "$CURRENT" != "main" ]; then
+     EXISTING_PR=$(gh pr list --head "$CURRENT" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   fi
    ```
+4. Set `TRIGGER_PR`:
+   - **If** `CURRENT` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
+   - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
+   - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
+5. **If** `TRIGGER_PR` = 1 → create PR:
+   ```bash
+   gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
+   <!-- bkit:start -->
+   https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/active/{FID}-plan.md
+   <!-- bkit:end -->
+   EOF
+   )"
+   ```
+6. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
+7. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
+8. **If** `TRIGGER_PR` = 1 → record `create-pr` step and push:
+   ```bash
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
+     '.[-1].steps += [{step:"create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
+   git push origin "$(git branch --show-current)"
+   ```
+9. Push status to dev:
+   ```bash
+   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
+   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
+   git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE [skip ci]"
+   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
+   ```
+10. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
+11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
+    ```comment
+    ### Step 11 — Close Workflow
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
+    [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
+    ```
 
 ### 🔒 Gate 11 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
-- [ ] Workflow status updated (`debug` `DONE`, step `close-workflow` recorded with `commitSha`)
-- [ ] Issue update attempted (matches `OBSERVE_MODE`: off → state `In Review`, `{LABELS}` unchanged (phase + `Debug` persist); instrument → unchanged `In Progress` with `Debug` still applied)
+- [ ] Workflow status updated (`debug` `DONE`, step `close-workflow` recorded with `parentSha`)
+- [ ] `TRIGGER_PR` determined
+- [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
+- [ ] If PR created workflow status updated (step `create-pr` recorded with `parentSha`)
+- [ ] If `OBSERVE_MODE` = off issue update attempted (state `In Review`, `{LABELS}` unchanged)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

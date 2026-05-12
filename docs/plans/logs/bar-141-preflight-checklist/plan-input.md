@@ -84,12 +84,13 @@ Re-runs detection AFTER writes (some state changes during install). Combines wit
 
 **Four-surface** `GH_BKIT_TOKEN` sustainability check:
 
-| Surface               | Detector                                                                 | Finding when missing                                              |
-| --------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| Local shell           | `process.env.GH_BKIT_TOKEN`                                              | "Set `export GH_BKIT_TOKEN=<classic PAT>` in your shell rc"       |
-| `.npmrc`              | grep for `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN}`         | "Prepend two lines to .npmrc: ..."                                |
-| GitHub Actions secret | `gh secret list \| grep GH_BKIT_TOKEN` (existing `checkBkitTokenSecret`) | "Run `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN`"         |
-| Vercel env (optional) | `vercel env ls preview \| grep GH_BKIT_TOKEN`                            | "Run `vercel env add GH_BKIT_TOKEN preview` and `... production`" |
+<!-- prettier-ignore -->
+| Surface | Detector | Finding when missing |
+| --- | --- | --- |
+| Local shell | `process.env.GH_BKIT_TOKEN` | "Set `export GH_BKIT_TOKEN=<classic PAT>` in your shell rc" |
+| `.npmrc` | grep for `@cbartens:registry=` AND `_authToken=${GH_BKIT_TOKEN}` | "Prepend two lines to .npmrc: ..." |
+| GitHub Actions secret | `gh secret list \ | grep GH_BKIT_TOKEN` (existing `checkBkitTokenSecret`) | "Run `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN`" |
+| Vercel env (optional) | `vercel env ls preview \ | grep GH_BKIT_TOKEN` | "Run `vercel env add GH_BKIT_TOKEN preview` and `... production`" |
 
 Each detector returns `present` / `missing` / `unknown` (last for cases where the CLI isn't available — distinguishes "we can't tell" from false positives).
 

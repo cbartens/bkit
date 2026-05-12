@@ -11,6 +11,63 @@
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Pre-push runs the project's gate set locally (see "Pre-push checklist" below); never `--no-verify`.
 
+## Production rollback runbook
+
+> Triggered when a bad commit reaches `main` (production) and must be unwound to a prior known-good SHA. Vercel deployments are assumed; adjust the deploy-side step for other hosting.
+
+### Preconditions
+
+- A known-good SHA on `main` to roll back to. Confirm via `gh run list --branch main --status success --limit 5` (must include the target SHA in green state).
+- Local repo on `main`, working tree clean, `gh auth status` green.
+- `jq` installed (`brew install jq` / system package manager).
+
+### One-shot script
+
+```bash
+pnpm rollback:main <green-sha>
+```
+
+The script: (1) saves current branch protection JSON → (2) disables protection → (3) force-resets `main` ref to the green SHA via the GitHub API → (4) restores the saved protection. Idempotent; safe to re-run. Pass `--dry-run` first to print every API call without executing.
+
+### Manual playbook (when the script does not apply)
+
+Use when the script errors, when restoring protection from a non-current owner, or when the platform CLI is unavailable.
+
+1. **Save current protection JSON** so it can be restored verbatim. The GET and PUT shapes differ; capturing the raw GET response avoids hand-mapping fields.
+   ```bash
+   gh api repos/{OWNER}/{REPO}/branches/main/protection > /tmp/main-protection.json
+   ```
+2. **Disable protection** so the force-reset is accepted.
+   ```bash
+   gh api -X DELETE repos/{OWNER}/{REPO}/branches/main/protection
+   ```
+3. **Force-reset the `main` ref** to the known-good SHA.
+   ```bash
+   gh api -X PATCH repos/{OWNER}/{REPO}/git/refs/heads/main -f sha=<green-sha> -F force=true
+   ```
+4. **Restore protection** from the saved JSON. Note the GET → PUT shape mismatch: required-status-checks → required_status_checks, contexts list, etc. Inspect the saved JSON and PUT the equivalent shape.
+   ```bash
+   gh api -X PUT repos/{OWNER}/{REPO}/branches/main/protection --input /tmp/main-protection.json
+   ```
+5. **Re-point the production deployment** (Vercel does NOT auto-rollback on git ref rewrites — the deployment alias remains on the most-recently-pushed deployment until manually promoted). Look up the prior good deployment by commit SHA and promote it:
+   ```bash
+   vercel ls --meta githubCommitSha=<green-sha>
+   vercel promote <prior-deployment-url>
+   ```
+   Without this step the git ref is rolled back but production traffic still serves the bad build.
+
+### Why force-push on `main` alone is not enough
+
+- `git revert` of a cross-branch squash (e.g. a `feat/*` branch that landed directly on `main` instead of `dev`) can delete files that surviving code in `main` still references. The result is a tree that fails CI even though git history is "clean".
+- The `feat/*`-onto-`main` path is the root cause that makes recovery destructive; production merges MUST come from `dev` to keep the squash diff scoped to a single feature.
+- The pre-push hook is bypassed on `revert-*` branches (test suite skipped — only typecheck + format:check run) so a revert PR can be pushed even when its source state is transitionally inconsistent.
+
+### Post-rollback verification
+
+- `gh api repos/{OWNER}/{REPO}/git/refs/heads/main --jq .object.sha` must equal the green SHA.
+- `curl -sI https://{prod-alias}` headers report the rolled-back deployment id.
+- Run the production smoke suite to confirm the rolled-back app behaves as expected.
+
 <!-- bkit:end -->
 
 ## Project
@@ -19,12 +76,13 @@
 
 `GH_BKIT_TOKEN` is required at four surfaces; missing any one breaks an install or CI run. Detector coverage in `bkit install` Phase 3 mirrors this matrix.
 
-| Surface                           | Where to set                                                                                                                              | Symptom if missing                                                                                                    | bkit detector                                                                                                  |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Local shell                       | `~/.zshrc` / `~/.bashrc` → `export GH_BKIT_TOKEN=<classic PAT>`                                                                           | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1)                     | `detectShellToken` (Phase 3)                                                                                   |
-| `.npmrc`                          | `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` (env-var ref, **never** literal) plus `@cbartens:registry=https://npm.pkg.github.com` | Same 401, more opaque (pnpm v7.20+ silently ignores entire `.npmrc` — see KN-1)                                       | `detectNpmrcAuth` (Phase 3)                                                                                    |
-| GitHub Actions secret             | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` on every install step      | CI 401 on `@cbartens/bkit` fetch on next push                                                                         | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` references `${GH_BKIT_TOKEN}`) |
-| Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production`                                                      | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \| "production")` (Phase 3)                                                         |
+<!-- prettier-ignore -->
+| Surface | Where to set | Symptom if missing | bkit detector |
+| --- | --- | --- | --- |
+| Local shell | `~/.zshrc` / `~/.bashrc` → `export GH_BKIT_TOKEN=<classic PAT>` | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1) | `detectShellToken` (Phase 3) |
+| `.npmrc` | `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` (env-var ref, **never** literal) plus `@cbartens:registry=https://npm.pkg.github.com` | Same 401, more opaque (pnpm v7.20+ silently ignores entire `.npmrc` — see KN-1) | `detectNpmrcAuth` (Phase 3) |
+| GitHub Actions secret | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` on every install step | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` references `${GH_BKIT_TOKEN}`) |
+| Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production` | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \ | "production")` (Phase 3) |
 
 Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
 
@@ -32,13 +90,16 @@ Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: re
 
 Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `run-tests` job:
 
-| #   | Gate                     | Command             | Hook block                                                                          | Failure mode                                                                                                                                                                                                   |
-| --- | ------------------------ | ------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Typecheck                | `pnpm typecheck`    | bkit-managed                                                                        | TS error → fix source.                                                                                                                                                                                         |
-| 2   | Unit + integration tests | `pnpm test`         | bkit-managed                                                                        | Test failure → fix code, never delete the test.                                                                                                                                                                |
-| 3   | Prettier format check    | `pnpm format:check` | bkit-managed                                                                        | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
-| 4   | bkit self-check          | `pnpm bkit check`   | source-repo only (outside bkit:start..bkit:end)                                     | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. Consumers do not have this gate.                                                     |
-| 5   | Dist freshness           | `pnpm check:dist`   | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate.                                                                                                                             |
+<!-- prettier-ignore -->
+| # | Gate | Command | Hook block | Failure mode |
+| --- | --- | --- | --- | --- |
+| 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
+| 2 | Unit + integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
+| 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
+| 4 | bkit self-check | `pnpm bkit check` | source-repo only (outside bkit:start..bkit:end) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. Consumers do not have this gate. |
+| 5 | Dist freshness | `pnpm check:dist` | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+
+**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` and runs only `pnpm typecheck && pnpm format:check`. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Gates 4 and 5 (`pnpm bkit check`, `pnpm check:dist`) still run. Non-revert branches always run all five gates.
 
 Pre-commit (`.husky/pre-commit`) runs `pnpm lint:prose && pnpm lint:slop` — those gates fire earlier in the cycle, not at push time. CI runs them again as steps 4 + 5 of the `run-tests` job for belt-and-braces.
 
@@ -50,7 +111,7 @@ Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be acc
 
 - Pre-commit and pre-push hooks run `typecheck` + `test` only — they do NOT run `pnpm build`. Run `pnpm build` manually (or `pnpm check:dist` to validate without committing) before pushing any TS source change.
 - CI's `run-tests` job has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
-- Consumer scope: consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
+- Consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
 - See KN-7 for failure-mode and recurrence history.
 
 ### `.husky/pre-push` mirror-drift gate (bkit repo only)
@@ -67,10 +128,11 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 
 **Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `[skip ci]`.
 
-| Surface                       | Mechanic                                                                                                                                                                                                                                                                |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `[skip build] [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step.                                                                              |
-| ship squash merge             | `gh pr merge --squash --body ""` — empty body strips `[skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
+<!-- prettier-ignore -->
+| Surface | Mechanic |
+| --- | --- |
+| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `[skip build] [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `[skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
 
 All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `[skip build] [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
 
@@ -110,18 +172,19 @@ Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env 
 
 **Consumer contract:**
 
-| Pin form              | Behaviour                                   | Use when                                                                   |
-| --------------------- | ------------------------------------------- | -------------------------------------------------------------------------- |
-| `@v1` (sliding)       | Auto-receives non-breaking `v1.x.y` patches | DEFAULT — every consumer should use this                                   |
-| `@v1.0.2` (immutable) | Frozen on a specific patch                  | Reproducibility-critical pipelines, or temporary unblock if `v1` is broken |
-| `@<sha>`              | Frozen on a specific commit                 | High-security supply-chain contexts only                                   |
+<!-- prettier-ignore -->
+| Pin form | Behaviour | Use when |
+| --- | --- | --- |
+| `@v1` (sliding) | Auto-receives non-breaking `v1.x.y` patches | DEFAULT — every consumer should use this |
+| `@v1.0.2` (immutable) | Frozen on a specific patch | Reproducibility-critical pipelines, or temporary unblock if `v1` is broken |
+| `@<sha>` | Frozen on a specific commit | High-security supply-chain contexts only |
 
 Breaking changes ship as `v2.0.0` and the workflow auto-creates a separate `v2` sliding tag — `v1` consumers stay on `v1.x.y` until they explicitly opt in.
 
 **Mechanics:**
 
 - Workflow step "Update sliding major-version tag" runs after `npm publish` succeeds, so a failed publish never advances `v{N}`.
-- Major number is extracted from `github.ref_name` via `sed -E 's/^v([0-9]+)\..*/\1/'`, so `v1.0.3` → `v1`, `v2.4.0` → `v2`. No hard-coded major.
+- Major number extracted from `github.ref_name` via `sed -E 's/^v([0-9]+)\..*/\1/'`, so `v1.0.3` → `v1`, `v2.4.0` → `v2`. No hard-coded major.
 - Prerelease tags (any tag containing `-`, e.g. `v1.0.3-rc.1`) are skipped — sliding tags only advance on stable releases.
 - Requires `permissions: contents: write` at the workflow level (set in `release.yml`); the default `GITHUB_TOKEN` is sufficient — no PAT needed.
-- Bootstrap: the first `v{N}.x.y` release after this workflow ships creates `v{N}` automatically. No manual `git tag -a v1` step is required.
+- Bootstrap: the first `v{N}.x.y` release after this workflow ships creates `v{N}` automatically. No manual `git tag -a v1` step required.

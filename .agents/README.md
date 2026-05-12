@@ -2,25 +2,25 @@
 
 **bkit** wires Claude Code (and Cursor) into a five-phase Linear-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
-This README covers what bkit does, how to install it, and what env / Linear setup it expects. Workflow internals live in [`.agents/workflows.md`](workflows.md); subagent metadata (effort, model, tool surface, `maxTurns`) lives in [`.agents/prompts.md`](prompts.md).
+This README covers what bkit does, how to install it, and what env / Linear setup it expects. Workflow internals live in `.agents/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.agents/prompts.md`.
 
 ---
 
 ## How a workflow runs (end-to-end example)
 
-A typical cycle for issue `BAR-123` "Add feature X":
+Typical cycle for issue `BAR-123` "Add feature X":
 
 1. **Linear issue** is created with the **`Auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
-2. **Trigger** — either a comment in Linear (`@curspr /bkit-plan BAR-123`) or a slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
+2. **Trigger** — Linear comment (`@curspr /bkit-plan BAR-123`) or slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
 3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
 5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, `@bkit-plan-review-1` ‖ `@bkit-plan-review-2`, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
 6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `docs(bar-123-…): plan complete [skip build] [skip ci]` → push.
-7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists (so the reviewer can see which workflow finished). For `/bkit-design` and `/bkit-plan`, the worktree is pruned and `feat/bar-123-…` deleted (changes are merged into `dev`). For `/bkit-build` / `/bkit-debug`, the worktree persists.
+7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/bar-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/drafts/{FID}-{design,plan}.md`. Reviewer can re-trigger or progress to `/bkit-build`.
-9. **`/bkit-build`** — re-creates the worktree, executes the plan, runs lint/typecheck/unit tests, opens a PR to `dev`.
+9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
 10. **CI** — runs on the PR. Red CI? Trigger `/bkit-debug` (PR debug mode pulls failed run logs via `gh run view --log-failed`). Green? Trigger `/bkit-ship`.
-11. **`/bkit-ship`** — squash-merges the PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, archives plans to `docs/plans/completed/{YYYYMM}/`, prunes the worktree, closes the issue (`Done`).
+11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, archives plans to `docs/plans/completed/{YYYYMM}/`, prunes worktree, closes issue (`Done`).
 
 Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and own all Linear MCP calls — subagents are leaves with read-only Linear access (none) and write access scoped by their `tools:` allowlist.
 
@@ -31,17 +31,17 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 <!-- prettier-ignore -->
 | Phase | Command | Steps | Output | Hard stop? |
 | --- | --- | --- | --- | --- |
-| Design | `/bkit-design` | 7 | `docs/plans/drafts/{FID}-design.md` | Yes — review before plan |
+| Design | `/bkit-design` | 10 | `docs/plans/drafts/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 11 | `docs/plans/drafts/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
-| Build | `/bkit-build` | 17 | PR to `dev` | No — CI continues |
+| Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
 | Debug | `/bkit-debug` | 8 | Remediation commit on feature branch | No |
-| Ship | `/bkit-ship` | 10 | Squash-merged PR, plans archived, issue `Done` | Yes |
+| Ship | `/bkit-ship` | 11 | Squash-merged PR, plans archived, issue `Done` | Yes |
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
 
-**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** [`.agents/workflows.md`](workflows.md).
+**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.agents/workflows.md`.
 
-**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** [`.agents/prompts.md`](prompts.md).
+**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.agents/prompts.md`.
 
 ---
 
@@ -61,7 +61,7 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 
 ### Environment variables
 
-Used by workflows, preflight hooks, and the underlying CLIs. Add to your shell, the Cursor Cloud Agent dashboard, and `apps/web/.env.example` so contributors know what's needed:
+Add to your shell, the Cursor Cloud Agent dashboard, and `apps/web/.env.example` so contributors know what's needed:
 
 ```env
 # ==========================================
@@ -91,7 +91,7 @@ Bkit uses one custom Linear label, plus the standard Linear ↔ Cursor integrati
 
 #### Bkit custom label
 
-- **`Auto`** — present on issues approved for agent work. The preflight hooks call the Linear GraphQL API and refuse the session if the label is absent or the issue is in `Done` / `Cancelled`. Add this label to your Linear workspace before running any cloud / automation session.
+- **`Auto`** — present on issues approved for agent work. Preflight hooks call the Linear GraphQL API and refuse the session if the label is absent or the issue is in `Done` / `Cancelled`. Add this label to your Linear workspace before running any cloud / automation session.
 
 #### Linear ↔ Cursor integration labels (standard, not bkit-specific)
 
@@ -104,7 +104,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | `model` | `claude-4.7-opus-high-thinking`, `composer-2`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `gether-life/app-gether-life` | repo the agent operates in |
 
-Per-agent (subagent) model assignments live in [`.agents/prompts.md`](prompts.md) § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with [`.agents/IDEs.md`](IDEs.md) § Cursor model catalog.
+Per-agent (subagent) model assignments live in `.agents/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.agents/IDEs.md` § Cursor model catalog.
 
 For full Linear ↔ Cursor integration setup (webhook routing, dashboard env vars, parent-label families), see Linear's official integration docs: <https://linear.app/docs/cursor>.
 
@@ -112,7 +112,7 @@ For full Linear ↔ Cursor integration setup (webhook routing, dashboard env var
 
 ## Distribution & install
 
-Consumer-facing install, auth (`GH_BKIT_TOKEN` / `.npmrc` / GHA / Vercel), and CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) live in the root [`README.md`](../README.md).
+Consumer-facing install, auth (`GH_BKIT_TOKEN` / `.npmrc` / GHA / Vercel), and CLI verbs (`install` / `check` / `doctor` / `uninstall` / `upgrade`) live in the root `README.md`.
 
 The `.agents/` directory is **canonical**. `bkit install` regenerates host-specific outputs (`.claude/**`, `.cursor/**`) and rewrites bkit-managed blocks across the consumer repo.
 
@@ -179,7 +179,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 
 ## Triggering workflows
 
-Workflows can be triggered three ways: from a Linear comment (cloud), from Claude Code (interactive on laptop), or from Cursor (interactive on laptop). All paths execute the same workflow file from `.agents/workflows/` — the only differences are who pays for the compute and which model runs the orchestrator session.
+Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). All execute the same workflow file from `.agents/workflows/` — differences are compute source and orchestrator model.
 
 ### From Linear (cloud — Cursor Cloud Agent)
 
@@ -197,7 +197,7 @@ The Linear ↔ Cursor integration spawns a Cloud Agent session, posts the sessio
 
 ### From Claude Code (interactive — local)
 
-Open the repo root in Claude Code (or run headless via the CLI) and run a slash command:
+Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 ```
 /bkit-design BAR-123        # produce a design doc
@@ -209,7 +209,7 @@ Open the repo root in Claude Code (or run headless via the CLI) and run a slash 
 
 Claude reads issue details, comments, and plan files automatically via the Linear MCP (`mcp__claude_ai_Linear__*`).
 
-**Requirements:** `LINEAR_API_KEY`, `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). The session model should match the orchestrator pin in [`.agents/prompts.md`](prompts.md) § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `LINEAR_API_KEY`, `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). Session model should match the orchestrator pin in `.agents/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 
@@ -219,7 +219,7 @@ Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`.
 /bkit-plan BAR-123
 ```
 
-The orchestrator session reads the workflow file from `.cursor/commands/`. Subagents are dispatched via `Task` and run with whatever `model:` value is pinned in their frontmatter (no host-side override).
+Orchestrator session reads workflow file from `.cursor/commands/`. Subagents are dispatched via `Task` and run with whatever `model:` value is pinned in their frontmatter (no host-side override).
 
 **Requirements:** `LINEAR_API_KEY`, `GH_TOKEN`. Cursor account in good standing.
 
@@ -227,7 +227,7 @@ The orchestrator session reads the workflow file from `.cursor/commands/`. Subag
 
 ## Adding or updating skills
 
-> **Skills must be installed before first use** — initial setup is in `docs/setup.md`. Inventory and registry rules: [`.agents/skills.md`](skills.md).
+> **Skills must be installed before first use** — initial setup is in `docs/setup.md`. Inventory and registry rules: `.agents/skills.md`.
 
 Skills are third-party instruction sets loaded into the agent at invocation time.
 
@@ -237,7 +237,7 @@ npx skills add <owner/repo> -y    # install project-locally into .agents/skills/
 npx skills update                 # update all installed
 ```
 
-The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills/` that are not listed there are pruned by the ship workflow's archive step.
+The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills/` not listed there are pruned by the ship workflow's archive step.
 
 ---
 
@@ -269,7 +269,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 
 ## Editing workflows or prompts
 
-Edit the source in `.agents/workflows/` (slash-command orchestrators) or `.agents/prompts/` (subagent files), then re-run install:
+Edit source in `.agents/workflows/` (slash-command orchestrators) or `.agents/prompts/` (subagent files), then re-run install:
 
 ```bash
 # Edit source
@@ -283,4 +283,4 @@ git add .agents/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/c
 git commit -m "chore: update build command"
 ```
 
-Adding a new subagent? Update [`.agents/prompts.md`](prompts.md) with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.
+Adding a new subagent? Update `.agents/prompts.md` with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.

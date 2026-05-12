@@ -196,7 +196,7 @@ Per BAR-130 description (verbatim):
 | --- | --- | --- | --- |
 | `parseArgs()` in `.agents/scripts/bkit-install.ts` (verb + `--host=` model) | `parseArgs()` (verb + module-flag model) — extracted to `.agents/scripts/bkit-cli.ts` | DELETE | Verb + `--host=` model collapses into composable flags; single source of arg parsing |
 | `runInit()` in `.agents/scripts/bkit-init.ts` (standalone init) | Inline `init` deprecation stub in `bkit-cli.ts` that prints warn + calls `install --full` | RETAIN-WITH-REASON | External contract — kept as deprecation stub through v0.1.x; removal scheduled for v0.2; tracked in `docs/pending.md` |
-| `--host=claude\|cursor` flag handling | `--claude` / `--cursor` module flags | RETAIN-WITH-REASON | External contract — deprecation stub through v0.1.x; removal scheduled for v0.2 |
+| `--host=claude\ | cursor` flag handling | `--claude` / `--cursor` module flags | RETAIN-WITH-REASON | External contract — deprecation stub through v0.1.x; removal scheduled for v0.2 |
 | `runHost()` in `bkit-install.ts` (host-pass orchestrator) | Module functions in `bkit-modules.ts` (`runClaudeModule`, `runCursorModule`) | DELETE | Refactor — host-pass logic preserved verbatim, just relocated and split per module |
 | `printUsage()` help string mentioning `init` + `--host=` | New help string with module-flag matrix + compose examples | DELETE | Old help is wrong post-CLI redesign |
 

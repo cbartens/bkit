@@ -29,10 +29,11 @@ This is a bkit-repo-internal change. Before touching any file, read `.agents/rul
 
 ### plan-execute budget exhaustion at higher load (post-BAR-137)
 
-| FID                                      | Repo                 | Sub-plan size                 | Wall time            | Final state                                                    |
-| ---------------------------------------- | -------------------- | ----------------------------- | -------------------- | -------------------------------------------------------------- |
-| `bar-141-preflight-checklist`            | bkit                 | (single plan)                 | ~20 min (1188887 ms) | log file: `Verdict: PENDING` only, 6 lines                     |
-| `bar-102-digital-agent-mvp` (sub-plan 1) | visitfrasercoast-com | 31 tasks (bootstrap monorepo) | 3× cutoffs           | cut at Task 1.14, 1.19, 1.21; required 3 manual re-invocations |
+<!-- prettier-ignore -->
+| FID | Repo | Sub-plan size | Wall time | Final state |
+| --- | --- | --- | --- | --- |
+| `bar-141-preflight-checklist` | bkit | (single plan) | ~20 min (1188887 ms) | log file: `Verdict: PENDING` only, 6 lines |
+| `bar-102-digital-agent-mvp` (sub-plan 1) | visitfrasercoast-com | 31 tasks (bootstrap monorepo) | 3× cutoffs | cut at Task 1.14, 1.19, 1.21; required 3 manual re-invocations |
 
 ### plan-generate stream-timeout on multi-issue input
 
@@ -70,10 +71,11 @@ Audit + spot-fix coverage: `bkit-build-plan-verify`, `bkit-build-challenge-1/-2`
 
 Add deterministic task-count gate alongside the existing token cap. **No LLM judgment** — the parent `bkit-plan` workflow greps `^### Task ` (or equivalent task marker) and short-circuits to **Failure Path**.
 
-| Gate                                                             | Action                                                    |
-| ---------------------------------------------------------------- | --------------------------------------------------------- |
-| Token estimate >100K (existing, in `bkit-plan-complexity-check`) | Mandatory split                                           |
-| Task count >15                                                   | Mandatory split (Failure Path with split-required reason) |
+<!-- prettier-ignore -->
+| Gate | Action |
+| --- | --- |
+| Token estimate >100K (existing, in `bkit-plan-complexity-check`) | Mandatory split |
+| Task count >15 | Mandatory split (Failure Path with split-required reason) |
 
 **Rationale for 15 (not 20):** every observed clean single-shot pass ≤18 tasks; every cutoff or cross-session "rescue" ≥20 tasks. BAR-132 bootstrap (20 tasks → 28-31 with sub-tasks) → 3× cutoffs at T1.14, T1.19, T1.21. BAR-119 sub-plan-1 (29 tasks) "passed" only via cross-session continuation. `.agents/friction.md:88-89` already recommends ≤15 at plan-generate time. **20 is the failure boundary; 15 is the safe boundary.**
 
@@ -93,10 +95,11 @@ Replace single-reviewer challenge with the **same convention used by** `bkit-des
 
 **4a. Agent files (split existing** `bkit-build-challenge.md`):
 
-| File                        | Frontmatter                                  | Body                                                                                     |
-| --------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `bkit-build-challenge-1.md` | `model: claude-opus-4-7`, `effort: high`     | Identical to current `bkit-build-challenge.md` body + Fix 1b freeform stub-first wording |
-| `bkit-build-challenge-2.md` | `model: claude-sonnet-4-6`, `effort: medium` | Identical body                                                                           |
+<!-- prettier-ignore -->
+| File | Frontmatter | Body |
+| --- | --- | --- |
+| `bkit-build-challenge-1.md` | `model: claude-opus-4-7`, `effort: high` | Identical to current `bkit-build-challenge.md` body + Fix 1b freeform stub-first wording |
+| `bkit-build-challenge-2.md` | `model: claude-sonnet-4-6`, `effort: medium` | Identical body |
 
 Matches the established `-1` = Opus/high, `-2` = Sonnet/medium pattern verbatim. Bodies are identical except for frontmatter (mirrors `bkit-design-review-1/-2`).
 

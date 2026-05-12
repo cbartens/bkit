@@ -91,7 +91,7 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 
 `maxTurns` = max **agent turns** (assistant messages); each turn may emit multiple parallel tool calls. **Pure runaway-loop safety cap, NOT a workload budget.** Runtime bounded separately by the universal 3600s step timeout (`workflows.md` § Execution Protocol).
 
-**Same philosophy as the timeout:** the 3600s timeout is ~2× typical 30 min workflow runtime — set so high that hitting it means something is definitely wrong. `maxTurns` follows the same multiplier band (~2-5× typical work). 3 tiers, applied per-agent in § Models:
+**Same philosophy as the timeout:** 3600s timeout is ~2× typical 30 min workflow runtime — set so high that hitting it means something is definitely wrong. `maxTurns` follows the same multiplier band (~2-5× typical work). 3 tiers, applied per-agent in § Models:
 
 <!-- prettier-ignore -->
 | Tier | Cap | Typical work | Use for | Examples |
@@ -179,7 +179,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `/build` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`/`-reconcile`, `bkit-build-plan-verify` are `high`/`medium`/`xhigh` effort). |
 | `/ship` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Mostly mechanical: merge + archive + parallel docs/summary. |
 
-**Rule:** Opus where the orchestrator itself resolves ambiguity; Sonnet where it executes a defined sequence. If a Sonnet orchestrator starts skipping Failure Path branches or mis-routing verify gaps, escalate to Opus.
+**Rule:** Opus where the orchestrator itself resolves ambiguity; Sonnet where it executes a defined sequence. **If** a Sonnet orchestrator starts skipping Failure Path branches or mis-routing verify gaps → escalate to Opus.
 
 ## Design Phase
 
@@ -200,7 +200,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | Agent | Scope |
 | --- | --- |
-| `bkit-plan-generate` | Read design + template + docs → write new plan draft. Workstream contract: if input includes `**Workstream:**` directive, plan covers ONLY that workstream's `## Scope` content unless stated otherwise; surface `**Requires:**` at top of plan. |
+| `bkit-plan-generate` | Read design + template + docs → write new plan draft. Workstream contract: if input includes `**Workstream:**` directive, plan covers ONLY that workstream's `## Scope` content unless stated otherwise; surface `**Requires:**` at top of plan. Every task in the `Agent Execution Runbook` MUST carry a `**Done when**` section — terse, testable, codebase-verifiable; tasks without it are rejected. |
 | `bkit-plan-review-1` | Read-only critique; effort slot 1 (`high`). Parallel with `-2`. |
 | `bkit-plan-review-2` | Same scope, effort slot 2 (`medium`). |
 | `bkit-plan-scope-check-1` | Internal-completeness scope audit; effort slot 1 (`high`). |
@@ -219,7 +219,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-build-plan-execute` | Execute plan tasks sequentially; modify source; write stub artifact first then incremental `## Task Log` entries. Does NOT tick plan checkboxes (verify owns that). |
 | `bkit-build-plan-verify` | Verify implementation vs plan; writes Plan Verification log. Ticks plan `[ ]`→`[x]` for every task whose codebase artifact is verified. |
 | `bkit-build-plan-gaps-remediate` | Fix specific gaps from latest verify log; Standard/Pivot/Final escalation. |
-| `bkit-build-challenge-1` | Adversarial review of `git diff origin/dev..HEAD`; effort slot 1 (`high`). Parallel with `-2`. Writes findings, each tagged `class: mechanical\|architectural`. Never references sibling output (circular reasoning guard). |
+| `bkit-build-challenge-1` | Adversarial review of `git diff origin/dev..HEAD`; effort slot 1 (`high`). Parallel with `-2`. Writes findings, each tagged `class: mechanical\ | architectural`. Never references sibling output (circular reasoning guard). |
 | `bkit-build-challenge-2` | Same as `-1`; effort slot 2 (`medium`) — cross-tier model diversity (Opus vs Sonnet). |
 | `bkit-build-challenge-reconcile` | Merge `build-challenge-1.md` + `build-challenge-2.md` into unified `build-challenge.md`. Dedup: same `file:line` OR same root-cause cluster → single finding citing both reviewers. Severity max-wins (`CRITICAL > HIGH > MEDIUM > LOW`). Verdict max-wins (`FAIL > CONCERNS > PASS`). Downgrade only with explicit `## Justification`. |
 | `bkit-build-challenge-remediate` | Classify-gate (data-driven on `class`): any architectural → `FAIL` (no fixes; BLOCKED entries logged); else apply mechanical fixes in priority order; runs lint/typecheck/test. |
@@ -233,7 +233,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | Agent | Scope |
 | --- | --- |
-| `bkit-debug-failure-diagnose` | Investigate test/CI failure → diagnosis log; no fixes. Standard/Pivot/Final by attempt. |
+| `bkit-debug-failure-diagnose` | Investigate test/CI failure → diagnosis log; no fixes. Standard/Pivot/Final by attempt. Reads `docs/knowledge.md` fully → cites matching entries in `## Prior Knowledge` section → uses them to seed hypotheses. Output uses append-only ReAct `Hypothesis {N}` blocks; refuted hypotheses must remain. |
 | `bkit-debug-failure-remediate` | Apply diagnosis fix; lint/typecheck/test gate; may append `knowledge.md`/`decisions.md`. |
 | `bkit-debug-observe-instrument` | Add `[DEBUG-OBSERVE]` instrumentation; lint/typecheck/test gate. Wired into `/debug` § Step 8 (`MODE` = observe-instrument). |
 | `bkit-debug-observe-analyse` | Read CI logs from prior instrumented run; extract `[DEBUG-OBSERVE]` evidence; write handover doc. Wired into `/debug` § Step 9 (`MODE` = observe-analyse). |

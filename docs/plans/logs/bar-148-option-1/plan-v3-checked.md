@@ -162,7 +162,7 @@ The router is **not** Step 18 of `bkit-build`. Chaining ship/debug into the same
 | CLI flag | `--ci-router` | Mirrors `--ci`, `--claude`, `--cursor`. |
 | Linear label | `bkit:auto-route` | Per-issue opt-in; survives across debug iterations; `bkit:` prefix scopes the label namespace. |
 | Concurrency group | `bkit-ci-router-${{ github.event.workflow_run.head_branch }}` | Branch-scoped; `cancel-in-progress: false` (never cancel in-flight ship/debug). |
-| Linear comment header | `### bkit-ci-router → /bkit-{ship|debug} {FID}` | Mirrors existing `### Step N — Name` comment shape. |
+| Linear comment header | `### bkit-ci-router → /bkit-{ship | debug} {FID}` | Mirrors existing `### Step N — Name` comment shape. |
 
 ### Breaking changes
 
