@@ -625,25 +625,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    ```
-3. Determine PR state:
-
+3. Capture branch state:
    ```bash
    CURRENT=$(git branch --show-current)
-   TRIGGER_PR=0
    PR_URL=""
    PR_NUMBER=""
    EXISTING_PR=""
    if [ "$CURRENT" != "dev" ] && [ "$CURRENT" != "main" ]; then
      EXISTING_PR=$(gh pr list --head "$CURRENT" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
-     if [ -z "$EXISTING_PR" ]; then TRIGGER_PR=1; fi
    fi
    ```
-
+4. Set `TRIGGER_PR`:
    - **If** `CURRENT` = dev|main → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
-
-4. **If** `TRIGGER_PR` = 1 → create PR:
+5. **If** `TRIGGER_PR` = 1 → create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
    <!-- bkit:start -->
@@ -652,9 +648,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    EOF
    )"
    ```
-5. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
-6. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-7. **If** `TRIGGER_PR` = 1 → record `create-pr` step and push:
+6. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
+7. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
+8. **If** `TRIGGER_PR` = 1 → record `create-pr` step and push:
    ```bash
    git commit --allow-empty -m "chore({FID}): create-pr work [skip build] [skip ci]"
    SHA=$(git rev-parse HEAD)
@@ -664,14 +660,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git add "$STATUS" && git commit -m "chore({FID}): create-pr status [skip build] [skip ci]"
    git push origin "$(git branch --show-current)"
    ```
-8. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 11 — Close Workflow
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
-   [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
-   ```
+9. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
+10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
+
+```comment
+### Step 11 — Close Workflow
+[{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+[{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
+[{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
+```
 
 ### 🔒 Gate 11 — Close Workflow
 
