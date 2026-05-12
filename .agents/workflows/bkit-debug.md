@@ -626,6 +626,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git push origin "$(git branch --show-current)"
    ```
 3. Determine PR state:
+
    ```bash
    CURRENT=$(git branch --show-current)
    TRIGGER_PR=0
@@ -641,6 +642,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `CURRENT` = dev|main → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
+
 4. **If** `TRIGGER_PR` = 1 → create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
