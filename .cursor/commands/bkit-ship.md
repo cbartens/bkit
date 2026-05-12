@@ -58,7 +58,7 @@
    ```
 4. **If** failure triggered by max-retry exhaustion (`[ -n "${MAX_VERIFY_ATTEMPT:-}" ]` / `[ -n "${MAX_TEST_ATTEMPT:-}" ]` / `[ -n "${MAX_DEBUG_ATTEMPT:-}" ]` / `[ -n "${MAX_MERGE_ATTEMPT:-}" ]` guards — counters unset before Step 2; do NOT false-evaluate as exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/ship-failure-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/ship-handover.md`.
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -134,13 +134,13 @@
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-     git commit -m "chore({FID}): pre-worktree uncommitted changes"
+     git add docs/ .agents/friction.md
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
    fi
    ```
 2. Create/resume the worktree:
    ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    git worktree prune
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$WORKTREE_PATH" ]; then
@@ -232,7 +232,7 @@
 **Run only if:** Sentinel `docs/plans/logs/{FID}/.rebase-failed` exists after Step 2.
 
 1. **Subagent:** Invoke `@bkit-ship-conflict-resolve` using `Task` tool:
-   Context: You are a subagent in the Ship phase. Lockfile-only fast-path already attempted and did not match. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship phase. Lockfile-only fast-path already attempted and did not match. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
    Update: Conflicted source files.
    Create: `docs/plans/logs/{FID}/ship-conflict-resolve.md`.
@@ -270,7 +270,7 @@
 1. Increment `MERGE_ATTEMPT` + 1.
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
    ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
      git -C "$REPO_ROOT" status --short
      git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
@@ -279,9 +279,12 @@
    ```
 3. Merge with empty body:
    ```bash
-   gh pr merge {PR_NUMBER} --squash --delete-branch \
-     --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
-     --body ""
+   (
+     cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+     gh pr merge {PR_NUMBER} --squash --delete-branch \
+       --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
+       --body ""
+   )
    PUSH_AT=$(date -u +%s)
    sleep 30
    RUN_ID=$(gh run list --branch dev --limit 5 \
@@ -329,7 +332,7 @@
 **Run only if** `state` != MERGED.
 
 1. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`.
    Create: `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -376,7 +379,7 @@
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
-   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Ship Debug phase. Merge failure during Ship workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-failure-diagnose-{MERGE_ATTEMPT}.md`.
    Update: Source files.
    Create: `docs/plans/logs/{FID}/ship-failure-remediate-{MERGE_ATTEMPT}-log.md`.
@@ -417,8 +420,14 @@
    git checkout dev
    git fetch origin dev
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
-   [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Manual reconciliation required." >&2; exit 1; }
-   git pull --ff-only origin dev
+   if [ "$AHEAD" -gt 0 ]; then
+     AHEAD_NON_SKIP=$(git log --format=%s origin/dev..dev | grep -cv '\[skip ci\]' || true)
+     [ "$AHEAD_NON_SKIP" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev (non-skip-ci). Manual reconciliation required." >&2; exit 1; }
+     git pull --rebase origin dev
+     git push origin dev
+   else
+     git pull --ff-only origin dev
+   fi
    pnpm install --frozen-lockfile
    ```
    **If** exit non-zero → **Failure Path**.
@@ -451,12 +460,12 @@
 
 1. Launch both subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `@bkit-ship-update-docs`
-     Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/active/{FID}-plan*.md`, glob `docs/plans/logs/{FID}/*.md` (excluding `*-summary.md` / `*-handover.md`).
      Update: doc files.
      Create: `docs/plans/logs/{FID}/ship-update-docs.md`.
    - **Subagent:** Invoke `@bkit-ship-summary`
-     Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(git rev-parse --show-toplevel)/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/ship-input.md`, glob `docs/plans/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/logs/{FID}/ship-summary.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -547,7 +556,7 @@
 
 1. Remove the feature worktree:
    ```bash
-   REPO_ROOT=$(git rev-parse --show-toplevel)
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$WORKTREE_PATH" ]; then
      git worktree remove "$WORKTREE_PATH" --force
@@ -590,7 +599,19 @@
 ## 🤖 Step 11 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status, batch-commit Steps 7-10 dev work, and push:
+2. Assert squash-merge CI run completed `run-tests`:
+   ```bash
+   SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
+   RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
+   RUN_ID=$(echo "$RUN" | jq -r '.[0].databaseId // empty')
+   [ -z "$RUN_ID" ] && { echo "No CI run found for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
+   RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
+   [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
+   TESTS_CONCLUSION=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | test("test"; "i"))][0].conclusion // empty')
+   [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "run-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
+   ```
+   **If** exit non-zero → **Failure Path**.
+3. Update status, batch-commit Steps 7-10 dev work, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -606,8 +627,8 @@
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-3. Add `Merged` phase to `{LABELS}`, drop old phase and drop `Failed` if present → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+4. Add `Merged` phase to `{LABELS}`, drop old phase and drop `Failed` if present → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 11 — Close Workflow
    ```
@@ -618,6 +639,7 @@
 - [ ] All documents archived and logs retained for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
+- [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `Done`, label `Merged` added and `Failed` dropped if present)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

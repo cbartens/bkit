@@ -644,7 +644,7 @@ All phase workflows run inside `.worktrees/{FID}` (gitignored). One worktree per
 **Step 2 — Worktree Setup** is identical across all 5 phases except for branch fallback rule:
 
 ```bash
-REPO_ROOT=$(git rev-parse --show-toplevel)
+REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 git worktree prune  # clean stale entries
 WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
 
