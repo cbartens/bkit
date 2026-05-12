@@ -15,8 +15,9 @@
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): build DONE [skip ci]`; Failure Path → `chore({FID}): build FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -32,17 +33,20 @@
 
 ## 🤖 Failure Path
 
-1. Update status and commit:
+1. Update status, commit, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    git rebase --abort 2>/dev/null || true
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   rm -f "docs/plans/logs/{FID}/.rebase-failed"
-   git add "$STATUS" && git commit -m "chore({FID}): workflow failed status [skip build] [skip ci]"
+   rm -f "$REPO_ROOT/docs/plans/logs/{FID}/.rebase-failed"
+   git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
+   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -85,10 +89,7 @@
    STATUS_REL="docs/plans/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-     case "$LOCK_WORKFLOW" in
-       plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
-       *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
-     esac
+     STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
      LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
      LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
      LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
@@ -205,23 +206,20 @@
 8. Create: `docs/plans/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
 9. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"build", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
-   START_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$START_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): start-workflow status"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-input.md"]}]' \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): worktree-setup status"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
@@ -237,7 +235,7 @@
 - [ ] Plan files in `docs/plans/active/`
 - [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
 - [ ] Artifact written (`build-input.md`, non-empty)
-- [ ] Workflow status updated (`build` `IN_PROGRESS`, steps `start-workflow` + `worktree-setup` recorded with `commitSha`)
+- [ ] Workflow status updated (`build` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -249,13 +247,12 @@
 3. `git branch --show-current` → confirm `BRANCH`. Assert non-empty.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): branch-sync work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"branch-sync", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"branch-sync", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): branch-sync status"
+   git add -A && git commit --allow-empty -m "chore({FID}): branch-sync"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -267,7 +264,7 @@
 
 - [ ] `docs/` not behind `origin/dev`
 - [ ] On correct worktree branch
-- [ ] Workflow status updated (step `branch-sync` recorded with `commitSha`)
+- [ ] Workflow status updated (step `branch-sync` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -283,13 +280,12 @@
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): install-skills work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"install-skills", status:"DONE", attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-install-skills.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"install-skills", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-install-skills.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): install-skills status [skip build] [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): install-skills"
    ```
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -301,7 +297,7 @@
 - [ ] Subagent invoked (`@bkit-build-install-skills`, no inline work)
 - [ ] Artifact written (`build-install-skills.md`, non-empty)
 - [ ] New skills installed (or no new skills noted)
-- [ ] Workflow status updated (step `install-skills` recorded with `commitSha`)
+- [ ] Workflow status updated (step `install-skills` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 4` section)
 
 ---
@@ -326,13 +322,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. Read `build-plan-execute-{SUB_PLAN}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `EXECUTE_VERDICT`.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "feat({FID}): plan-execute sub-plan ${SUB_PLAN} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$EXECUTE_VERDICT" --argjson sp "$SUB_PLAN" \
-     '.[-1].steps += [{step:"plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'-log.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$EXECUTE_VERDICT" --argjson sp "$SUB_PLAN" \
+     '.[-1].steps += [{step:"plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): plan-execute sub-plan ${SUB_PLAN} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): plan-execute sub-plan ${SUB_PLAN}"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -345,7 +340,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-plan-execute-{SUB_PLAN}-log.md`, non-empty)
 - [ ] Source files implemented
 - [ ] `EXECUTE_VERDICT` extracted
-- [ ] Workflow status updated (step `plan-execute` recorded with `commitSha`, `verdict`, `subPlan`)
+- [ ] Workflow status updated (step `plan-execute` recorded with `parentSha`, `verdict`, `subPlan`)
 - [ ] Issue comment attempted (`Step 5` section)
 
 ---
@@ -362,13 +357,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 11. Read `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
 12. Update status and commit:
     ```bash
-    STATUS="docs/plans/logs/{FID}/status.json"
-    git add -A && git commit --allow-empty -m "chore({FID}): plan-verify sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} work"
-    SHA=$(git rev-parse HEAD)
-    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --argjson f "$VERIFY_FAILURES" \
-      '.[-1].steps += [{step:"plan-verify", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-verify-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}]' \
+    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+    PARENT_SHA=$(git rev-parse HEAD)
+    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --argjson f "$VERIFY_FAILURES" \
+      '.[-1].steps += [{step:"plan-verify", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-verify-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
-    git add "$STATUS" && git commit -m "chore({FID}): plan-verify sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} status"
+    git add -A && git commit --allow-empty -m "chore({FID}): plan-verify sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
 13. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
@@ -390,7 +384,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdicts extracted (`VERIFY_VERDICT`, `VERIFY_FAILURES`)
 - [ ] Verdict valid (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`)
-- [ ] Workflow status updated (step `plan-verify` recorded with `commitSha`, `verdict`, `attempt`, `subPlan`)
+- [ ] Workflow status updated (step `plan-verify` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -419,13 +413,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 21. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 22. Update status and commit:
     ```bash
-    STATUS="docs/plans/logs/{FID}/status.json"
-    git add -A && git commit --allow-empty -m "fix({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} work"
-    SHA=$(git rev-parse HEAD)
-    t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg strat "$STRATEGY" \
-      '.[-1].steps += [{step:"plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}]' \
+    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+    PARENT_SHA=$(git rev-parse HEAD)
+    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg strat "$STRATEGY" \
+      '.[-1].steps += [{step:"plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
-    git add "$STATUS" && git commit -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT} status"
+    git add -A && git commit --allow-empty -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
 23. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
@@ -439,7 +432,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
-- [ ] Workflow status updated (step `plan-gaps-remediate` recorded with `commitSha`, `verdict`, `attempt`, `subPlan`, `strategy`)
+- [ ] Workflow status updated (step `plan-gaps-remediate` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`, `strategy`)
 - [ ] Issue comment attempted (`Step 7` section)
 
 ---
@@ -456,13 +449,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-plan-verify-holistic.md` until `<!-- verdict:end -->` → extract `Verdict` as `HOLISTIC_VERDICT` and `Failures` as `HOLISTIC_FAILURES`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): plan-verify-holistic work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$HOLISTIC_VERDICT" --argjson f "$HOLISTIC_FAILURES" \
-     '.[-1].steps += [{step:"plan-verify-holistic", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-plan-verify-holistic.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$HOLISTIC_VERDICT" --argjson f "$HOLISTIC_FAILURES" \
+     '.[-1].steps += [{step:"plan-verify-holistic", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-verify-holistic.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): plan-verify-holistic status"
+   git add -A && git commit --allow-empty -m "chore({FID}): plan-verify-holistic"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -479,7 +471,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdicts extracted (`HOLISTIC_VERDICT`, `HOLISTIC_FAILURES`)
 - [ ] Verdict valid (`HOLISTIC_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-holistic.md`)
-- [ ] Workflow status updated (step `plan-verify-holistic` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-verify-holistic` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -499,13 +491,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-challenge-1.md` and `build-challenge-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `CHALLENGE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `CHALLENGE_FAILURES` = sum of failures from each.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --arg v "$CHALLENGE_VERDICT" --argjson f "$CHALLENGE_FAILURES" \
-     '.[-1].steps += [{step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-1.md","docs/plans/logs/{FID}/build-challenge-2.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --arg v "$CHALLENGE_VERDICT" --argjson f "$CHALLENGE_FAILURES" \
+     '.[-1].steps += [{step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-1.md","docs/plans/logs/{FID}/build-challenge-2.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -517,7 +508,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] Subagents invoked (`@bkit-build-challenge-1`, `@bkit-build-challenge-2`, no inline work)
 - [ ] Artifacts written (`build-challenge-1.md` and `build-challenge-2.md`, non-empty)
-- [ ] Workflow status updated (step `build-challenge` recorded with `commitSha`, `attempt`)
+- [ ] Workflow status updated (step `build-challenge` recorded with `parentSha`, `attempt`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
@@ -532,13 +523,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-challenge.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_VERDICT` and `Failures` as `CHALLENGE_FAILURES`. `CHALLENGE_VERDICT` must be in `PASS|CONCERNS|FAIL` (canonical challenge verdict; NO `BLOCK`/`WARN`).
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --argjson f "$CHALLENGE_FAILURES" \
-     '.[-1].steps += [{step:"build-challenge-reconcile", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --argjson f "$CHALLENGE_FAILURES" \
+     '.[-1].steps += [{step:"build-challenge-reconcile", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -558,7 +548,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdicts extracted (`CHALLENGE_VERDICT`, `CHALLENGE_FAILURES`)
 - [ ] Verdict valid (`CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-challenge.md`)
-- [ ] Workflow status updated (step `build-challenge-reconcile` recorded with `commitSha`, `verdict`, `attempt`)
+- [ ] Workflow status updated (step `build-challenge-reconcile` recorded with `parentSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 10` section)
 
 ---
@@ -577,13 +567,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 4. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
 5. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" \
-     '.[-1].steps += [{step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" \
+     '.[-1].steps += [{step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -599,7 +588,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-challenge-remediate-log.md`, non-empty)
 - [ ] Source files modified or classify-gate FAIL recorded
 - [ ] `REMEDIATE_CHALLENGE_VERDICT` extracted (in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `build-challenge-remediate` recorded with `commitSha`, `verdict`, `attempt`)
+- [ ] Workflow status updated (step `build-challenge-remediate` recorded with `parentSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 11` section)
 
 ---
@@ -616,13 +605,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-challenge-tests.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_TESTS_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "test({FID}): build-challenge-tests work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_TESTS_VERDICT" \
-     '.[-1].steps += [{step:"build-challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-challenge-tests.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_TESTS_VERDICT" \
+     '.[-1].steps += [{step:"build-challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-tests.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): build-challenge-tests status"
+   git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-tests"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -636,7 +624,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-challenge-tests.md`, non-empty)
 - [ ] Test files created/updated
 - [ ] `CHALLENGE_TESTS_VERDICT` extracted
-- [ ] Workflow status updated (step `build-challenge-tests` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `build-challenge-tests` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 12` section)
 - [ ] Routing applied (re-run Step 9 if `CHALLENGE_VERDICT` = FAIL; else Step 13)
 
@@ -659,13 +647,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
-     '.[-1].steps += [{step:"run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, commitSha:$sha, artifacts:[]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
+     '.[-1].steps += [{step:"run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -682,7 +669,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `TEST_ATTEMPT` incremented
 - [ ] Tests executed (turbo path if `turbo.json`, else single-package script fallback)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
-- [ ] Workflow status updated (step `run-tests` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `run-tests` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 13` section)
 
 ---
@@ -710,13 +697,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
-     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
+     '.[-1].steps += [{step:"failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -731,7 +717,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `DIAGNOSE_VERDICT` extracted
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-failure-diagnose-{TEST_ATTEMPT}.md`)
-- [ ] Workflow status updated (step `failure-diagnose` recorded with `commitSha`, `verdict`, `strategy`)
+- [ ] Workflow status updated (step `failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
 - [ ] Issue comment attempted (`Step 14` section)
 
 ---
@@ -749,13 +735,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-failure-remediate-{TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "fix({FID}): failure-remediate attempt ${TEST_ATTEMPT} work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
-     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
+     '.[-1].steps += [{step:"failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT} status"
+   git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -769,7 +754,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-failure-remediate-{TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
-- [ ] Workflow status updated (step `failure-remediate` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `failure-remediate` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 15` section)
 
 ---
@@ -786,13 +771,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Read `build-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): summary work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/build-summary.md"]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
+     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): summary status [skip build] [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
 5. Assert `{BRANCH}` non-empty. `git push -u origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -812,7 +796,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 16` section)
 
 ---
@@ -836,13 +820,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
 6. Update status and commit:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
-     '.[-1].steps += [{step:"create-pr", status:"DONE", at:$t, commitSha:$sha, artifacts:[$u]}]' \
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
+     '.[-1].steps += [{step:"create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): create-pr status [skip build] [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -853,7 +836,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ### 🔒 Gate 17 — Create PR
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] Workflow status updated (step `create-pr` recorded with `commitSha`)
+- [ ] Workflow status updated (step `create-pr` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
 ---
@@ -861,21 +844,24 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status and commit:
+2. Update status, commit on feat, and push:
    ```bash
-   STATUS="docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add "$STATUS" && git commit -m "chore({FID}): close-workflow status trigger CI"
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
+   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
+   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE [skip ci]"
+   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 3. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`— `{LABELS}` unchanged.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -889,6 +875,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
-- [ ] Workflow status updated (`build` `DONE`, step `close-workflow` recorded with `commitSha`)
+- [ ] Workflow status updated (`build` `DONE`, step `close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `In Review`, phase label `Build` preserved)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

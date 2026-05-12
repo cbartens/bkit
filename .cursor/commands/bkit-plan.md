@@ -15,9 +15,9 @@
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` lives on `dev`. Every status mutation: `git -C "$REPO_ROOT" pull --ff-only origin dev` → mutate → `git -C "$REPO_ROOT" add docs/plans/logs/{FID}/status.json` → `commit` → `push origin dev`. **If** pull or push fails → **Failure Path**.
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file (dev's working copy); ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): plan DONE`; Failure Path → `chore({FID}): plan FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -31,7 +31,7 @@
 
 ## 🤖 Failure Path
 
-1. Update status and commit:
+1. Update status, commit, and push (one-shot termination commit on dev):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -40,8 +40,9 @@
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
+   git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
    git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): workflow failed status [skip build] [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): plan FAILED [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
@@ -69,10 +70,7 @@
    STATUS_REL="docs/plans/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-     case "$LOCK_WORKFLOW" in
-       plan|design) STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]') ;;
-       *)           STATUS_JSON=$(git -C "$REPO_ROOT" show "feat/{FID}:$STATUS_REL" 2>/dev/null || echo '[]') ;;
-     esac
+     STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
      LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
      LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
      LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
@@ -163,20 +161,14 @@
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "plan" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"plan", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
    fi
-   git add -A && git commit --allow-empty -m "chore({FID}): start-workflow work"
-   START_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$START_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-input.md"]}]' \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): start-workflow + worktree-setup status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -191,7 +183,7 @@
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Artifact written (`plan-input.md`, non-empty)
 - [ ] Parent design appended (if present)
-- [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `start-workflow` + `worktree-setup` recorded with `commitSha`)
+- [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -207,15 +199,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): generate-plan work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"generate-plan", status:"DONE", attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-v1-draft.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"generate-plan", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v1-draft.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): generate-plan status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -227,7 +215,7 @@
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
-- [ ] Workflow status updated (step `generate-plan` recorded with `commitSha`)
+- [ ] Workflow status updated (step `generate-plan` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -249,15 +237,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): review-plan work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REVIEW_VERDICT" --argjson f "$REVIEW_FAILURES" \
-     '.[-1].steps += [{step:"review-plan", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-review-1.md","docs/plans/logs/{FID}/plan-review-2.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REVIEW_VERDICT" --argjson f "$REVIEW_FAILURES" \
+     '.[-1].steps += [{step:"review-plan", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-review-1.md","docs/plans/logs/{FID}/plan-review-2.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): review-plan status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): review-plan"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -271,7 +255,7 @@
 - [ ] Verdicts extracted (`REVIEW_VERDICT`, `REVIEW_FAILURES`)
 - [ ] Verdict valid (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-review-1.md` and `plan-review-2.md`)
-- [ ] Workflow status updated (step `review-plan` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `review-plan` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 4` section)
 
 ---
@@ -288,15 +272,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): apply-review work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
-     '.[-1].steps += [{step:"apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-v2-reviewed.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
+     '.[-1].steps += [{step:"apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v2-reviewed.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): apply-review status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -310,7 +290,7 @@
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
 - [ ] `APPLY_REVIEW_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-review` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 
 ---
@@ -332,15 +312,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): scope-check work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SCOPE_VERDICT" --argjson f "$SCOPE_FAILURES" \
-     '.[-1].steps += [{step:"scope-check", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-scope-check-1.md","docs/plans/logs/{FID}/plan-scope-check-2.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SCOPE_VERDICT" --argjson f "$SCOPE_FAILURES" \
+     '.[-1].steps += [{step:"scope-check", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-scope-check-1.md","docs/plans/logs/{FID}/plan-scope-check-2.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): scope-check status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): scope-check"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -354,7 +330,7 @@
 - [ ] Verdicts extracted (`SCOPE_VERDICT`, `SCOPE_FAILURES`)
 - [ ] Verdict valid (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
-- [ ] Workflow status updated (step `scope-check` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `scope-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -372,15 +348,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): apply-scope work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_SCOPE_VERDICT" \
-     '.[-1].steps += [{step:"apply-scope", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-v3-checked.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_SCOPE_VERDICT" \
+     '.[-1].steps += [{step:"apply-scope", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v3-checked.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): apply-scope status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): apply-scope"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -395,7 +367,7 @@
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
 - [ ] `APPLY_SCOPE_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-scope` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `apply-scope` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
 
 ---
@@ -412,15 +384,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "chore({FID}): complexity-check work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$COMPLEXITY_VERDICT" \
-     '.[-1].steps += [{step:"complexity-check", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-complexity-check.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$COMPLEXITY_VERDICT" \
+     '.[-1].steps += [{step:"complexity-check", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-complexity-check.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): complexity-check status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): complexity-check"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -432,7 +400,7 @@
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
 - [ ] `COMPLEXITY_VERDICT` extracted
-- [ ] Workflow status updated (step `complexity-check` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `complexity-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -451,15 +419,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): complexity-split work"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SPLIT_VERDICT" \
-     '.[-1].steps += [{step:"complexity-split", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-v4-split.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SPLIT_VERDICT" \
+     '.[-1].steps += [{step:"complexity-split", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v4-split.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): complexity-split status"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): complexity-split"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -477,7 +441,7 @@
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
 - [ ] `SPLIT_VERDICT` extracted
 - [ ] Verdict valid (`SPLIT_VERDICT` in `PASS|FAIL`)
-- [ ] Workflow status updated (step `complexity-split` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `complexity-split` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
@@ -495,15 +459,11 @@
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git add -A && git commit --allow-empty -m "docs({FID}): summary work [skip build] [skip ci]"
-   SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, commitSha:$sha, artifacts:["docs/plans/logs/{FID}/plan-summary.md"]}]' \
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
+     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): summary status [skip build] [skip ci]"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
+   git add -A && git commit --allow-empty -m "chore({FID}): summary [skip build] [skip ci]"
    ```
 6. Assert `{BRANCH}` non-empty and push:
    ```bash
@@ -527,7 +487,7 @@
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `commitSha`, `verdict`)
+- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 10` section)
 
 ---
@@ -553,48 +513,41 @@
      rm -f "$f.bak"
    done
    ```
-2. Commit drafts in worktree:
+2. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+3. Commit feat artifacts and update status:
    ```bash
-   git add docs/plans/drafts/{FID}-plan*.md
-   git diff --cached --quiet || git commit -m "docs({FID}): close-workflow drafts"
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
+      | .[-1] |= (. + {status:"DONE"})' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-3. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-4. Sync to dev and prune worktree:
+4. Squash-merge to dev and clean up:
    ```bash
    cd "$REPO_ROOT"
    git checkout dev
-   git pull origin dev
-   git merge "$BRANCH" --no-edit
-   git push origin dev
+   git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
+   git merge --squash "feat/{FID}"
+   git add "docs/plans/logs/{FID}/status.json"
+   git commit -m "docs({FID}): plan DONE"
+   git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
    git branch -D "feat/{FID}" 2>/dev/null || true
    git push origin --delete "feat/{FID}" 2>/dev/null || true
    git worktree prune
-   ```
-5. Update status and commit:
-   ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" add -A && git -C "$REPO_ROOT" commit --allow-empty -m "chore({FID}): close-workflow work [skip build] [skip ci]"
-   SHA=$(git -C "$REPO_ROOT" rev-parse HEAD)
-   t=$(mktemp); jq --arg sha "$SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, commitSha:$sha, artifacts:[]}]
-      | .[-1] |= (. + {status:"DONE"})' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "status.json sync failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): close-workflow status [skip build] [skip ci]"
-   git -C "$REPO_ROOT" push origin dev || { echo "status.json push failed" >&2; exit 1; }
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    ```
-6. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 11 — Close Workflow
    ```
-8. **HARD STOP:** Plan requires human review. Do NOT invoke `/build`.
+7. **HARD STOP:** Plan requires human review. Do NOT invoke `/build`.
 
 ### 🔒 Gate 11 — Close Workflow
 
@@ -604,6 +557,6 @@
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
-- [ ] Workflow status updated (`plan` `DONE`, step `close-workflow` recorded with `commitSha`)
+- [ ] Workflow status updated (`plan` `DONE`, step `close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `In Review`; phase label `Plan` preserved)
 - [ ] Issue comment attempted (`Step 11` section)

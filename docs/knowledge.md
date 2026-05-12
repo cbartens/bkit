@@ -284,3 +284,16 @@
 - **Severity:** critical
 - **Source:** phase
 - **Related:** BAR-186, feedback memory `skip-ci commits must not be HEAD when PR is created`, `.github/workflows/release.yml`, commit `05a3e6b chore(release): 2.0.2 (#26)`
+
+## KN-21: Workflow status.json on dev for all five workflows; single termination commit + push (2026-05-12)
+
+- **Category:** workflow
+- **Rule:** All bkit workflows (`plan`, `design`, `build`, `debug`, `ship`) write `status.json` to `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (dev working copy). Per-step writes are file-only (uncommitted between steps). Per-step commits on `feat/{FID}` capture artifacts only — message `chore({FID}): {step}`, no `work` / `status` suffix, no `[skip ci]` flag. `dev` is committed and pushed exactly ONCE per workflow run at Close Workflow (success) OR Failure Path (failure), with `[skip ci]` on status-only termination commits. Plan/design close is a `git merge --squash feat/{FID}` + status.json → `docs({FID}): {plan|design} DONE` (no `[skip ci]` — substantive content); build/debug close is status-only `chore({FID}): {build|debug} DONE [skip ci]`; ship close is `docs({FID}): ship DONE [skip ci]` batching steps 7-10 dev work.
+- **Why:** Eliminates ~50 commits and ~10 dev pushes per typical workflow run. `cat $REPO_ROOT/docs/plans/logs/{FID}/status.json` works from anywhere on the machine without entering the worktree or knowing git. PR diffs for build/debug/ship contain only substantive feature work — no `status.json` churn.
+- **Mechanism:** `Step.commitSha` replaced by `Step.parentSha` (captured at step START via `git rev-parse HEAD`, BEFORE the step's commit) — eliminates the chicken-and-egg that drove the prior double-commit pattern.
+- **Scope:** BAR-187 extended BAR-183 (status.json on dev for plan/design only) to all five workflows. BAR-184 (no commits on `dev` between worktree creation and close-workflow) preserved.
+- **Type:** rule
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-187, BAR-183, BAR-184, `.agents/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`

@@ -7,7 +7,7 @@ describe("status.json invariants", () => {
     step: "verify-plan",
     status: "DONE",
     at: "2026-04-28T07:33:00Z",
-    commitSha: "a1b2c3d",
+    parentSha: "a1b2c3d",
     artifacts: [],
   };
 
