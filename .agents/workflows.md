@@ -613,7 +613,7 @@ Each subsection below documents what command actually does — step list, subage
 | 8 — Update Docs & Summary | `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) | `update-docs` writes `ship-update-docs.md` + edits cataloged docs. `summary` writes `ship-summary.md`. Sibling-blind: `summary` MUST NOT read `update-docs.md`. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 9 — Archive | — | Verify squash SHA on `origin/dev`. `mv docs/plans/active/{FID}-*.md docs/plans/completed/{YYYYMM}/`. Update `docs/completed.md`. Prune feature-specific skills not in `.agents/skills.md`. Commit `docs({FID}): archive cleanup [skip build] [skip ci]` → push to `dev`. |
 | 10 — Worktree Cleanup | — | `git worktree remove .worktrees/{FID} --force` → `git worktree prune` → `git branch -D feat/{FID}` → `git push origin --delete feat/{FID}` → `git fetch --prune origin`. Local + remote branch deletion is explicit because `gh pr merge --delete-branch` aborts both sides when the local one fails (worktree holds the ref). Squash-merged tip is unreachable from `dev`, so `-D` is correct. |
-| 11 — Close Workflow | — | Add `Merged` label, state `Done`. |
+| 11 — Close Workflow | — | Add `Merged` label, drop `Failed` if present, state `Done`. |
 
 **Failure Path** includes conditional handover via `@bkit-debug-abort-handover` writing `ship-handover.md` when max-retry exhausted.
 
@@ -734,7 +734,7 @@ Phase label is preserved through Close Workflow exit — state column (`In Revie
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `Failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Lives outside the Linear `workflow` group — no server-side phase eviction. |
+| `Failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Lives outside the Linear `workflow` group — no server-side phase eviction. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior Failure marker) and when `/bkit-ship` Step 11 adds `Merged` (terminal success). |
 | `Debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `Build` or `Ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. Lives outside the Linear `workflow` group — no server-side phase eviction. |
 
 ### Statuses
@@ -869,7 +869,7 @@ Add `X` phase to {LABELS}, drop old → save_issue({ id: "{ISSUE_ID}", state: ".
 Add `X` to {LABELS} (additive — phase label persists) → save_issue({ id: "{ISSUE_ID}", state: "...", labels: [{LABELS}] })
 ```
 
-Phase labels (`Design`/`Plan`/`Build`/`Ship`/`Merged`) are mutually exclusive — drop old before adding new. Additive labels (`Failed`, `Debug`) skip the drop and live alongside the phase label.
+Phase labels (`Design`/`Plan`/`Build`/`Ship`/`Merged`) are mutually exclusive — drop old before adding new. Additive labels (`Failed`, `Debug`) skip the drop and live alongside the phase label. `Failed` is additionally cleared by `/bkit-debug` Step 1 (debug entry) and `/bkit-ship` Step 11 (`Merged`) so a successfully-recovered or shipped issue does not carry a stale Failure Path marker.
 
 ### Sub-plan loop discovery
 
