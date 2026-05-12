@@ -76,7 +76,7 @@ After sub-plans A and B land, sub-plan C closes BAR-167 by removing `Tier [123]`
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| **Phase 3 — Schema & terminology cleanup** | | |
+| **Phase 3 — Schema & terminology cleanup** |  |  |
 | `parseBkitVersion` reads a v2.0.0 `.bkit-version` JSON missing `tier3Hashes` and returns `tier3Hashes: {}` (backward-compat for one minor version) | Unit (Vitest) | `.agents/scripts/bkit-version.test.ts` |
 | `writeBkitVersion` after narrowed writer change: emitted `tier3Hashes` map contains only `byte-equal-text` paths (`.cursor/Dockerfile`); `json` and `markered-text` paths absent | Unit (Vitest) | `.agents/scripts/bkit-version.test.ts` |
 | `bkit uninstall .cursor/Dockerfile` safe-delete: when consumer hash matches `tier3Hashes` entry → file deleted; when consumer modified → preserved (re-verifies the sub-plan A Task 10 row after writer narrowing) | Integration (Vitest) | `.agents/scripts/bkit-modules.integration.test.ts` |
@@ -219,11 +219,12 @@ None.
 
 ## Rollback Strategy
 
-| Axis        | Action                      | Notes                                                                                                                                                                                                                                                    |
-| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code        | `git revert {MERGE_COMMIT}` | Revert restores `tier3Hashes` writer to the wider emission (all tier-3 files) and re-introduces `Tier [123]` strings in docs. Consumers' `.bkit-version` files keep their narrowed `tier3Hashes` map; next install re-emits the wider map. No data loss. |
-| Risk window | One install cycle           | Brief schema-pollution + terminology-inconsistency window.                                                                                                                                                                                               |
-| DB          | N/A                         |                                                                                                                                                                                                                                                          |
+<!-- prettier-ignore -->
+| Axis | Action | Notes |
+| --- | --- | --- |
+| Code | `git revert {MERGE_COMMIT}` | Revert restores `tier3Hashes` writer to the wider emission (all tier-3 files) and re-introduces `Tier [123]` strings in docs. Consumers' `.bkit-version` files keep their narrowed `tier3Hashes` map; next install re-emits the wider map. No data loss. |
+| Risk window | One install cycle | Brief schema-pollution + terminology-inconsistency window. |
+| DB | N/A |  |
 
 ## Agent Execution Runbook (sub-plan C — Phase 3)
 
@@ -278,8 +279,9 @@ None.
 
 ## Open-Question Disposition (sub-plan C scope)
 
-| Question                          | Disposition                                                                    | Where tracked        |
-| --------------------------------- | ------------------------------------------------------------------------------ | -------------------- |
+<!-- prettier-ignore -->
+| Question | Disposition | Where tracked |
+| --- | --- | --- |
 | Manual fixes in `app-gether-life` | **OUT-OF-SCOPE** per Plan-Phase Decision 5 — left uncommitted in consumer repo | Out-of-Scope section |
 
 ---

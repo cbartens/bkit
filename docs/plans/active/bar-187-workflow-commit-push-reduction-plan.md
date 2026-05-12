@@ -161,7 +161,7 @@ A developer runs `/bkit-plan bar-X` end-to-end on a clean feature, then `/bkit-b
 | Per-step `git add "$STATUS" && git commit -m "...status"` patterns in `bkit-build/debug/ship.md` | Single combined work commit + close-workflow dev commit | DELETE | Drives the double-commit waste. |
 | Per-step `git -C "$REPO_ROOT" pull/add/commit/push origin dev` blocks in `bkit-plan.md`, `bkit-design.md` | Single close-workflow dev push | DELETE | ~10 dev pushes per plan/design workflow, no `[skip ci]` (CI noise). |
 | `.agents/workflows.md` § BAR-183 rationale ("Build/debug/ship continue to keep status.json on feat/{FID}") | Rewritten: "All workflows, status.json on dev via `$REPO_ROOT`" | MODIFY | Universal-extension decision in this plan. |
-| `.agents/workflows.md` § Concurrency lock `case "$LOCK_WORKFLOW" in plan|design) ... *) git show feat/{FID}:$STATUS_REL ...` | All branches read `cat "$REPO_ROOT/$STATUS_REL"` | MODIFY | Single status.json location. |
+| `.agents/workflows.md` § Concurrency lock `case "$LOCK_WORKFLOW" in plan | design) ... *) git show feat/{FID}:$STATUS_REL ...` | All branches read `cat "$REPO_ROOT/$STATUS_REL"` | MODIFY | Single status.json location. |
 
 ## Security & Privacy
 

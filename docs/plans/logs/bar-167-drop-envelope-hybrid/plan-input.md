@@ -61,12 +61,13 @@ Reframed: **Every file has a bkit-owned scope and a consumer-owned remainder. Th
 
 **Format mapping:**
 
-| Format                                   | Bkit scope =                  | Drift check                            |
-| ---------------------------------------- | ----------------------------- | -------------------------------------- |
-| Text with `bkit:start..bkit:end` markers | Content between markers       | Block byte-equal                       |
-| Text without markers                     | Entire template               | Whole-file byte-equal                  |
-| JSON                                     | Entire template's deep tree   | Deep containment (template ⊆ consumer) |
-| Empty scope                              | Nothing (consumer fully owns) | No check (advisory only)               |
+<!-- prettier-ignore -->
+| Format | Bkit scope = | Drift check |
+| --- | --- | --- |
+| Text with `bkit:start..bkit:end` markers | Content between markers | Block byte-equal |
+| Text without markers | Entire template | Whole-file byte-equal |
+| JSON | Entire template's deep tree | Deep containment (template ⊆ consumer) |
+| Empty scope | Nothing (consumer fully owns) | No check (advisory only) |
 
 **Override mechanism:** `.bkitignore` (already exists, DE-6) retained as the explicit per-file / per-key opt-out.
 

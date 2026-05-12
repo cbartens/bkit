@@ -46,22 +46,24 @@ Read and execute the matched command file for the current IDE.
 
 **Cursor** (`.cursor/commands/`):
 
-| Label    | Command                           |
-| -------- | --------------------------------- |
-| `Ship`   | `.cursor/commands/bkit-ship.md`   |
-| `Debug`  | `.cursor/commands/bkit-debug.md`  |
-| `Build`  | `.cursor/commands/bkit-build.md`  |
-| `Plan`   | `.cursor/commands/bkit-plan.md`   |
+<!-- prettier-ignore -->
+| Label | Command |
+| --- | --- |
+| `Ship` | `.cursor/commands/bkit-ship.md` |
+| `Debug` | `.cursor/commands/bkit-debug.md` |
+| `Build` | `.cursor/commands/bkit-build.md` |
+| `Plan` | `.cursor/commands/bkit-plan.md` |
 | `Design` | `.cursor/commands/bkit-design.md` |
 
 **Claude Code** (`.claude/commands/`):
 
-| Label    | Command                           |
-| -------- | --------------------------------- |
-| `Ship`   | `.claude/commands/bkit-ship.md`   |
-| `Debug`  | `.claude/commands/bkit-debug.md`  |
-| `Build`  | `.claude/commands/bkit-build.md`  |
-| `Plan`   | `.claude/commands/bkit-plan.md`   |
+<!-- prettier-ignore -->
+| Label | Command |
+| --- | --- |
+| `Ship` | `.claude/commands/bkit-ship.md` |
+| `Debug` | `.claude/commands/bkit-debug.md` |
+| `Build` | `.claude/commands/bkit-build.md` |
+| `Plan` | `.claude/commands/bkit-plan.md` |
 | `Design` | `.claude/commands/bkit-design.md` |
 
 <!-- bkit:end -->

@@ -21,32 +21,34 @@
 
 ## Verification commands
 
-| Command             | Exit | Detail                                                                   |
-| ------------------- | ---- | ------------------------------------------------------------------------ |
-| `pnpm typecheck`    | 0    | clean                                                                    |
-| `pnpm test`         | 0    | 114 passed, 16 todo (v4-3-owned tests), 1 file skipped, 6 files passed   |
-| `pnpm format:check` | 0    | clean                                                                    |
-| `pnpm lint:slop`    | 0    | 3 findings — all pre-existing in `.agents/skills/`, none in v4-2 surface |
+<!-- prettier-ignore -->
+| Command | Exit | Detail |
+| --- | --- | --- |
+| `pnpm typecheck` | 0 | clean |
+| `pnpm test` | 0 | 114 passed, 16 todo (v4-3-owned tests), 1 file skipped, 6 files passed |
+| `pnpm format:check` | 0 | clean |
+| `pnpm lint:slop` | 0 | 3 findings — all pre-existing in `.agents/skills/`, none in v4-2 surface |
 
 ## Spot-checked files (all present)
 
-| File                                                                        | Status                                           |
-| --------------------------------------------------------------------------- | ------------------------------------------------ |
-| `.agents/scripts/bkit-tokens.ts`                                            | exists                                           |
-| `.agents/scripts/bkit-tokens.test.ts`                                       | exists — 16 tests                                |
-| `.agents/scripts/bkit-tiers.ts`                                             | exists                                           |
-| `.agents/scripts/bkit-tiers.test.ts`                                        | exists — 15 tests (all passing)                  |
-| `.agents/scripts/bkit-dry-run-parity.integration.test.ts`                   | exists — 4 passing + 5 todo (cross-module, v4-3) |
-| `.agents/scripts/bkit-modules.integration.test.ts`                          | exists — 2 passing + 6 todo (v4-3)               |
-| `.agents/templates/.github/workflows/ci.yml`                                | exists                                           |
-| `.agents/templates/.vale.ini`                                               | exists                                           |
-| `.agents/templates/.vale/styles/House/{Filler,Hedging,LLMSlop,Verbose}.yml` | exists (4 files)                                 |
-| `.agents/templates/slop-scan.config.json`                                   | exists                                           |
-| `.agents/templates/.prettierignore`                                         | exists                                           |
-| `.agents/templates/.husky/pre-commit`                                       | exists                                           |
-| `.agents/templates/.husky/pre-push`                                         | exists                                           |
-| `.agents/templates/.cursor/hooks.json`                                      | exists                                           |
-| `.agents/templates/.cursor/settings.json`                                   | exists                                           |
+<!-- prettier-ignore -->
+| File | Status |
+| --- | --- |
+| `.agents/scripts/bkit-tokens.ts` | exists |
+| `.agents/scripts/bkit-tokens.test.ts` | exists — 16 tests |
+| `.agents/scripts/bkit-tiers.ts` | exists |
+| `.agents/scripts/bkit-tiers.test.ts` | exists — 15 tests (all passing) |
+| `.agents/scripts/bkit-dry-run-parity.integration.test.ts` | exists — 4 passing + 5 todo (cross-module, v4-3) |
+| `.agents/scripts/bkit-modules.integration.test.ts` | exists — 2 passing + 6 todo (v4-3) |
+| `.agents/templates/.github/workflows/ci.yml` | exists |
+| `.agents/templates/.vale.ini` | exists |
+| `.agents/templates/.vale/styles/House/{Filler,Hedging,LLMSlop,Verbose}.yml` | exists (4 files) |
+| `.agents/templates/slop-scan.config.json` | exists |
+| `.agents/templates/.prettierignore` | exists |
+| `.agents/templates/.husky/pre-commit` | exists |
+| `.agents/templates/.husky/pre-push` | exists |
+| `.agents/templates/.cursor/hooks.json` | exists |
+| `.agents/templates/.cursor/settings.json` | exists |
 
 ## Outstanding / deferred
 

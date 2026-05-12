@@ -95,11 +95,11 @@ Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API
 
 **Lives in `.agents/prompts.md`** (per-agent metadata co-located with agent descriptions, effort / maxTurns rationale, tool-set patterns).
 
-`prompts.md` carries one row per agent with columns: `name | Cursor model | Claude effort | role hint`. Canonical source for Cursor frontmatter rewrite (T3). `bkit/hosts/cursor.ts` mirrors it; CI drift gate enforces parity.
+`prompts.md` carries one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical source for Cursor frontmatter rewrite (T3). `bkit/hosts/cursor.ts` mirrors it; CI drift gate enforces parity.
 
 ### Per-workflow (orchestrator) model
 
-Model running orchestrator command itself, NOT subagents. On Cursor: set at workflow launch (Cursor Cloud Agent config / GH Action invocation); command files have no frontmatter. On Claude: inherits the session model — set via `/model` before invoking the slash command (Claude command frontmatter carries only `description:`, no `model:`). Subagent `model:` pins (see `prompts.md` § Frontmatter) are independent of this — Opus-tier subagents stay on Opus regardless of orchestrator model.
+Model running orchestrator command itself, NOT subagents. On Cursor: set at workflow launch (Cursor Cloud Agent config / GH Action invocation); command files have no frontmatter. On Claude: inherits session model — set via `/model` before invoking slash command (Claude command frontmatter carries only `description:`, no `model:`). Subagent `model:` pins (see `prompts.md` § Frontmatter) are independent — Opus-tier subagents stay on Opus regardless of orchestrator model.
 
 <!-- prettier-ignore -->
 | Workflow | Cursor model | Claude model + reasoning | Notes |
@@ -109,11 +109,11 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 | `/bkit-build` | `composer-2` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
 | `/bkit-debug` | `claude-4.7-opus-high-thinking` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
 | `/bkit-ship` | `composer-2` | `sonnet` / `medium` | Short, fully procedural. |
-| CI automations (`ci-pass`, `ci-fail`) | `composer-2` | n/a | |
+| CI automations (`ci-pass`, `ci-fail`) | `composer-2` | n/a |  |
 
 **Rationale:** orchestrator does sequential step execution, bash/`jq`/`git`, Linear MCP calls, verdict extraction from subagent files, gate verification. Hard reasoning is delegated to subagents (pinned `model:`, no inheritance from session). Sonnet 4.6 handles strict procedural execution.
 
-**Reasoning depth — default `medium`** (both Sonnet and Opus orchestrators). Orchestration is procedural, not deep reasoning; `medium` thinking is sufficient for verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching. Higher thinking budget on Sonnet tends to **worsen** inlining drift — deeper reflection surfaces "I could just do this myself" temptation. Correct escalation on observed drift is `sonnet/medium → opus/medium`, NOT `sonnet/medium → sonnet/high`. Reserve `high` thinking for one-off debugging of an orchestrator step that consistently mis-extracts verdicts or malforms `status.json` — not as a default tier.
+**Reasoning depth — default `medium`** (both Sonnet and Opus orchestrators). Orchestration is procedural, not deep reasoning; `medium` thinking suffices for verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching. Higher thinking budget on Sonnet tends to **worsen** inlining drift — deeper reflection surfaces "I could just do this myself" temptation. Correct escalation on observed drift is `sonnet/medium → opus/medium`, NOT `sonnet/medium → sonnet/high`. Reserve `high` thinking for one-off debugging of an orchestrator step that consistently mis-extracts verdicts or malforms `status.json` — not as a default tier.
 
 **Risk — inlining drift.** Sonnet slightly more prone than Opus to "helping" by doing a subagent's work itself when the work looks tractable (especially review / scope-check steps). `rules.md` § Orchestrators ("Inlining subagent steps or producing output directly is NOT compliance") + per-command CAUTION block mitigate. If observed → bump that command back to Opus (NOT to higher Sonnet reasoning).
 

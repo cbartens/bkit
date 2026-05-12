@@ -25,17 +25,18 @@ Verdict: SPLIT
 
 **Estimated token budget breakdown:**
 
-| Activity                                                                                                              | Tokens |
-| --------------------------------------------------------------------------------------------------------------------- | ------ |
-| Reading all relevant source files (package.json, bkit-modules.ts, 3 workflow YAMLs, 5 doc files, test files)          | ~25 K  |
-| Writing/editing 5 source constants + package.json + 2 workflow YAMLs + consumer template                              | ~20 K  |
-| Writing/editing 5 doc files (README, .agents/README, decisions, pending, knowledge)                                   | ~15 K  |
-| Writing 4 new/extended Vitest test files with acceptance assertions                                                   | ~15 K  |
-| dist/ rebuild reasoning + check:dist verification output                                                              | ~5 K   |
-| Gates, gate failure diagnosis loops, and pre-release tag/publish verification (2 gates with possible re-tag recovery) | ~20 K  |
-| Scratch-consumer smoke (setup, install, bkit install --full, transcript capture)                                      | ~10 K  |
-| PR creation, merge operations, Linear comments                                                                        | ~5 K   |
-| **Total**                                                                                                             | ~115 K |
+<!-- prettier-ignore -->
+| Activity | Tokens |
+| --- | --- |
+| Reading all relevant source files (package.json, bkit-modules.ts, 3 workflow YAMLs, 5 doc files, test files) | ~25 K |
+| Writing/editing 5 source constants + package.json + 2 workflow YAMLs + consumer template | ~20 K |
+| Writing/editing 5 doc files (README, .agents/README, decisions, pending, knowledge) | ~15 K |
+| Writing 4 new/extended Vitest test files with acceptance assertions | ~15 K |
+| dist/ rebuild reasoning + check:dist verification output | ~5 K |
+| Gates, gate failure diagnosis loops, and pre-release tag/publish verification (2 gates with possible re-tag recovery) | ~20 K |
+| Scratch-consumer smoke (setup, install, bkit install --full, transcript capture) | ~10 K |
+| PR creation, merge operations, Linear comments | ~5 K |
+| **Total** | ~115 K |
 
 The estimate is ~115 K tokens, exceeding the 100 K threshold. The primary drivers are the live-registry gate cycles (A5, B15, C5) which each require waiting on GHA run completion, iterating on failures, and capturing verbose transcript output — these inflate the execution loop substantially beyond a pure edit session.
 
@@ -51,9 +52,10 @@ The plan cannot reliably fit one session due to three compounding factors:
 
 **Proposed split into two sub-plans:**
 
-| Sub-plan                                 | Phases                          | Key deliverables                                                                                                                                              | Estimated tokens |
-| ---------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **Sub-plan 1 — Pipeline + code + tests** | Phase A, B1–B12, C0–C2          | `release.yml`, `package.json` manifest, `bkit-modules.ts` print constants, `dist/` rebuild, 4 Vitest test files, consumer template and bkit-self ci.yml edits | ~70 K            |
-| **Sub-plan 2 — Docs + smoke + ship**     | B8–B11.5, B13–B15, C3–C5, D1–D5 | 5 doc rewrites/appends, full local check suite, pre.2 tag publish, scratch-consumer smoke, PR open, squash-merge, dev→main promotion, v0.4.0 production tag   | ~55 K            |
+<!-- prettier-ignore -->
+| Sub-plan | Phases | Key deliverables | Estimated tokens |
+| --- | --- | --- | --- |
+| **Sub-plan 1 — Pipeline + code + tests** | Phase A, B1–B12, C0–C2 | `release.yml`, `package.json` manifest, `bkit-modules.ts` print constants, `dist/` rebuild, 4 Vitest test files, consumer template and bkit-self ci.yml edits | ~70 K |
+| **Sub-plan 2 — Docs + smoke + ship** | B8–B11.5, B13–B15, C3–C5, D1–D5 | 5 doc rewrites/appends, full local check suite, pre.2 tag publish, scratch-consumer smoke, PR open, squash-merge, dev→main promotion, v0.4.0 production tag | ~55 K |
 
 Note: B8–B11.5 (docs) straddle both because they are logically independent of code but must precede the pre.2 tag — they are placed in Sub-plan 2 to keep Sub-plan 1 under budget. Sub-plan 2 inherits Sub-plan 1's green state before starting.

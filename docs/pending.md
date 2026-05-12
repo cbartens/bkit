@@ -36,7 +36,7 @@
 - **Category:** infra
 - **Severity:** low
 - **Status:** open
-- **Description:** pnpm normaliser strips `#vX.Y.Z` pin from `github:cbartens/bkit` git-dep entries in `package.json`. Document workaround in `README.md` install snippet or investigate upstream pnpm normaliser fix. Low cost; deferred to post-v0.7.
+- **Description:** pnpm normaliser strips `#vX.Y.Z` pin from `github:cbartens/bkit` git-dep entries in `package.json`. Document workaround in `README.md` install snippet or investigate upstream pnpm normaliser fix. Deferred to post-v0.7.
 - **Source:** phase
 - **Related:** BAR-131, BAR-130
 
@@ -46,7 +46,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** `bkit uninstall` surgical mode covers shipped scope. Full factory-reset (delete all bkit-managed files, restore consumer originals) is explicitly out-of-scope. Deferred post-v1.0 if consumer demand emerges.
+- **Description:** `bkit uninstall` surgical mode covers shipped scope. Full factory-reset (delete all bkit-managed files, restore consumer originals) is out-of-scope. Deferred post-v1.0 if consumer demand emerges.
 - **Source:** phase
 - **Related:** BAR-139
 
@@ -56,7 +56,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** After `bkit uninstall`, `pnpm-lock.yaml` may retain stale entries for removed devDeps. Cleanup is consumer-managed lockfile state — outside bkit's contract. Decision deferred; no automation planned.
+- **Description:** After `bkit uninstall`, `pnpm-lock.yaml` may retain stale entries for removed devDeps. Cleanup is consumer-managed lockfile state — outside bkit's contract. No automation planned.
 - **Source:** phase
 - **Related:** BAR-139
 
@@ -86,7 +86,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** open
-- **Description:** Staging primitives (`getStagingDir`, `commitStaging`, `discardStaging`) are exported from `bkit-install.ts` and unit-tested but NOT yet called from `bkit-modules.ts` `writeTier2Json` call sites (lines 432, 518). Master "mid-failure leaves consumer files untouched" criterion is currently enforced only at API level + Scenario 9 direct-call test. Architectural foundation intact; gap is bounded. Surfaced in `build-plan-verify-holistic.md` CONCERN.
+- **Description:** Staging primitives (`getStagingDir`, `commitStaging`, `discardStaging`) are exported from `bkit-install.ts` and unit-tested but NOT yet called from `bkit-modules.ts` `writeTier2Json` call sites (lines 432, 518). "Mid-failure leaves consumer files untouched" criterion is enforced only at API level + Scenario 9 direct-call test. Architectural foundation intact; gap is bounded. Surfaced in `build-plan-verify-holistic.md` CONCERN.
 - **Source:** phase
 - **Related:** BAR-131, BAR-142 §A4, DE-9, KN-12, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-install.ts`
 
@@ -96,7 +96,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** BAR-148 ships per-issue Linear label `bkit:auto-route` as the router opt-in (label survives across debug iterations on the same issue). Per-PR opt-in (e.g. PR-body marker, GHA repo variable, separate label) is deferred — revisit if the per-issue label proves too coarse during ship cycles where multiple PRs land per issue.
+- **Description:** BAR-148 ships per-issue Linear label `bkit:auto-route` as the router opt-in (label survives across debug iterations on the same issue). Per-PR opt-in (e.g. PR-body marker, GHA repo variable, separate label) deferred — revisit if per-issue label proves too coarse during ship cycles where multiple PRs land per issue.
 - **Source:** phase
 - **Related:** BAR-148, DE-14, DE-15
 
@@ -106,7 +106,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via the GHA run log + the existing Linear comment append (Failure Path mirror). No automated retry, no dead-letter queue, no exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies the additional complexity.
+- **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via GHA run log + existing Linear comment append (Failure Path mirror). No automated retry, dead-letter queue, or exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies added complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
 
@@ -116,7 +116,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans legitimately exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
+- **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
 - **Source:** phase
 - **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
 
@@ -136,7 +136,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** Add a focused-brief mode to challenge prompts that narrows reviewer attention to a specific subsystem or diff slice. Dropped from BAR-155 scope — diversity over narrowing per DE-16 (parallel pair provides cross-model coverage; focused-brief risks correlated misses in both reviewers). Revisit if reconciler findings cluster around the same file:line across multiple runs.
+- **Description:** Add focused-brief mode to challenge prompts narrowing reviewer attention to a specific subsystem or diff slice. Dropped from BAR-155 scope — diversity over narrowing per DE-16 (parallel pair provides cross-model coverage; focused-brief risks correlated misses in both reviewers). Revisit if reconciler findings cluster around the same file:line across multiple runs.
 - **Source:** phase
 - **Related:** BAR-155, DE-16
 
@@ -146,7 +146,7 @@
 - **Category:** infra
 - **Severity:** low
 - **Status:** deferred
-- **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against the current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. A deeper investigation — multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback — is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
+- **Description:** BAR-167 Task 0a re-runs the DE-7 Cursor-v1 keyed-object hooks-schema spike against current Cursor stable channel. If the spike fails (hook does not fire OR Cursor reports schema-validation error), the plan's abort-branch reverts the template to the legacy flat-array shape and blocks v2.0.0. Deeper investigation (multi-version Cursor matrix, schema-doc cross-check with Cursor team, alternate keyed-array fallback) is parked here as a follow-up if the abort-branch fires. No work required if Task 0a passes cleanly.
 - **Source:** phase
 - **Related:** BAR-167, DE-7, DE-16
 
@@ -156,7 +156,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** Add `bkit upgrade --prune` flag to remove consumer keys that were once part of the bkit-declared scope but have since been removed from the template. Currently `bkit upgrade` only deep-merges (adds/updates template keys) — it does not prune consumer keys that were bkit-written in a prior version but removed from the current template. The `--prune` flag would walk the prior-version template tree and delete any consumer keys that exactly match the prior template's values and are absent from the current template. Deferred from BAR-167 Phase 1 scope — prune semantics require prior-template-version tracking not yet implemented.
+- **Description:** Add `bkit upgrade --prune` flag to remove consumer keys once part of bkit-declared scope but since removed from the template. Currently `bkit upgrade` only deep-merges (adds/updates template keys) — it does not prune consumer keys that were bkit-written in a prior version but absent from the current template. The `--prune` flag would walk the prior-version template tree and delete any consumer keys that exactly match the prior template's values and are absent from the current template. Deferred from BAR-167 Phase 1 scope — prune semantics require prior-template-version tracking not yet implemented.
 - **Source:** phase
 - **Related:** BAR-167, DE-18, `.agents/scripts/bkit-upgrade.ts`
 
@@ -166,7 +166,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** The `.cursor/hooks.json` template ships `echo '[bkit] session started'` and `echo '[bkit] session stopped'` hook commands. These are decorative (confirm hook firing) and produce visible output in the Cursor terminal. Plan-Phase Decision 3 resolved to KEEP these echoes (they provide actionable debugging value — consumer can confirm hooks fired). This entry tracks the open question: if consumer feedback emerges that the echoes are noisy/unwanted, add a bkit-config opt-out rather than removing from the template. No work required unless that feedback arrives.
+- **Description:** The `.cursor/hooks.json` template ships `echo '[bkit] session started'` and `echo '[bkit] session stopped'` hook commands. These are decorative (confirm hook firing) and produce visible output in the Cursor terminal. Plan-Phase Decision 3 resolved to KEEP these echoes (they provide actionable debugging value — consumer can confirm hooks fired). Tracks the open question: if consumer feedback emerges that the echoes are noisy/unwanted, add a bkit-config opt-out rather than removing from the template. No work required unless that feedback arrives.
 - **Source:** phase
 - **Related:** BAR-167, DE-18, `.agents/templates/.cursor/hooks.json`
 

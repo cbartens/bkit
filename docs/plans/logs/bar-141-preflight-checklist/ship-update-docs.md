@@ -16,28 +16,30 @@ Verdict: PASS
 
 Walked changed-files vs `docs/*.md` references. Source surfaces:
 
-| Path                                  | Status                                                                                                                                              |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `.agents/scripts/bkit-preflight.ts`   | NEW — covered in README `## Install lifecycle`, KN-4, KN-5, KN-8, DE-4.                                                                             |
-| `.agents/scripts/bkit-postinstall.ts` | NEW — covered in README `## Install lifecycle`, KN-4, KN-6, DE-4.                                                                                   |
-| `.agents/scripts/bkit-install.ts`     | MODIFIED — Phase 1/3 wiring; covered in README `## Install lifecycle`, DE-4, KN-4.                                                                  |
-| `.agents/scripts/bkit-modules.ts`     | MODIFIED — `printSink → advisories` migration; constants deleted; covered in DE-4.                                                                  |
-| `.agents/scripts/bkit-tiers.ts`       | MODIFIED — `WriteEntry.devDepsAdded` extension; internal — no doc surface.                                                                          |
-| `dist/*.js`                           | REGEN — gotcha captured in KN-7.                                                                                                                    |
-| `README.md`                           | UPDATED in build phase — `## Install lifecycle` section + `PreflightFinding` shape + ID registry.                                                   |
-| `docs/decisions.md`                   | UPDATED in build phase — DE-4 ADR appended.                                                                                                         |
-| `docs/knowledge.md`                   | UPDATED in build/debug phase — KN-4 (Phase 3 install-only), KN-5 (parseInt NaN), KN-6 (execFileSync), KN-7 (dist/ staleness), KN-8 (Tier-1 unsafe). |
-| `docs/architecture.md`                | NO-OP — file is intentionally minimal (just header); BAR-141 did not change service boundaries.                                                     |
-| `docs/testing.md`                     | NO-OP — file is intentionally minimal (just header); test naming/tier strategy unchanged.                                                           |
-| `docs/security.md`                    | NO-OP — KN-6 captures the security gotcha (token-presence-only, `execFileSync` defence) and is the canonical home.                                  |
-| `docs/observability.md`               | NO-OP — `console.error("[bkit-install] {Message}")` pattern preserved per plan.                                                                     |
-| `.agents/docs.md`                     | NO-OP — no new docs added.                                                                                                                          |
-| `.agents/workflows.md`                | NO-OP — no workflow contract changed.                                                                                                               |
+<!-- prettier-ignore -->
+| Path | Status |
+| --- | --- |
+| `.agents/scripts/bkit-preflight.ts` | NEW — covered in README `## Install lifecycle`, KN-4, KN-5, KN-8, DE-4. |
+| `.agents/scripts/bkit-postinstall.ts` | NEW — covered in README `## Install lifecycle`, KN-4, KN-6, DE-4. |
+| `.agents/scripts/bkit-install.ts` | MODIFIED — Phase 1/3 wiring; covered in README `## Install lifecycle`, DE-4, KN-4. |
+| `.agents/scripts/bkit-modules.ts` | MODIFIED — `printSink → advisories` migration; constants deleted; covered in DE-4. |
+| `.agents/scripts/bkit-tiers.ts` | MODIFIED — `WriteEntry.devDepsAdded` extension; internal — no doc surface. |
+| `dist/*.js` | REGEN — gotcha captured in KN-7. |
+| `README.md` | UPDATED in build phase — `## Install lifecycle` section + `PreflightFinding` shape + ID registry. |
+| `docs/decisions.md` | UPDATED in build phase — DE-4 ADR appended. |
+| `docs/knowledge.md` | UPDATED in build/debug phase — KN-4 (Phase 3 install-only), KN-5 (parseInt NaN), KN-6 (execFileSync), KN-7 (dist/ staleness), KN-8 (Tier-1 unsafe). |
+| `docs/architecture.md` | NO-OP — file is intentionally minimal (just header); BAR-141 did not change service boundaries. |
+| `docs/testing.md` | NO-OP — file is intentionally minimal (just header); test naming/tier strategy unchanged. |
+| `docs/security.md` | NO-OP — KN-6 captures the security gotcha (token-presence-only, `execFileSync` defence) and is the canonical home. |
+| `docs/observability.md` | NO-OP — `console.error("[bkit-install] {Message}")` pattern preserved per plan. |
+| `.agents/docs.md` | NO-OP — no new docs added. |
+| `.agents/workflows.md` | NO-OP — no workflow contract changed. |
 
 ## Updates Applied This Step
 
-| File                | Change                                                                                                                                                                                                                                                                             |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| File | Change |
+| --- | --- |
 | `docs/completed.md` | APPENDED entry "bkit install preflight + post-install AI checklist — BAR-141 (2026-05-06)" with full summary (3 phases, new files, migrations, dedup model, dry-run parity, challenge findings remediation, dist/ debug cycle, hooks-overwrite blocker, test counts, related IDs). |
 
 Sole-writer policy: this agent only writes `docs/completed.md`. README, decisions.md, knowledge.md edits were applied by build-phase agents. No further updates needed there.
@@ -46,8 +48,9 @@ Sole-writer policy: this agent only writes `docs/completed.md`. README, decision
 
 Already-recorded entries in `docs/pending.md` referencing `BAR-141`:
 
-| Title                                                                 | Action                                                                         |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+<!-- prettier-ignore -->
+| Title | Action |
+| --- | --- |
 | `bkit doctor verb — standalone preflight CLI subcommand (2026-05-06)` | Already present; no change required. References `runPreflight()` from BAR-141. |
 
 No new pending items surface from this ship cycle.

@@ -25,21 +25,22 @@ Verdict: SPLIT
 
 Rough token budget breakdown for a build agent executing the plan top-to-bottom:
 
-| Area                                                                                                        | Estimated tokens |
-| ----------------------------------------------------------------------------------------------------------- | ---------------- |
-| Phase 0 — branch verify + 5 stub test files                                                                 | ~4K              |
-| Phase 1 — token resolver: 3 tasks, 6 tests, 1 new module                                                    | ~10K             |
-| Phase 2 — marker generalisation: 4 tasks, call-site audit, tier writers, ~9 tests                           | ~20K             |
-| Phase 3 — CLI redesign: 3 tasks, 7 tests, new module                                                        | ~10K             |
-| Phase 4 — module dispatcher: 6 tasks (incl. sub-steps), integration tests, delete bkit-init.ts, grep audits | ~22K             |
-| Phase 5 — dry-run parity: 3 tasks, root-cause investigation + 7 tests                                       | ~15K             |
-| Phase 6 — 9 template payloads + 2 extra integration tests                                                   | ~14K             |
-| Phase 7 — self-gating CI + Vale + slop + prettier scripts                                                   | ~8K              |
-| Phase 8 — README + .agents/README rewrites                                                                  | ~7K              |
-| Phase 9 — decisions.md + pending.md appends                                                                 | ~3K              |
-| Phase 10 — version bump, pre-PR gate run, smoke-install log, ship handoff audit                             | ~6K              |
-| Gate verification steps throughout                                                                          | ~5K              |
-| **Total**                                                                                                   | **~124K**        |
+<!-- prettier-ignore -->
+| Area | Estimated tokens |
+| --- | --- |
+| Phase 0 — branch verify + 5 stub test files | ~4K |
+| Phase 1 — token resolver: 3 tasks, 6 tests, 1 new module | ~10K |
+| Phase 2 — marker generalisation: 4 tasks, call-site audit, tier writers, ~9 tests | ~20K |
+| Phase 3 — CLI redesign: 3 tasks, 7 tests, new module | ~10K |
+| Phase 4 — module dispatcher: 6 tasks (incl. sub-steps), integration tests, delete bkit-init.ts, grep audits | ~22K |
+| Phase 5 — dry-run parity: 3 tasks, root-cause investigation + 7 tests | ~15K |
+| Phase 6 — 9 template payloads + 2 extra integration tests | ~14K |
+| Phase 7 — self-gating CI + Vale + slop + prettier scripts | ~8K |
+| Phase 8 — README + .agents/README rewrites | ~7K |
+| Phase 9 — decisions.md + pending.md appends | ~3K |
+| Phase 10 — version bump, pre-PR gate run, smoke-install log, ship handoff audit | ~6K |
+| Gate verification steps throughout | ~5K |
+| **Total** | **~124K** |
 
 The estimate is conservative. Phases 2 and 4 alone — which involve reading `bkit-install.ts` (large existing file), a full call-site grep audit across multiple files, root-cause investigation for an existing bug, and writing then verifying ~15 tests — are individually within the 25–30K range. Combined with the template-file authoring in Phase 6 and the README rewrites in Phase 8, the plan substantially exceeds the 100K single-session threshold.
 

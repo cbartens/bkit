@@ -45,11 +45,12 @@ Verdict: SPLIT
 
 **Estimated tokens to execute the full plan in one session:**
 
-| Phase   | Source edits                                                                 | Test writes                                    | Doc writes                           | Subtotal estimate |
-| ------- | ---------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------ | ----------------- |
-| Phase 1 | ~800 LOC added + ~400 LOC deleted across 9 source files                      | ~350 LOC across 5 test files                   | ~400 LOC across 6 doc files          | ~50K tokens       |
-| Phase 2 | ~600 LOC across 6 source files + 14 template marker edits                    | ~300 LOC across 3 test files + fixture commits | ~minimal (docs already done Phase 1) | ~40K tokens       |
-| Phase 3 | ~200 LOC across 4 files (writer narrowing + doc-block + sweep + lint script) | ~100 LOC across 2 test files                   | ~300 LOC terminology sweep           | ~20K tokens       |
+<!-- prettier-ignore -->
+| Phase | Source edits | Test writes | Doc writes | Subtotal estimate |
+| --- | --- | --- | --- | --- |
+| Phase 1 | ~800 LOC added + ~400 LOC deleted across 9 source files | ~350 LOC across 5 test files | ~400 LOC across 6 doc files | ~50K tokens |
+| Phase 2 | ~600 LOC across 6 source files + 14 template marker edits | ~300 LOC across 3 test files + fixture commits | ~minimal (docs already done Phase 1) | ~40K tokens |
+| Phase 3 | ~200 LOC across 4 files (writer narrowing + doc-block + sweep + lint script) | ~100 LOC across 2 test files | ~300 LOC terminology sweep | ~20K tokens |
 
 **Estimated total: ~110K tokens** — approximately 10–15% over the 100K single-session threshold, before accounting for read overhead (the plan itself is ~49K tokens; reading source files for each edit adds another ~15–20K in context load during execution).
 

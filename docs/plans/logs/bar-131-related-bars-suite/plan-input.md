@@ -420,14 +420,15 @@ Two mitigations:
 
 ### Tight couplings
 
-| From                            | To                                  | Why                                                                                                      |
-| ------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| BAR-139 uninstall               | BAR-142 A2 (now in BAR-139)         | A2 needs uninstall as recovery primitive                                                                 |
-| BAR-139 Tier-2 stripping helper | BAR-142 A1 Tier-2 refactor          | Both need a robust managed-block + deep-merge primitive in `bkit-tiers.ts`                               |
-| BAR-142 A3 doctor               | BAR-141 detectors (already shipped) | A3 is a thin wrapper over `runPreflight()`                                                               |
-| BAR-142 A4/A5                   | BAR-139 uninstall                   | A4 (staging-dir transactional install) parallel; A5 (upgrade verb) reuses uninstall + install primitives |
-| BAR-142 A6 `.bkitignore`        | BAR-139 + BAR-142 A1                | A1 reduces but doesn't eliminate need; A6 sits in `bkit check`, also relevant to `bkit doctor` (A3)      |
-| BAR-131 helper-action stretch   | (independent)                       | Defer until v0.2+; lowest priority                                                                       |
+<!-- prettier-ignore -->
+| From | To | Why |
+| --- | --- | --- |
+| BAR-139 uninstall | BAR-142 A2 (now in BAR-139) | A2 needs uninstall as recovery primitive |
+| BAR-139 Tier-2 stripping helper | BAR-142 A1 Tier-2 refactor | Both need a robust managed-block + deep-merge primitive in `bkit-tiers.ts` |
+| BAR-142 A3 doctor | BAR-141 detectors (already shipped) | A3 is a thin wrapper over `runPreflight()` |
+| BAR-142 A4/A5 | BAR-139 uninstall | A4 (staging-dir transactional install) parallel; A5 (upgrade verb) reuses uninstall + install primitives |
+| BAR-142 A6 `.bkitignore` | BAR-139 + BAR-142 A1 | A1 reduces but doesn't eliminate need; A6 sits in `bkit check`, also relevant to `bkit doctor` (A3) |
+| BAR-131 helper-action stretch | (independent) | Defer until v0.2+; lowest priority |
 
 ### Recommended unified sequencing
 

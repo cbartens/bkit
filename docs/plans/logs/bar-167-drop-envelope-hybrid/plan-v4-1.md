@@ -84,7 +84,7 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0(-al
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| **Phase 1 — JSON containment primitives** | | |
+| **Phase 1 — JSON containment primitives** |  |  |
 | `deepContains` returns ok=true when consumer is a superset of template (objects nested 4 levels) | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
 | `deepContains` returns ok=false with `missing` paths when a template key is absent | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
 | `deepContains` returns ok=false with `mismatched` paths when a leaf primitive differs | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
@@ -100,7 +100,7 @@ A consumer that installed bkit ≤ v1.1.1 runs `pnpm bkit upgrade` to v2.0.0(-al
 | `migrateLegacyBkitEnvelope` reports `schemaFlipped: true` when post-strip top-level value type-flips against template — **MUST use Task-0c fixture** `tests/fixtures/heavy-customised-consumer-v1-envelope/cursor-hooks.json` BEFORE shape | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` |
 | `stripTier2JsonScope` removes template scope, preserves consumer-only siblings, prunes empty intermediates only where template populated them | Unit (Vitest) | `.agents/scripts/bkit-uninstall.test.ts` |
 | Cursor v1 keyed-object schema sanity: parsed template has `version === 1`, `hooks.sessionStart`/`hooks.sessionStop` arrays, no `__bkit__`, no flat-array `hooks` | Unit (Vitest) | `.agents/scripts/bkit-tiers.test.ts` (block `cursor-v1-schema`) |
-| **Phase 1 — Upgrade chain & migration** | | |
+| **Phase 1 — Upgrade chain & migration** |  |  |
 | Pre-v2.0.0 fixture (`__bkit__` + top-level mirror) → upgrade → file matches schema-clean snapshot | Integration (Vitest) | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` |
 | Upgrade chain v0.5.x → v0.8.x → v2.0.0 preserves `hooks.Stop`, `failClosed`, `loop_limit` byte-identical | Integration (Vitest) | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` |
 | Heavy-customised consumer fixture (BAR-131 sub-plan-2) survives v2.0.0 upgrade with bkit scope intact | Integration (Vitest) | `.agents/scripts/bkit-modules.upgrade.integration.test.ts` |
@@ -336,11 +336,12 @@ None.
 
 ## Rollback Strategy
 
-| Axis        | Action                      | Notes                                                                                                                                                                                                |
-| ----------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code        | `git revert {MERGE_COMMIT}` | Restores `__bkit__` templates + envelope helpers + Tier-1 defaults file. Consumer JSON files keep their post-strip schema-clean shape; next `bkit install` re-writes envelope on top via deep-merge. |
-| Risk window | One `bkit upgrade` cycle    | No data loss; brief schema-pollution window.                                                                                                                                                         |
-| DB          | N/A                         |                                                                                                                                                                                                      |
+<!-- prettier-ignore -->
+| Axis | Action | Notes |
+| --- | --- | --- |
+| Code | `git revert {MERGE_COMMIT}` | Restores `__bkit__` templates + envelope helpers + Tier-1 defaults file. Consumer JSON files keep their post-strip schema-clean shape; next `bkit install` re-writes envelope on top via deep-merge. |
+| Risk window | One `bkit upgrade` cycle | No data loss; brief schema-pollution window. |
+| DB | N/A |  |
 
 ## Agent Execution Runbook (sub-plan A — Phase 1)
 
@@ -452,11 +453,12 @@ None.
 
 ## Open-Question Disposition (sub-plan A scope)
 
-| Question                                    | Disposition                                   | Where tracked                             |
-| ------------------------------------------- | --------------------------------------------- | ----------------------------------------- |
-| Cursor v1 keyed-object schema runtime spike | **REMOVED** per Plan-Phase Decision 2         | `docs/pending.md` entry deleted (Task 16) |
-| `bkit upgrade --prune` flag                 | **DEFERRED** post-v2.0.0                      | `docs/pending.md`                         |
-| Drop decorative `.cursor/hooks.json` echoes | **DEFERRED** per Plan-Phase Decision 3 (KEEP) | `docs/pending.md`                         |
+<!-- prettier-ignore -->
+| Question | Disposition | Where tracked |
+| --- | --- | --- |
+| Cursor v1 keyed-object schema runtime spike | **REMOVED** per Plan-Phase Decision 2 | `docs/pending.md` entry deleted (Task 16) |
+| `bkit upgrade --prune` flag | **DEFERRED** post-v2.0.0 | `docs/pending.md` |
+| Drop decorative `.cursor/hooks.json` echoes | **DEFERRED** per Plan-Phase Decision 3 (KEEP) | `docs/pending.md` |
 
 ---
 

@@ -15,13 +15,13 @@
 
 ## Scope
 
-bkit has no database, no server, and no user-authentication surface. Security concerns are limited to: secrets management (tokens), supply-chain (action pinning), shell-injection guards, and PII avoidance in logs.
+bkit has no database, no server, no user-authentication surface. Security concerns: secrets management (tokens), supply-chain (action pinning), shell-injection guards, PII avoidance in logs.
 
 ## Secrets Management
 
 ### `GH_BKIT_TOKEN`
 
-The sole credential bkit depends on. Must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` (fine-grained). Required at four surfaces — see `docs/deployments.md` for the full presence matrix.
+Sole credential bkit depends on. Must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` (fine-grained). Required at four surfaces — see `docs/deployments.md` for the full presence matrix.
 
 - NEVER commit as a literal value in `.npmrc`. Always use `${GH_BKIT_TOKEN}` env-var reference.
 - NEVER log or print the token value. `detectShellToken` (Phase 3) reads the env var's presence; it does NOT log its value.

@@ -86,7 +86,7 @@ Markered text files (`AGENTS.md`, `CLAUDE.md`, `.vale.ini` partial, `.github/wor
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| **Phase 2 — Marker enforcement & dispatch** | | |
+| **Phase 2 — Marker enforcement & dispatch** |  |  |
 | Marker presence enforcement: every newly-markered template file (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-shared-rules.mdc`, `.vale/styles/House/{Filler,Hedging,LLMSlop,Verbose}.yml`, `.agents/{rules,docs,friction,skills}.md`, `docs/plans/template.md`) has its bkit content within `bkit:start..bkit:end` markers | Unit (Vitest) | `.agents/scripts/bkit-templates.test.ts` (NEW) |
 | Marker presence enforcement (partial-ownership): `.github/workflows/ci.yml` markers wrap exactly the `Install Dependencies` step + `Run Bkit Check` step; `.vale.ini` markers wrap `StylesPath` + `Packages` + `MinAlertLevel` + House style enable | Unit (Vitest) | `.agents/scripts/bkit-templates.test.ts` (NEW) |
 | `slop-scan.config.json` deep-containment: each of the ten required rule keys is present in the consumer file with `enabled: true` — JSON deep-containment, NOT markers | Unit (Vitest) | `.agents/scripts/bkit-templates.test.ts` (NEW) |
@@ -135,7 +135,7 @@ Markered text files (`AGENTS.md`, `CLAUDE.md`, `.vale.ini` partial, `.github/wor
 <!-- prettier-ignore -->
 | Existing artifact | Replaced by | Decision | Justification |
 | --- | --- | --- | --- |
-| `.agents/scripts/bkit-manifest.ts` `tier: 1|2|3` integer field | `format: "json"|"markered-text"|"byte-equal-text"` field | DELETE | Phase 2 collapses Tier numbering into format-aware dispatch. |
+| `.agents/scripts/bkit-manifest.ts` `tier: 1 | 2 | 3` integer field | `format: "json" | "markered-text" | "byte-equal-text"` field | DELETE | Phase 2 collapses Tier numbering into format-aware dispatch. |
 | `.agents/scripts/bkit-uninstall.ts` `case 1`/`case 2`/`case 3` switch | Single dispatch on `entry.format` | DELETE | Phase 2 unifies uninstall semantics with install/check semantics. |
 | `.agents/templates/.husky/pre-push` marker block (already exists today) | Same markers; verified scope | RETAIN-WITH-REASON | File already conforms; Phase 2 only verifies block scope. |
 
@@ -320,10 +320,11 @@ None.
 
 ## Rollback Strategy
 
-| Axis        | Action                      | Notes                                                                                                                                                                |
-| ----------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Code        | `git revert {MERGE_COMMIT}` | Restores Tier integers + Phase 2 marker absence. Markered consumer files keep marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
-| Risk window | One `bkit upgrade` cycle    | Brief schema-pollution + redundant-marker window.                                                                                                                    |
+<!-- prettier-ignore -->
+| Axis | Action | Notes |
+| --- | --- | --- |
+| Code | `git revert {MERGE_COMMIT}` | Restores Tier integers + Phase 2 marker absence. Markered consumer files keep marker blocks intact (markers are valid YAML/markdown comments — no syntactic impact). |
+| Risk window | One `bkit upgrade` cycle | Brief schema-pollution + redundant-marker window. |
 
 ## Agent Execution Runbook (sub-plan B — Phase 2)
 
@@ -405,10 +406,11 @@ None.
 
 ## Open-Question Disposition (sub-plan B scope)
 
-| Question                                             | Disposition                                             | Where tracked |
-| ---------------------------------------------------- | ------------------------------------------------------- | ------------- |
-| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE** (Task 23a uses sub-plan A Task 0e fixture) | Runbook       |
-| Pre-push duplicate-work in `app-gether-life`         | **RESOLVED** by Task 18a per Plan-Phase Decision 4      | Runbook       |
+<!-- prettier-ignore -->
+| Question | Disposition | Where tracked |
+| --- | --- | --- |
+| `ci.yml` heavy-customisation marker survival fixture | **IN-SCOPE** (Task 23a uses sub-plan A Task 0e fixture) | Runbook |
+| Pre-push duplicate-work in `app-gether-life` | **RESOLVED** by Task 18a per Plan-Phase Decision 4 | Runbook |
 
 ---
 

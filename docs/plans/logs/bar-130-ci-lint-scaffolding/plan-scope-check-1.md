@@ -47,24 +47,25 @@ Failures: 4
 
 ## DoD Coverage Map (14 bullets)
 
-| #    | DoD Bullet                                                                     | Mapped Task / Gate                                                             |
-| ---- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| 1    | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test           | Task 7.1, 7.4, Verification Plan §Automated Tests                              |
-| 2    | `bkit install` (no flags) on empty repo seeds full stack                       | Test Matrix `--full ≡ no flags`, Manual Step 3, Task 4.1                       |
-| 3    | `bkit install --claude` seeds only `.claude/**` + core                         | Test Matrix row, Task 4.1, Manual Step 2                                       |
-| 4    | `bkit install --ci --lint` seeds CI + lint + core                              | Manual Step 3, Test Matrix row, Task 4.1                                       |
-| 5    | `bkit install --ci` on existing customised ci.yml preserves consumer jobs      | Task 6.1 verification                                                          |
-| 6    | `bkit install` on existing slop-scan.config.json (Tier 3) preserves + suggests | Test Matrix Tier 3 row, Task 6.3                                               |
-| 7    | `bkit install` idempotent (post-init)                                          | Test Matrix idempotence row, Manual Step 5                                     |
-| 8    | `bkit check --full` ≡ `bkit install --full` writeset                           | Phase 5 (5.1, 5.2, 5.3)                                                        |
-| 9    | Token substitution in seeded ci.yml                                            | Phase 1 + Manual Step 4 — **CRITICAL #3 above: missing integration assertion** |
-| 10   | `bkit init` deprecation                                                        | Task 3.1, 3.3, Manual Step 1                                                   |
-| 11   | `bkit install --host=claude` deprecation                                       | Task 3.1, 3.3, Manual Step 2                                                   |
-| 12   | Seeded ci.yml auth-shim + README BKIT_READ_TOKEN                               | Task 6.1, 8.1 — **CRITICAL #2 above: shim-inside-block assertion missing**     |
-| 13   | app-gether-life re-installs at v0.1.2, CI passes                               | Task 10.3, Gate 4.5a                                                           |
-| 14   | Second consumer onboards via `install --full`, CI green                        | Gate 4.5b                                                                      |
-| 15\* | `package.json` v0.1.2 + tag pushed                                             | Task 10.1, 10.4                                                                |
-| 16\* | README + `.agents/README.md` document tier model + CLI + init deprecation      | Task 8.1, 8.2                                                                  |
+<!-- prettier-ignore -->
+| # | DoD Bullet | Mapped Task / Gate |
+| --- | --- | --- |
+| 1 | bkit's own PRs run typecheck + vitest + Vale + slop-scan + self-test | Task 7.1, 7.4, Verification Plan §Automated Tests |
+| 2 | `bkit install` (no flags) on empty repo seeds full stack | Test Matrix `--full ≡ no flags`, Manual Step 3, Task 4.1 |
+| 3 | `bkit install --claude` seeds only `.claude/**` + core | Test Matrix row, Task 4.1, Manual Step 2 |
+| 4 | `bkit install --ci --lint` seeds CI + lint + core | Manual Step 3, Test Matrix row, Task 4.1 |
+| 5 | `bkit install --ci` on existing customised ci.yml preserves consumer jobs | Task 6.1 verification |
+| 6 | `bkit install` on existing slop-scan.config.json (Tier 3) preserves + suggests | Test Matrix Tier 3 row, Task 6.3 |
+| 7 | `bkit install` idempotent (post-init) | Test Matrix idempotence row, Manual Step 5 |
+| 8 | `bkit check --full` ≡ `bkit install --full` writeset | Phase 5 (5.1, 5.2, 5.3) |
+| 9 | Token substitution in seeded ci.yml | Phase 1 + Manual Step 4 — **CRITICAL #3 above: missing integration assertion** |
+| 10 | `bkit init` deprecation | Task 3.1, 3.3, Manual Step 1 |
+| 11 | `bkit install --host=claude` deprecation | Task 3.1, 3.3, Manual Step 2 |
+| 12 | Seeded ci.yml auth-shim + README BKIT_READ_TOKEN | Task 6.1, 8.1 — **CRITICAL #2 above: shim-inside-block assertion missing** |
+| 13 | app-gether-life re-installs at v0.1.2, CI passes | Task 10.3, Gate 4.5a |
+| 14 | Second consumer onboards via `install --full`, CI green | Gate 4.5b |
+| 15\* | `package.json` v0.1.2 + tag pushed | Task 10.1, 10.4 |
+| 16\* | README + `.agents/README.md` document tier model + CLI + init deprecation | Task 8.1, 8.2 |
 
 (\*Bullets 15+16 are extra DoD bullets present in plan-input.md; both covered.)
 
