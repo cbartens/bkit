@@ -55,9 +55,10 @@ maxTurns: 50
 8. Cross-reference findings against relevant docs in `.agents/docs.md` but specifically `docs/security.md`.
 9. Update **Create** output - set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
-   - `PASS` = no findings.
-   - `CONCERNS` = findings present, max severity <= HIGH.
-   - `FAIL` = any CRITICAL finding.
+
+- `PASS` = no findings.
+- `CONCERNS` = findings present, max severity <= HIGH.
+- `FAIL` = any CRITICAL finding.
 
 **Output format:**
 
