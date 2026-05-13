@@ -26,7 +26,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Reconcile findings only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses. Merge across them; max-wins on CRITICAL. Single-input findings are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on CRITICAL. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**

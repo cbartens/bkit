@@ -26,7 +26,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Generate design only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses. Merge across them as raw material; do NOT compare for agreement or collapse to a consensus. Consolidate towards the strongest 2–3 approaches, NOT a watered-down union of all. Single-input approaches are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate to strongest 2–3 approaches, NOT a watered-down union. Single-input approaches are normal, not outvoted.
 
 **Process:**
 

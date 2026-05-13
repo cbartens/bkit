@@ -32,8 +32,8 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Investigate only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -42,21 +42,21 @@ maxTurns: 50
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/observability.md` and `docs/deployments.md`; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Failure-mode enumeration: For each major component/flow in the design, list:
-   - What can fail (upstream dependency, internal logic, resource exhaustion, data corruption, partial state).
-   - How would on-call detect it (metric, log signature, alert, user report only?).
-   - Blast radius (one user, one tenant, whole region, whole product).
-6. Observability coverage: For each failure mode, verify the design specifies (or assumes):
+5. Failure-mode enumeration: Per major component/flow, list:
+   - What fails (upstream dep, internal logic, resource exhaustion, data corruption, partial state).
+   - How on-call detects it (metric, log signature, alert, or user report only?).
+   - Blast radius (one user / tenant / region / whole product).
+6. Observability coverage: Per failure mode, verify the design specifies or assumes:
    - Structured logs at the failure point (with `[Context]` prefix per project convention).
    - Metric/counter for occurrence rate.
    - Trace span / correlation id for cross-service flows.
-   - Missing observability for a CRITICAL-severity failure mode → CRITICAL finding.
+   - Missing observability for CRITICAL failure mode → CRITICAL finding.
 7. On-call ergonomics: Per anticipated alert, evaluate:
-   - Is the runbook obvious from the alert payload, or does on-call need to chase context?
-   - Recovery action — automatic, idempotent, or requires human judgement?
-   - Alert noise — is the firing threshold tuned, or will it page on transient blips?
-8. Failure-mode coverage: Cross-check that the design's `Risks & Open Questions` section covers the failure modes you enumerated. Gaps → OPTIONAL or CRITICAL based on severity.
-9. Operational dependencies: Does the design introduce new on-call burden (new dashboard, new alert, new runbook)? Surface explicitly; not a blocker but must be acknowledged.
+   - Runbook obviousness from alert payload (vs context-chasing).
+   - Recovery action — automatic, idempotent, or human judgement?
+   - Alert noise — threshold tuned, or pages on transient blips?
+8. Failure-mode coverage: Cross-check `Risks & Open Questions` covers enumerated failure modes. Gaps → OPTIONAL or CRITICAL by severity.
+9. Operational dependencies: New on-call burden (dashboard / alert / runbook)? Surface explicitly; not a blocker but must be acknowledged.
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
 
 - `PASS` = operable as designed; failure modes have observability + recovery paths; proceed.

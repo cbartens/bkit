@@ -26,8 +26,8 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Review plan only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -42,12 +42,12 @@ tools:
    - Schemas/tables touched and downstream readers (RLS policies, indexes, FK constraints).
    - Public endpoints / event names / queue topics modified and their producers/consumers.
 6. Risk classification per surface:
-   - High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, RLS policies, event payloads consumed by multiple subscribers, public type exports. Flag explicitly.
-   - Backwards-compat boundary: Any change that alters a public signature, schema column, or event shape. Missing migration / shim / dual-write plan → CRITICAL.
-   - Migration ordering: Multi-step schema or data migrations — order matters; deploys with intermediate states must work. Missing intermediate-state guard → CRITICAL.
+   - High-risk surfaces: Base classes, shared utilities, schema migrations, auth middleware, billing logic, RLS policies, multi-subscriber event payloads, public type exports. Flag explicitly.
+   - Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → CRITICAL.
+   - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → CRITICAL.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → CRITICAL.
-7. Design-coverage: If a design artifact exists (e.g. `docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced from input), check every design section identifying touched surfaces has a corresponding plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare their coverage scope — respect that. Missing → CRITICAL.
-8. Knowledge cross-reference: Search `docs/knowledge.md` for `KN-*` entries that describe past regressions in the surfaces this plan touches. Any plan task that re-enters a known-broken pattern without acknowledging the prior fix → CRITICAL.
+7. Design-coverage: If a design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design section identifying touched surfaces needs a plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing → CRITICAL.
+8. Knowledge cross-reference: Search `docs/knowledge.md` for `KN-*` entries describing past regressions in touched surfaces. Plan task re-entering a known-broken pattern without acknowledging the prior fix → CRITICAL.
 9. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = no CRITICAL items; surface touches are contained or covered.

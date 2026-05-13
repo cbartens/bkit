@@ -29,7 +29,7 @@ maxTurns: 25
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Review plan only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**

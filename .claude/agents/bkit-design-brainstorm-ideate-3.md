@@ -27,18 +27,18 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Propose 2–3 approaches framed by failure-mode, not happy-path shape. Lead with recommended. Per approach, include additive risk-mitigation guidance to layer onto whichever approach is ultimately picked (NOT a separate "safer" approach). Do NOT contradict existing approved decisions. Per approach run premortems across these dimensions:
-   - 10× scale: bottlenecks, hotspots, fan-out, blast radius.
-   - 6 months later: drift, undocumented invariants, magic numbers, brittle integrations.
-   - On-call at 3am: page shape, diagnosability, recovery path, observability.
-   - Author leaves: knowledge concentration, bus factor, load-bearing tribal knowledge.
+3. Propose 2–3 approaches framed by failure-mode (NOT happy-path shape). Lead with recommended. Per approach, include additive risk-mitigation guidance to layer onto whichever approach is picked (NOT a separate "safer" approach). Do NOT contradict existing approved decisions. Per approach, run premortems across:
+   - 10× scale: Bottlenecks, hotspots, fan-out, blast radius.
+   - 6 months later: Drift, undocumented invariants, magic numbers, brittle integrations.
+   - On-call at 3am: Page shape, diagnosability, recovery path, observability.
+   - Author leaves: Knowledge concentration, bus factor, load-bearing tribal knowledge.
 4. Decisions — decided, alternatives, why.
 5. Produce **Create** output.
 

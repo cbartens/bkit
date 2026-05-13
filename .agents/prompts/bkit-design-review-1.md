@@ -32,8 +32,8 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Investigate only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**

@@ -30,7 +30,7 @@ maxTurns: 50
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Sync docs only; do NOT code or modify implementation.
 - **Exceptions:** Do NOT update `docs/knowledge.md`, `docs/decisions.md`, `docs/pending.md`
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
 
 **Process:**
 

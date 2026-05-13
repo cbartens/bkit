@@ -26,8 +26,8 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Review plan only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -37,9 +37,9 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify plan reflects source — no drift, no omissions, no silent expansion.
-   - Design-coverage: If a design artifact exists (e.g. `docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced from input), check every design section maps to either a plan task or an explicit out-of-scope note. Missing → CRITICAL.
-   - Sub-plans: If the plan was produced by `bkit-plan-complexity-split`, respect its declared coverage scope — partial design coverage is expected; flag only items inside its declared slice.
-   - Expansion: Any plan task with no source justification → CRITICAL.
+   - Design-coverage: If design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design section maps to a plan task or explicit out-of-scope note. Missing → CRITICAL.
+   - Sub-plans: If produced by `bkit-plan-complexity-split`, respect declared coverage scope — flag only items inside its slice.
+   - Expansion: Plan task with no source justification → CRITICAL.
 6. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
 7. If `Acceptance Scenario` or `Derived Test Matrix` sections vague/missing → CRITICAL patch.
 8. Verify every `Agent Execution Runbook` task has a `Done when` completion criteria entry that is terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Missing or vague → CRITICAL.

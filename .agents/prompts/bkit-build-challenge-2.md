@@ -29,8 +29,8 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Challenge plan implementation only; do NOT build, install, or write code.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -41,13 +41,13 @@ maxTurns: 50
 4. Update **Create** output after each finding — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to scope of provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
-   - Auth & authorization: Missing auth checks, role/permission gaps, session handling, token leakage, privilege escalation paths.
-   - RLS / tenancy: Row-Level Security bypasses, missing `deleted_at` filters, tenant-id leaks, cross-tenant data exposure, RLS policies that don't match new schema.
-   - Input validation: SQL/NoSQL injection, command injection, path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation on user-supplied data.
-   - Secrets exposure: Hardcoded keys/tokens, `NEXT_PUBLIC_*` leaks of sensitive values, secrets in logs, secrets in error messages, secrets committed to repo.
-   - Data exposure: PII in logs, PII in error responses, internal IDs leaked, over-fetching, sensitive fields in serialized responses, missing redaction.
-   - OWASP Top 10: Broken access control, cryptographic failures, injection, insecure design, security misconfiguration, vulnerable dependencies, identification & auth failures, integrity failures, logging/monitoring failures, SSRF.
-   - Supply chain: New dependencies — known CVEs, maintainer trust, install scripts.
+   - Auth & AuthZ: Missing checks, role/permission gaps, session/token handling, privilege escalation.
+   - RLS / tenancy: RLS bypasses, missing `deleted_at` filters, tenant-id leaks, cross-tenant exposure, policies stale vs new schema.
+   - Input validation: Injection (SQL/NoSQL/command), path traversal, SSRF, XSS, deserialization, prototype pollution, missing schema validation.
+   - Secrets: hardcoded keys/tokens, `NEXT_PUBLIC_*` leaks, secrets in logs / errors / repo.
+   - Data exposure: PII in logs/responses, internal IDs, over-fetching, sensitive serialized fields, missing redaction.
+   - OWASP Top 10 catch-all: Cryptographic failures, insecure design, misconfiguration, vulnerable deps, identification/integrity/logging failures.
+   - Supply chain: New dependencies — CVEs, maintainer trust, install scripts.
 7. Per finding, ALL five required: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix. **If** incomplete findings → not counted in `Failures`.
    - `class: mechanical` = surgical edit, NO redesign required (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
    - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, RLS policy structurally broken, requires plan/design rework).

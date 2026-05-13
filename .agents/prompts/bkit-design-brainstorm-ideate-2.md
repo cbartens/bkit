@@ -27,8 +27,8 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
-- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
+- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 
 **Process:**
 
@@ -36,10 +36,10 @@ maxTurns: 50
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Propose 2–3 approaches reasoned from first principles — what is the best long-term shape if existing constraints did NOT matter? Lead with recommended. Ignore "we already have X" as a default; for each approach, flag the existing-codebase friction it creates. Do NOT contradict existing approved decisions, but DO surface where they constrain the ideal shape. Per approach evaluate trade-offs:
    - Complexity: LOW/MEDIUM/HIGH.
-   - Extensibility: future-change handling.
-   - Risk: main failure mode.
-   - Maintenance: ongoing cost.
-   - Friction vs ideal: migration cost, surfaces touched, breaks.
+   - Extensibility: Future-change handling.
+   - Risk: Main failure mode.
+   - Maintenance: Ongoing cost.
+   - Friction vs ideal: Migration cost, surfaces touched, breaks.
 4. Decisions — decided, alternatives, why.
 5. Produce **Create** output.
 
