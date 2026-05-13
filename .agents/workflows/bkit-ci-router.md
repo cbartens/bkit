@@ -23,7 +23,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Read-only — `gh pr view`, `gh run list`, `gh repo view`. No commits, no pushes, no worktree ops.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Comments:** Append-only. Reuse the most recent comment on `{ISSUE_ID}` whose body opens with `## Build Workflow`, `## Ship Workflow`, or `## Debug Workflow` as `{COMMENT_ID}`. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content. **If** no prior comment exists → create one.
+> - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow run > 600 seconds → **Failure Path**.
 > - **Dispatch:** The terminal step hands the session to `/bkit-ship` or `/bkit-debug`; the dispatched skill owns status.json + the Linear comment from that point on. The router does NOT track downstream progress.
 
@@ -33,8 +33,8 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 1. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### CI Router Failure
-   Step: {N} — {Step Name}
+   ### Workflow Failure
+   Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
    Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
    ```
@@ -65,13 +65,19 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    ```
    Assert non-empty. **Else** → **Failure Path**.
 9. `get_issue({ id: "{ISSUE_ID}" })` → extract `LABELS`. **If** MCP call fails → **Failure Path**.
-10. `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → find latest comment whose body opens with `## Build Workflow`, `## Ship Workflow`, or `## Debug Workflow` → `COMMENT_ID`, `COMMENT_BODY`. **If** none → `save_comment({ issueId: "{ISSUE_ID}", body: "## CI Router\n### Step 1 — Start Workflow\n" })` → capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`.
+10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+    ```comment
+    ## CI Router
+    ### Step 1 — Start Workflow
+    CI: `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    ```
 
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`CI_STATUS` ∈ `{pass, fail}`, `PR_NUMBER`, `OWNER_REPO`, `BRANCH`, `HEAD_SHA`, `FID`, `ISSUE_ID`, `LABELS`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] PR is `OPEN` and branch in `feat/**` namespace
-- [ ] Issue comment located or created
+- [ ] Issue comment attempted (`Step 1` section, fresh comment)
 
 ---
 
@@ -80,13 +86,18 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 1. `gh run list --branch "$BRANCH" --limit 1 --json headSha --jq '.[0].headSha'` → extract `LATEST_RUN_SHA`. Assert non-empty. **Else** → **Failure Path**.
 2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}` — then **STOP**:
    ```comment
-   ### CI Router → no-op
+   ### Step 2 — Stale-Run Guard - Status: SKIP
    Reason: stale CI run (head SHA `{LATEST_RUN_SHA}` differs from PR head `{HEAD_SHA}`); newer commit already in flight.
+   ```
+3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 2 — Stale-Run Guard - Status: OK
    ```
 
 ### 🔒 Gate 2 — Stale-Run
 
 - [ ] `LATEST_RUN_SHA` == `HEAD_SHA`
+- [ ] Issue comment attempted (`Step 2` section)
 
 ---
 
@@ -94,13 +105,18 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 1. **If** `Auto` NOT in `{LABELS}` → `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}` — then **STOP**:
    ```comment
-   ### CI Router → no-op
+   ### Step 3 — Opt-In Gate - Status: SKIP
    Reason: `Auto` label absent on `{ISSUE_ID}` — opt-in required for autonomous dispatch.
+   ```
+2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 3 — Opt-In Gate - Status: OK
    ```
 
 ### 🔒 Gate 3 — Opt-In
 
 - [ ] `Auto` ∈ `{LABELS}`
+- [ ] Issue comment attempted (`Step 3` section)
 
 ---
 
@@ -112,7 +128,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    ```
 2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### CI Router → Dispatch - CI: {CI_STATUS} - Decision: {DECISION}
+   ### Step 4 — Decision - CI: {CI_STATUS} - Decision: {DECISION}
    Head SHA: `{HEAD_SHA}`
    Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
    ```
@@ -126,10 +142,16 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 ## 🤖 Step 5 — Dispatch
 
-1. **If** `CI_STATUS` = `pass` → invoke `/bkit-ship {FID}` via `Skill` tool (Claude) / `Task` tool (Cursor). The dispatched workflow's Step 1 owns status.json and the Linear comment from this point on.
-2. **Else** → invoke `/bkit-debug {FID}` via `Skill` tool (Claude) / `Task` tool (Cursor). The debug workflow auto-detects PR mode from `gh pr list --head $(git branch --show-current) --base dev` in its own Step 1.
+1. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 5 — Dispatch
+   Invoked: `{DECISION}`
+   ```
+2. **If** `CI_STATUS` = `pass` → invoke `/bkit-ship {FID}` via `Skill` tool (Claude) / `Task` tool (Cursor). The dispatched workflow's Step 1 owns status.json and starts its own `## Ship Workflow` Linear comment from this point on.
+3. **Else** → invoke `/bkit-debug {FID}` via `Skill` tool (Claude) / `Task` tool (Cursor). The debug workflow auto-detects PR mode from `gh pr list --head $(git branch --show-current) --base dev` in its own Step 1 and starts its own `## Debug Workflow` Linear comment.
 
 ### 🔒 Gate 5 — Dispatch
 
+- [ ] Issue comment attempted (`Step 5` section)
 - [ ] Slash command invoked
 - [ ] Router process exits cleanly (the dispatched workflow now owns the session)
