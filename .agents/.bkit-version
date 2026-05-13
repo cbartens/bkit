@@ -6,7 +6,7 @@
   "canonicalHashes": {
     "docs/deployments.md": "3e29664f2a916b2f82958d438ac366f0d2f347b27d4c342bd559dcd54290a0ba",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
-    ".claude/settings.json": "501877dca88753806dfe21eb8c202f119b2e36b87171fa3384d1c7443c0d1d57",
+    ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "21b5bfa2bbf7c3d06a569e76be71a792b6bdecba3195aab9da6659b91f58c586",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",

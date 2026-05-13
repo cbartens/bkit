@@ -26,7 +26,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  # contents: write — the router commits + pushes the per-run status.json
+  # update to feat/** with `[skip ci]` so the push does not re-trigger CI.
+  contents: write
   pull-requests: write
   issues: write
   actions: read
@@ -40,6 +42,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          # Use a token capable of pushing back to feat/** with [skip ci].
+          # GH_BKIT_TOKEN is reused (already required for @cbartens/bkit
+          # install) and has contents:write on this repo.
+          token: ${{ secrets.GH_BKIT_TOKEN }}
+
+      - name: Attach to head branch + configure git user
+        env:
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          git switch -C "$BRANCH"
+          git config user.name 'bkit-ci-router[bot]'
+          git config user.email 'bkit-ci-router@users.noreply.github.com'
 
       - name: Resolve PR number for head branch
         id: pr

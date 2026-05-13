@@ -182,11 +182,15 @@ export function applyT1(content: string): string {
 }
 
 // T2: Rewrite command body for Cursor invocation
-// - `Agent` tool → `Task` tool
+// - `Agent` tool → `Task` tool (subagent invocation)
+// - `Skill` tool → `Task` tool (slash-command invocation — Cursor's `Task`
+//   tool covers both surfaces; Claude splits them into `Agent` + `Skill`)
 // - @name → /name ONLY on exact **Subagent:** lines (anchored)
 export function applyT2(content: string): string {
   let result = content.replace(/`Agent` tool/g, "`Task` tool");
   result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
   result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
   return result;
 }

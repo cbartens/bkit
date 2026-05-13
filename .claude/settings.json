@@ -29,9 +29,6 @@
       "Bash(rm -rf ~/*)",
       "Bash(rm -rf $HOME/*)",
       "Bash(chmod -R 777 /:*)",
-      "Read(./.env)",
-      "Read(./.env.*)",
-      "Read(./**/secrets/*.env*)",
       "Read(./**/*.pem)",
       "Read(./**/*.p12)",
       "Read(./**/id_rsa)"
@@ -57,10 +54,8 @@
       "Bash(vercel remove:*)",
       "Bash(supabase db reset:*)",
       "Bash(supabase projects delete:*)",
-      "Read(./apps/*/.env)",
-      "Read(./apps/*/.env.*)",
-      "Read(./packages/*/.env)",
-      "Read(./packages/*/.env.*)"
+      "Read(./.env)",
+      "Read(./.env.*)"
     ],
     "defaultMode": "default"
   },

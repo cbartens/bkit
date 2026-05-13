@@ -697,29 +697,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   After merging, push to a feature branch and verify the workflow runs to
   green before merging to your default branch.
 `;
-const CI_ROUTER_YML_MERGE_INSTRUCTIONS = `[bkit] .github/workflows/bkit-ci-router.yml exists — bkit will not overwrite. Reference shown below for comparison only.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .github/workflows/bkit-ci-router.yml. The bkit reference is thin
-  plumbing — \`workflow_run\` on CI completion, branch filter \`feat/**\`,
-  dispatches \`/bkit-ci-router\` via \`anthropics/claude-code-action@v1\`. All
-  routing decisions live in the mirrored slash-command orchestrator at
-  \`.claude/commands/bkit-ci-router.md\` (Tier 1, fully bkit-managed). If your
-  router YAML diverges intentionally (extra branch filters, extra label
-  gates, extra secret env), keep your version. If it has stale routing
-  logic embedded in the YAML body itself, prefer the bkit reference: the
-  orchestrator file already handles stale-run guards, Linear opt-in, and
-  ship/debug dispatch — duplicating that logic in YAML is a drift hazard.
-
-  Required repo secrets: \`ANTHROPIC_API_KEY\`, \`LINEAR_API_KEY\`,
-  \`GH_BKIT_TOKEN\`. Required Linear label on the issue at build time: \`Auto\`
-  (opt-in — router exits no-op without it).
-
-  --- begin bkit reference .github/workflows/bkit-ci-router.yml ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .github/workflows/bkit-ci-router.yml ---
-`;
+// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-ci-router.yml`
+// is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
+// logic lives in the mirrored slash-command orchestrator. No consumer-side
+// customisation surface, so no merge instructions are needed.
 const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -909,21 +890,22 @@ export function runCiModule(ctx) {
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
     }
-    // bkit-ci-router.yml — Tier 3 seed-or-print. Thin GHA plumbing that wakes on
-    // CI completion and dispatches the `/bkit-ci-router` orchestrator inside a
-    // fresh Claude Code session via claude-code-action. Cursor consumers don't
-    // need this workflow — they configure an equivalent trigger in the Cursor
-    // cloud agents dashboard (see `.agents/cloud.md` § Post-CI auto-routing).
+    // bkit-ci-router.yml — Tier 1 canonical overwrite. Thin GHA plumbing that
+    // wakes on CI completion and dispatches the `/bkit-ci-router` orchestrator
+    // inside a fresh Claude Code session via claude-code-action. The routing
+    // logic lives in the mirrored `.claude/commands/bkit-ci-router.md` slash
+    // command (which evolves with bkit), so the YAML body itself is pure plumbing
+    // with no expected per-consumer customisation — auto-overwrite on every
+    // install keeps the mirror in lockstep with the canonical template. Cursor
+    // consumers configure an equivalent trigger in the Cursor cloud agents
+    // dashboard (see `.agents/cloud.md` § Post-CI auto-routing).
     const ciRouterSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "workflows", "bkit-ci-router.yml");
     if (fs.existsSync(ciRouterSrc)) {
         const ciRouterDst = path.join(".github", "workflows", "bkit-ci-router.yml");
         const ciRouterPrev = ws.writes.length;
-        const ciRouterResult = writeTier3(ciRouterSrc, ciRouterDst, dryRun, advisories, ws, CI_ROUTER_YML_MERGE_INSTRUCTIONS);
+        writeTier1(ciRouterSrc, ciRouterDst, tokens, dryRun, ws);
         if (ws.writes.length > ciRouterPrev) {
             console.log(`${logPrefix} ${tag}ci: ${ciRouterDst}`);
-        }
-        else if (ciRouterResult.suggested) {
-            console.log(`${logPrefix} ${tag}ci: ${ciRouterDst} (exists; AI merge instructions printed)`);
         }
         // Always emit the dual-IDE setup advisory. The GHA workflow is the Claude
         // half; the Cursor half (dashboard trigger + paste-once prompt) is manual.

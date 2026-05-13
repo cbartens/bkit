@@ -35,6 +35,8 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 
 - Replace literal `` `Agent` tool `` with `` `Task` tool ``.
 - Replace `using \`Agent\` tool`with`using \`Task\` tool`.
+- Replace literal `` `Skill` tool `` with `` `Task` tool `` (slash-command invocation — Cursor's `Task` covers both subagent and slash-command surfaces; Claude splits them into `Agent` + `Skill`).
+- Replace `using \`Skill\` tool`with`using \`Task\` tool`.
 - Replace `@<name>` with `/<name>` for kebab-case identifiers, **only inside `**Subagent:**` lines and the protocol description block**. Don't touch `@` elsewhere (markdown anchors, email addresses, npm scopes).
 - Subagent body files do NOT contain invocation phrasing — no body transform needed.
 
