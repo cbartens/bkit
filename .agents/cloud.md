@@ -246,7 +246,7 @@ The routing **logic** lives in a single bkit-managed slash-command orchestrator 
 ## What lives where (post-CI half)
 
 <!-- prettier-ignore -->
-| | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
+|  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
 | **Claude** | `.github/workflows/bkit-ci-router.yml` (thin plumbing — Tier 3 seed via `bkit install`). On CI completion, dispatches `claude-code-action@v1` with prompt `/bkit-ci-router $CI_STATUS $PR_NUMBER`. | GitHub repo secrets: `ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`. Linear issue must carry the `Auto` label (opt-in). |
 | **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
@@ -261,11 +261,12 @@ The routing **logic** lives in a single bkit-managed slash-command orchestrator 
 
 ## Claude — required GitHub repo secrets
 
-| Secret              | Why                                                                                                                        | Scope                            |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
-| `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic.                                                                   | API key with Claude Code access. |
-| `LINEAR_API_KEY`    | Router reads issue labels (Linear `Auto` opt-in gate) + appends comments. Already present for the Linear webhook flow.     | Linear personal API key.         |
-| `GH_BKIT_TOKEN`     | Router and dispatched ship/debug skills install `@cbartens/bkit` from GitHub Packages. Already present for `pnpm install`. | Classic PAT, `read:packages`.    |
+<!-- prettier-ignore -->
+| Secret | Why | Scope |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
+| `LINEAR_API_KEY` | Router reads issue labels (Linear `Auto` opt-in gate) + appends comments. Already present for the Linear webhook flow. | Linear personal API key. |
+| `GH_BKIT_TOKEN` | Router and dispatched ship/debug skills install `@cbartens/bkit` from GitHub Packages. Already present for `pnpm install`. | Classic PAT, `read:packages`. |
 
 ## Routing decision (router orchestrator)
 

@@ -29,7 +29,7 @@
 
 ## 🤖 Failure Path
 
-1. Update status, commit, and push (single push for any accumulated per-step commits + this close commit):
+1. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -66,7 +66,7 @@
    **If** the exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
 4. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,number --jq '.headRefName + "\t" + .headRefOid + "\t" + .state'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`. Assert `BRANCH`, `HEAD_SHA` non-empty. **Else** → **Failure Path**.
-5. **If** `PR_STATE` != `OPEN` → append `### CI Router → no-op` Linear note (reason `PR not OPEN`) and **STOP**.
+5. **If** `PR_STATE` != OPEN → append `### CI Router → no-op` Linear note (reason `PR not OPEN`) and **STOP**.
 6. **If** `BRANCH` does NOT start with `feat/` → append `### CI Router → no-op` Linear note (reason `branch out of feat/** namespace`) and **STOP**.
 7. Extract `FID` from `BRANCH`: `FID="${BRANCH#feat/}"`. Assert `FID` non-empty and `FID` != `BRANCH`. **Else** → **Failure Path**.
 8. Extract Linear `ISSUE_ID` from `FID`:
@@ -75,7 +75,7 @@
    ```
    Assert non-empty. **Else** → **Failure Path**.
 9. `get_issue({ id: "{ISSUE_ID}" })` → extract `LABELS`. **If** MCP call fails → **Failure Path**.
-10. Initialise workflow + record step in `status.json` + commit (no push — push deferred to Step 5):
+10. Update status and commit:
     ```bash
     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
     mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
@@ -100,8 +100,8 @@
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`CI_STATUS` ∈ `{pass, fail}`, `PR_NUMBER`, `OWNER_REPO`, `BRANCH`, `HEAD_SHA`, `FID`, `ISSUE_ID`, `LABELS`, `COMMENT_ID`, `COMMENT_BODY`)
-- [ ] PR is `OPEN` and branch in `feat/**` namespace
+- [ ] Placeholders non-empty (`CI_STATUS` ∈ `pass|fail`, `PR_NUMBER`, `OWNER_REPO`, `BRANCH`, `HEAD_SHA`, `FID`, `ISSUE_ID`, `LABELS`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] PR is OPEN and branch in `feat/**` namespace
 - [ ] Issue comment attempted (`Step 1` section, fresh comment)
 - [ ] Workflow status initialised (`ci-router` `IN_PROGRESS`, step `ci-router-start-workflow` recorded with `parentSha`)
 
@@ -110,8 +110,8 @@
 ## 🤖 Step 2 — Stale-Run Guard
 
 1. `gh run list --branch "$BRANCH" --limit 1 --json headSha --jq '.[0].headSha'` → extract `LATEST_RUN_SHA`. Assert non-empty. **Else** → **Failure Path**.
-2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `STEP_VERDICT` = `SKIP`. **Else** → `STEP_VERDICT` = `OK`.
-3. Record step in `status.json` + commit (no push):
+2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `STEP_VERDICT` = SKIP. **Else** → `STEP_VERDICT` = OK.
+3. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -120,7 +120,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): ci-router-stale-run-guard"
    ```
-4. **If** `STEP_VERDICT` = `SKIP` → close workflow status + commit + push + append Linear no-op, then **STOP**:
+4. **If** `STEP_VERDICT` = SKIP → close workflow status + commit + push + append Linear no-op, then **STOP**:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
@@ -147,7 +147,7 @@
 
 ## 🤖 Step 3 — Linear `Auto` Opt-In Gate
 
-1. **If** `Auto` NOT in `{LABELS}` → set `STEP_VERDICT` = `SKIP`. **Else** → `STEP_VERDICT` = `OK`.
+1. **If** `Auto` NOT in `{LABELS}` → set `STEP_VERDICT` = SKIP. **Else** → `STEP_VERDICT` = OK.
 2. Record step in `status.json` + commit (no push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -157,7 +157,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): ci-router-opt-in-gate"
    ```
-3. **If** `STEP_VERDICT` = `SKIP` → close workflow status + commit + push + append Linear no-op, then **STOP**:
+3. **If** `STEP_VERDICT` = SKIP → close workflow status + commit + push + append Linear no-op, then **STOP**:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
@@ -230,7 +230,7 @@
    ### Step 5 — Dispatch
    Invoked: `{DECISION}`
    ```
-3. **If** `CI_STATUS` = `pass` → invoke `/bkit-ship {FID}` via `Task` tool. The dispatched workflow's Step 1 owns status.json and starts its own `## Ship Workflow` Linear comment from this point on.
+3. **If** `CI_STATUS` = pass → invoke `/bkit-ship {FID}` via `Task` tool. The dispatched workflow's Step 1 owns status.json and starts its own `## Ship Workflow` Linear comment from this point on.
 4. **Else** → invoke `/bkit-debug {FID}` via `Task` tool. The debug workflow auto-detects PR mode from `gh pr list --head $(git branch --show-current) --base dev` in its own Step 1 and starts its own `## Debug Workflow` Linear comment.
 
 ### 🔒 Gate 5 — Dispatch
