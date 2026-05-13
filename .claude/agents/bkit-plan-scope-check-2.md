@@ -29,7 +29,7 @@ maxTurns: 25
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Review plan only; do NOT build, install, or write code.
-- **Parallel:** If input Context indicates parallel run, do NOT reference other workers' outputs (avoid circular reasoning).
+- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -59,6 +59,8 @@ Failures: <integer ≥ 0>
 <!-- verdict:end -->
 
 # Plan Scope Check
+
+Lens: Scope, criteria, verification audit.
 
 ## CRITICAL
 

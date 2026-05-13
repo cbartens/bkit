@@ -31,7 +31,7 @@
 
 ## 🤖 Failure Path
 
-1. Update status, commit, and push (one-shot termination commit on dev):
+1. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -163,10 +163,10 @@
    fi
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
+     '.[-1].steps += [{step:"plan-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-input.md"]}]' \
+     '.[-1].steps += [{step:"plan-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
@@ -183,7 +183,7 @@
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Artifact written (`plan-input.md`, non-empty)
 - [ ] Parent design appended (if present)
-- [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
+- [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `plan-start-workflow` and `plan-worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -201,7 +201,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"generate-plan", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v1-draft.md"]}]' \
+     '.[-1].steps += [{step:"plan-generate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v1-draft.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
@@ -215,31 +215,35 @@
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
-- [ ] Workflow status updated (step `generate-plan` recorded with `parentSha`)
+- [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
 
 ## 🧠 Step 4 — Review Plan
 
-1. Launch both subagents in parallel using `Task` tool:
+1. Launch all three subagents in parallel using `Task` tool. Each carries a distinct lens; reviews are merged downstream by `@bkit-plan-update` (max-wins on CRITICAL findings):
    - **Subagent:** Invoke `@bkit-plan-review-1`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-input.md`.
      Create: `docs/plans/logs/{FID}/plan-review-1.md`.
    - **Subagent:** Invoke `@bkit-plan-review-2`
-     Context: You are a subagent in the Plan phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-input.md`.
      Create: `docs/plans/logs/{FID}/plan-review-2.md`.
+   - **Subagent:** Invoke `@bkit-plan-review-3`
+     Context: You are a subagent in the Plan phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-input.md`.
+     Create: `docs/plans/logs/{FID}/plan-review-3.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Read `plan-review-1.md` and `plan-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures from each.
+3. Read `plan-review-1.md`, `plan-review-2.md`, and `plan-review-3.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `REVIEW_VERDICT` = worst of the three (`FAIL > CONCERNS > PASS`) and `REVIEW_FAILURES` = sum of failures from each.
 4. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REVIEW_VERDICT" --argjson f "$REVIEW_FAILURES" \
-     '.[-1].steps += [{step:"review-plan", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-review-1.md","docs/plans/logs/{FID}/plan-review-2.md"]}]' \
+     '.[-1].steps += [{step:"plan-review", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-review-1.md","docs/plans/logs/{FID}/plan-review-2.md","docs/plans/logs/{FID}/plan-review-3.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): review-plan"
    ```
@@ -250,12 +254,12 @@
 
 ### 🔒 Gate 4 — Review Plan
 
-- [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, no inline work)
-- [ ] Artifacts written (`plan-review-1.md` and `plan-review-2.md`, non-empty)
+- [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-review-3`, no inline work)
+- [ ] Artifacts written (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`, non-empty)
 - [ ] Verdicts extracted (`REVIEW_VERDICT`, `REVIEW_FAILURES`)
 - [ ] Verdict valid (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] No PENDING placeholders remain (`plan-review-1.md` and `plan-review-2.md`)
-- [ ] Workflow status updated (step `review-plan` recorded with `parentSha`, `verdict`)
+- [ ] No PENDING placeholders remain (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`)
+- [ ] Workflow status updated (step `plan-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 4` section)
 
 ---
@@ -263,8 +267,8 @@
 ## 🧠 Step 5 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-plan-update` using `Task` tool:
-   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-review-1.md`, `docs/plans/logs/{FID}/plan-review-2.md`.
+   Context: You are a subagent in the Plan phase applying review critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations. Input critiques carry distinct lenses — merge across them, max-wins on CRITICAL findings.
+   Read: `docs/plans/logs/{FID}/plan-v1-draft.md`, `docs/plans/logs/{FID}/plan-review-1.md`, `docs/plans/logs/{FID}/plan-review-2.md`, `docs/plans/logs/{FID}/plan-review-3.md`.
    Create: `docs/plans/logs/{FID}/plan-v2-reviewed.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `plan-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'plan-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
@@ -274,7 +278,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
-     '.[-1].steps += [{step:"apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v2-reviewed.md"]}]' \
+     '.[-1].steps += [{step:"plan-apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v2-reviewed.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
@@ -290,7 +294,7 @@
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
 - [ ] `APPLY_REVIEW_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-review` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 
 ---
@@ -314,7 +318,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SCOPE_VERDICT" --argjson f "$SCOPE_FAILURES" \
-     '.[-1].steps += [{step:"scope-check", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-scope-check-1.md","docs/plans/logs/{FID}/plan-scope-check-2.md"]}]' \
+     '.[-1].steps += [{step:"plan-scope-check", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-scope-check-1.md","docs/plans/logs/{FID}/plan-scope-check-2.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): scope-check"
    ```
@@ -330,7 +334,7 @@
 - [ ] Verdicts extracted (`SCOPE_VERDICT`, `SCOPE_FAILURES`)
 - [ ] Verdict valid (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
-- [ ] Workflow status updated (step `scope-check` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-scope-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -350,7 +354,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_SCOPE_VERDICT" \
-     '.[-1].steps += [{step:"apply-scope", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v3-checked.md"]}]' \
+     '.[-1].steps += [{step:"plan-apply-scope", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v3-checked.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-scope"
    ```
@@ -367,7 +371,7 @@
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
 - [ ] `APPLY_SCOPE_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-scope` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
 
 ---
@@ -386,7 +390,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$COMPLEXITY_VERDICT" \
-     '.[-1].steps += [{step:"complexity-check", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-complexity-check.md"]}]' \
+     '.[-1].steps += [{step:"plan-complexity-check", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-complexity-check.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): complexity-check"
    ```
@@ -400,7 +404,7 @@
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
 - [ ] `COMPLEXITY_VERDICT` extracted
-- [ ] Workflow status updated (step `complexity-check` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-complexity-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -421,7 +425,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SPLIT_VERDICT" \
-     '.[-1].steps += [{step:"complexity-split", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v4-split.md"]}]' \
+     '.[-1].steps += [{step:"plan-complexity-split", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-v4-split.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): complexity-split"
    ```
@@ -441,7 +445,7 @@
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
 - [ ] `SPLIT_VERDICT` extracted
 - [ ] Verdict valid (`SPLIT_VERDICT` in `PASS|FAIL`)
-- [ ] Workflow status updated (step `complexity-split` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
 ---
@@ -461,7 +465,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-summary.md"]}]' \
+     '.[-1].steps += [{step:"plan-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/plan-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary [skip build] [skip ci]"
    ```
@@ -487,7 +491,7 @@
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 10` section)
 
 ---
@@ -521,7 +525,7 @@
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
+     '.[-1].steps += [{step:"plan-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
@@ -557,6 +561,6 @@
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
-- [ ] Workflow status updated (`plan` `DONE`, step `close-workflow` recorded with `parentSha`)
+- [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `In Review`; phase label `Plan` preserved)
 - [ ] Issue comment attempted (`Step 11` section)

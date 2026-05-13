@@ -24,13 +24,19 @@ tools:
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel:** If input Context indicates parallel run, do NOT reference other outputs (avoid circular reasoning).
+- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
+- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
 
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Propose 2–3 approaches — lead with recommended. Trade-offs: Complexity, extensibility, risk, maintenance. YAGNI ruthlessly. Do NOT contradict existing approved decisions.
+3. Propose 2–3 approaches grounded in current constraints — work with existing code, minimal new infra, ship fastest. Lead with recommended; each must be implementable in the existing codebase with the existing stack (no greenfield rewrites, no hypothetical infra). Reuse > extend > new. YAGNI ruthlessly. Do NOT contradict existing approved decisions. Per approach evaluate trade-offs:
+   - Complexity: LOW/MEDIUM/HIGH.
+   - Extensibility: future-change handling.
+   - Risk: main failure mode.
+   - Maintenance: ongoing cost.
+   - Reuse vs new: how much existing code/infra is leveraged vs net-new built.
 4. Decisions — decided, alternatives, why.
 5. Produce **Create** output.
 
@@ -38,6 +44,8 @@ tools:
 
 ```markdown
 # Design Brainstorm & Ideas
+
+Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 

@@ -118,8 +118,9 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | name | Cursor model | Claude model | Claude effort | maxTurns | role hint |
 | --- | --- | --- | --- | --- | --- |
-| `bkit-design-brainstorm-ideate-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 |
-| `bkit-design-brainstorm-ideate-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | parallel slot 2 (cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-brainstorm-ideate-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 (pragmatic lens) |
+| `bkit-design-brainstorm-ideate-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | parallel slot 2 (optimal-tradeoff lens; cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-brainstorm-ideate-3` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 3 (risk-premortem lens) |
 | `bkit-design-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
 | `bkit-design-review-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
 | `bkit-design-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
@@ -128,16 +129,17 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-generate` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
 | `bkit-plan-complexity-check` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | complexity check |
 | `bkit-plan-generate` | `gpt-5.4-high` | `claude-opus-4-7` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
-| `bkit-plan-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 1 |
-| `bkit-plan-review-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | review slot 2 |
-| `bkit-plan-scope-check-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 25 | scope audit slot 1 |
+| `bkit-plan-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 1 (tightness + design-coverage) |
+| `bkit-plan-review-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
+| `bkit-plan-review-3` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 3 (regression-risk + design-coverage) |
+| `bkit-plan-scope-check-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
 | `bkit-plan-scope-check-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 25 | scope audit slot 2 |
 | `bkit-plan-complexity-split` | `gpt-5.4-high` | `claude-opus-4-7` | `high` | 50 | split large plan |
 | `bkit-plan-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-plan-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
 | `bkit-build-install-skills` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | skill identifier |
-| `bkit-build-challenge-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 |
-| `bkit-build-challenge-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | parallel slot 2 (cross-tier model diversity) |
+| `bkit-build-challenge-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
+| `bkit-build-challenge-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
 | `bkit-build-challenge-reconcile` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
 | `bkit-build-challenge-tests` | `composer-2` | `claude-sonnet-4-6` | `medium` | 50 | test generator (source modifier, no test loop) |
 | `bkit-build-plan-execute` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |

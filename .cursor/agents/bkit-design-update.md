@@ -26,6 +26,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Update design only; do NOT build, install, or write code.
+- **Multi-lens inputs:** Inputs carry distinct lenses. Merge across them; max-wins on CRITICAL; apply OPTIONAL items on merit. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -40,15 +41,14 @@ tools:
    ```
 3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 4. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-5. Update **Create** output — apply each CRITICAL + consensus-OPTIONAL item via `Edit` as content becomes available.
-6. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.
-7. Identify OPTIONAL items in each Read critique — apply ONLY if all critiques agree (consensus required).
+5. Update **Create** output — apply findings via `Edit` as content becomes available.
+6. Identify all CRITICAL items — these MUST be applied; no consensus required. **If** conflict across finding → resolve by preferring stricter wording.
+7. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
-   - `PASS` = all CRITICAL items applied (OPTIONAL consensus respected).
-   - `CONCERNS` = some OPTIONAL items skipped (no consensus).
-   - `FAIL` = critiques contradictory, design unanimously rejected, or post-edit structure broken.
-9. Replace `Verdict` `PENDING` in **Create** output via `Edit` with computed `Verdict`.
-10. Re-read **Create** output; assert design structure intact. Failed → update Verdict to `FAIL`.
+   - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
+   - `CONCERNS` = some OPTIONAL items skipped.
+   - `FAIL` = findings contradictory and unresolvable, design unanimously rejected by all lenses.
+9. Re-read **Create** output → assert design structure intact. **If** NOT intact → set Verdict to `FAIL` via `Edit`.
 
 **Output format:**
 
@@ -57,7 +57,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 
-[Modified design body — verbatim copy of prior versioned design with CRITICAL + consensus-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
+[Modified design body — verbatim copy of prior versioned design with CRITICAL + merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
 > ⛔ **STOP after updating design and producing output. Do NOT code, expand scope.**

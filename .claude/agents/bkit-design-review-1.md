@@ -32,7 +32,8 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Investigate only; do NOT build, install, or write code.
-- **Parallel:** If input Context indicates parallel run, do NOT reference other workers' outputs (avoid circular reasoning).
+- **Parallel run:** If input Context indicates parallel execution, do NOT reference other agent outputs to avoid circular reasoning.
+- **Lens discipline:** Stay strictly within the lens defined by Process steps. Out-of-lens findings (even if noticed) are NOT in your remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -66,6 +67,8 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 <!-- verdict:end -->
 
 # Design Review
+
+Lens: Buildability — stack feasibility, library fit, integration risk.
 
 ## Ecosystem Search
 

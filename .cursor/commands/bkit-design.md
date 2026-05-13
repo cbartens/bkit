@@ -160,10 +160,10 @@
    fi
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
+     '.[-1].steps += [{step:"design-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-input.md"]}]' \
+     '.[-1].steps += [{step:"design-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
@@ -179,22 +179,26 @@
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Artifact written (`design-input.md`, non-empty)
-- [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
+- [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `design-start-workflow` and `design-worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
 
 ## 🧠 Step 3 — Brainstorm & Ideate
 
-1. Launch both subagents in parallel using `Task` tool:
+1. Launch all three subagents in parallel using `Task` tool. Each carries a distinct lens; the synthesiser merges across them:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
+   - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-3`
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Read: `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-3.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
@@ -202,7 +206,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/logs/{FID}/design-brainstorm-ideate-2.md"]}]' \
+     '.[-1].steps += [{step:"design-brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/logs/{FID}/design-brainstorm-ideate-2.md","docs/plans/logs/{FID}/design-brainstorm-ideate-3.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
    ```
@@ -213,9 +217,9 @@
 
 ### 🔒 Gate 3 — Brainstorm & Ideate
 
-- [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, no inline work)
-- [ ] Artifacts written (`design-brainstorm-ideate-1.md` and `design-brainstorm-ideate-2.md`, non-empty)
-- [ ] Workflow status updated (step `brainstorm-ideate` recorded with `parentSha`)
+- [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, `@bkit-design-brainstorm-ideate-3`, no inline work)
+- [ ] Artifacts written (`design-brainstorm-ideate-1.md`, `design-brainstorm-ideate-2.md`, `design-brainstorm-ideate-3.md`, non-empty)
+- [ ] Workflow status updated (step `design-brainstorm-ideate` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -223,8 +227,8 @@
 ## 🧠 Step 4 — Generate Design
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Task` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
+   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-3.md`.
    Create: `docs/plans/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
@@ -309,7 +313,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
-     '.[-1].steps += [{step:"apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-v2-reviewed.md"]}]' \
+     '.[-1].steps += [{step:"design-apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-v2-reviewed.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
@@ -325,7 +329,7 @@
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
 - [ ] `APPLY_REVIEW_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-review` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -381,7 +385,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-summary.md"]}]' \
+     '.[-1].steps += [{step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary [skip build] [skip ci]"
    ```
@@ -407,7 +411,7 @@
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -501,7 +505,7 @@
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
+     '.[-1].steps += [{step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
@@ -538,6 +542,6 @@
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Changes merged to `dev` and pushed
 - [ ] Worktree removed and feature branch deleted
-- [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `parentSha`)
+- [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `In Review`; phase label `Design` preserved)
 - [ ] Issue comment attempted (`Step 10` section)

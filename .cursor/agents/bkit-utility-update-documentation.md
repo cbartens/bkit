@@ -32,7 +32,7 @@ tools:
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` index — full catalog of docs to check.
 3. Per doc, load each file's `Convention` note (in-doc rule for structure/format).
-4. Per doc, four passes in order: **Sync** (gaps vs implementation) → **Reorganize** (dedup, move misplaced) → **Compress** (token-efficient) → **Cross-Reference** (inline `docs/*.md` links and `## Related Documentation`).
+4. Per doc, four passes in order: **Sync** (gaps vs implementation) → **Reorganize** (dedup, move misplaced) → **Compress** (token-efficient) → **Cross-Reference** (inline `docs/*.md` links).
 5. Report files modified to caller (output format below).
 
 **Output format:**
