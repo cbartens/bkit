@@ -37,7 +37,7 @@ tools:
 5. Determine `Mode` from input Context (`Single` or `Holistic`).
 6. **If** `Single` → every checklist item and 🔒 Gate in this sub-plan maps to real codebase changes. Identify missing components, skipped steps, unimplemented edge cases. Cross-reference plan tasks against all `DONE` log entries.
 7. **If** `Holistic` → run step 6 across all sub-plans, PLUS integration: Components from different sub-plans work together? API contracts match? Shared state consistent? Cross-domain boundaries respected? **If** `turbo.json` exists → `pnpm turbo test --filter='...[origin/dev]'`. **Else** → `pnpm test`.
-8. For each verified plan task (file exists, tests pass, conditions asserted) ensure task checkbox in plan ticked `[ ]` → `[x]`; ONLY tick on verified codebase evidence.
+8. For each pending plan task read its `Done when` entry — assert codebase satisfies completion criteria (file exists, function signature matches, test passes, observable behaviour). **If** completion criteria satisfied → ensure task checkbox in plan ticked `[ ]` → `[x]` → continue. **Else** → leave task checkbox unticked `[ ]` → append log entry → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass. Missing `Done when` entry on any task → set `Verdict` = FAIL via `Edit`.
 9. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = no gaps.
    - `FAIL` = blocking gaps requiring remediation loop.

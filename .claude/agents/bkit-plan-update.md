@@ -44,14 +44,15 @@ maxTurns: 50
 3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 4. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 5. Update **Create** output — apply each CRITICAL + consensus-OPTIONAL item via `Edit` as content becomes available.
-6. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.
-7. Identify OPTIONAL items in each Read critique — apply ONLY if all critiques agree (consensus required).
-8. Update **Create** output - set `Verdict` via `Edit`; mapping:
+6. Ensure ALL `Agent Execution Runbook` task `Done when` completion criteria entries survive merge intact; critique can edit surrounding task text but `Done when` text can ONLY be edited to make the criteria more testable / codebase-verifiable — NEVER removed or weakened.
+7. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.
+8. Identify OPTIONAL items in each Read critique — apply ONLY if all critiques agree (consensus required).
+9. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = all CRITICAL items applied (OPTIONAL consensus respected).
    - `CONCERNS` = some OPTIONAL items skipped (no consensus).
    - `FAIL` = critiques contradictory, plan unanimously rejected, or post-edit template structure broken.
-9. Update `Verdict` `PENDING` in **Create** output via `Edit` with computed `Verdict`.
-10. Re-read **Create** output; assert template structure intact per `docs/plans/template.md`. Failed → update Verdict to `FAIL`.
+10. Update `Verdict` `PENDING` in **Create** output via `Edit` with computed `Verdict`.
+11. Re-read **Create** output; assert template structure intact per `docs/plans/template.md`. Failed → update Verdict to `FAIL`.
 
 **Output format:**
 

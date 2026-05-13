@@ -38,10 +38,11 @@ tools:
 5. Verify plan reflects source — no drift, no omissions.
 6. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
 7. If `Acceptance Scenario` or `Derived Test Matrix` sections vague/missing → CRITICAL patch.
-8. Cross-check architecture, knowledge, decisions.
-9. Generate alternatives. Identify risks, edge cases, missing considerations.
-10. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
-11. Update **Create** output - set `Verdict` via `Edit`; mapping:
+8. Verify every `Agent Execution Runbook` task has a `Done when` completion criteria entry that is terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Missing or vague → CRITICAL.
+9. Cross-check architecture, knowledge, decisions.
+10. Generate alternatives. Identify risks, edge cases, missing considerations.
+11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
+12. Update **Create** output - set `Verdict` via `Edit`; mapping:
 
 - `PASS` = no CRITICAL items.
 - `FAIL` = plan drifts from source or violates template.

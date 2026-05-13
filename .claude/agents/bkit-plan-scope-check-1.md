@@ -39,9 +39,9 @@ maxTurns: 25
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
-6. Test-matrix ↔ runbook: rows in the test/verification matrix map 1:1 (bidirectional) to test tasks in the runbook section. Fix gaps by adding task or row.
-7. Every task has scope, criteria, verification.
-8. Every scope item has BOTH a build task AND a verification task.
+6. Verify every `Agent Execution Runbook` task carries scope, `Done when` completion criteria entry, and verification step.
+7. Verify every scope item has BOTH a build task AND a verification task.
+8. Verify test matrix against `Agent Execution Runbook`: Rows in `Derived Test Matrix` map 1:1 (bidirectional) to verification tasks. Any gaps → add task or row.
 9. Identify gaps, edge cases, untested assumptions, missing error handling.
 10. Any replaced/superseded code must appear in the `Supersession Inventory` section with DELETE / RETAIN-WITH-REASON. Missing → CRITICAL.
 11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).

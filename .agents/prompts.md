@@ -200,14 +200,14 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | Agent | Scope |
 | --- | --- |
-| `bkit-plan-generate` | Read design + template + docs → write new plan draft. Workstream contract: if input includes `**Workstream:**` directive, plan covers ONLY that workstream's `## Scope` content unless stated otherwise; surface `**Requires:**` at top of plan. Every task in the `Agent Execution Runbook` MUST carry a `**Done when**` section — terse, testable, codebase-verifiable; tasks without it are rejected. |
-| `bkit-plan-review-1` | Read-only critique; effort slot 1 (`high`). Parallel with `-2`. |
+| `bkit-plan-generate` | Read design + template + docs → write new plan draft. Workstream contract: if input includes `**Workstream:**` directive, plan covers ONLY that workstream's `## Scope` content unless stated otherwise; surface `**Requires:**` at top of plan. Every task in the `Agent Execution Runbook` MUST carry a `**Done when:**` line — terse, testable, codebase-verifiable; tasks without it are rejected. |
+| `bkit-plan-review-1` | Read-only critique; effort slot 1 (`high`). Parallel with `-2`. Missing or vague `**Done when:**` on any task → CRITICAL. |
 | `bkit-plan-review-2` | Same scope, effort slot 2 (`medium`). |
-| `bkit-plan-scope-check-1` | Internal-completeness scope audit; effort slot 1 (`high`). |
+| `bkit-plan-scope-check-1` | Internal-completeness scope audit; effort slot 1 (`high`). `**Done when:**` is the literal criteria slot; missing on any task → FAIL (template structure broken). |
 | `bkit-plan-scope-check-2` | Same scope, effort slot 2 (`medium`). |
-| `bkit-plan-update` | Merge review/scope critique notes → in-place plan edits + record log. |
+| `bkit-plan-update` | Merge review/scope critique notes → in-place plan edits + record log. Invariant: every task's `**Done when:**` line survives critique-merge (may be tightened, never removed/weakened). |
 | `bkit-plan-complexity-check` | Single→Split verdict on plan size. |
-| `bkit-plan-complexity-split` | Partition plan into sub-plans preserving 100% of tasks; self-verifies losslessness and emits PASS/FAIL. |
+| `bkit-plan-complexity-split` | Partition plan into sub-plans preserving 100% of tasks (including each task's `**Done when:**` line verbatim); self-verifies losslessness and emits PASS/FAIL. |
 | `bkit-plan-summary` | Read-only verdict on plan. |
 
 ## Build Phase
@@ -216,8 +216,8 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | Agent | Scope |
 | --- | --- |
 | `bkit-build-install-skills` | Identify and install relevant skills via `npx skills find`/`add`. |
-| `bkit-build-plan-execute` | Execute plan tasks sequentially; modify source; write stub artifact first then incremental `## Task Log` entries. Does NOT tick plan checkboxes (verify owns that). |
-| `bkit-build-plan-verify` | Verify implementation vs plan; writes Plan Verification log. Ticks plan `[ ]`→`[x]` for every task whose codebase artifact is verified. |
+| `bkit-build-plan-execute` | Execute plan tasks sequentially; reads each task's `**Done when:**` line as the completion criterion to satisfy; modify source; write stub artifact first then incremental `## Task Log` entries. Does NOT tick plan checkboxes (verify owns that). |
+| `bkit-build-plan-verify` | Verify implementation vs plan; writes Plan Verification log. Ticks plan `[ ]`→`[x]` ONLY when the task's `**Done when:**` criterion is satisfied in the codebase. Missing `**Done when:**` on any task → FAIL (template structure broken; remediation cannot recover). |
 | `bkit-build-plan-gaps-remediate` | Fix specific gaps from latest verify log; Standard/Pivot/Final escalation. |
 | `bkit-build-challenge-1` | Adversarial review of `git diff origin/dev..HEAD`; effort slot 1 (`high`). Parallel with `-2`. Writes findings, each tagged `class: mechanical\ | architectural`. Never references sibling output (circular reasoning guard). |
 | `bkit-build-challenge-2` | Same as `-1`; effort slot 2 (`medium`) — cross-tier model diversity (Opus vs Sonnet). |

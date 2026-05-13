@@ -43,8 +43,8 @@ maxTurns: 50
    - **Success Criteria:** ≤5 high-level measurable outcomes. NO tests. NO implementation steps.
    - **Key Edge Cases:** ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
 8. Preserve strongest approaches. Consolidate Decisions.
-9. New architecture/technology decisions (if any) → APPEND `docs/decisions.md`.
-10. Out-of-scope ideas (if any) → APPEND `docs/pending.md`.
+9. New architecture/technology decisions (if any) → append `docs/decisions.md`.
+10. Out-of-scope ideas (if any) → append `docs/pending.md`.
 
 **Output format:**
 

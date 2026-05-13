@@ -24,15 +24,16 @@ pnpm add -D @cbartens/bkit@^2.0.0
 
 Run these in order on a brand-new consumer repo. Each step links to its detail section below.
 
-| #   | Step                                                                                                       | Detail                                          |
-| --- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 1   | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages)              | [§ Consumer CI auth](#consumer-ci-auth) step 1  |
-| 2   | Add `GH_BKIT_TOKEN` repo secret                                                                            | [§ Consumer CI auth](#consumer-ci-auth) step 2  |
-| 3   | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution)                                  | [§ Consumer CI auth](#consumer-ci-auth) step 3  |
-| 4   | Export `GH_BKIT_TOKEN` locally (`export GH_BKIT_TOKEN=…` in shell rc) and run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section)            |
-| 5   | Run `pnpm exec bkit install` to seed the full stack                                                        | [§ Install](#install) (this section)            |
-| 6   | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars                                             | [§ Consumer Vercel auth](#consumer-vercel-auth) |
-| 7   | Push to a feature branch and verify CI runs green                                                          | —                                               |
+<!-- prettier-ignore -->
+| # | Step | Detail |
+| --- | --- | --- |
+| 1 | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages) | [§ Consumer CI auth](#consumer-ci-auth) step 1 |
+| 2 | Add `GH_BKIT_TOKEN` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
+| 3 | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
+| 4 | Export `GH_BKIT_TOKEN` locally (`export GH_BKIT_TOKEN=…` in shell rc) and run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
+| 5 | Run `pnpm exec bkit install` to seed the full stack | [§ Install](#install) (this section) |
+| 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
+| 7 | Push to a feature branch and verify CI runs green | — |
 
 The seeded `.github/workflows/ci.yml` carries the install step env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
 
@@ -186,15 +187,16 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
 
 bkit checks preconditions and known advisory patterns before touching any file. If a blocker fires, install exits 1 immediately with a formatted `[blocker]` line and zero writes. Advisories are accumulated for Phase 3.
 
-| Severity | When                                                                              |
-| -------- | --------------------------------------------------------------------------------- |
-| Blocker  | `package.json` absent or unparseable JSON                                         |
-| Blocker  | `--core` requested but `.git/` absent                                             |
-| Advisory | `.husky/pre-commit` or `pre-push` exists without bkit markers                     |
-| Advisory | `.prettierignore` exists without bkit markers                                     |
+<!-- prettier-ignore -->
+| Severity | When |
+| --- | --- |
+| Blocker | `package.json` absent or unparseable JSON |
+| Blocker | `--core` requested but `.git/` absent |
+| Advisory | `.husky/pre-commit` or `pre-push` exists without bkit markers |
+| Advisory | `.prettierignore` exists without bkit markers |
 | Advisory | `lint:prose` script lacks the write-good guard (`[ -d .vale/styles/write-good ]`) |
-| Advisory | On-disk `.bkit-version` major > installing major (downgrade)                      |
-| Advisory | `node_modules/@cbartens/bkit` version > `.agents/.bkit-version` (stale pin)       |
+| Advisory | On-disk `.bkit-version` major > installing major (downgrade) |
+| Advisory | `node_modules/@cbartens/bkit` version > `.agents/.bkit-version` (stale pin) |
 
 **Phase 2 — Install (current behaviour)**
 
@@ -204,17 +206,18 @@ Module dispatch writes managed files. Same as before this feature shipped.
 
 After writes, bkit re-runs token-surface and environment checks — some are only accurate post-install (e.g. `.npmrc` content written by the CI module, devDeps added to `package.json`).
 
-| `id`                            | When                                                   |
-| ------------------------------- | ------------------------------------------------------ |
-| `gh-bkit-token-missing-shell`   | `GH_BKIT_TOKEN` not set in shell                       |
-| `npmrc-missing-gh-packages`     | `.npmrc` exists but lacks registry/auth lines          |
-| `gh-bkit-token-secret-missing`  | `gh secret list` confirms secret absent                |
-| `gh-bkit-token-secret-unknown`  | `gh` CLI unavailable/unauthenticated                   |
-| `vercel-env-missing-preview`    | `vercel.json` detected; token absent in preview        |
-| `vercel-env-missing-production` | `vercel.json` detected; token absent in production     |
-| `ci-yml-missing-token-env`      | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
-| `vale-package-not-synced`       | vale on PATH but `.vale/styles/write-good/` absent     |
-| `devdeps-need-fetch`            | bkit added devDeps in this run — `pnpm install` needed |
+<!-- prettier-ignore -->
+| `id` | When |
+| --- | --- |
+| `gh-bkit-token-missing-shell` | `GH_BKIT_TOKEN` not set in shell |
+| `npmrc-missing-gh-packages` | `.npmrc` exists but lacks registry/auth lines |
+| `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
+| `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
+| `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
+| `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
+| `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
+| `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
+| `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
 Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
 
@@ -281,10 +284,11 @@ pnpm exec bkit uninstall --nuke --yes
 
 ### Format semantics during uninstall
 
-| Format            | Behaviour                                                                                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fully-managed`   | Always deleted (bkit owns 100% of the file).                                                                                                                   |
-| `markered-text`   | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains.                                                          |
+<!-- prettier-ignore -->
+| Format | Behaviour |
+| --- | --- |
+| `fully-managed` | Always deleted (bkit owns 100% of the file). |
+| `markered-text` | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains. |
 | `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
 
 ### Idempotency
