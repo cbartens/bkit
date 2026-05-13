@@ -237,6 +237,56 @@ When bkit's reference Dockerfile changes (e.g. vale version bump):
 3. Add the `bkit-shared` Claude env (or a per-repo Claude env) at `claude.ai/code` and paste the recipe in this doc.
 4. Customise `.cursor/Dockerfile` Node major / Playwright / extra system deps **outside** the bkit-managed block; the file is byte-stable for bkit's bytes inside the markers, fully consumer-owned outside.
 
+# Post-CI auto-routing
+
+After `bkit-build` Step 17 pushes its CI-trigger commit and exits, the post-CI router decides ship vs. debug and dispatches the matching skill in a fresh cloud session — no operator action between CI completion and the dispatched session starting.
+
+The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.agents/workflows/bkit-ci-router.md`, mirrored to `.claude/commands/bkit-ci-router.md` + `.cursor/commands/bkit-ci-router.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
+
+## What lives where (post-CI half)
+
+<!-- prettier-ignore -->
+| | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
+| --- | --- | --- |
+| **Claude** | `.github/workflows/bkit-ci-router.yml` (thin plumbing — Tier 3 seed via `bkit install`). On CI completion, dispatches `claude-code-action@v1` with prompt `/bkit-ci-router $CI_STATUS $PR_NUMBER`. | GitHub repo secrets: `ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`. Linear issue must carry the `Auto` label (opt-in). |
+| **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
+
+**Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch time. The pasted string is generic and timeless. When bkit's routing logic evolves (new edge cases, new gates), only the mirrored `.cursor/commands/bkit-ci-router.md` changes — the dashboard config is untouched.
+
+## Cursor dashboard — exact paste
+
+```
+/bkit-ci-router $CI_STATUS $PR_NUMBER
+```
+
+## Claude — required GitHub repo secrets
+
+| Secret              | Why                                                                                                                        | Scope                            |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic.                                                                   | API key with Claude Code access. |
+| `LINEAR_API_KEY`    | Router reads issue labels (Linear `Auto` opt-in gate) + appends comments. Already present for the Linear webhook flow.     | Linear personal API key.         |
+| `GH_BKIT_TOKEN`     | Router and dispatched ship/debug skills install `@cbartens/bkit` from GitHub Packages. Already present for `pnpm install`. | Classic PAT, `read:packages`.    |
+
+## Routing decision (router orchestrator)
+
+The slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fail}` (normalised) and `$PR_NUMBER`. It then:
+
+1. Reads `gh pr view $PR_NUMBER` for `headRefName`, `headRefOid`, `state`. Refuses non-OPEN PRs.
+2. Extracts `{FID}` from the head branch (`feat/{FID}` convention).
+3. Stale-run guard: compares the latest CI run's `headSha` against the PR's current `headRefOid`. Skips on mismatch (newer commit already in flight).
+4. Linear opt-in gate: refuses to dispatch unless the Linear issue carries the `Auto` label.
+5. Appends a `bkit-ci-router → /bkit-{ship,debug}` line to the existing Linear comment thread.
+6. Invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) via the `Skill` / `Task` tool. The dispatched skill owns its session lifecycle from there.
+
+Skip conditions emit a single Linear no-op line and exit 0 — only real failures (missing args, Linear API unreachable, malformed state) take the Failure Path.
+
+## Operating notes
+
+- **Loop bound:** `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT = 3` internally; the router never counts attempts. After three red CI runs, debug fires its handover path and stops dispatching.
+- **GHA 6 h cap:** `3 × ~3600s` per debug attempt = well under the GHA runner ceiling. Ship is short.
+- **Concurrency:** the GHA workflow uses `cancel-in-progress: true`; the Cursor dashboard trigger should be set to "latest-supersedes." Ship squash-merge is atomic, so mid-run cancels cannot corrupt PR state.
+- **Both clouds together:** there's nothing stopping both Claude and Cursor from dispatching against the same PR — they'd race. Pick one IDE per repo as the auto-router (recommended: Claude via GHA, since it's runner-resident and Anthropic-maintained). Leave Cursor for ad-hoc Linear-dispatch work.
+
 # Caveats (both clouds)
 
 - **No secrets store yet (Claude).** Env vars and setup-script body are plaintext in the Claude app. Rotate PATs regularly.

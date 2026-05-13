@@ -80,7 +80,9 @@ pnpm exec bkit check --full
 
 bkit ships repo-side scaffolding for both cloud agents — `.claude/hooks/cloud-bootstrap.sh` (per-session install) and `.cursor/Dockerfile` + `.cursor/environment.json` + `.cursor/hooks.json` (Cursor cloud image + Linear preflight). The **online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) is configured once per machine / account.
 
-Full recipe + paste-in setup script + env-var inventory + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
+For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bkit also ships `.github/workflows/bkit-ci-router.yml` (Claude half, via `claude-code-action`) and a `/bkit-ci-router` slash command that both clouds invoke from a single source of truth (Cursor wires it up via a dashboard trigger; no GHA needed on the Cursor side).
+
+Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
 
 ## JSON ownership model — deep-containment (v2.0.0+)
 

@@ -1,6 +1,8 @@
 {
   "pinnedVersion": "2.0.6",
-  "tier3Hashes": {},
+  "tier3Hashes": {
+    ".github/workflows/bkit-ci-router.yml": "b8b3ab9ba935fbcc744e17a2bdd47478db6d9a42fff9fc421a810bc50ca31184"
+  },
   "canonicalHashes": {
     "docs/deployments.md": "3e29664f2a916b2f82958d438ac366f0d2f347b27d4c342bd559dcd54290a0ba",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
@@ -38,6 +40,7 @@
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "839c727d18c7d62c9120c9fbc2cdfc870489bcdfc1b2f5ddfa1a615e24ca3214",
-    ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f"
+    ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
+    ".github/workflows/bkit-ci-router.yml": "b8b3ab9ba935fbcc744e17a2bdd47478db6d9a42fff9fc421a810bc50ca31184"
   }
 }
