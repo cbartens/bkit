@@ -440,35 +440,34 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // Byte-equal-text — cloud-bootstrap.sh (Tier 3 seed-or-print).
-    // SessionStart hook for Claude Code on the web. Consumer-configurable: most
-    // repos need to swap `pnpm install` for their package manager or drop
-    // `vale sync` if they don't ship .vale.ini. Tier 3 seeds bkit's reference on
-    // first install and prints merge instructions if the consumer has their own.
+    // Markered-text — cloud-bootstrap.sh (Tier 2 managed block).
+    // SessionStart hook for Claude Code on the web. bkit owns the install steps
+    // between `# <!-- bkit:start -->` and `# <!-- bkit:end -->` (pnpm install +
+    // vale sync); consumers add per-repo install steps OUTSIDE the markers.
+    // Switched from Tier 3 (byte-equal-text seed-or-print) in BAR-191 follow-up
+    // so bkit can ship base updates without trampling consumer extensions.
     {
         const src = path.join(claudeTemplates, "hooks", "cloud-bootstrap.sh");
         const dst = ".claude/hooks/cloud-bootstrap.sh";
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
-            const result = writeTier3(src, dst, dryRun, advisories, ws, CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS);
+            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
                 if (!dryRun && fs.existsSync(dst)) {
                     fs.chmodSync(dst, 0o755);
                 }
             }
-            else if (result.suggested) {
-                console.log(`${logPrefix} ${tag}claude: ${dst} (exists; AI merge instructions printed)`);
-            }
             // Always emit cloud-env-customize advisory pointing consumers at
-            // `.agents/cloud.md` for the paste-into-claude.ai recipe. The hook is
-            // half the picture; the cloud-side setup script + env vars are the
-            // other half and live in the Claude app, not the repo.
+            // `.agents/cloud.md` for the paste-into-claude.ai recipe AND the Cursor
+            // Background Agents setup. The repo hooks are half the picture; the
+            // cloud-side setup script (Claude) + Dockerfile (Cursor) are the other
+            // half. Both clouds are now aligned on vale 3.9.1 + pnpm 10.33.0 + gh.
             advisories.push({
                 id: "cloud-env-customize",
                 severity: "advisory",
-                detect: "Claude Code on the web cloud environments are configured in the Claude app, not the repo. The cloud-bootstrap.sh hook handles project install (pnpm install + vale sync) but the binaries it depends on (vale, gh) must be installed by the cloud env's setup script.",
-                action: "(1) Customize `.claude/hooks/cloud-bootstrap.sh` for your stack: swap `pnpm install --frozen-lockfile` for npm/yarn/bun if needed, drop `vale sync` if you don't use vale, add any other project-specific install steps. (2) Open claude.ai/code → environment selector → + Add environment, and paste the recipe (Name / Network access / Environment variables / Setup script) from `.agents/cloud.md`. First session is slow (snapshot builds); subsequent sessions start from cache.",
+                detect: "Both Claude Code on the web and Cursor Background Agents need cloud env config. Claude's lives in the Claude app (setup script + env vars); Cursor's lives in `.cursor/Dockerfile` + `.cursor/environment.json` in the repo. Repo-side hooks (.claude/hooks/cloud-bootstrap.sh, .cursor/hooks/preflight.sh) handle per-session install + Linear preflight respectively.",
+                action: "Customization model: `.cursor/Dockerfile` and `.claude/hooks/cloud-bootstrap.sh` are Tier 2 managed blocks — bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; add per-repo install steps OUTSIDE those markers (Node major, Playwright, Supabase CLI, monorepo prebuild, etc.). `.cursor/environment.json` is Tier 3 (fully consumer-owned). (1) Open `.cursor/Dockerfile`: change Node major above the bkit block if `engines.node` differs; add system deps below the bkit block. (2) Open `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (examples inlined). (3) For Claude Code on the web: open claude.ai/code → environment selector → + Add environment, paste the Setup script / env vars / network access recipe from `.agents/cloud.md` § Claude Code on the web. The same env (e.g. `bkit-shared`) can be reused across bkit and consumer repos — see § Sharing across repos. (4) For Cursor Background Agents: set `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN` in Cursor → Settings → Background Agents → Environment Variables. First session after Dockerfile changes rebuilds the image.",
             });
         }
     }
@@ -550,10 +549,12 @@ export function runCursorModule(ctx) {
             console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
         }
     }
-    // Markered-text — manifest format: "markered-text" — preflight hook + shared rules.
-    // Both files use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
+    // Markered-text — manifest format: "markered-text" — preflight hook + shared rules + Dockerfile.
+    // All use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
     // Uses writeTier2 to update only the bkit-managed block; consumer content outside
-    // markers is preserved. Changed from writeTier1 to align dispatch with manifest format.
+    // markers is preserved. Dockerfile switched from Tier 3 to Tier 2 in BAR-191 follow-up
+    // so bkit can ship base-toolchain updates without trampling consumer Node-version /
+    // Playwright / Supabase / monorepo customisations.
     {
         const markeredFiles = [
             [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
@@ -561,6 +562,7 @@ export function runCursorModule(ctx) {
                 path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
                 ".cursor/rules/00-shared-rules.mdc",
             ],
+            [path.join(cursorTemplates, "Dockerfile"), ".cursor/Dockerfile"],
         ];
         for (const [src, dst] of markeredFiles) {
             if (!fs.existsSync(src))
@@ -577,16 +579,16 @@ export function runCursorModule(ctx) {
     // differing. These files are consumer-configurable; bkit does not force-overwrite them.
     // The manifest classifies them "byte-equal-text" for check/uninstall dispatch; install
     // intentionally uses seed-or-print to preserve consumer modifications on upgrade.
+    //
+    // `.cursor/environment.json` stays Tier 3 because the `install` / `start` / `terminals[]`
+    // fields are typically completely consumer-owned (monorepos commonly prebuild
+    // package workspaces in `install`, set `env.PORT`, and expose dev-server ports
+    // via `terminals[]`). Splitting it on a marker isn't worth the JSON complexity.
     const tier3Files = [
         [
             path.join(cursorTemplates, "settings.json"),
             ".cursor/settings.json",
             CURSOR_SETTINGS_MERGE_INSTRUCTIONS,
-        ],
-        [
-            path.join(cursorTemplates, "Dockerfile"),
-            ".cursor/Dockerfile",
-            CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS,
         ],
         [
             path.join(cursorTemplates, "environment.json"),
@@ -788,31 +790,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .husky/pre-push ---
 `;
-const CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS = `[bkit] .claude/hooks/cloud-bootstrap.sh exists — bkit will not overwrite. Review the reference below and merge if useful; otherwise keep yours.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  bkit's reference cloud-bootstrap.sh is a Claude Code on the web SessionStart
-  hook that runs project install (\`pnpm install --frozen-lockfile\` + \`vale sync\`)
-  only when CLAUDE_CODE_REMOTE=true. Local sessions short-circuit.
-
-  Common consumer customizations:
-  - Swap pnpm for npm / yarn / bun if your repo uses a different package manager.
-  - Drop the \`vale sync\` block if your repo has no .vale.ini.
-  - Add project-specific install commands (e.g. \`bundle install\`, \`go mod download\`,
-    \`uv sync\`) inside the CLAUDE_CODE_REMOTE guard.
-  - Keep the guard (\`if [ "\${CLAUDE_CODE_REMOTE:-}" != "true" ]; then exit 0; fi\`)
-    so the hook stays a no-op locally and only fires in cloud sessions.
-
-  Companion config lives in the Claude app (claude.ai/code), not the repo. See
-  \`.agents/cloud.md\` for the paste-in recipe (Name / Network access /
-  Environment variables / Setup script) — the cloud env's setup script is what
-  installs vale, gh, and pinned pnpm onto the snapshot.
-
-  --- begin bkit reference .claude/hooks/cloud-bootstrap.sh ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .claude/hooks/cloud-bootstrap.sh ---
-`;
+// CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file is
+// now Tier 2 markered-text; writeTier2 updates only the bkit:start/bkit:end
+// block and preserves consumer extensions outside it. The cloud-env-customize
+// advisory above carries the customization guidance.
 const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -825,26 +806,30 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .cursor/settings.json ---
 `;
-const CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS = `[bkit] .cursor/Dockerfile exists — bkit will not overwrite. Reference shown below for comparison only.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .cursor/Dockerfile. The bkit reference is a minimal Cursor cloud-agent
-  base image. If your file diverges intentionally (custom system deps,
-  alternative base image, project-specific tooling), keep your version.
-  Otherwise consider syncing to the reference.
-
-  --- begin bkit reference .cursor/Dockerfile ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .cursor/Dockerfile ---
-`;
-const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. Reference shown below for comparison only.
+// CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file
+// is now Tier 2 markered-text. bkit owns the toolchain block (vale + gh +
+// jq + python3 + corepack-pinned pnpm); consumers customise Node major,
+// Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
+// those across upgrades.
+const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. This file is fully consumer-owned because the \`install\` / \`start\` / \`terminals[]\` / \`env\` fields are typically repo-specific.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .cursor/environment.json. Compare against the bkit reference below.
-  Merge any new fields (e.g. terminal/install/start hooks) you want, but
-  keep project-specific overrides.
+  Merge new top-level fields if useful; keep your project-specific overrides.
+
+  Typical non-trivial customisations consumers add:
+  - Monorepo prebuild: \`"install": "pnpm install --frozen-lockfile && npx turbo run build --filter='./packages/*'"\`
+    so workspace packages are compiled before the agent starts.
+  - Dev-server terminal + port forwarding: \`env: { PORT: "4000" }\` plus a
+    \`terminals[]\` entry that runs \`pnpm turbo dev --filter=web\` with
+    \`ports: [4000]\` exposed.
+  - \`start\` field with a one-line "read docs/deployments.md before setup"
+    nudge so the agent doesn't blindly run dev commands.
+
+  The bkit baseline runs \`pnpm install --frozen-lockfile && vale sync\` (when
+  .vale.ini exists). Replace if your monorepo needs prebuild, your repo uses
+  npm/yarn/bun, or you don't ship vale.
 
   --- begin bkit reference .cursor/environment.json ---
 {{TEMPLATE_CONTENT}}
@@ -1151,8 +1136,8 @@ export function runGitHooksModule(ctx) {
         });
     }
     // Ensure husky devDep — without it, the `prepare: husky install` script we
-    // just added blows up on `pnpm install` with `husky: not found`. This was
-    // BAR-138 Finding 5 from visitfrasercoast smoke testing.
+    // just added blows up on `pnpm install` with `husky: not found`. Surfaced
+    // by BAR-138 Finding 5 during consumer-repo smoke testing.
     const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
     if (hookDevDeps.added.length > 0) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);

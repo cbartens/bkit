@@ -20,6 +20,15 @@ set -euo pipefail
 # Cursor sessionStart payload: { session_id, is_background_agent, composer_mode } — used for IDE detection below.
 INPUT=$(cat)
 
+# IDE session bailout — primitive grep so we don't pull in python3 on the skip path.
+# With failClosed:true wired in .cursor/hooks.json, a python3-missing machine would
+# otherwise block local IDE sessions. Background-agent sessions run inside the bkit
+# Dockerfile where python3 is guaranteed; the post-bailout code can safely use it.
+# (Claude variant: uses empty LINEAR_ISSUE_ID env var as the proxy.)
+if ! printf '%s' "$INPUT" | grep -q '"is_background_agent"[[:space:]]*:[[:space:]]*true'; then
+  exit 0
+fi
+
 # emit_context — Cursor sessionStart expects { additional_context: ... } directly.
 # (Claude variant: wraps in { hookSpecificOutput: { hookEventName, additionalContext } }.)
 emit_context() {
@@ -28,15 +37,6 @@ import json, sys
 print(json.dumps({"additional_context": sys.argv[1]}))
 PY
 }
-
-# IDE session detection — skip silently when this isn't a background/cloud run.
-# Cursor sets is_background_agent=true for cloud agents; IDE sessions get false/missing.
-# (Claude variant: uses empty LINEAR_ISSUE_ID env var as the proxy.)
-IS_BACKGROUND_AGENT=$(echo "$INPUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d.get('is_background_agent', False)).lower())" 2>/dev/null || echo "false")
-if [[ "$IS_BACKGROUND_AGENT" != "true" ]]; then
-  emit_context "Guard pre-check: SKIPPED (IDE session)"
-  exit 0
-fi
 
 # Brew dep preflight — N/A on Cursor Cloud.
 # Cursor Cloud runs in a containerised env where required CLIs (gh, jq, vale, pnpm, bun) are

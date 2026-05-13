@@ -211,15 +211,25 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 
 ## Runtime environment (cloud agents)
 
-<!-- prettier-ignore -->
-| Concern | Claude | Cursor |
-| --- | --- | --- |
-| Build env | (decommissioned in BAR-125; no GHA runtime) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
-| Install/start | n/a | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
-| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
-| Secrets | n/a | Cursor Cloud env vars |
+> Setup recipe + alignment guarantees: `.agents/cloud.md`. This section = host-diff matrix only.
 
-**Install behaviour:** template drops; project-specific tokens (pnpm version, port number, dev command) substituted at install.
+<!-- prettier-ignore -->
+| Concern | Claude Code on the web | Cursor Background Agents |
+| --- | --- | --- |
+| Where env config lives | Claude app (per-environment), NOT in repo | In repo (`.cursor/`) |
+| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
+| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
+| Per-snapshot install | `.claude/hooks/cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
+| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
+| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
+| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
+| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
+| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
+| Reusable across repos | Yes — one env, many repos (snapshot is generic; per-repo install via bootstrap hook) | No — Dockerfile per repo (bkit Tier 3 keeps content byte-identical) |
+| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
+| Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
+
+**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.33.0 (corepack-pinned), gh CLI. See `.agents/cloud.md` for paste-in recipe + sharing-across-repos pattern.
 
 ---
 

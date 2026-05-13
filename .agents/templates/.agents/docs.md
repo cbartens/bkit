@@ -118,7 +118,7 @@
 | --- | --- |
 | `.agents/skills.md` | Registry of installed agent skills and install/update commands. |
 | `.agents/workflows.md` | Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog. |
-| `.agents/cloud.md` | Claude Code on the web — copy-paste recipe for cloud environment (setup script, env vars, network) + repo-side SessionStart hook. |
+| `.agents/cloud.md` | Cloud agent environments — Claude Code on the web (setup script + env vars in Claude app) AND Cursor Background Agents (`.cursor/Dockerfile` + `environment.json` + Linear preflight). Aligned on vale 3.9.1 + pnpm 10.33.0. |
 | `docs/plans/template.md` | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
 
 ### Setup

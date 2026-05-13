@@ -3,7 +3,8 @@
   "hooks": {
     "sessionStart": [
       {
-        "command": "echo '[bkit] session started'"
+        "command": ".cursor/hooks/preflight.sh",
+        "failClosed": true
       }
     ],
     "sessionStop": [

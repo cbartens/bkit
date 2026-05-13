@@ -150,7 +150,7 @@ gh run list --branch feat/{FID} --limit 3
 
 Or use the GitHub Actions tab → "CI" → "Run workflow" → select the branch.
 
-This mirrors the pattern in `app-gether-life/.github/workflows/ci.yml`.
+This mirrors the same workflow_dispatch + branch-select pattern used in bkit consumer repos.
 
 ### `bkit install` three-phase contract
 

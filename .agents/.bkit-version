@@ -9,9 +9,9 @@
     ".agents/docs.md": "21b5bfa2bbf7c3d06a569e76be71a792b6bdecba3195aab9da6659b91f58c586",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
     ".claude/hooks/preflight.sh": "3a5e1fd9a2d3b17553df7e362285aa8e4d9ef591e2b599c1a9b5a53eef44b9fc",
-    ".cursor/Dockerfile": "4dbb9ef11c561733d98fbd78aa6320a099519b8315d3ca678a20614b92ecddf5",
+    ".cursor/Dockerfile": "62260a51f38982e65201352767946727fd7e8636523ec119f5b31bcb4cd49af4",
     ".cursor/environment.json": "88cf75ea248572e129cfe6bbc36ca8a37704661f82c89f5a3205ec43539beaf6",
-    ".cursor/hooks/preflight.sh": "13e6cf83aa8e09db9bd465db4c39a7778b280add9609b263a984bb2637e749c6",
+    ".cursor/hooks/preflight.sh": "b00abf2847cba864c62866879b30635c487d14249b691cabf270ddb55dd57fea",
     ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
     ".cursor/settings.json": "1b4f18de636c8c03ba0b748fb57499c71816ac34cfd5e3cc0c5ddb57c263d972",
     ".husky/pre-commit": "36bbb7ed74e56f4b02974f7ff3d2b0b5d5fe6c4518e982c8f4ca1eb2eda98bba",
@@ -33,9 +33,11 @@
     "docs/webhooks.md": "c8c11dcd84fae1815a36978e7a83ab26d45406edbbd6d66697c0eb7bdadff7e9",
     "slop-scan.config.json": "6186de06a906ba7340a6faa95a4acb42f37f1d18500c8f5e3bf1e104e44e098e",
     "gitattributes": "c1b6f47d9ef1abc3726b77c857431cc507d9c85bc8a3be5e729c76a5d75ba44e",
-    "docs/plans/template.md": "8e149180c113f24ad5576ee504349f008163f9583635b1efa4174b609674ed67",
+    "docs/plans/template.md": "c9e80491f65e5639a405dc96e78428ed466a359ee2197cfcd83720f93e95de0d",
     "docs/dispatch.md": "f5b8265f91b58e26c5b84f3b76916653d1898f75a3327445f283b220a3689da6",
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
-    "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8"
+    "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
+    ".claude/hooks/cloud-bootstrap.sh": "839c727d18c7d62c9120c9fbc2cdfc870489bcdfc1b2f5ddfa1a615e24ca3214",
+    ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f"
   }
 }

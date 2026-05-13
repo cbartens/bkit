@@ -2,7 +2,7 @@
 //
 // Heavily-customised consumer fixture → surgical uninstall → consumer files byte-identical.
 //
-// This fixture simulates gether-life-style customisations:
+// This fixture simulates a heavily-customised consumer repo:
 //   - .claude/settings.json with consumer Stop hook (Tier-1 but consumer-modified)
 //   - .cursor/hooks.json with consumer failClosed/loop_limit (Tier-1 but consumer-modified)
 //   - AGENTS.md with consumer rules outside bkit markers (Tier-2 — strip block only)
