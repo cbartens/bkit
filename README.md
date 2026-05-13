@@ -76,6 +76,12 @@ pnpm exec bkit check --full
 
 > **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
 
+## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
+
+bkit ships repo-side scaffolding for both cloud agents — `.claude/hooks/cloud-bootstrap.sh` (per-session install) and `.cursor/Dockerfile` + `.cursor/environment.json` + `.cursor/hooks.json` (Cursor cloud image + Linear preflight). The **online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) is configured once per machine / account.
+
+Full recipe + paste-in setup script + env-var inventory + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
+
 ## JSON ownership model — deep-containment (v2.0.0+)
 
 Starting v2.0.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment** instead of the former `__bkit__` envelope. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` upgrade byte-identically — no special key or wrapper required.

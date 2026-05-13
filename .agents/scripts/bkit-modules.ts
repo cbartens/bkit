@@ -572,9 +572,21 @@ export function runClaudeModule(ctx: ModuleContext): void {
         id: "cloud-env-customize",
         severity: "advisory",
         detect:
-          "Both Claude Code on the web and Cursor Background Agents need cloud env config. Claude's lives in the Claude app (setup script + env vars); Cursor's lives in `.cursor/Dockerfile` + `.cursor/environment.json` in the repo. Repo-side hooks (.claude/hooks/cloud-bootstrap.sh, .cursor/hooks/preflight.sh) handle per-session install + Linear preflight respectively.",
+          "Cloud env config splits across the repo (scripts + Dockerfile, bkit-managed) and the online dashboards (env vars + auth tokens, manual). Claude Code on the web reads its setup script + env vars from the Claude app; Cursor Background Agents read `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars from Cursor Settings.",
         action:
-          "Customization model: `.cursor/Dockerfile` and `.claude/hooks/cloud-bootstrap.sh` are Tier 2 managed blocks — bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; add per-repo install steps OUTSIDE those markers (Node major, Playwright, Supabase CLI, monorepo prebuild, etc.). `.cursor/environment.json` is Tier 3 (fully consumer-owned). (1) Open `.cursor/Dockerfile`: change Node major above the bkit block if `engines.node` differs; add system deps below the bkit block. (2) Open `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (examples inlined). (3) For Claude Code on the web: open claude.ai/code → environment selector → + Add environment, paste the Setup script / env vars / network access recipe from `.agents/cloud.md` § Claude Code on the web. The same env (e.g. `bkit-shared`) can be reused across bkit and consumer repos — see § Sharing across repos. (4) For Cursor Background Agents: set `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN` in Cursor → Settings → Background Agents → Environment Variables. First session after Dockerfile changes rebuilds the image.",
+          "Three locations to touch — full recipe in `.agents/cloud.md`.\n\n" +
+          "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
+          "  - `.cursor/Dockerfile`: change Node major above the bkit block if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below.\n" +
+          "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n" +
+          "  - `.cursor/environment.json`: Tier 3, fully consumer-owned — set `install` / `start` / `terminals[]` / `env` for your stack.\n\n" +
+          "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
+          "  - Name: `bkit-shared` (or per-repo).\n" +
+          "  - Setup script: paste from `.agents/cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
+          "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+          "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.\n\n" +
+          "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
+          "  - `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — don't hardcode.\n" +
+          "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.",
       });
     }
   }

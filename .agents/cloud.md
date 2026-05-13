@@ -13,6 +13,16 @@
 
 > **Host-delta matrix:** `.agents/IDEs.md` § Runtime environment (cloud agents). That table is the canonical "what differs" reference for Claude vs Cursor cloud agents. This file = paste-in setup recipe, alignment guarantees, sharing-across-repos pattern, and caveats.
 
+## What lives where (orient first)
+
+<!-- prettier-ignore -->
+| Configuration | Lives in the repo (bkit-managed) | Lives in the online dashboard (manual, one-time) |
+| --- | --- | --- |
+| **Claude Code on the web** | `.claude/hooks/preflight.sh` (Linear guard) + `.claude/hooks/cloud-bootstrap.sh` (per-session install — Tier 2 markered, customise outside markers) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`), **network access** (`Trusted`) |
+| **Cursor Background Agents** | `.cursor/Dockerfile` (Tier 2 markered toolchain block + consumer extensions) + `.cursor/environment.json` (consumer-owned `install` / `start` / `terminals[]` / `env`) + `.cursor/hooks.json` (wires preflight `failClosed: true`) + `.cursor/hooks/preflight.sh` (Linear guard) | Cursor → **Settings → Background Agents → Environment Variables**: `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. (`LINEAR_ISSUE_ID` injected per-session by the integration — don't hardcode.) |
+
+**Rule of thumb:** if it's an env var or auth token, it goes in the online dashboard (out of git). If it's a script / Dockerfile / install hook, it lives in the repo.
+
 **Alignment guarantees bkit enforces:**
 
 - Same vale version (3.9.1) pre-installed on both clouds.
