@@ -18,11 +18,18 @@
 - **Instructions only:** NO rationale, NO parentheticals explaining "why", NO inline comments justifying behaviour.
 - **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
 - **Self-contained:** Each prompt file MUST stand alone. NO cross-references to `.agents/prompts.md` or other meta docs. If the agent needs the rule, inline it; if it doesn't, leave it out.
+- **Standalone-runnable:** Each prompt works invoked outside any workflow. All inputs arrive via orchestrator-supplied Read paths. Multi-agent coordination uses the `**Parallel:**` and `**Lens discipline:**` Contract clauses.
+- **Generic Role, specific Process:** `Role:` and `description:` use generic seniority titles ("Senior X", "Veteran X"). Lens-specific behaviour lives in Process steps. Parallel siblings share identical `Role:` lines.
 - **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.agents/prompts.md`) — NEVER in the per-agent prompt files.
 - **Reuse wording and formatting:** ALWAYS `grep .agents/prompts/` before writing. Copy closest existing phrasing AND formatting verbatim — backtick conventions, indentation, line breaks, punctuation, spacing.
 - **Cross-prompt alignment:** ALWAYS change shared lines in ALL prompts using them.
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
 - **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
+- **Output section shape** content drives format:
+  - Section content is a list of **short structured fields** (single-phrase values, enum picks, one-sentence answers) → flat bracket: `[Field1 (hint), Field2 (hint), Field3 (hint)]`. One bracketed line, comma-separated.
+  - Section content is **freeform, multi-finding, or multi-paragraph** (prose, prioritised lists, per-item findings, tables) → its own heading + bracketed instruction: `## Section\n\n[Instructions describing what goes here; initially set to `PENDING`.]`
+  - Mixed sections (some short fields + some freeform) → split into sub-headings (H3) under one H2; each sub-heading follows the rule above.
+- **Output Lens line:** Parallel-sibling outputs carry one `Lens:` line directly under the H1 (deliverable name) to identify the lens that generated the artifact. Pattern: `Lens: {Name} — {comma-separated qualifiers}.` or compact `Lens: {field list}.` Single-line, no blank inside, blank line before next heading.
 
 ## Frontmatter Conventions
 
@@ -191,7 +198,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-generate` | Generate unified design draft from brainstorms; append `decisions.md`/`pending.md` if applicable. |
 | `bkit-design-review-1` | Feasibility research with `WebFetch`/`WebSearch`; ecosystem search per capability; writes review log. |
 | `bkit-design-review-2` | Same as `-1`; runs in parallel with cross-tier model diversity. |
-| `bkit-design-update` | Apply CRITICAL + consensus-OPTIONAL items from both reviews; whole-doc rewrite of design. |
+| `bkit-design-update` | Apply CRITICAL + merit-OPTIONAL items from both reviews; whole-doc rewrite of design. |
 | `bkit-design-organise` | Decompose `design-v2-reviewed.md` into dependency-annotated workstreams (`WS-1`, `WS-2`, …); inline `Requires` per workstream; `FAIL` if cycles detected. Workflow Step 9 (`design-workstream-issues`) consumes this output to spawn one Linear sub-issue per `WS-N` with `blockedBy` edges. |
 | `bkit-design-summary` | Read-only verdict on design doc + spike. |
 

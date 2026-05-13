@@ -29,6 +29,7 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Generate design only; do NOT build, install, or write code.
+- **Multi-lens inputs:** Inputs carry distinct lenses. Merge across them as raw material; do NOT compare for agreement or collapse to a consensus. Consolidate towards the strongest 2–3 approaches, NOT a watered-down union of all. Single-input approaches are normal, not outvoted.
 
 **Process:**
 
@@ -36,12 +37,12 @@ maxTurns: 50
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Identify themes, complementary ideas, conflicts.
+5. Identify themes, complementary ideas, conflicts. Risk-premortem mitigations are additive — layer them onto whichever approach is selected, NOT as a separate approach.
 6. Each conflict → pick stronger, justify.
 7. Draft `Acceptance Scenario` — initial draft only (expanded later):
-   - **Narrative:** 2–3 sentences, user POV (NOT system POV).
-   - **Success Criteria:** ≤5 high-level measurable outcomes. NO tests. NO implementation steps.
-   - **Key Edge Cases:** ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
+   - Narrative: 2–3 sentences, user POV (NOT system POV).
+   - Success Criteria: ≤5 high-level measurable outcomes. NO tests. NO implementation steps.
+   - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
 8. Preserve strongest approaches. Consolidate Decisions.
 9. New architecture/technology decisions (if any) → append `docs/decisions.md`.
 10. Out-of-scope ideas (if any) → append `docs/pending.md`.
@@ -53,7 +54,19 @@ maxTurns: 50
 
 ## Acceptance Scenario
 
-[Narrative (2–3 sentences, user POV) + Success Criteria (≤5 high-level, measurable; NO tests, NO implementation) + Key Edge Cases (design-shaping only). NO Concrete Example, NO Test Matrix (expanded later); initially set to `PENDING`.]
+[Initial draft only — NO Concrete Example, NO Test Matrix (expanded later).]
+
+### Narrative
+
+[2–3 sentences, user POV (NOT system POV); initially set to `PENDING`.]
+
+### Success Criteria
+
+[≤5 high-level measurable outcomes. NO tests. NO implementation steps; initially set to `PENDING`.]
+
+### Key Edge Cases
+
+[Design-shaping cases only — concurrency, conflict resolution, failure modes, cross-feature interactions; initially set to `PENDING`.]
 
 ## Architecture
 
