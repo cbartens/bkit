@@ -134,7 +134,7 @@ description: "Build Feature — Autonomous implementation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`.lock` exists at `$REPO_ROOT/docs/plans/logs/{FID}/`)
+- [ ] Lock acquired (`$REPO_ROOT/docs/plans/logs/{FID}/.lock` exists)
 - [ ] Not blocked by any related issues
 - [ ] Long-branch advisory emitted
 - [ ] Issue update attempted (state `In Progress`, label `Build`)

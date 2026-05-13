@@ -109,7 +109,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`.lock` exists at `$REPO_ROOT/docs/plans/logs/{FID}/`)
+- [ ] Lock acquired (`$REPO_ROOT/docs/plans/logs/{FID}/.lock` exists)
 - [ ] `PARENT_FID` extraction from issue description attempted
 - [ ] Issue update attempted (state `In Progress`, label `Plan`)
 - [ ] Issue comment attempted (`Step 1` section)

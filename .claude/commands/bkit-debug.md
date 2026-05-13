@@ -137,7 +137,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`.lock` exists at `$REPO_ROOT/docs/plans/logs/{FID}/`)
+- [ ] Lock acquired (`$REPO_ROOT/docs/plans/logs/{FID}/.lock` exists)
 - [ ] `DEBUG_MODE` decided
 - [ ] `PR_NUMBER` extracted (`DEBUG_MODE` = pr only)
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
