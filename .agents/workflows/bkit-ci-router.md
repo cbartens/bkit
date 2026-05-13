@@ -22,8 +22,8 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 > - **Subagents:** Not used in this workflow — orchestrator dispatches sibling slash commands via the `Skill` tool; never invokes agents.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Router-only step verdicts use `OK | SKIP` for no-op skip cases.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Steps 1-4: file-only write on the runner's working copy of `feat/{FID}`. Single commit + push deferred to Step 5 (dispatch) and Failure Path. Commit messages: Step 5 → `docs({FID}): ci-router DONE [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED [skip ci]`. `[skip ci]` is load-bearing — prevents the router from triggering itself recursively via its own push.
-> - **Git:** Read-only for repo state queries (`gh pr view`, `gh run list`, `gh repo view`). Write allowed for status.json commit + push at Step 5 and Failure Path only. NEVER stage anything other than `docs/plans/logs/{FID}/status.json`; NEVER use `--no-verify`. Destructive git **PROHIBITED**.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step status.json write + commit on `feat/{FID}` (no push); single push deferred to Step 5 (dispatch) and Failure Path. Per-step commit messages: `chore({FID}): ci-router-{step-name}`. Close push messages: Step 5 → `docs({FID}): ci-router DONE [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED [skip ci]`. `[skip ci]` on the close commit is load-bearing — prevents the router's own push from triggering CI recursively.
+> - **Git:** Read-only for repo state queries (`gh pr view`, `gh run list`, `gh repo view`). Write allowed for per-step status.json commits and the single close push at Step 5 / Failure Path. NEVER stage anything other than `docs/plans/logs/{FID}/status.json` (`git add -A` is fine — no other files should have changed); NEVER use `--no-verify`. Destructive git **PROHIBITED**.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
 > - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
 > - **Timeouts:** **If** workflow run > 600 seconds → **Failure Path**.
@@ -33,15 +33,15 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 ## 🤖 Failure Path
 
-1. Update status, commit, and push:
+1. Update status, commit, and push (single push for any accumulated per-step commits + this close commit):
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    if [ -f "$STATUS" ]; then
      t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-     git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
-     git -C "$REPO_ROOT" commit -m "chore({FID}): ci-router FAILED [skip ci]" 2>/dev/null || true
-     git -C "$REPO_ROOT" push origin "$(git -C "$REPO_ROOT" branch --show-current)" 2>/dev/null || true
+     git add -A 2>/dev/null || true
+     git commit --allow-empty -m "chore({FID}): ci-router FAILED [skip ci]" 2>/dev/null || true
+     git push origin "$(git branch --show-current)" 2>/dev/null || true
    fi
    ```
 2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -79,7 +79,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    ```
    Assert non-empty. **Else** → **Failure Path**.
 9. `get_issue({ id: "{ISSUE_ID}" })` → extract `LABELS`. **If** MCP call fails → **Failure Path**.
-10. Initialise workflow + record step in `status.json` (file-only — commit + push deferred to Step 5):
+10. Initialise workflow + record step in `status.json` + commit (no push — push deferred to Step 5):
     ```bash
     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
     mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
@@ -92,6 +92,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
     t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
       '.[-1].steps += [{step:"ci-router-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add -A && git commit --allow-empty -m "chore({FID}): ci-router-start-workflow"
     ```
 11. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
     ```comment
@@ -114,21 +115,21 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 1. `gh run list --branch "$BRANCH" --limit 1 --json headSha --jq '.[0].headSha'` → extract `LATEST_RUN_SHA`. Assert non-empty. **Else** → **Failure Path**.
 2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `STEP_VERDICT` = `SKIP`. **Else** → `STEP_VERDICT` = `OK`.
-3. Record step in `status.json` (file-only):
+3. Record step in `status.json` + commit (no push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$STEP_VERDICT" \
      '.[-1].steps += [{step:"ci-router-stale-run-guard", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): ci-router-stale-run-guard"
    ```
 4. **If** `STEP_VERDICT` = `SKIP` → close workflow status + commit + push + append Linear no-op, then **STOP**:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
-   git -C "$REPO_ROOT" push origin "$(git -C "$REPO_ROOT" branch --show-current)"
+   git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
+   git push origin "$(git branch --show-current)"
    ```
    Then `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -151,21 +152,21 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 ## 🤖 Step 3 — Linear `Auto` Opt-In Gate
 
 1. **If** `Auto` NOT in `{LABELS}` → set `STEP_VERDICT` = `SKIP`. **Else** → `STEP_VERDICT` = `OK`.
-2. Record step in `status.json` (file-only):
+2. Record step in `status.json` + commit (no push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$STEP_VERDICT" \
      '.[-1].steps += [{step:"ci-router-opt-in-gate", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): ci-router-opt-in-gate"
    ```
 3. **If** `STEP_VERDICT` = `SKIP` → close workflow status + commit + push + append Linear no-op, then **STOP**:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
-   git -C "$REPO_ROOT" push origin "$(git -C "$REPO_ROOT" branch --show-current)"
+   git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
+   git push origin "$(git branch --show-current)"
    ```
    Then `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -191,13 +192,14 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    ```bash
    if [ "$CI_STATUS" = "pass" ]; then DECISION="/bkit-ship {FID}"; else DECISION="/bkit-debug {FID} DEBUG_MODE=pr"; fi
    ```
-2. Record step in `status.json` (file-only):
+2. Record step in `status.json` + commit (no push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg d "$DECISION" \
      '.[-1].steps += [{step:"ci-router-decision", status:"DONE", at:$t, parentSha:$p, decision:$d, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): ci-router-decision"
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -216,7 +218,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 ## 🤖 Step 5 — Dispatch
 
-1. Close workflow status, commit, and push:
+1. Close workflow status, commit, and push (single push for all accumulated per-step commits + this close commit):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -224,9 +226,8 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
      '.[-1].steps += [{step:"ci-router-dispatch", status:"DONE", at:$t, parentSha:$p, decision:$d, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
-   git -C "$REPO_ROOT" push origin "$(git -C "$REPO_ROOT" branch --show-current)"
+   git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
+   git push origin "$(git branch --show-current)"
    ```
 2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
