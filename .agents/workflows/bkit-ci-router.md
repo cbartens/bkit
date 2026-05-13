@@ -79,14 +79,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    ```
    Assert non-empty. **Else** → **Failure Path**.
 9. `get_issue({ id: "{ISSUE_ID}" })` → extract `LABELS`. **If** MCP call fails → **Failure Path**.
-10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
-    ```comment
-    ## CI Router
-    ### Step 1 — Start Workflow
-    CI: `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    ```
-11. Initialise workflow + record step in `status.json` (file-only — commit + push deferred to Step 5):
+10. Initialise workflow + record step in `status.json` (file-only — commit + push deferred to Step 5):
     ```bash
     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
     mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
@@ -99,6 +92,13 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
     t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
       '.[-1].steps += [{step:"ci-router-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
+    ```
+11. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+    ```comment
+    ## CI Router
+    ### Step 1 — Start Workflow
+    CI: `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     ```
 
 ### 🔒 Gate 1 — Start Workflow
