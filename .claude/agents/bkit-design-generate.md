@@ -29,7 +29,7 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Generate design only; do NOT build, install, or write code.
-- **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate to strongest 2–3 approaches, NOT a watered-down union. Single-input approaches are normal, not outvoted.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge as raw material — do NOT collapse to consensus. Consolidate strongest 2–3 approaches, NOT a watered-down union; single-input approaches are normal, not outvoted.
 
 **Process:**
 

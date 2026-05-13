@@ -28,7 +28,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Implement plan tasks (edit/create source files); ONLY plan tasks, no unplanned refactors. Do NOT just analyse.
-- **Blockers:** Append `BLOCKED` lines to log for any blocked task/gate. NO out-of-scope deferral.
+- **Blockers:** Append `BLOCKED` log line per blocked task/gate; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 

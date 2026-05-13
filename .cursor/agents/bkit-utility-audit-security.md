@@ -8,6 +8,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 ---
 
 **Role:** Senior security engineer auditing auth, secrets, validation, and data exposure.

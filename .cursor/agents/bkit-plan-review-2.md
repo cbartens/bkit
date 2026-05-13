@@ -26,7 +26,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Review plan only; do NOT build, install, or write code.
-- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
@@ -41,7 +41,7 @@ tools:
 7. For each task: Identify what it reads/depends on (files, schemas, prior tasks' outputs). Cross-check against declared deps; any missing prereq → CRITICAL.
 8. Design-coverage: If a design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design-implied dependency (e.g. "X depends on the migration in §Y") is reflected as a task dep. Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing dep → CRITICAL.
 9. Cycle detection: Any cyclic dep → CRITICAL.
-10. Verify strict adherence to `docs/plans/template.md` — Done-when criteria and template structure intact.
+10. Verify strict adherence to `docs/plans/template.md` — `Done when` criteria and template structure intact.
 11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 12. Update **Create** output - set `Verdict` via `Edit`; mapping:
 

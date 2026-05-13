@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---
@@ -34,7 +35,7 @@ maxTurns: 50
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo) — narrower scope than `audit-codebase`.
+3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo).
 4. Backend: Vitest only. No Playwright for APIs. Mock HTTP, assert DB.
 5. Integration: ≥1 test hitting API vs local DB without ORM mocking (`npm run test:integration`).
 6. UI: Playwright for visual DOM only.

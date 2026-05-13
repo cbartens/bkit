@@ -19,7 +19,7 @@
 - **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
 - **Self-contained:** Each prompt file MUST stand alone. NO cross-references to `.agents/prompts.md` or other meta docs. If the agent needs the rule, inline it; if it doesn't, leave it out.
 - **Standalone-runnable:** Each prompt works invoked outside any workflow. All inputs arrive via orchestrator-supplied Read paths. Multi-agent coordination uses the `**Parallel:**` and `**Lens discipline:**` Contract clauses.
-- **Generic Role, specific Process:** `Role:` and `description:` use generic seniority titles ("Senior X", "Veteran X"). Lens-specific behaviour lives in Process steps. Parallel siblings share identical `Role:` lines.
+- **Generic Role, specific Process:** `Role:` and `description:` anchor on seniority titles ("Senior X", "Veteran X"). Lens-specific behaviour lives in Process steps. Where sibling lenses define distinct disciplines, the lens MAY differentiate the `Role:` line; siblings still share the seniority anchor. Where the lens is a priority weighting rather than a discipline, `Role:` lines MUST be identical and lens lives entirely in Process.
 - **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.agents/prompts.md`) — NEVER in the per-agent prompt files.
 - **Reuse wording and formatting:** ALWAYS `grep .agents/prompts/` before writing. Copy closest existing phrasing AND formatting verbatim — backtick conventions, indentation, line breaks, punctuation, spacing.
 - **Cross-prompt alignment:** ALWAYS change shared lines in ALL prompts using them.
@@ -87,11 +87,15 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 <!-- prettier-ignore -->
 | Pattern | Tools | Agents |
 | --- | --- | --- |
-| Pure summarizer | `Read, Write` | `bkit-build-summary`, `bkit-debug-summary`, `bkit-design-summary`, `bkit-plan-summary`, `bkit-ship-summary`, `bkit-debug-abort-handover` |
-| Read-only reviewer | `Read, Grep, Glob, Write` | `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-design-brainstorm-ideate-*`, `bkit-plan-review-*`, `bkit-plan-scope-check-*`, `bkit-plan-complexity-check`, `bkit-debug-failure-diagnose`, `bkit-debug-observe-instrument`, `bkit-debug-observe-analyse`, `bkit-debug-observe-revert` |
-| Doc writer | `Read, Grep, Glob, Write, Edit` | `bkit-design-generate`, `bkit-design-organise`, `bkit-design-update`, `bkit-plan-generate`, `bkit-plan-update`, `bkit-plan-complexity-split`, `bkit-ship-update-docs`, `bkit-utility-update-documentation`, `bkit-utility-update-references`, `bkit-utility-compress-markdown`, `bkit-utility-audit-codebase`, `bkit-utility-audit-security`, `bkit-utility-audit-tests`, `bkit-build-plan-verify`, `bkit-build-challenge-reconcile` |
-| Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-ship-conflict-resolve`, `bkit-utility-audit-logs`, `bkit-utility-audit-logs-ship` |
-| Skill-installer / Bash-only utility | `Read, [Grep, Glob,] Bash` | `bkit-build-install-skills` |
+| Pure summarizer | `Read, Write, Edit` | `bkit-build-summary`, `bkit-debug-summary`, `bkit-design-summary`, `bkit-plan-summary`, `bkit-ship-summary`, `bkit-debug-abort-handover` |
+| Read-only reviewer | `Read, Grep, Glob, Write` | `bkit-design-brainstorm-ideate-*`, `bkit-plan-complexity-check` |
+| Stub-replace reviewer | `Read, Grep, Glob, Write, Edit` | `bkit-plan-review-*`, `bkit-plan-scope-check-*`, `bkit-plan-complexity-split`, `bkit-design-generate`, `bkit-plan-generate`, `bkit-utility-compress-markdown`, `bkit-utility-update-documentation` |
+| Stub-replace + log-append reviewer | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-challenge-1`, `bkit-build-challenge-2`, `bkit-build-plan-verify`, `bkit-debug-failure-diagnose`, `bkit-debug-observe-analyse` |
+| Doc rewriter (cp + Edit) | `Read, Grep, Glob, Edit, Bash` | `bkit-design-update`, `bkit-plan-update`, `bkit-build-challenge-reconcile` |
+| Doc writer (with shell) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-design-organise`, `bkit-ship-update-docs`, `bkit-utility-audit-codebase`, `bkit-utility-audit-security`, `bkit-utility-audit-tests` |
+| Source modifier (with test gate) | `Read, Grep, Glob, Write, Edit, Bash` | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-build-challenge-tests`, `bkit-debug-failure-remediate`, `bkit-debug-observe-instrument`, `bkit-debug-observe-revert`, `bkit-ship-conflict-resolve`, `bkit-utility-audit-logs`, `bkit-utility-audit-logs-ship` |
+| Reference fixer | `Read, Glob, Write, Edit` | `bkit-utility-update-references` |
+| Skill-installer / Bash-only utility | `Read, Grep, Glob, Bash` | `bkit-build-install-skills` |
 | Investigator (web access) | `Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch` | `bkit-design-review-1`, `bkit-design-review-2` |
 
 ### `maxTurns` calibration

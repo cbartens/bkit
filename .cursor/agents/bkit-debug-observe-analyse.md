@@ -27,7 +27,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Analyse observations only; do NOT build, install, or write code.
-- **Single-shot:** Runs once per instrumented push; not part of any retry loop.
+- **Single-shot:** Runs once per instrumented push.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -39,7 +39,7 @@ tools:
 5. Cross-reference each `[DEBUG-OBSERVE]` line from inputs back to its `Hypothesis {N}` from any prior diagnosis.
 6. Read CI/CD logs from input Context (NEVER `/tmp/`).
 7. Extract every `[DEBUG-OBSERVE]` line — group by source location; >100 hits → sample evenly per location and note `(N total, M sampled)` in `Evidence Extracted`.
-8. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.
+8. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 9. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = at least one hypothesis confirmed/rejected with concrete evidence (root cause may or may not be fully refined).
    - `FAIL` = no useful evidence captured (logs missing, agent never ran, all observations inconclusive).
@@ -64,7 +64,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Evidence Extracted
 
-[`[DEBUG-OBSERVE]` lines grouped by location, with values/timing]
+[`[DEBUG-OBSERVE]` lines grouped by location, with values/timing; initially set to `PENDING`.]
 
 ## New Observations
 

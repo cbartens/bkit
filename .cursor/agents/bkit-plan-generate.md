@@ -26,7 +26,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Generate plan only; do NOT build, install, or write code.
-- **Workstreams:** If input includes Workstream directives → plan MUST cover ONLY specified workstream scopes. Treat any provided parent design as context ONLY, NOT backlog. Surface any required workstream dependencies at top of plan.
+- **Workstreams:** **If** input includes Workstream directives → plan MUST cover ONLY specified workstream scopes. Treat any provided parent design as context ONLY, NOT backlog. Surface required workstream dependencies at top of plan.
 
 **Process:**
 
@@ -35,7 +35,7 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Build chronological steps and strict 🔒 Gates per `docs/plans/template.md`.
-6. Every task in `Agent Execution Runbook` MUST carry a `Done when` completion criteria entry that is terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour); tasks without it are rejected. Derive from matching `Derived Test Matrix` row where applicable.
+6. Every `Agent Execution Runbook` task MUST carry a `Done when` entry — terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Tasks without it are rejected. Derive from matching `Derived Test Matrix` row where applicable.
 7. `Acceptance Scenario` per template section (expand NOT replace on design if provided).
 8. `Supersession Inventory` per template section. "None" if plan adds without replacing.
 9. New architecture/technology decisions (if any) → append `docs/decisions.md`.

@@ -28,6 +28,7 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Mandate:** Split plan only; do NOT build, install, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**

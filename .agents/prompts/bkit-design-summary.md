@@ -6,6 +6,7 @@ model: claude-haiku-4-5-20251001
 tools:
   - Read
   - Write
+  - Edit
 permissionMode: acceptEdits
 maxTurns: 25
 ---
@@ -37,7 +38,7 @@ maxTurns: 25
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Unchecked human-confirmation gates EXPECTED on new design (human checks AFTER reading). Do NOT downgrade verdict if that is ONLY issue; note under Action Items.
+7. Unchecked human-confirmation gates EXPECTED on new design. Do NOT downgrade verdict for this alone; note under `Action Items`.
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = design ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope concerns.

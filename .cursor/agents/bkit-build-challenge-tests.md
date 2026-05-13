@@ -27,7 +27,9 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Write tests ONLY; NO implementation changes. Vitest for API/backend, Playwright for UI E2E. Feature's changed files only.
+- **Blockers:** Append `BLOCKED` log line per blocker; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
@@ -56,11 +58,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None; initially set to `PENDING`.]
+[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"; initially set to `PENDING`.]
 
 ## Bugs Discovered
 
-[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict.. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after generating tests and producing output. Do NOT change implementation, expand scope.**

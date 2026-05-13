@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---
@@ -28,8 +29,8 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Mandate:** Challenge plan implementation only; do NOT build, install, or write code.
-- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Mandate:** Challenge diff only; do NOT build, install, or write code.
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
@@ -38,7 +39,7 @@ maxTurns: 50
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/security.md`; skip missing.
-4. Update **Create** output after each finding — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
+4. Update **Create** output after each finding — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 5. Read supplied diff fully. **If** input Context flags partial-diff → record `partial diff coverage` in verdict; limit findings to scope of provided content.
 6. Explore security vectors — adversarial mindset on every modified surface:
    - Auth & AuthZ: Missing checks, role/permission gaps, session/token handling, privilege escalation.
@@ -52,7 +53,8 @@ maxTurns: 50
    - `class: mechanical` = surgical edit, NO redesign required (missing `deleted_at` filter, missing auth check, missing input validator, missing redaction, hardcoded secret to swap for env var).
    - `class: architectural` = redesign required (auth model wrong, tenancy boundary in wrong layer, RLS policy structurally broken, requires plan/design rework).
 8. Cross-reference findings against relevant docs in `.agents/docs.md` but specifically `docs/security.md`.
-9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+9. Update **Create** output - set `Failures` count via `Edit` = number of CRITICAL findings; do NOT count incomplete findings.
+10. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = no findings.
    - `CONCERNS` = findings present, max severity <= HIGH.
    - `FAIL` = any CRITICAL finding.

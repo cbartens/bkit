@@ -8,6 +8,7 @@ tools:
   - Grep
   - Glob
   - Write
+  - Edit
   - Bash
 permissionMode: acceptEdits
 maxTurns: 50
@@ -29,7 +30,7 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Add `[DEBUG-OBSERVE]`-prefixed logging. ONLY observation changes, no bug fixes, no refactors, no behaviour changes.
-- **Single-shot:** Runs once per instrumented push; not part of any retry loop.
+- **Single-shot:** Runs once per instrumented push.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
@@ -43,9 +44,9 @@ maxTurns: 50
 - Data flow boundaries (API I/O, middleware, DB results).
 - Conditional branches near suspected root cause.
 - Timing markers for suspected races.
-- Cap at ~10 log calls (over-instrumenting pollutes CI output).
+- Cap at ~10 log calls.
 
-5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` to verify instrumentation didn't break behaviour.
+5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`.
 6. **If** any failures → document errors in output.
 7. Produce **Create** output.
 
@@ -58,7 +59,7 @@ maxTurns: 50
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+[Per blocker: id + reason. ≥1 blocker means caller treats this run as failed. Else "None"]
 ```
 
 > ⛔ **STOP after instrumenting logging and producing output. Do NOT commit, push — caller orchestrates the next step.**

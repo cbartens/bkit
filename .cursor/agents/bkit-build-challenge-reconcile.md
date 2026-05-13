@@ -10,7 +10,7 @@ tools:
   - Bash
 ---
 
-**Role:** Senior reviewer reconciling separate findings into a single build challenge.
+**Role:** Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 **Scope:** As specified by input and Read/Update/Create section.
 
 > [!CAUTION]
@@ -36,7 +36,7 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Deduplicate same `file:line` reference or same root-cause keyword cluster → merge into one finding citing both reviewers; else keep separate with attribution.
 5. For merged findings with divergent severities, adopt the higher severity (`CRITICAL > HIGH > MEDIUM > LOW`) by default. Downgrade ONLY with explicit justification and citing both reviewers' evidence. **If** any CRITICAL-severity finding → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
-6. Add `agreement: {N}/{total}` counts to every finding as confidence signal.
+6. Add `agreement: {N}/{total}` counts per finding.
 7. Per finding check → ALL require: Severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), location (file:line), exploit scenario, suggested fix.
 8. Write unified Findings section to **Create** output via `Edit`; sort findings by descending severity.
 9. Update **Create** output - set `Failures` count via `Edit`; `Failures` count = number of CRITICAL findings post-deduplication; do NOT count incomplete findings.

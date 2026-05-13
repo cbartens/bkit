@@ -5,6 +5,7 @@ model: composer-2
 tools:
   - Read
   - Write
+  - Edit
 ---
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
@@ -22,10 +23,10 @@ tools:
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Mandate:** Write handover only; do NOT fix or change code.
+- **When:** Invoked when max remediation retries exceeded or agent irrecoverably blocked.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 - **Terminal handover:** Output is read by humans + posted to Linear verbatim. Orchestrator does NOT extract a verdict — workflow is already FAILED at this point.
-
-**When:** Max remediation retries exceeded, or agent irrecoverably blocked.
 
 **Process:**
 
@@ -50,7 +51,7 @@ tools:
 
 ## Attempt History
 
-[Table of attempts: Strategy (STANDARD/PIVOT/FINAL), what was tried, why it failed; initially set to `PENDING`.]
+[Table of attempts: `Strategy` (STANDARD/PIVOT/FINAL), what was tried, why it failed; initially set to `PENDING`.]
 
 ## Verified Resolutions (DO NOT ROLL BACK)
 

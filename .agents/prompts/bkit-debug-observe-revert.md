@@ -8,6 +8,8 @@ tools:
   - Grep
   - Glob
   - Write
+  - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 25
 ---
@@ -28,7 +30,8 @@ maxTurns: 25
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Strip `[DEBUG-OBSERVE]`-tagged lines. ONLY revert observation, no fixes, no refactors, no new logging.
-- **Single-shot:** Runs once per instrumented push; not part of any retry loop.
+- **Single-shot:** Runs once per instrumented push.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
@@ -48,7 +51,7 @@ maxTurns: 25
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+[Per blocker: id + reason. ≥1 blocker means caller treats this run as failed. Else "None"]
 ```
 
 > ⛔ **STOP after reverting logging and producing output. Do NOT fix, change code.**

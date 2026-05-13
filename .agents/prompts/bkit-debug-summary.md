@@ -6,6 +6,7 @@ model: claude-haiku-4-5-20251001
 tools:
   - Read
   - Write
+  - Edit
 permissionMode: acceptEdits
 maxTurns: 25
 ---
@@ -57,7 +58,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Diagnosis Status
 
-[Root cause identified? Strategy used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`.]
+[Root cause identified? `Strategy` used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`.]
 
 ## Remediation Status
 

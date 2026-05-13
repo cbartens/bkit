@@ -27,8 +27,16 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Resolve mechanical conflicts only. On any ambiguity, abort cleanly and emit `FAIL`.
-- **Allowed resolutions:** Non-overlapping additive edits to same file → concatenate preserving both sides; formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format; `package.json` dep-version bumped on one side only → take bump; additive JSON array entries / object property additions with no key/position overlap → concatenate.
-- **Refused resolutions:** Same function / method body edited both sides; same JSON key with different values (excluding one-sided bumps above); same line edited both sides with different content; any conflict where merged intent is not unambiguously mechanical.
+- **Allowed resolutions:**
+  - Non-overlapping additive edits to same file → concatenate preserving both sides.
+  - Formatting-only drift (whitespace, trailing newline, prettier output) → take post-rebase format.
+  - `package.json` dep-version bumped on one side only → take bump.
+  - Additive JSON array entries / object property additions with no key/position overlap → concatenate.
+- **Refused resolutions:**
+  - Same function / method body edited both sides.
+  - Same JSON key with different values (excluding one-sided bumps above).
+  - Same line edited both sides with different content.
+  - Any conflict where merged intent is not unambiguously mechanical.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -46,7 +54,11 @@ tools:
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = rebase reproduced conflicts; every conflicted file classified `Allowed resolutions` and resolved; rebase completed; `pnpm install` / `pnpm typecheck` / `pnpm test` / `pnpm build` all exit 0.
     - `FAIL` = rebase did not reproduce conflicts (anomaly); or any conflicted file classified `Refused resolutions`; or `git rebase --continue` errored for a non-mechanical reason; OR any verify command exited non-zero.
-11. **If** `Verdict` = FAIL → `git rebase --abort 2>/dev/null || true`. Confirm working tree clean via `git status --short`. Do NOT remove the sentinel. Append `ABORTED — clean tree restored` log entry.
+11. **If** `Verdict` = FAIL:
+    - `git rebase --abort 2>/dev/null || true`.
+    - Confirm working tree clean via `git status --short`.
+    - Do NOT remove the sentinel.
+    - Append `ABORTED — clean tree restored` log entry.
 
 **Output format:**
 

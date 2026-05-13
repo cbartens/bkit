@@ -27,7 +27,8 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Mandate:** Brainstorm design approaches only; do NOT write design doc, plans, or code.
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 
 **Process:**

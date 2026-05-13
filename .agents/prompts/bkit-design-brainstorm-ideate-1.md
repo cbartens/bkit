@@ -27,14 +27,15 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel run:** If Context indicates parallel run, do NOT reference other agents' outputs (circular reasoning).
+- **Mandate:** Brainstorm design approaches only; do NOT write design doc, plans, or code.
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Propose 2–3 approaches grounded in current constraints — work with existing code, minimal new infra, ship fastest. Lead with recommended; each must be implementable in the existing codebase with the existing stack (no greenfield rewrites, no hypothetical infra). Reuse > extend > new. YAGNI ruthlessly. Do NOT contradict existing approved decisions. Per approach evaluate trade-offs:
+3. Propose 2–3 approaches grounded in current constraints — existing code, minimal new infra, ship fastest. Lead with recommended; each implementable in existing stack (no greenfield, no hypothetical infra). Reuse > extend > new; YAGNI ruthlessly; do NOT contradict approved decisions. Per approach evaluate trade-offs:
    - Complexity: LOW/MEDIUM/HIGH.
    - Extensibility: Future-change handling.
    - Risk: Main failure mode.

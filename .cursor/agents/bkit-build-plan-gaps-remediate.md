@@ -27,7 +27,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Apply gap fixes (edit/create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
-- **Blockers:** Append `BLOCKED` lines to log for any blocked gaps. NO out-of-scope deferral.
+- **Blockers:** Append `BLOCKED` log line per blocked gap; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -38,7 +38,7 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Read plan gaps and all log files (`DONE` gap entries = done, `BLOCKED` = blocked). Find first gap NOT `DONE` in logs and resume.
 5. Update **Create** output after each gap — append `DONE` / `BLOCKED` log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
-6. Determine `Strategy` from input Context; missing → `Verdict` = FAIL. Apply:
+6. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted remediation from current gaps.
    - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
    - `FINAL` → Run `pnpm outdated`. Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.

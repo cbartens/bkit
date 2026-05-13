@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---

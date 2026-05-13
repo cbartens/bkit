@@ -9,6 +9,7 @@ tools:
   - Glob
   - Write
   - Edit
+  - Bash
 permissionMode: acceptEdits
 maxTurns: 50
 ---
@@ -34,7 +35,7 @@ maxTurns: 50
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Run `pnpm outdated` to flag stale deps.
+3. Run `pnpm outdated`.
 4. Cross-check codebase domains (data, pipelines, webhooks, cron, blockers/ideas, testing, UI, observability) against their corresponding docs per `.agents/docs.md`. Flag gaps.
 5. Alternative approaches for scalability/performance/maintainability.
 6. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. **If** incomplete findings → not counted.
