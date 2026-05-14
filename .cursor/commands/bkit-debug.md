@@ -357,7 +357,13 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
      '.[-1].steps += [{step:"debug-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT}"
+   FIX_DESC=$(grep -m1 '^DONE — Step' "docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}-log.md" 2>/dev/null \
+     | sed -E 's/^DONE — Step [0-9]+: //; s/ — .*$//' \
+     | tr -d '\r\n`"\\' \
+     | sed -E 's/[[:space:]]+$//' \
+     | cut -c1-72)
+   [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt ${TEST_ATTEMPT}"
+   git add -A && git commit --allow-empty -m "fix({FID}): ${FIX_DESC}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -392,14 +398,13 @@
    fi
    ```
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-4. Update status and commit:
+4. Update status (file-only; Step 5 fix commit must remain HEAD so Step 7's push lands `fix(...)` as the CI-trigger HEAD — adding an intermediate `chore(...)` here would bury the fix):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
      '.[-1].steps += [{step:"debug-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -427,7 +432,7 @@
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. Increment `DEBUG_ATTEMPT` + 1.
-2. Update status and commit:
+2. Update status (file-only; Step 5 fix commit must be HEAD at push so CI / Vercel evaluate against `fix(...)` not a `chore(...)` follow-up):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -435,7 +440,6 @@
      '.[-1].steps += [{step:"debug-push-remediation", status:"DONE", attempt:$da, at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}"
    ```
 3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -446,7 +450,7 @@
 ### 🔒 Gate 7 — Push Remediation
 
 - [ ] `DEBUG_ATTEMPT` incremented
-- [ ] Commit pushed to branch
+- [ ] Step 5 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push)
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 7` section)
