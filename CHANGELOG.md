@@ -6,6 +6,35 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.1.0] — 2026-05-14
+
+### Added
+
+- **`/bkit-ci-router` slash command + GHA plumbing (BAR-148).** New auto-dispatch router (`.claude/agents/bkit-ci-router.md`, `.github/workflows/bkit-ci-router.yml`) that picks ship vs debug after each phase completes and writes its decision to `docs/plans/logs/{FID}/status.json`. Tier-1 auto-mirror keeps `.claude/` and `.cursor/` copies in sync; Skill→Task T2 transform routes consumer Cursor work through Background Agents. PR_URL/RUN_ID extraction, close-on-SKIP, canonical CAUTION block, BAR-187-compliant per-step commits, `in`/`not in` membership, enum-value backticking per `workflows.md` authoring rules.
+- **Cloud env recipe for Claude Code on the web + Cursor Background Agents (BAR-191).** `.agents/cloud.md` ships as canonical doc covering both providers. `bkit install` seeds `.claude/hooks/cloud-bootstrap.sh` (Tier-3 seed-or-print) and emits `cloud-env-customize` advisory pointing consumers at the customization seam. Cursor side ships Tier-2 markered `.cursor/Dockerfile` + `.cursor/hooks/cloud-bootstrap.sh` aligned to the Claude env. Docs spell out in-repo dispatch vs online-dashboard split so consumers pick the right entry point.
+- **`/bkit-debug` Step 3 fetch-logs (BAR-194).** Diagnosis now fetches relevant GCP log lines via `<debug-fetch>` markers in `docs/observability.md` before forming hypotheses, so root-cause analysis runs on runtime evidence, not code reading. Consumers add markers per service; bkit fetches and inlines log snippets into the diagnose payload.
+- **`bkit install` advisory expansion — 8 new detectors (BAR-195).** New advisories cover Tier-1 #7 concurrency drift, Tier-2 marker stubs without bodies, Tier-3 docs/script mismatch, plus wording cleanups across the existing advisory set. Catches more pre-flight drift before it becomes a CI failure.
+- **`pnpm test:integration` direct turbo dispatch (BAR-195).** `pnpm test:integration` now runs `turbo run test:integration --continue` directly (previously routed through a missing wrapper script that silently no-op'd). Missing-script detector warns consumers whose `package.json` lacks the script. Dev-rollback runbook added; KN-25 captures the silent-skip incident.
+- **`scripts/sync-github.sh` for managing GitHub Actions secrets (BAR-195).** One-shot `bash scripts/sync-github.sh` reads `.env` and applies via `gh secret set --env-file`, replacing the manual per-secret `gh secret set` dance. Bkit-repo-only; not shipped to consumers.
+- **Done-when enforcement gates across plan + build agents (BAR-168).** `Done when:` criterion per plan task — introduced advisory in 2.0.5, now enforced by `bkit-plan-review-1/2/3`, `bkit-plan-scope-check-1/2`, and `bkit-plan-verify`. Missing or vacuous Done-when fails the gate. Build-time verification matches the criterion against the Derived Test Matrix.
+
+### Changed
+
+- **Prompt authoring rules — sweeping alignment (BAR-193).** All agent prompts revised: verbose process steps compressed, contract clauses tightened, role-differentiation across parallel siblings (`design-review-1` vs `-2`, `brainstorm-ideate-1/2/3`, `plan-review-1/2/3`, `plan-scope-check-1/2`, `build-challenge-1/2`) so each sibling produces a distinct angle instead of redundant output. Workflow hygiene fixes: canonical Comments rule, fresh-comment discipline, save_comment as last sub-step before gate. `.claude/`/`.cursor/` mirrors regenerated; Models table rows updated.
+- **Bkit-shipped scripts renamed `bkit-*` and moved to `scripts/ci/` (BAR-195).** `scripts/bkit-set-protection.sh` replaces the prior loose script layout; `scripts/rollback-main.sh` removed (subsumed by the dev-rollback runbook + `bkit-set-protection.sh`). Prefix makes it obvious to consumers which scripts are bkit-managed Tier-3 templates vs their own. `deployments.md` tables wrapped with `<!-- prettier-ignore -->` for the new column widths.
+- **`turbo --continue` widened to build paths (BAR-195).** Build pipeline no longer aborts on first failure — partial failures surface together so a single CI run pinpoints all regressions instead of one-at-a-time whack-a-mole.
+- **Bkit-ci-router workflow compliance pass (BAR-148).** Per-step commit pattern aligned to BAR-187 (parentSha captured at step start, file-only writes between steps, single dev commit at Close Workflow). Step 4 (Append Decision) merged into Step 5 (Dispatch); DECISION variable dropped in favour of direct status.json read.
+
+### Fixed
+
+- **`.agents/cloud.md` missing from CANONICAL_OVERWRITE_RELPATHS (BAR-191).** First cut of the cloud doc shipped as Tier-2-style but the file wasn't in the canonical overwrite list, so consumer drift wouldn't trigger reconcile. Added to `CANONICAL_OVERWRITE_RELPATHS` in `bkit-modules.ts`; install now overwrites on every run.
+
+### Docs
+
+- **`.agents/` + `docs/` index files audited and resynced.** Top-level `.agents/docs.md`, `.agents/skills.md`, `.agents/prompts.md`, `.agents/workflows.md`, and `docs/dispatch.md` rewritten against current file state — entries for removed files dropped, new files added, descriptions tightened. Eliminates the staleness that's been accreting since 2.0.4.
+
+---
+
 ## [2.0.6] — 2026-05-12
 
 ### Changed
