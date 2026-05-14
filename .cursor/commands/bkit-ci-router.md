@@ -54,12 +54,12 @@
 
 ## 🤖 Step 1 — Start Workflow
 
-1. Read invocation args `{CI_STATUS}` and `{PR_NUMBER}`. Assert both non-empty. **Else** → **Failure Path**.
+1. Read invocation arguments `{CI_STATUS}` and `{PR_NUMBER}`. Assert both non-empty. **Else** → **Failure Path**.
 2. Normalise `CI_STATUS`:
    ```bash
    case "$(echo "$CI_STATUS" | tr '[:upper:]' '[:lower:]')" in
-     success|pass) CI_STATUS=pass ;;
-     failure|fail) CI_STATUS=fail ;;
+     success|pass) CI_STATUS=PASS ;;
+     failure|fail) CI_STATUS=FAIL ;;
      *) echo "Unrecognised CI_STATUS: $CI_STATUS" >&2; exit 1 ;;
    esac
    ```
@@ -93,7 +93,7 @@
     ```comment
     ## CI Router
     ### Step 1 — Start Workflow
-    CI: `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
+    CI `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     ```
 
@@ -166,35 +166,30 @@
 
 **Run only if** Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS.
 
-1. Resolve `DECISION`:
-   ```bash
-   if [ "$CI_STATUS" = "pass" ]; then DECISION="/bkit-ship {FID}"; else DECISION="/bkit-debug {FID} DEBUG_MODE=pr"; fi
-   ```
-2. Update status, commit, and push (single push for all accumulated per-step commits + this close commit):
+1. Update status, commit, and push:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg d "$DECISION" \
-     '.[-1].steps += [{step:"ci-dispatch", status:"DONE", at:$t, parentSha:$p, decision:$d, artifacts:[]}]' \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg cs "$CI_STATUS" \
+     '.[-1].steps += [{step:"ci-dispatch", status:"DONE", at:$t, parentSha:$p, ciStatus:$cs, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
    git push origin "$(git branch --show-current)"
    ```
-3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 4 — Dispatch - CI: {CI_STATUS} - Decision: {DECISION}
+   ### Step 4 — Dispatch - CI: {CI_STATUS}
    Head SHA: `{HEAD_SHA}`
    Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
    ```
-4. **If** `CI_STATUS` = pass → invoke `/bkit-ship {FID}` via `Task` tool.
-5. **Else if** `CI_STATUS` = fail → invoke `/bkit-debug {FID}` via `Task` tool.
-6. **Else** → **Failure Path**.
+3. **If** `CI_STATUS` = PASS → invoke `/bkit-ship {FID}` via `Task` tool.
+4. **Else if** `CI_STATUS` = FAIL → invoke `/bkit-debug {FID}` via `Task` tool.
+5. **Else** → **Failure Path**.
 
 ### 🔒 Gate 4 — Dispatch
 
-- [ ] `DECISION` resolved (`/bkit-ship {FID}` or `/bkit-debug {FID} DEBUG_MODE=pr`)
-- [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch` recorded with `parentSha`, `decision`)
+- [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch` recorded with `parentSha`, `ciStatus`)
 - [ ] Issue comment attempted (`Step 4` section)
 - [ ] Slash command invoked
 - [ ] Router process exits cleanly (the dispatched workflow now owns the session)
