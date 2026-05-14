@@ -21,17 +21,7 @@
 - Local repo on `main`, working tree clean, `gh auth status` green.
 - `jq` installed (`brew install jq` / system package manager).
 
-### One-shot script
-
-```bash
-pnpm rollback:main <green-sha>
-```
-
-The script: (1) saves current branch protection JSON → (2) disables protection → (3) force-resets `main` ref to the green SHA via the GitHub API → (4) restores the saved protection. Idempotent; safe to re-run. Pass `--dry-run` first to print every API call without executing.
-
-### Manual playbook (when the script does not apply)
-
-Use when the script errors, when restoring protection from a non-current owner, or when the platform CLI is unavailable.
+### Playbook
 
 1. **Save current protection JSON** so it can be restored verbatim. The GET and PUT shapes differ; capturing the raw GET response avoids hand-mapping fields.
    ```bash

@@ -600,9 +600,9 @@ export function runPostInstallCheck(
   // needs branch protection restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
   if (protectionStatus === "missing") {
-    const protectionScript = path.join(cwd, "scripts", "bkit-set-protection.sh");
+    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
     const scriptHint = fs.existsSync(protectionScript)
-      ? "\n\nQuick path: bkit ships `scripts/bkit-set-protection.sh` — run `bash scripts/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
+      ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
       : "";
     phase3.push({
       id: "main-branch-protection-missing",

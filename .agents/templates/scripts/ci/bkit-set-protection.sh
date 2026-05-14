@@ -6,10 +6,10 @@
 #   - dev (--dev): no required PR (chore commits allowed) but require ci.yml#run-tests; no force-push.
 #
 # Usage:
-#   bash scripts/bkit-set-protection.sh             # main only, default policy
-#   bash scripts/bkit-set-protection.sh --dev       # also configure dev with chore-allowed policy
-#   bash scripts/bkit-set-protection.sh --dry-run   # print every gh api call without executing
-#   bash scripts/bkit-set-protection.sh --print     # print current protection JSON for main and exit
+#   bash scripts/ci/bkit-set-protection.sh             # main only, default policy
+#   bash scripts/ci/bkit-set-protection.sh --dev       # also configure dev with chore-allowed policy
+#   bash scripts/ci/bkit-set-protection.sh --dry-run   # print every gh api call without executing
+#   bash scripts/ci/bkit-set-protection.sh --print     # print current protection JSON for main and exit
 #
 # Requires: gh, jq. Run from repo root. Override policy by editing the protection
 # payload below — the defaults match the bkit-ship workflow's expectations.

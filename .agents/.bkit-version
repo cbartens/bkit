@@ -4,7 +4,7 @@
     ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "7ed622dd84810d4a340adfff259e1b760fe7a757fc7becaf4f47d39a6a3965c2",
+    "docs/deployments.md": "dc42882f5c39f5cb3c6c51497efa0f4f7e539f65e4748859f61e833672724f08",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
     ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
