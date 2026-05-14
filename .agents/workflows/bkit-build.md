@@ -640,7 +640,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 2. Run verbatim — do NOT modify quoting, filter, or glob:
    ```bash
    if [ -f turbo.json ]; then
-     pnpm turbo lint typecheck test --filter='...[origin/dev]'
+     pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue
    else
      set -e
      for s in typecheck test format:check lint:slop lint:prose; do

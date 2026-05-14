@@ -39,7 +39,7 @@ tools:
 4. Identify untested: Error paths, edge cases (empty/null/boundary/concurrent), security paths from challenge, integration points. **If** fixed bugs → write regression tests that would have caught the original bug.
 5. Write test files: Each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming style as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright) files.
 6. Co-locate with existing test files.
-7. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` → append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses. **If** any FAIL on newly-added test files → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
+7. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue` → append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses. **If** any FAIL on newly-added test files → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = tests added and newly-added pass.
    - `FAIL` = generated tests do not compile or run.
