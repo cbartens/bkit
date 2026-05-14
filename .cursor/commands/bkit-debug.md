@@ -247,7 +247,7 @@
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (HTML report + traces uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file verbatim into one log; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file under `test-results/` verbatim into one log; `playwright-report/` (HTML viewer + minified assets) is kept on disk for human use but excluded from the dump; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
    ```bash
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
@@ -256,16 +256,18 @@
      gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
      if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
        E2E_LOG="docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md"
+       SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
        {
          echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
          echo
-         find "$E2E_DIR" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
+         echo "Scanned: ${SCAN_ROOT#$E2E_DIR/} (text files only; binary artifacts listed below)"
+         find "$SCAN_ROOT" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
            rel="${f#$E2E_DIR/}"
            printf '\n===== file: %s =====\n' "$rel"
            cat "$f"
            echo
          done
-         printf '\n===== binary artifacts (not inlined) =====\n'
+         printf '\n===== binary artifacts (not inlined; full tree under %s/) =====\n' "${E2E_DIR#docs/plans/logs/}"
          find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
        } > "$E2E_LOG"
        [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
