@@ -247,31 +247,30 @@
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (HTML report + traces uploaded by the `bkit-stub:e2e-artifacts` step) and summarise; missing artifact is non-fatal:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (HTML report + traces uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file verbatim into one log; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
    ```bash
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
-     PW_DIR="docs/plans/logs/{FID}/debug-playwright-${DEBUG_ATTEMPT}"
-     mkdir -p "$PW_DIR"
-     gh run download "$RUN_ID" -n playwright-report -D "$PW_DIR" 2>/dev/null || true
-     if [ -n "$(ls -A "$PW_DIR" 2>/dev/null)" ]; then
-       PW_SUMMARY="docs/plans/logs/{FID}/debug-logs-playwright-${DEBUG_ATTEMPT}.md"
+     E2E_DIR="docs/plans/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
+     mkdir -p "$E2E_DIR"
+     gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
+     if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
+       E2E_LOG="docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md"
        {
-         echo "# Playwright Failures (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
+         echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
          echo
-         echo "## Failed Tests"
-         find "$PW_DIR" -name "*.json" -path "*/test-results/*" -exec jq -r '.. | objects | select(.status? == "failed") | "- " + (.title // "?") + " — " + (.error.message // "?" | tostring | gsub("\n"; " "))' {} + 2>/dev/null | head -50
-         find "$PW_DIR" -path "*/test-results/*" -name "error-context.md" -print -exec sh -c 'echo; echo "---"; cat "$1"; echo' _ {} \; 2>/dev/null | head -500
-         echo
-         echo "## Trace Files"
-         find "$PW_DIR" -name "trace.zip" 2>/dev/null
-         echo
-         echo "## Artifact Tree"
-         (cd "$PW_DIR" && find . -maxdepth 4 -type f | head -100)
-       } > "$PW_SUMMARY"
-       [ -s "$PW_SUMMARY" ] || rm -f "$PW_SUMMARY"
+         find "$E2E_DIR" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
+           rel="${f#$E2E_DIR/}"
+           printf '\n===== file: %s =====\n' "$rel"
+           cat "$f"
+           echo
+         done
+         printf '\n===== binary artifacts (not inlined) =====\n'
+         find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
+       } > "$E2E_LOG"
+       [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
      else
-       rmdir "$PW_DIR" 2>/dev/null || true
+       rmdir "$E2E_DIR" 2>/dev/null || true
      fi
    fi
    ```
@@ -289,7 +288,7 @@
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    ARTIFACTS=()
-   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-playwright-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
@@ -303,7 +302,7 @@
    ```comment
    ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
    [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
-   [debug-logs-playwright-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-playwright-{DEBUG_ATTEMPT}.md)
+   [debug-logs-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-e2e-{DEBUG_ATTEMPT}.md)
    [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
    ```
 
@@ -311,10 +310,10 @@
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
-- [ ] Playwright artifact download attempted (if e2e job failed; missing artifact is non-fatal)
+- [ ] Playwright artifact download + verbatim dump attempted (if e2e job failed; missing artifact is non-fatal; NO content processing)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
-- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-playwright-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
 - [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
