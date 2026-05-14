@@ -46,7 +46,7 @@ maxTurns: 50
 7. Check dep versions: `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
 8. Read CI/runtime logs from supplied inputs.
 9. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
-10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`. Local test failures = primary signal.
+10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`. Local test failures = primary signal.
 11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
 12. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 13. Non-obvious traps → note in output for remediator to append to `docs/knowledge.md`; check existing entries first.

@@ -387,21 +387,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 2. Run verbatim:
    ```bash
    if [ -f turbo.json ]; then
-     if [ "$PR_DEBUG_MODE" = "1" ]; then
-       pnpm turbo lint typecheck test --filter='...[origin/dev]'
-     else
-       pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]'
-     fi
+     pnpm turbo lint typecheck test test:integration test:e2e --filter='...[origin/dev]' --continue
    else
      set -e
-     for s in typecheck test format:check lint:slop lint:prose; do
+     for s in typecheck test format:check lint:slop lint:prose test:integration test:e2e; do
        if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
      done
-     if [ "$PR_DEBUG_MODE" != "1" ]; then
-       for s in test:integration test:e2e; do
-         if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
-       done
-     fi
    fi
    ```
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
@@ -521,7 +512,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 3. Derive `OBSERVE_INSTRUMENT_VERDICT`:
    ```bash
    if [ -f turbo.json ]; then
-     pnpm turbo lint typecheck test --filter='...[origin/dev]'
+     pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue
    else
      set -e
      for s in typecheck test; do
@@ -612,7 +603,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```bash
    GREP_HITS=$(git grep -c '\[DEBUG-OBSERVE\]' | awk -F: '{s+=$NF} END {print s+0}')
    if [ -f turbo.json ]; then
-     pnpm turbo lint typecheck test --filter='...[origin/dev]' && TEST_OK=1 || TEST_OK=0
+     pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue && TEST_OK=1 || TEST_OK=0
    else
      ( set -e; for s in typecheck test; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done ) && TEST_OK=1 || TEST_OK=0
    fi

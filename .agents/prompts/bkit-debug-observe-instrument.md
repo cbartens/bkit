@@ -46,7 +46,7 @@ maxTurns: 50
 - Timing markers for suspected races.
 - Cap at ~10 log calls.
 
-5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`.
+5. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`.
 6. **If** any failures → document errors in output.
 7. Produce **Create** output.
 
