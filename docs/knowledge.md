@@ -332,3 +332,15 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-192, BAR-195, `.agents/templates/.github/workflows/ci.yml` (Detect Tags and Direct Push step), consumer `turbo.json` `inputs` declaration
+
+## KN-25: DB schema state persists across code rollback — reset required for schema-aware tests (2026-05-14)
+
+- **Category:** testing
+- **Symptom:** Rolling code back to a known-good SHA leaves the linked Supabase project carrying migrations from the rolled-out range. Schema-aware tests (e.g. `cdc-schema-assurance`) compare live DB structure against code expectations and fail on the "clean" rolled-back tree because the DB is ahead of the code.
+- **Root cause:** `git revert` / `git reset` rewinds the source tree only. Supabase migrations applied during the rolled-out range remain materialised in the linked dev project — Supabase has no "unapply" semantics for code-driven migrations. Any test that introspects the live schema sees columns / tables / RLS the code no longer declares, and flags the drift as a failure.
+- **Fix or rule:** When rolling back code that contained applied migrations, reset the linked dev DB before treating the rolled-back tree as the new baseline. One-liner reset against the Supabase service-role connection: drop the `public` and `stripe` (or other consumer-managed) schemas with `CASCADE`, truncate `supabase_migrations.schema_migrations`, then `supabase db push --linked --include-all` to replay the surviving migration files. Same procedure applies whether the rollback was production-side (cherry-pick revert) or dev-side (`git reset --hard <green-sha>`). Documented as a sibling runbook to the production-rollback playbook in the consumer's `deployments.md` (bkit-marker section).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-192, BAR-195, `.agents/templates/docs/deployments.md` (Dev rollback runbook), Supabase CLI `db push --linked --include-all`

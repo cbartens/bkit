@@ -4,7 +4,7 @@
     ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "3e29664f2a916b2f82958d438ac366f0d2f347b27d4c342bd559dcd54290a0ba",
+    "docs/deployments.md": "406b1b6307d181b70da3d4772d36ebe5c315488df0240e7a1ef9d667d273aab7",
     "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
     ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -23,7 +23,7 @@
     ".vale/styles/House/LLMSlop.yml": "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",
     ".vale/styles/House/Verbose.yml": "8278791997cca85a2df63b2c93decac480e685215e0569e8472aa433e7a27ac8",
     ".vale.ini": "341faf5ea0f372108e10c5b555916737202fbd6f2b1db8b7516660672fefb8bf",
-    "AGENTS.md": "76bacda550a20fe74ad6f03d191d95060c012d6cd8f25a1221f92819e37f8d5d",
+    "AGENTS.md": "6f29f185a80b9532b705ed4e7cd5e62534c459acc2589d8e9178a60e8a8df35c",
     "CLAUDE.md": "06fcc17120169721d39bf8da7cb785027c6b1c8000b83ed157dfbf0490fef533",
     "docs/data-cron-jobs.md": "b264b9c7ef491967aba259511dcc84d1edac8ad6335e3806793c849a8806e810",
     "docs/data-pipeline.md": "42dd93e0c39cf6f3bd0626d2e5b3f5bf479c0118e43688bf379971c9e9a54dc4",

@@ -49,7 +49,7 @@ maxTurns: 100
    - `pnpm-lock.yaml` → `pnpm install`.
    - `turbo.json` → merge pipelines.
    - Drizzle migrations → resequence.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]'; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
+8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
 9. **If** any failures → document errors in output, set `Verdict` = FAIL (no alternatives, no rollbacks, no `--no-verify`).
 10. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
 11. Forced architecture/technology decision (if any) → append `docs/decisions.md`.

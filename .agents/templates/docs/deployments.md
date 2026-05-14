@@ -68,4 +68,50 @@ Use when the script errors, when restoring protection from a non-current owner, 
 - `curl -sI https://{prod-alias}` headers report the rolled-back deployment id.
 - Run the production smoke suite to confirm the rolled-back app behaves as expected.
 
+## Dev rollback runbook
+
+> Triggered when a bad commit reaches `dev` and must be unwound to a prior known-good SHA. Use when the rolled-out range included applied migrations — code rollback alone leaves the linked dev DB ahead of the code, and schema-aware tests (cdc-schema, schema-introspection, RLS-aware integration) fail on the otherwise-clean tree. Supabase is assumed; adjust the DB step for other providers.
+
+### Preconditions
+
+- A known-good SHA on `dev` to roll back to. Confirm via `gh run list --branch dev --status success --limit 5` (must include the target SHA in green state).
+- Local repo on `dev`, working tree clean, `gh auth status` green.
+- `supabase` CLI installed and linked to the dev project (`supabase link --project-ref <dev-ref>`).
+- Service-role connection string for the dev DB available in the local env (`SUPABASE_DB_URL` or equivalent).
+
+### Playbook
+
+1. **Force-reset the `dev` ref** to the known-good SHA. `dev` is typically unprotected; if protection is on, follow the production-rollback save/disable/restore pattern.
+   ```bash
+   git reset --hard <green-sha>
+   git push --force-with-lease origin dev
+   ```
+2. **Reset the linked dev DB.** Drop all consumer-managed schemas with `CASCADE`, truncate the migrations ledger, then replay the surviving migration files. Substitute schema names for the consumer's actual managed set.
+   ```bash
+   psql "$SUPABASE_DB_URL" -c 'DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS stripe CASCADE;'
+   psql "$SUPABASE_DB_URL" -c 'TRUNCATE supabase_migrations.schema_migrations;'
+   supabase db push --linked --include-all
+   ```
+3. **Re-seed fixtures** (if the consumer runs a seed script on dev).
+   ```bash
+   pnpm db:seed
+   ```
+4. **Re-trigger CI** on the rolled-back `dev` ref to confirm the green-on-rollback baseline.
+   ```bash
+   git commit --allow-empty -m "chore: trigger CI after dev rollback"
+   git push origin dev
+   ```
+
+### Why code-only rollback is not enough
+
+- `git reset` rewinds the source tree; Supabase migrations applied during the rolled-out range remain materialised. The DB has no "unapply" semantics for code-driven migrations.
+- Any test that introspects the live schema (column lists, RLS policies, table presence) sees structure the code no longer declares and flags the drift as a failure.
+- Re-running `supabase db push --linked --include-all` after truncating the ledger reapplies only the migrations present in the rolled-back tree — bringing the DB back into alignment with the code.
+
+### Post-rollback verification
+
+- `git rev-parse origin/dev` must equal the green SHA.
+- `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` must match `ls supabase/migrations/` on the rolled-back tree.
+- Re-run the schema-aware test suite (`pnpm test:integration` or the consumer's equivalent) to confirm DB and code agree.
+
 <!-- bkit:end -->

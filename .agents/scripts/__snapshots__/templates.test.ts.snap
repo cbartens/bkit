@@ -30,10 +30,6 @@ jobs:
 
       # bkit:start
       - name: Check SHA Cache
-        # Skip the suite when this SHA already has a successful run for this
-        # workflow within the last 7 days. Helps after a rollback force-push
-        # that points the default branch at a previously-green SHA — avoids
-        # re-running 10–20 minutes of tests on known-good code.
         id: cache
         env:
           GH_TOKEN: \${{ github.token }}
@@ -54,27 +50,60 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Detect Direct Push
+        if: steps.cache.outputs.skip != 'true'
+        id: detect
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          if [ "\${{ github.event_name }}" = "pull_request" ]; then
+            MSG="\${{ github.event.pull_request.title }}"
+          else
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
+          fi
+          case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          if [ "\${{ github.event_name }}" = "push" ] && [ "\${{ github.ref }}" = "refs/heads/dev" ]; then
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
+            if [ -z "$PR_NUMBER" ]; then
+              echo "turbo_force=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        # \`.npmrc\` references \${GH_BKIT_TOKEN} for the @cbartens scope (npm.pkg.github.com).
-        # Passing the secret as env is sufficient — no separate auth action is needed.
-        # cbartens/bkit is private and cross-org for any consumer outside cbartens/, so a
-        # \`uses: cbartens/bkit/...@<ref>\` reference cannot be resolved by the runner's
-        # GITHUB_TOKEN at action-resolution time. See README §"Consumer CI auth".
         run: pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
 
       - name: Run Vitest Tests
         if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm test
+
+      - name: Run Vitest Integration Tests
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: |
+          if jq -e '.scripts["test:integration"]' package.json >/dev/null 2>&1; then
+            pnpm turbo run test:integration --continue
+          else
+            echo "::warning::test:integration script not found in package.json — skipping integration tests"
+          fi
 
       - name: Run Prettier Format Check
         if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm format:check
 
       - name: Run Vale Prose Lint

@@ -92,7 +92,9 @@ jobs:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: |
           if jq -e '.scripts["test:integration"]' package.json >/dev/null 2>&1; then
-            pnpm test:integration
+            pnpm turbo run test:integration --continue
+          else
+            echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
 
       - name: Run Prettier Format Check
