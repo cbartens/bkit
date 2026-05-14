@@ -1,11 +1,11 @@
 ---
-description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (CI fail) after CI completion"
+description: "CI Router — Auto-dispatch ship or debug after completion"
 ---
 
-# CI Router (Utility Command)
+# CI Router
 
 **Role:** Orchestrator — post-CI dispatcher.
-**Scope:** Decide ship-vs-debug after CI completion and invoke the matching skill in the same session.
+**Scope:** Decide ship-vs-debug after CI completion and invoke the matching workflow — no code, no execution.
 
 > [!CAUTION]
 > **Read in full:** `.agents/rules.md`.
@@ -21,7 +21,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 > - **Placeholders:** Assert `{CI_STATUS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}`, `{HEAD_SHA}`, `{ISSUE_ID}`, `{FID}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}` non-empty before tool calls. **Else** → **Failure Path**.
 > - **Subagents:** Not used in this workflow — orchestrator dispatches sibling slash commands via the `Skill` tool; never invokes agents.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Router-only step verdicts use `OK | SKIP` for no-op skip cases.
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL`;
 > - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step status.json write + commit on `feat/{FID}` (no push); single push deferred to Step 5 (dispatch) and Failure Path. Per-step commit messages: `chore({FID}): ci-router-{step-name}`. Close push messages: Step 5 → `docs({FID}): ci-router DONE [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED [skip ci]`. `[skip ci]` on the close commit is load-bearing — prevents the router's own push from triggering CI recursively.
 > - **Git:** Read-only for repo state queries (`gh pr view`, `gh run list`, `gh repo view`). Write allowed for per-step status.json commits and the single close push at Step 5 / Failure Path. NEVER stage anything other than `docs/plans/logs/{FID}/status.json` (`git add -A` is fine — no other files should have changed); NEVER use `--no-verify`. Destructive git **PROHIBITED**.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
@@ -50,7 +50,6 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    Step: {N} — {Step Name}; Sub-step: {M}
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
-   Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
    ```
 3. **STOP**, no further downstream steps.
 
@@ -96,9 +95,10 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
     ```comment
     ## CI Router
-    ### Step 1 — Start Workflow
-    CI `{CI_STATUS}` on `{HEAD_SHA}` (PR #{PR_NUMBER})
+    ### Step 1 — Start Workflow - Status: {CI_STATUS}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
+    [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
     ```
 
 ### 🔒 Gate 1 — Start Workflow
@@ -166,7 +166,7 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
 
 ---
 
-## 🤖 Step 4 — Dispatch
+## 🤖 Step 4 — Dispatch Workflow
 
 **Run only if** Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS.
 
@@ -175,25 +175,25 @@ description: "CI Router — Auto-dispatch /bkit-ship (CI pass) or /bkit-debug (C
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg cs "$CI_STATUS" \
-     '.[-1].steps += [{step:"ci-dispatch", status:"DONE", at:$t, parentSha:$p, ciStatus:$cs, artifacts:[]}]' \
+     '.[-1].steps += [{step:"ci-dispatch-workflow", status:"DONE", at:$t, parentSha:$p, ciStatus:$cs, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
    git push origin "$(git branch --show-current)"
    ```
-2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+2. **If** `CI_STATUS` = PASS → `DISPATCH_TARGET` = SHIP.
+3. **If** `CI_STATUS` = FAIL → `DISPATCH_TARGET` = DEBUG.
+4. **If** `CI_STATUS` != PASS **and** `CI_STATUS` != FAIL → **Failure Path**.
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 4 — Dispatch - CI: {CI_STATUS}
-   Head SHA: `{HEAD_SHA}`
-   Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
+   ### Step 4 — Dispatch Workflow - Target: {DISPATCH_TARGET}
    ```
-3. **If** `CI_STATUS` = PASS → invoke `/bkit-ship {FID}` via `Skill` tool.
-4. **Else if** `CI_STATUS` = FAIL → invoke `/bkit-debug {FID}` via `Skill` tool.
-5. **Else** → **Failure Path**.
+6. **If** `DISPATCH_TARGET` = SHIP → invoke `/bkit-ship {FID}` via `Skill` tool.
+7. **If** `DISPATCH_TARGET` = DEBUG → invoke `/bkit-debug {FID}` via `Skill` tool.
 
-### 🔒 Gate 4 — Dispatch
+### 🔒 Gate 4 — Dispatch Workflow
 
-- [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch` recorded with `parentSha`, `ciStatus`)
+- [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch-workflow` recorded with `parentSha`, `ciStatus`)
 - [ ] Issue comment attempted (`Step 4` section)
-- [ ] Slash command invoked
-- [ ] Router process exits cleanly (the dispatched workflow now owns the session)
+- [ ] Slash command for ship or debug workflow invoked
+- [ ] Router exits and dispatched workflow owns session
