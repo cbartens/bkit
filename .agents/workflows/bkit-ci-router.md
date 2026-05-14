@@ -187,68 +187,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 
 ---
 
-## 🤖 Step 4 — Regression-Gate Verification
-
-**Run only if** Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS.
-
-1. Find the most recent prior failed CI run on this branch:
-   ```bash
-   PRIOR_RUN_ID=$(gh run list --branch "$BRANCH" --workflow CI --limit 20 \
-     --json databaseId,conclusion,createdAt \
-     --jq "[.[] | select((.databaseId | tostring) != \"$RUN_ID\" and .conclusion == \"failure\")] | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"")
-   ```
-2. **If** `PRIOR_RUN_ID` empty → `REGRESSION_VERDICT` = PASS; `REGRESSION_SKIPPED` = empty; skip to sub-step 7.
-3. Extract step names that failed in the prior run:
-   ```bash
-   PRIOR_FAILED_STEPS=$(gh run view "$PRIOR_RUN_ID" --json jobs \
-     --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | unique | join("\n")')
-   ```
-4. Extract current run's step conclusions:
-   ```bash
-   CURRENT_STEPS_JSON=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[].steps[] | {name, conclusion}]')
-   ```
-5. For each prior-failed step, assert the same-named step in the current run has `conclusion=success` (not `skipped`, `cancelled`, or missing):
-   ```bash
-   REGRESSION_VERDICT=PASS
-   REGRESSION_SKIPPED=""
-   while IFS= read -r STEP; do
-     [ -z "$STEP" ] && continue
-     CONCLUSION=$(echo "$CURRENT_STEPS_JSON" | jq -r --arg n "$STEP" '[.[] | select(.name == $n)] | .[0].conclusion // "missing"')
-     if [ "$CONCLUSION" != "success" ]; then
-       REGRESSION_VERDICT=FAIL
-       REGRESSION_SKIPPED="${REGRESSION_SKIPPED}- ${STEP} (now: ${CONCLUSION})\n"
-     fi
-   done <<< "$PRIOR_FAILED_STEPS"
-   ```
-6. **If** `REGRESSION_VERDICT` = FAIL **and** `CI_STATUS` = PASS → override `CI_STATUS` = FAIL (the regression gate did not actually fire; Step 5 will route to DEBUG instead of SHIP).
-7. Update status:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REGRESSION_VERDICT" --arg s "$REGRESSION_SKIPPED" --arg pr "$PRIOR_RUN_ID" \
-     '.[-1].steps += [{step:"ci-regression-gate-verification", status:"DONE", verdict:$v, at:$t, parentSha:$p, priorRunId:$pr, skippedSteps:$s, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   ```
-8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 4 — Regression-Gate Verification - Verdict: {REGRESSION_VERDICT}
-   Prior failed run: {PRIOR_RUN_ID}
-   Steps skipped/missing in current run:
-   {REGRESSION_SKIPPED}
-   ```
-
-### 🔒 Gate 4 — Regression-Gate Verification
-
-- [ ] `PRIOR_RUN_ID` lookup attempted (empty allowed = no prior failure on branch)
-- [ ] If `PRIOR_RUN_ID` non-empty: `PRIOR_FAILED_STEPS` extracted and each checked against current `CURRENT_STEPS_JSON`
-- [ ] `REGRESSION_VERDICT` in `PASS|FAIL`
-- [ ] If `REGRESSION_VERDICT` = FAIL and `CI_STATUS` = PASS → `CI_STATUS` overridden to FAIL
-- [ ] Workflow status updated (step `ci-regression-gate-verification` recorded with `parentSha`, `verdict`, `priorRunId`, `skippedSteps`)
-- [ ] Issue comment attempted (`Step 4` section)
-
----
-
-## 🤖 Step 5 — Dispatch Workflow
+## 🤖 Step 4 — Dispatch Workflow
 
 **Run only if** Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS.
 
@@ -270,15 +209,15 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 4. **If** `CI_STATUS` != PASS **and** `CI_STATUS` != FAIL → **Failure Path**.
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 5 — Dispatch Workflow - Target: {DISPATCH_TARGET}
+   ### Step 4 — Dispatch Workflow - Target: {DISPATCH_TARGET}
    ```
 6. **If** `DISPATCH_TARGET` = SHIP → invoke `/bkit-ship {FID}` via `Skill` tool.
 7. **If** `DISPATCH_TARGET` = DEBUG → invoke `/bkit-debug {FID}` via `Skill` tool.
 
-### 🔒 Gate 5 — Dispatch Workflow
+### 🔒 Gate 4 — Dispatch Workflow
 
 - [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch-workflow` recorded with `parentSha`, `ciStatus`)
 - [ ] Workflow status pushed to `dev` with `[skip ci]`
-- [ ] Issue comment attempted (`Step 5` section)
+- [ ] Issue comment attempted (`Step 4` section)
 - [ ] Slash command for ship or debug workflow invoked
 - [ ] Router exits and dispatched workflow owns session
