@@ -195,10 +195,9 @@
 2. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 3. **If** sentinel `docs/plans/logs/{FID}/.rebase-failed` exists → **Failure Path**.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**
-5. **If** `DEBUG_MODE` = pr → `RUN_ID` = `$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId --jq '.[0].databaseId')` → `gh run view "$RUN_ID" --log-failed` → extract `CI_LOGS`. **Else** → `RUN_ID` = "", `CI_LOGS` = "N/A".
-6. Init `TEST_ATTEMPT` = 0.
-7. Create: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md` + `CI_LOGS`.
-8. Update status and commit:
+5. Init counter: `TEST_ATTEMPT` = 0.
+6. Create: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md` = session prompt + Debug: `DEBUG_MODE` + Observe: `OBSERVE_MODE` + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
+7. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -216,7 +215,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -235,7 +234,64 @@
 
 ---
 
-## 🧠 Step 3 — Failure Diagnose
+## 🤖 Step 3 — Fetch Logs
+
+1. Discover CI run for branch:
+   ```bash
+   RUN_JSON=$(gh run list --branch "$(git branch --show-current)" --limit 1 --json databaseId,conclusion 2>/dev/null || echo "[]")
+   RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId // ""')
+   RUN_CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
+   ```
+2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch CI logs → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md`:
+   ```bash
+   CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
+   [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
+   ```
+3. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
+   ```bash
+   FETCH_EXAMPLE=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null | awk '/^<!-- debug-fetch:start -->/,/^<!-- debug-fetch:end -->/' | sed -n '/^```/,/^```/p' | sed '/^```/d')
+   ```
+4. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
+   ```bash
+   RUNTIME_LOGS=$({customised command} 2>/dev/null)
+   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"
+   ```
+5. Update status and commit:
+   ```bash
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   ARTIFACTS=()
+   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+     [ -s "$f" ] && ARTIFACTS+=("$f")
+   done
+   [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
+   ARTIFACTS_JSON=$(printf '%s\n' "${ARTIFACTS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$FETCH_VERDICT" --argjson a "$DEBUG_ATTEMPT" --argjson arts "$ARTIFACTS_JSON" \
+     '.[-1].steps += [{step:"debug-fetch-logs", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): fetch-logs attempt ${DEBUG_ATTEMPT}"
+   ```
+6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
+   [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
+   [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
+   ```
+
+### 🔒 Gate 3 — Fetch Logs
+
+- [ ] `RUN_ID` discovery attempted
+- [ ] CI logs fetch attempted
+- [ ] Runtime logs example fetch detection attempted
+- [ ] Customised runtime logs fetch attempted (if example present)
+- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] `FETCH_VERDICT` derived
+- [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
+- [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
+
+---
+
+## 🧠 Step 4 — Failure Diagnose
 
 **Run only if** `OBSERVE_MODE` = off.
 
@@ -252,7 +308,7 @@
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
+   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 5. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -267,10 +323,10 @@
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
+   ### Step 4 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
 
-### 🔒 Gate 3 — Failure Diagnose
+### 🔒 Gate 4 — Failure Diagnose
 
 - [ ] `STRATEGY` computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
@@ -279,11 +335,11 @@
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
-- [ ] Issue comment attempted (`Step 3` section)
+- [ ] Issue comment attempted (`Step 4` section)
 
 ---
 
-## 🧠 Step 4 — Failure Remediate
+## 🧠 Step 5 — Failure Remediate
 
 **Run only if** `OBSERVE_MODE` = off.
 
@@ -305,21 +361,21 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 4 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
+   ### Step 5 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
 
-### 🔒 Gate 4 — Failure Remediate
+### 🔒 Gate 5 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`debug-failure-remediate-{TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
 - [ ] Workflow status updated (step `debug-failure-remediate` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 4` section)
+- [ ] Issue comment attempted (`Step 5` section)
 
 ---
 
-## 🤖 Step 5 — Run Tests
+## 🤖 Step 6 — Run Tests
 
 **Run only if** `OBSERVE_MODE` = off.
 
@@ -356,26 +412,26 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 5 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
+   ### Step 6 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
-6. **If** all tests PASS → Step 6.
+6. **If** all tests PASS → Step 7.
 7. **If** some tests FAIL:
-   - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 3.
+   - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 4.
    - **Else** → **Failure Path**.
 8. **Else** → **Failure Path**.
 
-### 🔒 Gate 5 — Run Tests
+### 🔒 Gate 6 — Run Tests
 
 - [ ] `TEST_ATTEMPT` incremented
 - [ ] Tests executed (PR debug or full suite)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
 - [ ] Workflow status updated (step `debug-run-tests` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 5` section)
-- [ ] Loop branch decided (FAIL and `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 3)
+- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Loop branch decided (FAIL and `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 4)
 
 ---
 
-## 🤖 Step 6 — Push Remediation
+## 🤖 Step 7 — Push Remediation
 
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
@@ -393,20 +449,20 @@
 3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 6 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
+   ### Step 7 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
    ```
 
-### 🔒 Gate 6 — Push Remediation
+### 🔒 Gate 7 — Push Remediation
 
 - [ ] `DEBUG_ATTEMPT` incremented
 - [ ] Commit pushed to branch
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Issue comment attempted (`Step 7` section)
 
 ---
 
-## 🧠 Step 7 — Summary
+## 🧠 Step 8 — Summary
 
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
@@ -428,15 +484,15 @@
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 7 — Summary - Verdict: {SUMMARY_VERDICT}
+   ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [debug-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-summary.md)
    {FID-debug-summary.md content verbatim}
    ```
-7. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+7. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
 8. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
 9. **Else** → **Failure Path**.
 
-### 🔒 Gate 7 — Summary
+### 🔒 Gate 8 — Summary
 
 - [ ] Subagent invoked (`@bkit-debug-summary`, no inline work)
 - [ ] Artifact written (`debug-summary.md`, non-empty)
@@ -444,11 +500,11 @@
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 8` section)
 
 ---
 
-## 🧠 Step 8 — Observe Instrument
+## 🧠 Step 9 — Observe Instrument
 
 **Run only if** `OBSERVE_MODE` = instrument.
 
@@ -482,12 +538,12 @@
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 8 — Observe Instrument - Verdict: {OBSERVE_INSTRUMENT_VERDICT}
+   ### Step 9 — Observe Instrument - Verdict: {OBSERVE_INSTRUMENT_VERDICT}
    [observe-instrument-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-observe-instrument-{DEBUG_ATTEMPT}.md)
    ```
-7. → Step 11 (close as in-progress; issue stays `Debug` label awaiting CI).
+7. → Step 12 (close as in-progress; issue stays `Debug` label awaiting CI).
 
-### 🔒 Gate 8 — Observe Instrument
+### 🔒 Gate 9 — Observe Instrument
 
 - [ ] Subagent invoked (`@bkit-debug-observe-instrument`, no inline work)
 - [ ] Artifact written (`debug-observe-instrument-{DEBUG_ATTEMPT}.md`, non-empty)
@@ -497,17 +553,17 @@
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `[skip ci]`)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 9` section)
 
 ---
 
-## 🧠 Step 9 — Observe Analyse
+## 🧠 Step 10 — Observe Analyse
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
 1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Task` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
+   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-observe-analyse-{DEBUG_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `OBSERVE_ANALYSE_VERDICT`.
@@ -522,11 +578,11 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 9 — Observe Analyse - Verdict: {OBSERVE_ANALYSE_VERDICT}
+   ### Step 10 — Observe Analyse - Verdict: {OBSERVE_ANALYSE_VERDICT}
    [observe-analyse-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md)
    ```
 
-### 🔒 Gate 9 — Observe Analyse
+### 🔒 Gate 10 — Observe Analyse
 
 - [ ] Subagent invoked (`@bkit-debug-observe-analyse`, no inline work)
 - [ ] Artifact written (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`, non-empty)
@@ -534,11 +590,11 @@
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-observe-analyse` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 10` section)
 
 ---
 
-## 🧠 Step 10 — Observe Revert
+## 🧠 Step 11 — Observe Revert
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
@@ -570,23 +626,23 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 10 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
+   ### Step 11 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
    ```
 6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `[skip ci]`, posts handover content to Linear, and terminates the workflow.
 
-### 🔒 Gate 10 — Observe Revert
+### 🔒 Gate 11 — Observe Revert
 
 - [ ] Subagent invoked (`@bkit-debug-observe-revert`, no inline work)
 - [ ] Artifact written (`debug-observe-revert-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Markers cleared (`git grep 'DEBUG-OBSERVE'` → no matches)
 - [ ] `OBSERVE_REVERT_VERDICT` extracted
 - [ ] Workflow status updated (step `debug-observe-revert` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 10` section)
+- [ ] Issue comment attempted (`Step 11` section)
 - [ ] Routed to **Failure Path**
 
 ---
 
-## 🤖 Step 11 — Close Workflow
+## 🤖 Step 12 — Close Workflow
 
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
@@ -650,13 +706,13 @@
 10. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
 11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
-    ### Step 11 — Close Workflow
+    ### Step 12 — Close Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
     [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
     ```
 
-### 🔒 Gate 11 — Close Workflow
+### 🔒 Gate 12 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)

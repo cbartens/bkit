@@ -577,25 +577,31 @@ Each subsection below documents what command actually does — step list, subage
 
 **Failure Path includes handover** — when triggered by exhausted retry counts, invokes `@bkit-debug-abort-handover` and posts `Workflow Handover` comment.
 
-### `/bkit-debug` — 8 steps
+### `/bkit-debug` — 12 steps
 
 **Goal:** diagnose and remediate failing test or CI run; push fix back to branch.
 
-**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev` — if a PR exists → **PR debug mode** (reads `debugAttempt` + `observe` from status.json's most recent `workflow == "debug"` entry; pulls failed CI logs via `gh run view --log-failed`). Else → **Normal debug mode** (no CI log fetch; runs full test suite locally).
+**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev` — if a PR exists → **PR debug mode**. Else → **Local debug mode**. `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` read from status.json's most recent `workflow == "debug"` entry. Set `OBSERVE_MODE`: `PRIOR_OBSERVE_MODE = instrument` → `analyse` (Steps 10–11 + Failure Path handover). `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `instrument` (Step 9 single-shot). Else → `off` (normal Steps 4–8).
+
+**Log fetch (Step 3):** Mode-agnostic. Two independent sub-fetches → per-source artifacts written only when content exists: (a) `gh run view "$RUN_ID" --log-failed` → `debug-logs-ci-{DEBUG_ATTEMPT}.md` when a non-success CI run exists for the branch; (b) runtime-log query → `debug-logs-runtime-{DEBUG_ATTEMPT}.md` when the **first** `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` pair **after** `<!-- bkit:end -->` exists in `docs/observability.md` (consumer section only — bkit-shipped example inside the bkit block is skipped; orchestrator uses the fenced block as template, customises by severity `>= ERROR`, freshness ~hours-since-last-commit + 30min buffer clamped `[1h, 24h]`, limit 50, tool-agnostic). Either / both / neither artifact may exist; missing content = no file. Fail-soft throughout.
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER`. Read `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` from status.json's most recent `workflow == "debug"` entry. Set `OBSERVE_MODE`: `PRIOR_OBSERVE_MODE = instrument` → `analyse` (Step 9–10 + Failure Path handover). `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `instrument` (Step 8 single-shot). Else → `off` (normal Steps 3–7). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | Branch fallback differs from feat workflows: if no `feat/{FID}` branch exists locally or on origin → `git worktree add -b fix/{FID} origin/dev`. Branch eligibility check: `BRANCH` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive) — else Failure Path with `Wrong branch.` PR mode: also captures `CI_LOGS` from `gh run view --log-failed`. Writes `debug-input-{DEBUG_ATTEMPT}.md` (includes `CI_LOGS` or `N/A`). Init `TEST_ATTEMPT` = 1. |
-| 3 — Diagnose Failure | `@bkit-debug-failure-diagnose` | Writes `debug-failure-diagnose-{TEST_ATTEMPT}.md`. Reads prior diagnose+remediate logs to avoid repeating strategies. |
-| 4 — Remediate Failure | `@bkit-debug-failure-remediate` | Writes `debug-failure-remediate-{TEST_ATTEMPT}-log.md` + source files. |
-| 5 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (PR-debug mode) or with `test:integration test:e2e` appended (normal mode). Absent → single-package fallback iterates `pnpm $script` for present scripts in `package.json#scripts` under `set -e` (typecheck/test/format:check/lint:slop/lint:prose; normal mode adds test:integration/test:e2e if present). Same shape as Build Step 12. `PASS` → Step 6. `FAIL` → increment `TEST_ATTEMPT`, loop back to Step 3. > `MAX_TEST_ATTEMPT` → Failure Path. |
-| 6 — Push Remediation | — | Increment `DEBUG_ATTEMPT`. Commit `fix({FID}): debug attempt {DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`. Persist new `debugAttempt` onto status.json workflow entry. Push. |
-| 7 — Summary | `@bkit-debug-summary` | Commit `docs({FID}): debug summary [skip build] [skip ci]` → push. |
-| 8 — Close Workflow | — | Set state `In Review`; `{LABELS}` unchanged (prior phase label + `Debug` persist). Comment includes CI run link if applicable. Worktree persists. |
+| 1 — Start Workflow | — | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER`. Read `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` from status.json. Set `OBSERVE_MODE`. NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 2 — Worktree Setup | — | Branch fallback differs from feat workflows: if no `feat/{FID}` branch exists locally or on origin → `git worktree add -b fix/{FID} origin/dev`. Branch eligibility check: `BRANCH` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive) — else Failure Path with `Wrong branch.` Writes `debug-input-{DEBUG_ATTEMPT}.md` (session-prompt envelope only — no logs). Init `TEST_ATTEMPT` = 0. |
+| 3 — Fetch Logs | — | Mode-agnostic. CI sub-fetch (`gh run view --log-failed`) when a non-success CI run exists → `debug-logs-ci-{DEBUG_ATTEMPT}.md`. Runtime sub-fetch triggered by `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` markers in `docs/observability.md` → orchestrator customises template per failure context (severity / freshness / limit) → `debug-logs-runtime-{DEBUG_ATTEMPT}.md`. Per-source artifacts written only when content available; empty = no file. Fail-soft throughout. |
+| 4 — Failure Diagnose | `@bkit-debug-failure-diagnose` _(only if `OBSERVE_MODE` = off)_ | Writes `debug-failure-diagnose-{TEST_ATTEMPT}.md`. Reads prior diagnose+remediate logs + `debug-logs-*.md` to avoid repeating strategies and quote concrete log evidence. |
+| 5 — Failure Remediate | `@bkit-debug-failure-remediate` _(only if `OBSERVE_MODE` = off)_ | Writes `debug-failure-remediate-{TEST_ATTEMPT}-log.md` + source files. |
+| 6 — Run Tests | — | _(only if `OBSERVE_MODE` = off)_ Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (PR mode) or with `test:integration test:e2e` appended (local). Absent → single-package fallback iterates `pnpm $script` for present scripts in `package.json#scripts` under `set -e`. `PASS` → Step 7. `FAIL` → increment `TEST_ATTEMPT`, loop back to Step 4. > `MAX_TEST_ATTEMPT` → Failure Path. |
+| 7 — Push Remediation | — | _(only if `OBSERVE_MODE` = off and Step 6 PASS)_ Increment `DEBUG_ATTEMPT`. Commit `chore({FID}): push-remediation attempt {DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`. Persist new `debugAttempt` onto status.json workflow entry. Push. |
+| 8 — Summary | `@bkit-debug-summary` _(only if `OBSERVE_MODE` = off and Step 6 PASS)_ | Commit `chore({FID}): summary` → push. |
+| 9 — Observe Instrument | `@bkit-debug-observe-instrument` _(only if `OBSERVE_MODE` = instrument)_ | Single-shot observation pass before terminal handover. Adds `[DEBUG-OBSERVE]` markers; lint/typecheck/test gate. Routes to Step 12. |
+| 10 — Observe Analyse | `@bkit-debug-observe-analyse` _(only if `OBSERVE_MODE` = analyse)_ | Reads `debug-logs-*.md` + instrumentation report; writes `debug-observe-analyse-{DEBUG_ATTEMPT}.md`. |
+| 11 — Observe Revert | `@bkit-debug-observe-revert` _(only if `OBSERVE_MODE` = analyse)_ | Strips `[DEBUG-OBSERVE]` lines; lint/typecheck/test gate; routes to Failure Path (handover via `bkit-debug-abort-handover`). |
+| 12 — Close Workflow | — | Set state `In Review`; `{LABELS}` unchanged (prior phase label + `Debug` persist). Comment includes CI run link if applicable. Worktree persists. Skipped if `OBSERVE_MODE` = analyse. |
 
-**Failure Path** includes conditional handover via `@bkit-debug-abort-handover` when max-retry exhausted, writing `debug-handover-{DEBUG_ATTEMPT}.md`.
+**Failure Path** includes conditional handover via `@bkit-debug-abort-handover` when max-retry exhausted, writing `debug-handover.md`.
 
 ### `/bkit-ship` — 11 steps
 

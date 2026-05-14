@@ -41,6 +41,7 @@
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "839c727d18c7d62c9120c9fbc2cdfc870489bcdfc1b2f5ddfa1a615e24ca3214",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
-    ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692"
+    ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692",
+    "docs/observability.md": "7bbf5e7f2de2ebfd1470e53522453d5cdbb3fca08b9adea59fdc2e75637726ac"
   }
 }

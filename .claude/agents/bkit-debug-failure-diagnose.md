@@ -44,14 +44,13 @@ maxTurns: 50
    - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 7. Check dep versions: `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
-8. Read CI/CD logs from input Context (NEVER `/tmp/`).
-9. Read `.agents/docs.md` § Observability for filter syntax (logging, traces, CDC).
-10. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
-11. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
-12. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
-13. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
-14. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`; check existing entries first.
-15. Update **Create** output - set `Verdict` via `Edit`; mapping:
+8. Read CI/runtime logs from supplied inputs.
+9. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
+10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'`. Local test failures = primary signal.
+11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
+12. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
+13. Non-obvious traps → note in output for remediator to append to `docs/knowledge.md`; check existing entries first.
+14. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
     - `FAIL` = unable to diagnose → orchestrator routes to Failure Path → `bkit-debug-abort-handover`.
     - `CONCERNS` = ambiguous root cause but plausible fix path.
@@ -105,19 +104,19 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Reason
 
-[why this hypothesis given symptoms / prior knowledge]
+[Why this hypothesis given symptoms / prior knowledge]
 
 #### Act
 
-[test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
+[Test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
 
 #### Observe
 
-[concrete output; do NOT paraphrase]
+[Concrete log lines / command output / stack traces - quoted verbatim from logs or test outputs; do NOT paraphrase]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
+CONFIRMED | REFUTED | INCONCLUSIVE — [One-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**

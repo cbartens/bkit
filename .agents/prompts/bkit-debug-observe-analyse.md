@@ -40,7 +40,7 @@ maxTurns: 50
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Cross-reference each `[DEBUG-OBSERVE]` line from inputs back to its `Hypothesis {N}` from any prior diagnosis.
-6. Read CI/CD logs from input Context (NEVER `/tmp/`).
+6. Read CI/runtime logs from supplied inputs.
 7. Extract every `[DEBUG-OBSERVE]` line — group by source location; >100 hits → sample evenly per location and note `(N total, M sampled)` in `Evidence Extracted`.
 8. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 9. Update **Create** output - set `Verdict` via `Edit`; mapping:
@@ -89,19 +89,19 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Reason
 
-[why this hypothesis given symptoms / prior knowledge]
+[Why this hypothesis given symptoms / prior knowledge]
 
 #### Act
 
-[test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
+[Test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
 
 #### Observe
 
-[concrete `[DEBUG-OBSERVE]` values; do NOT paraphrase]
+[Concrete `[DEBUG-OBSERVE]` values + log lines / stack traces quoted verbatim from logs; do NOT paraphrase]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
+CONFIRMED | REFUTED | INCONCLUSIVE — [One-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after analysing evidence and producing output. Do NOT revert, commit, handover — caller orchestrates the next step.**
