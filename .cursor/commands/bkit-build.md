@@ -145,7 +145,7 @@
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build]"
    fi
    ```
 2. Create/resume the worktree:
@@ -846,7 +846,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status, commit on feat, and push:
+2. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -878,5 +878,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
+- [ ] Changes pushed to `feat/{FID}`
+- [ ] Workflow status pushed to `dev` with `[skip ci]`
 - [ ] Issue update attempted (state `In Review`, phase label `Build` preserved)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

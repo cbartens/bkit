@@ -21,7 +21,7 @@ description: "Plan Feature — Autonomous plan generation"
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file (dev's working copy); ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): plan DONE`; Failure Path → `chore({FID}): plan FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): plan DONE [skip ci]`; Failure Path → `chore({FID}): plan FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -123,7 +123,7 @@ description: "Plan Feature — Autonomous plan generation"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build]"
    fi
    ```
 2. Create/resume the worktree:
@@ -522,7 +522,7 @@ description: "Plan Feature — Autonomous plan generation"
    done
    ```
 2. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-3. Commit feat artifacts and update status:
+3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -540,7 +540,7 @@ description: "Plan Feature — Autonomous plan generation"
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash "feat/{FID}"
    git add "docs/plans/logs/{FID}/status.json"
-   git commit -m "docs({FID}): plan DONE"
+   git commit -m "docs({FID}): plan DONE [skip ci]"
    git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
    git branch -D "feat/{FID}" 2>/dev/null || true
@@ -563,8 +563,8 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
 - [ ] Canonical plan copied (`docs/plans/drafts/{FID}-plan.md`, verified on `dev` post-merge; same for each `{FID}-plan-N.md` if SPLIT)
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Changes merged to `dev` and pushed
-- [ ] Worktree removed and feature branch deleted
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
+- [ ] Changes merged to `dev` and pushed with `[skip ci]`
+- [ ] Worktree removed and feature branch deleted
 - [ ] Issue update attempted (state `In Review`; phase label `Plan` preserved)
 - [ ] Issue comment attempted (`Step 11` section)

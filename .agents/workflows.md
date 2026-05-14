@@ -121,12 +121,12 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 
 `$REPO_ROOT/docs/plans/logs/{FID}/status.json` is canonical workflow-state source of truth. Written by workflows only; agents MUST NOT read or write it. Enables resume of interrupted run without re-reading the plan.
 
-**Branch placement (BAR-187 — all workflows on dev):**
+**Branch placement (BAR-187 — universal invariant):**
 
 <!-- prettier-ignore -->
 | Workflow | Location | Mechanism |
 | --- | --- | --- |
-| All five (`plan`, `design`, `build`, `debug`, `ship`) | `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success) OR Failure Path (failure). Outside-worktree progress reads via `cat`. |
+| **ALL workflows** (`plan`, `design`, `build`, `debug`, `ship`, `ci-router`, and any future workflow) | `$REPO_ROOT/docs/plans/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success), at any early-exit branch (e.g. SKIP / no-op), OR at Failure Path (failure). Outside-worktree progress reads via `cat`. |
 
 Rationale: single canonical location enables `cat $REPO_ROOT/docs/plans/logs/{FID}/status.json` outside-worktree progress reads from anywhere on the machine without git knowledge. Per-step writes accumulate locally; one dev push at termination with `[skip ci]` (except plan/design close-workflow on success, which is the substantive feature commit and runs CI). Resume reads the on-disk file directly — works across crashes.
 

@@ -635,7 +635,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 6. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 7. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-8. **If** `TRIGGER_PR` = 1 → record `create-pr` step and push:
+8. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
    ```bash
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
@@ -644,7 +644,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
    git push origin "$(git branch --show-current)"
    ```
-9. Push status to dev:
+9. Update status, commit, and push:
    ```bash
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
@@ -665,9 +665,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
-- [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)
+- [ ] If PR created, changes pushed to `feat/{FID}`
+- [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
+- [ ] Workflow status pushed to `dev` with `[skip ci]`
 - [ ] If `OBSERVE_MODE` = off issue update attempted (state `In Review`, `{LABELS}` unchanged)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)

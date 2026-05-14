@@ -26,8 +26,9 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  # contents: write — the router commits + pushes the per-run status.json
-  # update to feat/** with `[skip ci]` so the push does not re-trigger CI.
+  # contents: write — the router commits + pushes the single per-run
+  # status.json update to `dev` with `[skip ci]` (BAR-187 canonical pattern,
+  # matches bkit-build / bkit-ship / bkit-debug close-workflow).
   contents: write
   pull-requests: write
   issues: write
@@ -41,18 +42,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          # Check out `dev` at the workspace root so the router's
+          # `$REPO_ROOT/docs/plans/logs/{FID}/status.json` resolves to dev's
+          # working copy — matches the BAR-187 invariant that status.json
+          # always lives on dev. The dispatched /bkit-ship or /bkit-debug
+          # creates its own `feat/{FID}` worktree under `.worktrees/`.
+          ref: dev
           fetch-depth: 0
-          # Use a token capable of pushing back to feat/** with [skip ci].
-          # GH_BKIT_TOKEN is reused (already required for @cbartens/bkit
-          # install) and has contents:write on this repo.
+          # Token must have contents:write on this repo to push status.json
+          # back to `dev` at workflow termination. GH_BKIT_TOKEN is reused
+          # (already required for @cbartens/bkit install).
           token: ${{ secrets.GH_BKIT_TOKEN }}
 
-      - name: Attach to head branch + configure git user
-        env:
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
+      - name: Configure git user
         run: |
-          git switch -C "$BRANCH"
           git config user.name 'bkit-ci-router[bot]'
           git config user.email 'bkit-ci-router@users.noreply.github.com'
 

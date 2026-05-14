@@ -17,7 +17,7 @@
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step Steps 1-6: file-only write on dev working copy + commit on `feat/{FID}`. Steps 7-11 on `dev`: per-step file-only write; commit + push deferred to Close Workflow. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): ship DONE [skip ci]`; Failure Path → `chore({FID}): ship FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step Steps 1-6: file-only write on dev working copy + commit on `feat/{FID}`. Steps 7-11 on `dev`: per-step file-only status write; per-step commit on `dev` for substantial-work steps (Step 8 update-docs-summary, Step 9 prune-skills); push deferred to Close Workflow. `dev` push ONCE per run: Close Workflow → final commit `docs({FID}): ship DONE [skip ci]` + push; Failure Path → `chore({FID}): ship FAILED [skip ci]` + push.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -482,7 +482,7 @@
    if [ "$COMPLETED_HIT" -gt 0 ]; then UPDATE_DOCS_VERDICT=PASS; else UPDATE_DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-7. Update status:
+7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -492,6 +492,7 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg sv "$SUMMARY_VERDICT" \
      '.[-1].steps += [{step:"ship-summary", status:"DONE", verdict:$sv, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/ship-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "docs({FID}): update-docs-summary"
    ```
 8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -529,7 +530,7 @@
      grep -q "$skill" .agents/skills.md || npx skills remove "$skill" -y
    done
    ```
-2. Update status:
+2. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    git status --short
@@ -537,6 +538,7 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"ship-prune-skills", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): prune-skills"
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -643,5 +645,6 @@
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
+- [ ] Changes pushed to `dev` with `[skip ci]`
 - [ ] Issue update attempted (state `Done`, label `Merged` added and `Failed` dropped if present)
 - [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)
