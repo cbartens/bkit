@@ -1097,16 +1097,9 @@ export function runLintModule(ctx) {
             lastWrite.devDepsAdded = lintDevDeps.added;
         }
     }
-    // F7: vale is a system binary, not an npm package. The seeded .vale.ini
-    // references the `write-good` Vale package which Vale downloads via
-    // `vale sync`. Print a one-time hint after writing .vale.ini so the consumer
-    // knows to run sync before lint:prose works against the seeded styles.
-    advisories.push({
-        id: "vale-sync-recommended",
-        severity: "advisory",
-        detect: ".vale.ini references the `write-good` Vale package which requires `vale sync` to download.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. Vale itself is a system binary; install via brew/apt/etc. The lint:prose script soft-skips when vale isn't on PATH, so CI passes either way.",
-    });
+    // vale sync advisory removed in v2.1.0 — duplicated by `vale-package-not-synced`
+    // (Phase 3, gated on `vale --version` actually succeeding). The Phase 3 variant
+    // is actionable; this one fired on every install regardless of vale presence.
 }
 // ---------------------------------------------------------------------------
 // runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print)
@@ -1193,13 +1186,9 @@ export function runGitHooksModule(ctx) {
     const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
     if (hookDevDeps.added.length > 0) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
-        advisories.push({
-            id: "git-hooks-husky-devdep-added",
-            severity: "advisory",
-            detect: "husky added to package.json devDependencies.",
-            action: "Run `pnpm install` to fetch husky; husky install will then activate the hooks.",
-        });
-        // Thread devDepsAdded through the WriteSet for Phase 3 detection
+        // husky-devdep-added advisory removed in v2.1.0 — duplicated by the generic
+        // `devdeps-need-fetch` Phase 3 advisory which fires for any added devDep.
+        // Thread devDepsAdded through the WriteSet for Phase 3 detection.
         const lastWrite = ws.writes[ws.writes.length - 1];
         if (lastWrite && lastWrite.path === "package.json") {
             lastWrite.devDepsAdded = hookDevDeps.added;

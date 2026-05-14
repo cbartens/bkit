@@ -11,12 +11,20 @@ import {
   detectNpmrcAuth,
   detectGhSecret,
   detectMainBranchProtection,
+  detectDevBranchProtection,
   detectVercelProject,
   detectVercelEnv,
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
   detectDevDepsNeedFetch,
   detectBkitStubs,
+  detectTurboIntegrationInputs,
+  detectTestIntegrationEnv,
+  detectGhaFloatingTags,
+  detectDependabotConfigMissing,
+  detectRunLevelsNotComposed,
+  detectCiRouterSecrets,
+  buildCloudDashboardsAdvisory,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -539,6 +547,335 @@ describe("detectBkitStubs", () => {
     );
     expect(detectBkitStubs(tmpDir)).toEqual([]);
   });
+
+  it("flags vercel-enabled-without-e2e pair conflict", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "      - name: Await Vercel Preview",
+        "        run: echo enabled",
+        "      # bkit-stub:e2e — header",
+        "      # - name: Run E2E Tests",
+      ].join("\n"),
+    );
+    const findings = detectBkitStubs(tmpDir);
+    const ids = findings.map((f) => f.id);
+    expect(ids).toContain("bkit-stub-pair-vercel-without-e2e");
+    expect(ids).toContain("bkit-stub-e2e"); // e2e still commented also fires
+  });
+
+  it("flags e2e-enabled-without-vercel pair conflict", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "      - name: Run E2E Tests",
+        "        run: pnpm test:e2e",
+        "      # bkit-stub:vercel-await — header",
+        "      # - name: Await Vercel Preview",
+      ].join("\n"),
+    );
+    const ids = detectBkitStubs(tmpDir).map((f) => f.id);
+    expect(ids).toContain("bkit-stub-pair-e2e-without-vercel");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectTurboIntegrationInputs
+// ---------------------------------------------------------------------------
+
+describe("detectTurboIntegrationInputs", () => {
+  it("returns empty when turbo.json is absent", () => {
+    expect(detectTurboIntegrationInputs(tmpDir)).toEqual([]);
+  });
+
+  it("returns empty when turbo.json has no test:integration task", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "turbo.json"),
+      JSON.stringify({ tasks: { build: { outputs: ["dist/**"] } } }),
+    );
+    expect(detectTurboIntegrationInputs(tmpDir)).toEqual([]);
+  });
+
+  it("flags missing external-state proxies on test:integration (turbo v2)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "turbo.json"),
+      JSON.stringify({ tasks: { "test:integration": { cache: true, inputs: ["src/**"] } } }),
+    );
+    const findings = detectTurboIntegrationInputs(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe("turbo-test-integration-inputs-missing");
+    expect(findings[0]!.action).toContain("supabase/migrations/**");
+  });
+
+  it("returns empty when inputs already declare a migrations proxy", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "turbo.json"),
+      JSON.stringify({
+        tasks: {
+          "test:integration": { inputs: ["src/**", "supabase/migrations/**"] },
+        },
+      }),
+    );
+    expect(detectTurboIntegrationInputs(tmpDir)).toEqual([]);
+  });
+
+  it("supports turbo v1 `pipeline` key", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "turbo.json"),
+      JSON.stringify({ pipeline: { "test:e2e": { inputs: ["src/**"] } } }),
+    );
+    const findings = detectTurboIntegrationInputs(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe("turbo-test-e2e-inputs-missing");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectTestIntegrationEnv
+// ---------------------------------------------------------------------------
+
+describe("detectTestIntegrationEnv", () => {
+  it("returns null when package.json absent", () => {
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when test:integration script absent", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), '{"scripts":{"test":"vitest"}}');
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("flags scripts with no real-service hints", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"vitest run --config=integration.config.ts"}}',
+    );
+    const result = detectTestIntegrationEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("test-integration-env-not-asserted");
+  });
+
+  it("returns null when script gates on TEST_REAL_APIS", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"TEST_REAL_APIS=true vitest run"}}',
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when script chains supabase start", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      '{"scripts":{"test:integration":"supabase start && vitest run"}}',
+    );
+    expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDevBranchProtection (mocks execFileSync like detectMainBranchProtection)
+// ---------------------------------------------------------------------------
+
+describe("detectDevBranchProtection", () => {
+  it("returns 'present' when gh api returns 200", () => {
+    execFileSync.mockReturnValue(Buffer.from("{}"));
+    expect(detectDevBranchProtection()).toBe("present");
+  });
+
+  it("returns 'missing' when stderr contains 'Branch not protected'", () => {
+    execFileSync.mockImplementation(() => {
+      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("gh: Branch not protected (HTTP 404)\n");
+      throw err;
+    });
+    expect(detectDevBranchProtection()).toBe("missing");
+  });
+
+  it("returns 'unknown' when gh is unauthenticated", () => {
+    execFileSync.mockImplementation(() => {
+      const err = new Error("auth") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
+      throw err;
+    });
+    expect(detectDevBranchProtection()).toBe("unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectGhaFloatingTags
+// ---------------------------------------------------------------------------
+
+describe("detectGhaFloatingTags", () => {
+  it("returns null when .github/workflows is absent", () => {
+    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
+  });
+
+  it("returns null when no workflow uses floating tags", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "jobs:\n  run:\n    steps:\n      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n",
+    );
+    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
+  });
+
+  it("flags floating-tag uses across multiple workflow files", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4.0.2\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "release.yml"),
+      "      - uses: pnpm/action-setup@v4\n",
+    );
+    const result = detectGhaFloatingTags(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("gha-actions-floating-tags");
+    expect(result!.detect).toContain("ci.yml");
+    expect(result!.detect).toContain("release.yml");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDependabotConfigMissing
+// ---------------------------------------------------------------------------
+
+describe("detectDependabotConfigMissing", () => {
+  it("returns null when no .github/workflows exists (nothing to dependabot)", () => {
+    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+  });
+
+  it("flags absence when workflows exist but no dependabot.yml", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = detectDependabotConfigMissing(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dependabot-config-missing");
+  });
+
+  it("returns null when dependabot.yml is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when dependabot.yaml (alternate ext) is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yaml"), "version: 2\n");
+    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRunLevelsNotComposed
+// ---------------------------------------------------------------------------
+
+describe("detectRunLevelsNotComposed", () => {
+  it("returns null when ci.yml is absent", () => {
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
+
+  it("returns null when ci.yml has no Detect Direct Push step (no primitives to compose)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "jobs:\n  run-tests:\n    runs-on: ubuntu-latest\n",
+    );
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
+
+  it("flags when Detect Direct Push step exists but no sibling workflow references the outputs", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n# bkit:start\nbkit content\n# bkit:end\n",
+    );
+    const result = detectRunLevelsNotComposed(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("run-levels-not-composed");
+  });
+
+  it("returns null when a sibling workflow references should_force_build", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "deploy.yml"),
+      "    if: steps.detect.outputs.should_force_build == 'true'\n",
+    );
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCiRouterSecrets
+// ---------------------------------------------------------------------------
+
+describe("detectCiRouterSecrets", () => {
+  it("returns empty when bkit-ci-router workflow is absent", () => {
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
+  });
+
+  it("emits one finding per missing secret when router workflow exists", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "name: bkit-ci-router\n",
+    );
+    execSync.mockReturnValue(""); // gh secret list returns no secrets
+    const findings = detectCiRouterSecrets(tmpDir);
+    expect(findings.map((f) => f.id).sort()).toEqual([
+      "anthropic-api-key-secret-missing",
+      "linear-api-key-secret-missing",
+    ]);
+  });
+
+  it("returns empty when both secrets are present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "name: bkit-ci-router\n",
+    );
+    execSync.mockReturnValue("ANTHROPIC_API_KEY\nLINEAR_API_KEY\n");
+    expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCloudDashboardsAdvisory
+// ---------------------------------------------------------------------------
+
+describe("buildCloudDashboardsAdvisory", () => {
+  it("returns null when none of router / .claude / .cursor exist", () => {
+    expect(buildCloudDashboardsAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("fires when bkit-ci-router workflow exists", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "name: bkit-ci-router\n",
+    );
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-secrets-three-locations");
+    expect(result!.action).toContain("GitHub Actions");
+    expect(result!.action).toContain("Cursor Background Agents");
+    expect(result!.action).toContain("Claude Code (web)");
+  });
+
+  it("fires when .claude/ exists", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
+  });
+
+  it("fires when .cursor/ exists", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -596,13 +933,13 @@ describe("runPostInstallCheck deduplication", () => {
     // We can't force duplicate ids from real detectors, but we can verify the
     // cross-phase dedup: if preflightAdvisories has an id that Phase 3 would also emit,
     // Phase 3 wins (its entry replaces preflight's).
-    // Set up: shell token missing → Phase 3 will emit gh-bkit-token-missing-shell
+    // Set up: shell token missing → Phase 3 will emit gh-bkit-token-unset-shell
     delete process.env.GH_BKIT_TOKEN;
 
     // Simulate a preflight advisory with the same id
     const preflightAdvisories: PreflightFinding[] = [
       {
-        id: "gh-bkit-token-missing-shell",
+        id: "gh-bkit-token-unset-shell",
         severity: "advisory",
         detect: "Old preflight detect text",
         action: "Old preflight action",
@@ -613,7 +950,7 @@ describe("runPostInstallCheck deduplication", () => {
     const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir);
 
     // Should appear exactly once
-    const matches = result.filter((f) => f.id === "gh-bkit-token-missing-shell");
+    const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
     expect(matches).toHaveLength(1);
     // Phase 3 wins — the detect text should NOT be the old preflight text
     expect(matches[0]!.detect).not.toBe("Old preflight detect text");
@@ -639,10 +976,10 @@ describe("runPostInstallCheck deduplication", () => {
     expect(result[0]!.id).toBe("husky-no-markers-precommit");
   });
 
-  it("gh-bkit-token-missing-shell is emitted when GH_BKIT_TOKEN is unset", () => {
+  it("gh-bkit-token-unset-shell is emitted when GH_BKIT_TOKEN is unset", () => {
     delete process.env.GH_BKIT_TOKEN;
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
-    expect(result.some((f) => f.id === "gh-bkit-token-missing-shell")).toBe(true);
+    expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
   });
 
   it("npmrc-missing-gh-packages is emitted when .npmrc exists but lacks required lines", () => {

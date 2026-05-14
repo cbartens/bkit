@@ -132,7 +132,7 @@ export function detectPrettierignoreNoMarkers(cwd: string): PreflightFinding | n
     severity: "advisory",
     detect: ".prettierignore exists but has no bkit-managed block markers.",
     action:
-      "bkit will append its managed block to .prettierignore. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section.",
+      "Add `# bkit:start` / `# bkit:end` markers around the section bkit owns. Without markers, `bkit install` appends its block to EOF — fine for fresh installs but harder to merge cleanly on upgrade.",
   };
 }
 
@@ -274,7 +274,7 @@ const BKIT_PRETTIERIGNORE_PATHS = [
   "pnpm-lock.yaml",
 ];
 
-export function detectPrettierignoreScopeNarrowing(cwd: string): PreflightFinding | null {
+export function detectPrettierignoreScopeBroadening(cwd: string): PreflightFinding | null {
   const filePath = path.join(cwd, ".prettierignore");
   if (!fs.existsSync(filePath)) return null;
   const content = fs.readFileSync(filePath, "utf-8");
@@ -300,7 +300,7 @@ export function detectPrettierignoreScopeNarrowing(cwd: string): PreflightFindin
   if (broadenings.length === 0) return null;
 
   return {
-    id: "prettierignore-scope-narrowing",
+    id: "prettierignore-scope-broadening",
     severity: "advisory",
     detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
     action:
@@ -330,7 +330,7 @@ export function detectLegacyBkitEnvelope(cwd: string, relPath: string): Prefligh
   return {
     id: "legacy-bkit-envelope-detected",
     severity: "advisory",
-    detect: `${relPath} contains a __bkit__ envelope from bkit ≤ v1.1.1. Run \`pnpm bkit upgrade\` to migrate.`,
+    detect: `${relPath} contains a __bkit__ envelope from bkit <= v1.1.1.`,
     action:
       "Run `pnpm bkit upgrade` to strip the __bkit__ envelope and migrate to v2.0.0 deep-containment schema. The upgrade is idempotent and preserves all consumer-owned keys.",
   };
@@ -424,7 +424,7 @@ export function detectTier2TextDrift(
   return {
     id: "tier2-text-drift",
     severity: "advisory",
-    detect: `[${relPath}] bkit-managed marker block content differs from template.`,
+    detect: `${relPath} bkit-managed marker block content differs from template.`,
     action:
       `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
       "Content outside the bkit:start/bkit:end markers is preserved.",
@@ -586,7 +586,7 @@ export function runPreflight(
   const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
   if (gitignoreDup) advisories.push(gitignoreDup);
 
-  const prettierBroad = detectPrettierignoreScopeNarrowing(cwd);
+  const prettierBroad = detectPrettierignoreScopeBroadening(cwd);
   if (prettierBroad) advisories.push(prettierBroad);
 
   const prettierignore = detectPrettierignoreNoMarkers(cwd);

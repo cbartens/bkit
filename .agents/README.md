@@ -34,7 +34,7 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 | Design | `/bkit-design` | 10 | `docs/plans/drafts/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 11 | `docs/plans/drafts/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
 | Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
-| Debug | `/bkit-debug` | 8 | Remediation commit on feature branch | No |
+| Debug | `/bkit-debug` | 12 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 11 | Squash-merged PR, plans archived, issue `Done` | Yes |
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).

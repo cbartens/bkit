@@ -16,7 +16,7 @@ import {
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
-  detectPrettierignoreScopeNarrowing,
+  detectPrettierignoreScopeBroadening,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -495,19 +495,19 @@ describe("detectGitignoreBlockDuplicates", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectPrettierignoreScopeNarrowing — Detector D (BAR-141 iter 2)
+// detectPrettierignoreScopeBroadening — Detector D (BAR-141 iter 2)
 // ---------------------------------------------------------------------------
 
-describe("detectPrettierignoreScopeNarrowing", () => {
+describe("detectPrettierignoreScopeBroadening", () => {
   it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/find-skills/)", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".prettierignore"),
       "# bkit:start\nnode_modules/\n.agents/skills/find-skills/\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeDefined();
-    expect(f?.id).toBe("prettierignore-scope-narrowing");
+    expect(f?.id).toBe("prettierignore-scope-broadening");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain(".agents/skills/find-skills/");
     expect(f?.detect).toContain(".agents/skills/");
@@ -519,7 +519,7 @@ describe("detectPrettierignoreScopeNarrowing", () => {
       "# bkit:start\nnode_modules/\ndist/\n.agents/skills/\n.claude/\n.cursor/\n.github/\n.husky/_/\n*.tsbuildinfo\npnpm-lock.yaml\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
@@ -529,18 +529,18 @@ describe("detectPrettierignoreScopeNarrowing", () => {
       "# bkit:start\nnode_modules/\n.agents/skills/\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
   it("returns null when no bkit block markers present", () => {
     fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules/\n", "utf-8");
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
   it("returns null when .prettierignore does not exist", () => {
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 });

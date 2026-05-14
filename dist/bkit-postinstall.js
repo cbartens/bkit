@@ -242,7 +242,7 @@ const BKIT_STUBS = [
     {
         id: "wrong-branch-guard",
         file: ".husky/pre-commit",
-        description: "Refuse direct commits to dev / main outside .worktrees/. Blocks accidental agent commits to wrong branch; pair with the bkit-debug runbook rule that recovery is `git revert`, never `git cherry-pick`.",
+        description: "Refuse direct commits to dev / main outside .worktrees/. Blocks accidental agent commits to wrong branch; pair with the bkit-debug runbook rule that recovery is `git revert`, never `git cherry-pick`. If `.husky/pre-commit` was customised by the consumer (Tier-3 seed-or-print), splice the guard block into your existing hook rather than letting `bkit install` reseed.",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -263,6 +263,10 @@ export function detectBkitStubs(cwd) {
             return null;
         }
     };
+    // Track which stubs are still commented (sentinel present) so the pair-conflict
+    // pass below can compare against per-stub "enabled" markers (the named YAML step
+    // appearing uncommented).
+    const stubSentinelPresent = new Set();
     for (const stub of BKIT_STUBS) {
         const content = readOnce(stub.file);
         if (content === null)
@@ -273,6 +277,7 @@ export function detectBkitStubs(cwd) {
         const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`);
         if (!re.test(content))
             continue;
+        stubSentinelPresent.add(stub.id);
         findings.push({
             id: `bkit-stub-${stub.id}`,
             severity: "advisory",
@@ -281,6 +286,326 @@ export function detectBkitStubs(cwd) {
                 `Decide with the user: (a) enable — uncomment the YAML/shell block AND delete the \`# bkit-stub:${stub.id} — ...\` header line; (b) customise — adjust paths/secrets/conditions before uncommenting; (c) dismiss — delete the entire stub block (header + commented body).\n\n` +
                 `Until the sentinel is removed, this advisory fires every install / check.`,
         });
+    }
+    // Pair-conflict detection: enabling one half of a paired stub without the other
+    // produces a silent fallback. Detection signal: the named uncommented YAML step
+    // appears (sentinel removed → likely enabled), and the paired stub's sentinel
+    // is still present (still disabled).
+    const ciContent = readOnce(".github/workflows/ci.yml");
+    if (ciContent) {
+        // Match a YAML step name uncommented (leading `- name:` not preceded by `#`).
+        const isStepEnabled = (stepName) => {
+            const re = new RegExp(`(^|\\n)\\s*- name:\\s*${stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+            return re.test(ciContent);
+        };
+        const e2eEnabled = isStepEnabled("Run E2E Tests");
+        const vercelEnabled = isStepEnabled("Await Vercel Preview");
+        const autoForceEnabled = isStepEnabled("Auto Force E2E for Sensitive Paths");
+        if (vercelEnabled && stubSentinelPresent.has("e2e")) {
+            findings.push({
+                id: "bkit-stub-pair-vercel-without-e2e",
+                severity: "advisory",
+                detect: ".github/workflows/ci.yml has `Await Vercel Preview` enabled but `Run E2E Tests` is still commented (bkit-stub:e2e sentinel present).",
+                action: "Either enable the `bkit-stub:e2e` block so the E2E step consumes `steps.vercel.outputs.target_url`, or remove the Vercel-await step — exporting `target_url` with no consumer wastes ~10 minutes of CI per PR.",
+            });
+        }
+        if (e2eEnabled && stubSentinelPresent.has("vercel-await")) {
+            findings.push({
+                id: "bkit-stub-pair-e2e-without-vercel",
+                severity: "advisory",
+                detect: ".github/workflows/ci.yml has `Run E2E Tests` enabled but `Await Vercel Preview` is still commented (bkit-stub:vercel-await sentinel present).",
+                action: "Enable the `bkit-stub:vercel-await` block so the E2E step's `TARGET_URL` resolves to the PR's Vercel preview deployment. Without it, `TARGET_URL` falls back to `http://localhost:3000` and the E2E run hits an empty origin.",
+            });
+        }
+        if (e2eEnabled && stubSentinelPresent.has("auto-force-e2e")) {
+            findings.push({
+                id: "bkit-stub-pair-e2e-without-auto-force",
+                severity: "advisory",
+                detect: ".github/workflows/ci.yml has `Run E2E Tests` enabled but `bkit-stub:auto-force-e2e` is still commented.",
+                action: "E2E now requires `[force e2e]` in the commit/PR title on every run. Enable `bkit-stub:auto-force-e2e` to auto-trigger for PRs touching sensitive paths (auth, migrations, payment, api, server) without the manual tag.",
+            });
+        }
+    }
+    return findings;
+}
+// ---------------------------------------------------------------------------
+// Consumer customisations that bkit ships primitives for but does NOT enforce
+// — turbo inputs, integration runtime env, GHA pinning, dependabot, etc.
+// ---------------------------------------------------------------------------
+/**
+ * Detect whether the consumer's turbo.json declares external-state proxies in
+ * `inputs` for `test:integration` / `test:e2e` tasks. Without proxies, turbo's
+ * content-keyed cache can replay a stale green when external state (Supabase
+ * migrations, fixture data, env templates) changed — the BAR-192 ghost-green
+ * failure mode documented in KN-24. Returns null when no turbo.json or no
+ * matching tasks.
+ */
+export function detectTurboIntegrationInputs(cwd) {
+    const findings = [];
+    const turboPath = path.join(cwd, "turbo.json");
+    if (!fs.existsSync(turboPath))
+        return findings;
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(turboPath, "utf-8"));
+    }
+    catch {
+        return findings;
+    }
+    // turbo v2 → `tasks`; turbo v1 → `pipeline`. Either may be present.
+    const tasks = doc.tasks ?? doc.pipeline ?? {};
+    const externalProxyHints = ["migrations", "fixtures", "seed", ".env"];
+    for (const taskName of ["test:integration", "test:e2e"]) {
+        const task = tasks[taskName];
+        if (!task)
+            continue;
+        const inputs = Array.isArray(task.inputs) ? task.inputs : [];
+        const hasProxy = inputs.some((i) => externalProxyHints.some((hint) => typeof i === "string" && i.toLowerCase().includes(hint)));
+        if (hasProxy)
+            continue;
+        findings.push({
+            id: `turbo-${taskName.replace(":", "-")}-inputs-missing`,
+            severity: "advisory",
+            detect: `turbo.json#${tasks === doc.pipeline ? "pipeline" : "tasks"}.${taskName} has no external-state proxies in \`inputs\` (no migrations / fixtures / seed / .env entries).`,
+            action: `Add the external-state proxies that affect this task's outcome to \`inputs\`:\n\n` +
+                `    "${taskName}": {\n` +
+                `      "cache": true,\n` +
+                `      "inputs": ["supabase/migrations/**", "**/fixtures/**", "**/.env.*.template"]\n` +
+                `    }\n\n` +
+                `Without them, turbo cache replays can ghost-green a stale SHA (KN-24): a concurrent migration on dev between PR-CI and merge-CI does NOT bust the cache, so the merge run replays the pre-migration green. Adjust the glob set to match your consumer's external-state surface.`,
+        });
+    }
+    return findings;
+}
+/**
+ * Detect whether the consumer's `test:integration` script asserts real-service
+ * runtime env (TEST_REAL_APIS, SUPABASE_*, service-role URL refs). A script
+ * that silently mocks integration tests passes CI without exercising real
+ * services — the worst-case ghost-green from KN-23. Returns null if no script.
+ */
+export function detectTestIntegrationEnv(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return null;
+    let pkg;
+    try {
+        pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    }
+    catch {
+        return null;
+    }
+    const script = pkg.scripts?.["test:integration"];
+    if (!script)
+        return null;
+    // Hints of real-service gating in the script body OR in the script chain
+    // (consumers commonly wrap real-API setup in a sibling script).
+    const realServiceHints = [
+        "TEST_REAL_APIS",
+        "SUPABASE_SERVICE_ROLE",
+        "SUPABASE_URL",
+        "service_role",
+        "supabase start",
+    ];
+    if (realServiceHints.some((hint) => script.includes(hint)))
+        return null;
+    return {
+        id: "test-integration-env-not-asserted",
+        severity: "advisory",
+        detect: "`package.json#scripts.test:integration` exists but the script body shows no real-service env gating (TEST_REAL_APIS=true, SUPABASE_SERVICE_ROLE, or `supabase start` chain).",
+        action: "Confirm integration tests actually exercise real services — otherwise the seeded ci.yml integration step is a no-op (KN-23 false-confidence loop). Add an explicit gate to the script, for example:\n\n" +
+            '    "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n\n' +
+            "Or chain a real-service preflight (e.g. `supabase start && vitest run …`). If the absence is intentional (pure-mock integration suite), add a comment in the script and dismiss this advisory by tagging the package — there is no auto-suppress mechanism yet.",
+    };
+}
+/**
+ * Detect whether branch protection is configured on `dev`. Pattern matches
+ * detectMainBranchProtection but for the dev branch. Used to surface the
+ * "main is protected but dev is not" gap that lets agent direct-pushes /
+ * mis-targeted PRs bypass the run-tests status check.
+ */
+export function detectDevBranchProtection() {
+    try {
+        execFileSync("gh", ["api", "repos/{owner}/{repo}/branches/dev/protection"], {
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 5000,
+        });
+        return "present";
+    }
+    catch (err) {
+        const stderr = err.stderr?.toString() ?? "";
+        if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
+            return "missing";
+        }
+        return "unknown";
+    }
+}
+/**
+ * Detect whether `.github/workflows/<file>.yml` uses floating action tag
+ * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
+ * SHA pins for any workflow that runs with elevated permissions.
+ */
+export function detectGhaFloatingTags(cwd) {
+    const workflowsDir = path.join(cwd, ".github", "workflows");
+    if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
+        return null;
+    const floatingByFile = new Map();
+    for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
+        if (!entry.isFile())
+            continue;
+        if (!/\.ya?ml$/.test(entry.name))
+            continue;
+        const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
+        // Matches `uses: org/repo@v1`, `uses: org/repo@v1.2.3`, but NOT `uses: org/repo@<40-char-sha>`.
+        const re = /uses:\s*([^\s@]+@v[\d.]+)/g;
+        const matches = Array.from(content.matchAll(re), (m) => m[1]);
+        if (matches.length > 0)
+            floatingByFile.set(entry.name, matches);
+    }
+    if (floatingByFile.size === 0)
+        return null;
+    const lines = Array.from(floatingByFile.entries())
+        .map(([file, refs]) => `  ${file}: ${refs.join(", ")}`)
+        .join("\n");
+    return {
+        id: "gha-actions-floating-tags",
+        severity: "advisory",
+        detect: `.github/workflows/ uses floating-tag action refs (KN-3). Affected files:\n${lines}`,
+        action: "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
+            "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
+            "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Pair with `.github/dependabot.yml` so SHA pins refresh on upstream releases.",
+    };
+}
+/**
+ * Detect whether `.github/dependabot.yml` exists. Without it, GHA action SHA
+ * pins never get refreshed on upstream releases or CVE disclosure.
+ */
+export function detectDependabotConfigMissing(cwd) {
+    const yml = path.join(cwd, ".github", "dependabot.yml");
+    const yaml = path.join(cwd, ".github", "dependabot.yaml");
+    if (fs.existsSync(yml) || fs.existsSync(yaml))
+        return null;
+    // Only fire if there's a workflows dir to dependabot in the first place.
+    if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
+        return null;
+    return {
+        id: "dependabot-config-missing",
+        severity: "advisory",
+        detect: ".github/dependabot.yml is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures.",
+        action: "Seed a minimal `.github/dependabot.yml` with the `github-actions` ecosystem polling weekly:\n\n" +
+            "    version: 2\n" +
+            "    updates:\n" +
+            "      - package-ecosystem: github-actions\n" +
+            "        directory: /\n" +
+            "        schedule:\n" +
+            '          interval: "weekly"\n\n' +
+            "Add `npm` / `pip` / other ecosystems the consumer cares about as siblings.",
+    };
+}
+/**
+ * Detect whether the consumer composed any sibling workflow on bkit's `Detect
+ * Direct Push` step outputs (`should_force_build`, `should_run_e2e`,
+ * `cache.outputs.skip`). The bkit ci.yml ships primitives only — without a
+ * consumer-side gate referencing the outputs, the force-tag system documented
+ * in deployments.md is documentation-only.
+ */
+export function detectRunLevelsNotComposed(cwd) {
+    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    if (!fs.existsSync(ciPath))
+        return null;
+    const ciContent = fs.readFileSync(ciPath, "utf-8");
+    // Bkit ci.yml ships the `Detect Direct Push` step — if absent, no primitives to compose.
+    if (!ciContent.includes("Detect Direct Push"))
+        return null;
+    const workflowsDir = path.join(cwd, ".github", "workflows");
+    const refTokens = ["should_force_build", "should_run_e2e", "cache.outputs.skip"];
+    // The bkit-managed block in ci.yml already references the tokens internally.
+    // We want to know if any OTHER workflow file (or a step OUTSIDE the bkit:start/end
+    // markers in ci.yml) references them. Scan all sibling .yml files for any token hit.
+    let composed = false;
+    for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
+        if (!entry.isFile() || !/\.ya?ml$/.test(entry.name))
+            continue;
+        if (entry.name === "ci.yml")
+            continue; // skip — checked separately
+        const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
+        if (refTokens.some((tok) => content.includes(tok))) {
+            composed = true;
+            break;
+        }
+    }
+    // Also check ci.yml content outside the bkit:start/end block.
+    if (!composed) {
+        const outside = ciContent.replace(/# bkit:start[\s\S]*?# bkit:end/g, "");
+        if (refTokens.some((tok) => outside.includes(tok)))
+            composed = true;
+    }
+    if (composed)
+        return null;
+    return {
+        id: "run-levels-not-composed",
+        severity: "advisory",
+        detect: ".github/workflows/ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_e2e`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
+        action: "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
+            "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
+            "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_e2e`).\n" +
+            "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
+            "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force e2e]` tag detection.",
+    };
+}
+/**
+ * Build the consolidated "three locations to sync secrets" advisory. Fires when
+ * the consumer's repo has at least one bkit-ci-router workflow installed OR a
+ * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
+ * which means the same three secrets need to be set in three places (GitHub
+ * Actions, Cursor Settings online, Claude app web).
+ *
+ * Returns null when none of the three trigger paths exist.
+ */
+export function buildCloudDashboardsAdvisory(cwd) {
+    const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-ci-router.yml"));
+    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
+    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
+    if (!hasRouter && !hasClaude && !hasCursor)
+        return null;
+    return {
+        id: "cloud-secrets-three-locations",
+        severity: "advisory",
+        detect: "The same secrets used by bkit's CI workflow (`ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`) must also be set in the Cursor Background Agents and Claude Code (web) dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.",
+        action: "Set each secret in all THREE locations:\n\n" +
+            "1. **GitHub Actions** (used by bkit-ci-router and consumer workflows):\n" +
+            "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
+            "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
+            '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
+            "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n" +
+            "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
+            "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
+            "Same VALUE in all three places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. ANTHROPIC_API_KEY and LINEAR_API_KEY are read from their respective vendor dashboards (https://console.anthropic.com/settings/keys, https://linear.app/settings/api).",
+    };
+}
+/**
+ * Detect whether `ANTHROPIC_API_KEY` / `LINEAR_API_KEY` GitHub Actions secrets
+ * are set. Only fires when `.github/workflows/bkit-ci-router.yml` exists — the
+ * router is the bkit-shipped workflow that uses both. Returns one finding per
+ * missing secret.
+ */
+export function detectCiRouterSecrets(cwd) {
+    const findings = [];
+    const routerPath = path.join(cwd, ".github", "workflows", "bkit-ci-router.yml");
+    if (!fs.existsSync(routerPath))
+        return findings;
+    for (const name of ["ANTHROPIC_API_KEY", "LINEAR_API_KEY"]) {
+        const status = detectGhSecret(name);
+        if (status === "missing") {
+            findings.push({
+                id: `${name.toLowerCase().replace(/_/g, "-")}-secret-missing`,
+                severity: "advisory",
+                detect: `gh secret list confirms ${name} secret is NOT set on this GitHub repo.`,
+                action: `\`.github/workflows/bkit-ci-router.yml\` requires ${name} to invoke its Claude Code action. Without it, the router exits no-op on every Linear ticket.\n\nSet the secret:\n\n` +
+                    `    gh secret set ${name} --body='<paste-value-here>'\n\n` +
+                    `Then verify: \`gh secret list | grep ${name}\`. The router workflow itself does not need redeploying — secrets are read at run time.`,
+            });
+        }
+        // "unknown" → silent skip (CLI absent / unauthenticated — covered by gh-bkit-token-secret-unknown).
     }
     return findings;
 }
@@ -446,7 +771,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const shellStatus = detectShellToken();
     if (shellStatus === "missing") {
         phase3.push({
-            id: "gh-bkit-token-missing-shell",
+            id: "gh-bkit-token-unset-shell",
             severity: "advisory",
             detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
             action: "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
@@ -455,7 +780,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     }
     else if (shellStatus === "empty") {
         phase3.push({
-            id: "gh-bkit-token-missing-shell",
+            id: "gh-bkit-token-empty-shell",
             severity: "advisory",
             detect: 'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
             action: "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token.\n\n" +
@@ -521,11 +846,12 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // pushes / mis-targeted PRs are rejected before the workflow runs), main
     // needs branch protection restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
+    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
+    const hasProtectionScript = fs.existsSync(protectionScript);
+    const scriptHint = hasProtectionScript
+        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
+        : "";
     if (protectionStatus === "missing") {
-        const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
-        const scriptHint = fs.existsSync(protectionScript)
-            ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
-            : "";
         phase3.push({
             id: "main-branch-protection-missing",
             severity: "advisory",
@@ -539,13 +865,57 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
                 scriptHint,
         });
     }
+    // Dev branch protection — most agent direct-pushes / ghost-greens land on dev first.
+    // Only fire when main IS protected (otherwise main-branch-protection-missing is the
+    // higher-priority advisory and pairing both would be noise).
+    if (protectionStatus === "present") {
+        const devProtectionStatus = detectDevBranchProtection();
+        if (devProtectionStatus === "missing") {
+            phase3.push({
+                id: "dev-branch-protection-missing",
+                severity: "advisory",
+                detect: "main is protected but dev is not.",
+                action: "Direct agent pushes / mis-targeted PRs to dev bypass the `run-tests` status check. Apply a looser dev policy (chore commits allowed, run-tests required):\n\n" +
+                    (hasProtectionScript
+                        ? "    bash scripts/ci/bkit-set-protection.sh --dev\n\n(idempotent; safe to re-run)"
+                        : "    gh api -X PUT repos/{owner}/{repo}/branches/dev/protection -F required_status_checks.strict=false -F 'required_status_checks.contexts[]=run-tests' -F enforce_admins=false -F required_pull_request_reviews=null -F restrictions=null"),
+            });
+        }
+    }
+    // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
+    for (const f of detectCiRouterSecrets(cwd))
+        phase3.push(f);
+    // Cloud / IDE-online dashboards — Cursor Background Agents + Claude Code on the web
+    // read env vars from their respective online dashboards, NOT from repo files.
+    // The same three secrets that GitHub Actions needs must be mirrored there.
+    const cloudDashboardsAdvisory = buildCloudDashboardsAdvisory(cwd);
+    if (cloudDashboardsAdvisory)
+        phase3.push(cloudDashboardsAdvisory);
     // ci.yml missing token env
     const ciYml = detectCiYmlMissingTokenEnv(cwd);
     if (ciYml)
         phase3.push(ciYml);
+    // GHA action SHA pinning (KN-3) + dependabot config.
+    const gha = detectGhaFloatingTags(cwd);
+    if (gha)
+        phase3.push(gha);
+    const dependabot = detectDependabotConfigMissing(cwd);
+    if (dependabot)
+        phase3.push(dependabot);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);
+    // turbo.json inputs for cache-replay safety (KN-24).
+    for (const f of detectTurboIntegrationInputs(cwd))
+        phase3.push(f);
+    // test:integration runtime env (KN-23 false-confidence loop).
+    const integrationEnv = detectTestIntegrationEnv(cwd);
+    if (integrationEnv)
+        phase3.push(integrationEnv);
+    // Consumer composed run-levels on bkit primitives (else docs/deployments.md matrix is doc-only).
+    const runLevels = detectRunLevelsNotComposed(cwd);
+    if (runLevels)
+        phase3.push(runLevels);
     // vale not synced
     const vale = detectValePackageNotSynced(cwd);
     if (vale)
