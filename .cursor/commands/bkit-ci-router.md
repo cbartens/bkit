@@ -109,7 +109,7 @@
 ## 🤖 Step 2 — Stale-Run Guard
 
 1. `gh run list --branch "$BRANCH" --limit 1 --json headSha --jq '.[0].headSha'` → extract `LATEST_RUN_SHA`. Assert non-empty. **Else** → **Failure Path**.
-2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `GUARD_VERDICT` = SKIP → **Failure Path**. **Else** → `GUARD_VERDICT` = OK.
+2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `GUARD_VERDICT` = FAIL. **Else** → `GUARD_VERDICT` = PASS.
 3. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -121,8 +121,9 @@
    ```
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 2 — Stale-Run Guard
+   ### Step 2 — Stale-Run Guard - Verdict: {GUARD_VERDICT}
    ```
+5. **If** `GUARD_VERDICT` = FAIL → **STOP**, no further downstream steps.
 
 ### 🔒 Gate 2 — Stale-Run Guard
 
@@ -134,63 +135,42 @@
 
 ## 🤖 Step 3 — Opt-In Gate
 
+**Run only if** Step 2 `GUARD_VERDICT` = PASS.
+
 1. `get_issue({ id: "{ISSUE_ID}" })` → extract `LABELS`. **If** call fails → retry once. **If** still fails → **Failure Path**.
-2. **If** `Auto` not in `{LABELS}` → set `GUARD_VERDICT` = SKIP → **Failure Path**. **Else** → `GUARD_VERDICT` = OK.
+2. **If** Auto NOT in `{LABELS}` → set `AUTO_VERDICT` = FAIL. **Else** → `AUTO_VERDICT` = PASS.
 3. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$GUARD_VERDICT" \
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$AUTO_VERDICT" \
      '.[-1].steps += [{step:"ci-opt-in-gate", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): ci-router-opt-in-gate"
    ```
 4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Opt-In Gate
+   ### Step 3 — Opt-In Gate - Verdict: {AUTO_VERDICT}
    ```
+5. **If** `AUTO_VERDICT` = FAIL → **STOP**, no further downstream steps.
 
 ### 🔒 Gate 3 — Opt-In Gate
 
-- [ ] `Auto` in `{LABELS}`
+- [ ] Label Auto present in `{LABELS}`
 - [ ] Workflow status updated (step `ci-opt-in-gate` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
 
-## 🤖 Step 4 — Append Decision
+## 🤖 Step 4 — Dispatch
+
+**Run only if** Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS.
 
 1. Resolve `DECISION`:
    ```bash
    if [ "$CI_STATUS" = "pass" ]; then DECISION="/bkit-ship {FID}"; else DECISION="/bkit-debug {FID} DEBUG_MODE=pr"; fi
    ```
-2. Update status and commit:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg d "$DECISION" \
-     '.[-1].steps += [{step:"ci-decision", status:"DONE", at:$t, parentSha:$p, decision:$d, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): ci-router-decision"
-   ```
-3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 4 — Decision - CI: {CI_STATUS} - Decision: {DECISION}
-   Head SHA: `{HEAD_SHA}`
-   Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
-   ```
-
-### 🔒 Gate 4 — Decision
-
-- [ ] `DECISION` resolved (`/bkit-ship {FID}` or `/bkit-debug {FID} DEBUG_MODE=pr`)
-- [ ] Workflow status updated (step `ci-decision` recorded with `parentSha`, `decision`)
-- [ ] Issue comment attempted (`Step 4` section)
-
----
-
-## 🤖 Step 5 — Dispatch
-
-1. Update status, commit, and push:
+2. Update status, commit, and push (single push for all accumulated per-step commits + this close commit):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -201,18 +181,20 @@
    git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
    git push origin "$(git branch --show-current)"
    ```
-2. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 5 — Dispatch
-   Invoked: `{DECISION}`
+   ### Step 4 — Dispatch - CI: {CI_STATUS} - Decision: {DECISION}
+   Head SHA: `{HEAD_SHA}`
+   Run URL: https://github.com/{OWNER_REPO}/actions/runs/{GHA_RUN_ID}
    ```
-3. **If** `CI_STATUS` = pass → invoke `/bkit-ship {FID}` via `Task` tool.
-4. **IFe** `CI_STATUS` = fail → invoke `/bkit-debug {FID}` via `Task` tool.
-5. **Else** → **Failure Path**.
+4. **If** `CI_STATUS` = pass → invoke `/bkit-ship {FID}` via `Task` tool.
+5. **Else if** `CI_STATUS` = fail → invoke `/bkit-debug {FID}` via `Task` tool.
+6. **Else** → **Failure Path**.
 
-### 🔒 Gate 5 — Dispatch
+### 🔒 Gate 4 — Dispatch
 
+- [ ] `DECISION` resolved (`/bkit-ship {FID}` or `/bkit-debug {FID} DEBUG_MODE=pr`)
 - [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch` recorded with `parentSha`, `decision`)
-- [ ] Issue comment attempted (`Step 5` section)
+- [ ] Issue comment attempted (`Step 4` section)
 - [ ] Slash command invoked
 - [ ] Router process exits cleanly (the dispatched workflow now owns the session)
