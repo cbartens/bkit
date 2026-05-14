@@ -14,8 +14,8 @@ Typical cycle for issue `BAR-123` "Add feature X":
 2. **Trigger** — Linear comment (`@curspr /bkit-plan BAR-123`) or slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
 3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
-5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, `@bkit-plan-review-1` ‖ `@bkit-plan-review-2`, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
-6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `docs(bar-123-…): plan complete [skip build] [skip ci]` → push.
+5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
+6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(bar-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(bar-123-…): summary` (build / debug / ship) → push.
 7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/bar-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/drafts/{FID}-{design,plan}.md`. Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.

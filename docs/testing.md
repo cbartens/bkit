@@ -62,7 +62,6 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 | `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
-| `bkit-tier1-defaults.test.ts` | Unit | Versioned-defaults SoT (BKIT_TIER1_DEFAULTS_BY_VERSION). |
 | `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival). |
 | `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |

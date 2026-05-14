@@ -519,7 +519,7 @@ Each subsection below documents what command actually does — step list, subage
 | 5 — Design Review | `@bkit-design-review-1` ‖ `@bkit-design-review-2` (parallel) | `design-v1-draft.md`, `design-input.md` | `design-review-1.md`, `design-review-2.md` (opinion-only logs) | Effort-tier diversity (high vs medium); sibling-blind. `REVIEW_VERDICT` = worst of two. `FAIL` → Failure Path. |
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
-| 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `docs({FID}): design complete [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
+| 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 9 — Design Workstream Issues | — | `design-v3-organised.md` | Linear sub-issues + `blockedBy` edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: `list_issues({ parentId })` → existing match → `save_comment` sync (body untouched); else `save_issue({ parentId, title: "WS-N: …", description: … })` with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: `save_issue({ blockedBy })` per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
 | 10 — Close Workflow | — | — | `drafts/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to drafts → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. |
 
@@ -543,7 +543,7 @@ Each subsection below documents what command actually does — step list, subage
 | 7 — Apply Scope | `@bkit-plan-update` | In-place edits; scope expansions → APPEND `docs/pending.md`. |
 | 8 — Check Complexity | `@bkit-plan-complexity-check` | `COMPLEXITY_VERDICT` ∈ {single, split}. |
 | 9 — Split Plan | `@bkit-plan-complexity-split` _(only if `split`)_ | Writes `{FID}-plan-N.md` sub-plans + `plan-split.md` log; self-verifies losslessness (`SPLIT_VERDICT` ∈ {PASS, FAIL}; `FAIL` → Failure Path). |
-| 10 — Summary | `@bkit-plan-summary` | Commit `docs({FID}): plan complete [skip build] [skip ci]` → push. |
+| 10 — Summary | `@bkit-plan-summary` | Commit `chore({FID}): summary [skip build] [skip ci]` → push. |
 | 11 — Close Workflow | — | Sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 10). Set state `In Review`; phase label `Plan` persists. |
 
 **Hard stop in Step 11 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
@@ -572,7 +572,7 @@ Each subsection below documents what command actually does — step list, subage
 | 13 — Run Tests | — | Detect `turbo.json`: present → `pnpm turbo lint typecheck test --filter='...[origin/dev]'`; absent → single-package fallback iterates `pnpm $script` for any present in `package.json#scripts` (typecheck, test, format:check, lint:slop, lint:prose) under `set -e` (bkit is a single-package repo — plain `pnpm turbo` exits with `Command "turbo" not found` when `turbo.json` is absent). Pre-PR: lint/typecheck/unit only — NO integration / E2E. `TEST_VERDICT` = PASS → Step 16. `FAIL` → Step 14 if `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT`. |
 | 14 — Diagnose Failure | `@bkit-debug-failure-diagnose` _(only if Step 13 FAIL)_ | Writes `build-failure-diagnose-{TEST_ATTEMPT}.md`. |
 | 15 — Remediate Failure | `@bkit-debug-failure-remediate` _(only if Step 13 FAIL)_ | Writes `build-failure-remediate-{TEST_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per fix step; `BLOCKED —` per blocked step, appended via `Bash echo >>`). No skip-done — each attempt is diagnosis-driven and may pick a different strategy. Increment `TEST_ATTEMPT`; re-run Step 13. > `MAX_TEST_ATTEMPT` → Failure Path. |
-| 16 — Summary | `@bkit-build-summary` | Commit `docs({FID}): build complete [skip build] [skip ci]` → push (`-u origin {BRANCH}`). |
+| 16 — Summary | `@bkit-build-summary` | Commit `chore({FID}): summary` → push (`-u origin {BRANCH}`). |
 | 17 — Create PR | — | `gh fetch origin dev`; if `supabase/migrations/` changed and HEAD lacks `[force build]` → amend or empty commit with `[force build]` → push. PR body is the plan blob URL. `gh pr create --base dev` (base pinned). Retry `gh pr create` once on failure. Post-create assertion: `gh pr view --json baseRefName` = dev else Failure Path — guards against repos whose default base is `main`. |
 | 18 — Close Workflow | — | Set state `In Review`; phase label `Build` persists. Worktree persists for follow-up `/bkit-debug` or `/bkit-ship`. |
 
@@ -807,10 +807,9 @@ Conventional Commits — `{type}({FID}): {summary}`.
 <!-- prettier-ignore -->
 | Type | When |
 | --- | --- |
-| `docs` | Design / plan / docs / archive cleanup / abort summary |
-| `chore` | Pre-worktree carry-over, skill installs |
-| `feat` | Build implementation (PR title) |
-| `fix` | Debug remediation (`fix({FID}): debug attempt N/MAX`) |
+| `docs` | Doc-only changes (handover, ship close-workflow on `dev`); abort summary commits |
+| `chore` | All per-step workflow commits (worktree-setup, summary, close-workflow, push-remediation attempt N/MAX, etc.) + pre-worktree carry-over |
+| `feat` | Build implementation (PR title only) |
 | `wip` | (used by `/bkit-worktree-sync` for local pre-merge captures only) |
 
 ### CI / Vercel commit tags
@@ -830,18 +829,13 @@ Precedence: `[force build]` on head commit wins.
 | Workflow commit | Tags |
 | --- | --- |
 | `chore: pre-worktree uncommitted changes` (Step 2 of every phase) | `[skip build] [skip ci]` |
-| `chore({FID}): install skills` (build Step 4) | `[skip build] [skip ci]` |
-| `chore({FID}): brainstorm-ideate` / `design-generate` / `design-review` / `design-update` / `design-organise` (design Steps 3–7) | `[skip build] [skip ci]` |
-| `docs({FID}): design complete` (design Step 8 summary) | `[skip build] [skip ci]` |
-| `docs({FID}): plan complete` (plan Step 10 summary) | `[skip build] [skip ci]` |
-| `docs({FID}): build complete` (build Step 16 summary) | `[skip build] [skip ci]` |
-| `chore({FID}): summary` (debug Step 8 summary) | `[skip build] [skip ci]` |
+| `chore: pre-worktree uncommitted changes` (Step 2 of every phase) | `[skip build]` |
+| `chore({FID}): {step-slug}` for per-step in-worktree commits (e.g. `worktree-setup`, `branch-sync`, `install-skills`, `plan-execute sub-plan N`, `plan-verify sub-plan N attempt M`, `run-tests attempt N`, `failure-diagnose attempt N`, `failure-remediate attempt N`, `build-challenge attempt N`, `build-challenge-reconcile attempt N`, `build-challenge-remediate attempt N`, `build-challenge-tests`, `summary`, `create-pr`, ship `merge-pr attempt N`, ship `prune-skills`, ship `update-docs-summary`) | none — in-worktree, never visible to CI on `dev` |
+| `chore({FID}): summary [skip build] [skip ci]` (design Step 8 summary, plan Step 10 summary) | `[skip build] [skip ci]` |
 | `chore({FID}): push-remediation attempt N/MAX` (debug Step 7) | none — must trigger CI |
-| `docs({FID}): update-docs-summary` (ship Step 8, includes archive `mv`) | `[skip build] [skip ci]` |
-| `chore({FID}): prune-skills` (ship Step 9) | `[skip build] [skip ci]` |
-| `docs({FID}): ship DONE` (ship Step 11 close-workflow) | `[skip ci]` |
+| `docs({FID}): ship DONE` (ship Step 11 close-workflow on `dev`) | `[skip ci]` |
 | `docs({FID}): {phase} aborted` (Failure Path handover) | `[skip build] [skip ci]` |
-| `chore({FID}): close-workflow` (build Step 18, debug Step 12) | none — final HEAD on push, fires `pull_request` synchronize |
+| `chore({FID}): close-workflow` (build Step 18, debug Step 12 — only commit on PR ref without skip tags) | none — final HEAD on push, fires `pull_request` synchronize |
 
 **CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `[skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject.
 

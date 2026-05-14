@@ -239,7 +239,7 @@ When bkit's reference Dockerfile changes (e.g. vale version bump):
 
 # Post-CI auto-routing
 
-After `bkit-build` Step 17 pushes its CI-trigger commit and exits, the post-CI router decides ship vs. debug and dispatches the matching skill in a fresh cloud session — no operator action between CI completion and the dispatched session starting.
+After `bkit-build` Step 18 close-workflow pushes its CI-trigger commit (`chore({FID}): close-workflow`, no skip tags) and exits, the post-CI router decides ship vs. debug and dispatches the matching skill in a fresh cloud session — no operator action between CI completion and the dispatched session starting.
 
 The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.agents/workflows/bkit-ci-router.md`, mirrored to `.claude/commands/bkit-ci-router.md` + `.cursor/commands/bkit-ci-router.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
 
