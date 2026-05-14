@@ -11,6 +11,12 @@ permissions:
   actions: read
   contents: read
 
+# Cancel superseded in-progress runs on the same PR only. Never on push to {{DEFAULT_BRANCH}}/dev —
+# release/main-CI runs are observed by downstream workflow_run triggers and must not be cancelled.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   run-tests:
     runs-on: ubuntu-latest
@@ -68,6 +74,35 @@ jobs:
             fi
           fi
 
+      # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
+      # - name: Auto Force E2E for Sensitive Paths
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   id: e2e-paths
+      #   run: |
+      #     git fetch origin "${{ github.base_ref }}" --depth=1 2>/dev/null || true
+      #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" 2>/dev/null || echo "")
+      #     PATTERNS=('auth/' 'migrations/' 'supabase/migrations/' 'payment/' 'api/' 'server/')
+      #     for f in $CHANGED; do
+      #       for p in "${PATTERNS[@]}"; do
+      #         case "$f" in *"$p"*) echo "needs_e2e=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+      #       done
+      #     done
+
+      # bkit-stub:migrations-immutable — Block PRs modifying previously-merged migrations. To enable: uncomment the step below and delete this stub header.
+      # - name: Migrations Immutability Guard
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   run: |
+      #     git fetch origin "${{ github.base_ref }}" --depth=50 2>/dev/null || true
+      #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" -- supabase/migrations/ 2>/dev/null || true)
+      #     EXIT=0
+      #     for f in $CHANGED; do
+      #       if git rev-parse "origin/${{ github.base_ref }}:$f" >/dev/null 2>&1; then
+      #         echo "::error file=$f::Migration already exists on ${{ github.base_ref }} — migrations are immutable after merge"
+      #         EXIT=1
+      #       fi
+      #     done
+      #     exit $EXIT
+
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
@@ -79,6 +114,18 @@ jobs:
         env:
           TURBO_FORCE: ${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
+
+      # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
+      # - name: Test Presence Audit
+      #   if: steps.cache.outputs.skip != 'true'
+      #   run: |
+      #     for pkg in $(jq -r '.workspaces // [] | .[]' package.json 2>/dev/null) $(ls -d packages/*/ apps/*/ 2>/dev/null); do
+      #       [ -f "$pkg/package.json" ] || continue
+      #       if jq -e '.scripts.test' "$pkg/package.json" >/dev/null 2>&1; then
+      #         COUNT=$(find "$pkg" -path '*/node_modules' -prune -o \( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \) -print 2>/dev/null | wc -l)
+      #         [ "$COUNT" -eq 0 ] && echo "::warning::$pkg declares a test script but has zero *.test.ts files"
+      #       fi
+      #     done
 
       - name: Run Vitest Tests
         if: steps.cache.outputs.skip != 'true'
@@ -97,6 +144,17 @@ jobs:
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
 
+      # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
+      # - name: Apply Supabase Migrations to Dev
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache.outputs.skip != 'true'
+      #   env:
+      #     SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      #     SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      #     SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+      #   run: |
+      #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      #     pnpm dlx supabase db push --linked --include-all
+
       - name: Run Prettier Format Check
         if: steps.cache.outputs.skip != 'true'
         env:
@@ -114,4 +172,48 @@ jobs:
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+
+      # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
+      # - name: Await Vercel Preview
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   id: vercel
+      #   env:
+      #     VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      #     VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      #     VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      #   run: |
+      #     for i in $(seq 1 60); do
+      #       URL=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+      #         "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_TEAM_ID&meta-githubCommitSha=$GITHUB_SHA&state=READY&limit=1" \
+      #         | jq -r '.deployments[0].url // empty')
+      #       if [ -n "$URL" ]; then
+      #         echo "target_url=https://$URL" >> "$GITHUB_OUTPUT"
+      #         exit 0
+      #       fi
+      #       sleep 10
+      #     done
+      #     echo "::error::Vercel preview did not reach READY within 10 minutes"
+      #     exit 1
+
+      # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
+      # - name: Run E2E Tests
+      #   if: (steps.detect.outputs.should_run_e2e == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true'
+      #   env:
+      #     TARGET_URL: ${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
+      #   run: pnpm test:e2e
       # bkit:end
+
+# bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
+# name: Smoke
+# on:
+#   workflow_run:
+#     workflows: ["CI"]
+#     types: [completed]
+#     branches: [{{DEFAULT_BRANCH}}]
+# jobs:
+#   smoke:
+#     if: github.event.workflow_run.conclusion == 'success'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - run: ./scripts/ci/smoke-test.sh

@@ -16,6 +16,7 @@ import {
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
   detectDevDepsNeedFetch,
+  detectBkitStubs,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -459,6 +460,84 @@ describe("detectDevDepsNeedFetch", () => {
 
   it("returns null when WriteSet is empty", () => {
     expect(detectDevDepsNeedFetch(makeWs())).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectBkitStubs
+// ---------------------------------------------------------------------------
+
+describe("detectBkitStubs", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-stubs-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns empty when neither ci.yml nor pre-commit exist", () => {
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
+  });
+
+  it("returns empty when ci.yml has no bkit-stub sentinels", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "name: CI\non: push\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - run: pnpm test\n",
+    );
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
+  });
+
+  it("returns one finding per sentinel present in ci.yml", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      [
+        "name: CI",
+        "      # bkit-stub:auto-force-e2e — header",
+        "      # - name: Auto Force E2E",
+        "      # bkit-stub:e2e — header",
+        "      # - name: Run E2E",
+      ].join("\n"),
+    );
+    const findings = detectBkitStubs(tmpDir);
+    expect(findings).toHaveLength(2);
+    expect(findings.map((f) => f.id).sort()).toEqual(["bkit-stub-auto-force-e2e", "bkit-stub-e2e"]);
+    expect(findings[0]!.severity).toBe("advisory");
+    expect(findings[0]!.action).toContain("delete the entire stub block");
+  });
+
+  it("scans pre-commit for the wrong-branch-guard sentinel", () => {
+    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".husky", "pre-commit"),
+      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard — header\npnpm lint-staged\n",
+    );
+    const findings = detectBkitStubs(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe("bkit-stub-wrong-branch-guard");
+    expect(findings[0]!.detect).toContain(".husky/pre-commit");
+  });
+
+  it("does not fire when the sentinel line has been removed (block left uncommented in place)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      ["name: CI", "      - name: Auto Force E2E", "        run: echo enabled"].join("\n"),
+    );
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
+  });
+
+  it("does not match partial-prefix ids (e.g. e2e-paths step id does not trigger e2e advisory)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      id: e2e-paths\n      run: echo ok\n",
+    );
+    expect(detectBkitStubs(tmpDir)).toEqual([]);
   });
 });
 

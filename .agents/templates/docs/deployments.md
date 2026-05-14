@@ -114,4 +114,35 @@ Use when the script errors, when restoring protection from a non-current owner, 
 - `psql "$SUPABASE_DB_URL" -c 'SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;'` must match `ls supabase/migrations/` on the rolled-back tree.
 - Re-run the schema-aware test suite (`pnpm test:integration` or the consumer's equivalent) to confirm DB and code agree.
 
+## Commit-message force tags
+
+Bkit's shipped `ci.yml` recognises the tags below in commit messages (push events) and PR titles (pull_request events). Tags are case-sensitive, must be literal square-bracket form, and may appear anywhere in the message.
+
+| Tag                            | Effect                                                                                                                                                                                                 | Scope                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| `[force cache]`                | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens.                                                                    | Read by `Detect Direct Push` step                |
+| `[force build]`                | Exposes `should_force_build=true` step output for downstream deploy gates. Has no effect unless the consumer's deploy steps gate on it.                                                                | Read by `Detect Direct Push` step                |
+| `[force e2e]`                  | Exposes `should_run_e2e=true` step output. The `bkit-stub:e2e` block (when uncommented) runs E2E on this signal.                                                                                       | Read by `Detect Direct Push` step                |
+| `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
+| `[skip build]`                 | Consumer-defined: bkit does not interpret this tag in `ci.yml`. Consumers wiring it into deploy steps add the gate themselves.                                                                         | Consumer-controlled                              |
+
+Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for the cache-bust rationale.
+
+## Run-level decision matrix
+
+Bkit's shipped `ci.yml` ships _primitives_ (cache check, direct-push detect, tag parsing, integration gate) and does not impose a fixed run-level tier system. Consumers composing tiers on top should align with the table below — it defines a `none` / `partial` / `full` shape that bkit's force tags + auto-detection plug into cleanly.
+
+| Run level | When                                                                                                    | Runs                                                                                   | Defers                                   |
+| --------- | ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `none`    | HEAD has `[skip ci]` / `[skip actions]`; or `cache.outputs.skip == 'true'` (SHA passed in last 7 days). | Nothing (workflow skipped entirely or short-circuited after the cache check).          | All gates                                |
+| `partial` | Push to `dev` from a merged PR; routine chore commits without `[force build]`.                          | Typecheck, unit tests, integration tests, format check, prose + slop lint, bkit check. | Deploy, smoke, E2E.                      |
+| `full`    | Push to `{{DEFAULT_BRANCH}}`; PR runs; or any commit with `[force build]` / `[force e2e]`.              | Partial + deploy gate + (optional) Vercel preview await + E2E.                         | Smoke (runs as `workflow_run` after CI). |
+
+Composition guidance:
+
+- Treat `cache.outputs.skip` as the `none` gate — every step gates on `if: steps.cache.outputs.skip != 'true'`.
+- Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
+- Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
+- Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
+
 <!-- bkit:end -->

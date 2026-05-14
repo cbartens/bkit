@@ -219,6 +219,115 @@ export function detectValePackageNotSynced(cwd: string): PreflightFinding | null
 }
 
 /**
+ * Detect bkit-stub:<id> sentinel comments in installed config files. Each sentinel
+ * marks a commented-in YAML / shell block that bkit ships disabled by default;
+ * the corresponding advisory points the installing AI/user at the block so they
+ * can decide whether to enable, customise, or delete it.
+ *
+ * Each stub is keyed on (file, id). To dismiss an advisory: remove the sentinel
+ * header line. Uncommenting the block alone does NOT silence the advisory —
+ * delete the `# bkit-stub:<id> — ...` header line at the same time.
+ */
+interface BkitStub {
+  /** Stub identifier; matches `# bkit-stub:<id>` in the file. */
+  id: string;
+  /** Path relative to cwd. */
+  file: string;
+  /** Short description of what enabling the block does — surfaced to the installing AI. */
+  description: string;
+}
+
+const BKIT_STUBS: BkitStub[] = [
+  {
+    id: "auto-force-e2e",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Auto-trigger E2E on PRs whose diff touches sensitive paths (auth, migrations, payment, api, server).",
+  },
+  {
+    id: "migrations-immutable",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Fail PRs that modify supabase/migrations/* files already present on the base branch — enforces migration immutability after merge.",
+  },
+  {
+    id: "test-presence",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Warn when a workspace package declares a `test` script but contains zero `*.test.ts(x)` / `*.spec.ts(x)` files (guards against accidental deletion).",
+  },
+  {
+    id: "supabase-migrate",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Apply Supabase migrations to the dev project on push-to-dev. Requires SUPABASE_ACCESS_TOKEN, SUPABASE_DEV_DB_PASSWORD, SUPABASE_DEV_PROJECT_REF secrets.",
+  },
+  {
+    id: "vercel-await",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Poll the Vercel API for the PR's preview deployment by commit SHA and export `target_url` for E2E. Requires VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID secrets.",
+  },
+  {
+    id: "e2e",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Run `pnpm test:e2e` gated on `should_run_e2e` (commit tag) or `needs_e2e` (auto-force-e2e). Pairs with vercel-await for PR-time runs against the preview deployment.",
+  },
+  {
+    id: "smoke",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
+  },
+  {
+    id: "wrong-branch-guard",
+    file: ".husky/pre-commit",
+    description:
+      "Refuse direct commits to dev / main outside .worktrees/. Blocks accidental agent commits to wrong branch; pair with the bkit-debug runbook rule that recovery is `git revert`, never `git cherry-pick`.",
+  },
+];
+
+export function detectBkitStubs(cwd: string): PreflightFinding[] {
+  const findings: PreflightFinding[] = [];
+  // Cache file reads so repeated scans of the same file are O(1).
+  const fileCache = new Map<string, string | null>();
+  const readOnce = (file: string): string | null => {
+    if (fileCache.has(file)) return fileCache.get(file) ?? null;
+    const abs = path.join(cwd, file);
+    try {
+      const content = fs.existsSync(abs) ? fs.readFileSync(abs, "utf-8") : null;
+      fileCache.set(file, content);
+      return content;
+    } catch {
+      fileCache.set(file, null);
+      return null;
+    }
+  };
+
+  for (const stub of BKIT_STUBS) {
+    const content = readOnce(stub.file);
+    if (content === null) continue;
+    // Sentinel must be a literal `# bkit-stub:<id>` followed by space or end-of-token,
+    // so partial-prefix matches (e.g. `bkit-stub:e2e-paths` for stub `e2e`) don't fire.
+    const sentinel = `# bkit-stub:${stub.id}`;
+    const re = new RegExp(`(^|\\n)\\s*${sentinel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\s|$)`);
+    if (!re.test(content)) continue;
+    findings.push({
+      id: `bkit-stub-${stub.id}`,
+      severity: "advisory",
+      detect: `${stub.file} contains the bkit-stub:${stub.id} sentinel — a commented-in block shipped disabled by default.`,
+      action:
+        `${stub.description}\n\n` +
+        `Decide with the user: (a) enable — uncomment the YAML/shell block AND delete the \`# bkit-stub:${stub.id} — ...\` header line; (b) customise — adjust paths/secrets/conditions before uncommenting; (c) dismiss — delete the entire stub block (header + commented body).\n\n` +
+        `Until the sentinel is removed, this advisory fires every install / check.`,
+    });
+  }
+
+  return findings;
+}
+
+/**
  * Detect whether new devDependencies were added in this run (via WriteSet).
  * Returns null if no devDeps were added.
  */
@@ -491,6 +600,10 @@ export function runPostInstallCheck(
   // needs branch protection restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
   if (protectionStatus === "missing") {
+    const protectionScript = path.join(cwd, "scripts", "bkit-set-protection.sh");
+    const scriptHint = fs.existsSync(protectionScript)
+      ? "\n\nQuick path: bkit ships `scripts/bkit-set-protection.sh` — run `bash scripts/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
+      : "";
     phase3.push({
       id: "main-branch-protection-missing",
       severity: "advisory",
@@ -501,13 +614,17 @@ export function runPostInstallCheck(
         "    - Require a pull request before merging\n" +
         "    - Require status checks: run-tests\n" +
         "    - Restrict who can push: only allow PRs from dev\n\n" +
-        "Without this, a misconfigured agent or manual gh pr create --base main can still squash a feat/* branch directly into production. Any open PRs targeting main directly will fail the new workflow gates — retarget to dev or close.",
+        "Without this, a misconfigured agent or manual gh pr create --base main can still squash a feat/* branch directly into production. Any open PRs targeting main directly will fail the new workflow gates — retarget to dev or close." +
+        scriptHint,
     });
   }
 
   // ci.yml missing token env
   const ciYml = detectCiYmlMissingTokenEnv(cwd);
   if (ciYml) phase3.push(ciYml);
+
+  // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
+  for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
 
   // vale not synced
   const vale = detectValePackageNotSynced(cwd);
