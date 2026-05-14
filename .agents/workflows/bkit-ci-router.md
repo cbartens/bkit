@@ -18,10 +18,10 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 > - **No-op exits:** Stale-run, label-absent, branch-out-of-namespace, and closed-PR conditions append a single Linear no-op note and STOP cleanly — they are NOT failures.
 > - **Friction:** Watch own context for repeated tool failures, malformed `gh` payloads, MCP timeouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{CI_STATUS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}`, `{HEAD_SHA}`, `{ISSUE_ID}`, `{FID}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}` non-empty before tool calls. **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{CI_STATUS}`, `{PR_NUMBER}`, `{PR_URL}`, `{OWNER_REPO}`, `{BRANCH}`, `{HEAD_SHA}`, `{RUN_ID}`, `{ISSUE_ID}`, `{FID}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}` non-empty before tool calls. **Else** → **Failure Path**.
 > - **Subagents:** Not used in this workflow — orchestrator dispatches sibling slash commands via the `Skill` tool; never invokes agents.
 > - **Tools:** Verify every return, do NOT assume success.
-> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL`;
+> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL`.
 > - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step status.json write + commit on `feat/{FID}` (no push); single push deferred to Step 5 (dispatch) and Failure Path. Per-step commit messages: `chore({FID}): ci-router-{step-name}`. Close push messages: Step 5 → `docs({FID}): ci-router DONE [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED [skip ci]`. `[skip ci]` on the close commit is load-bearing — prevents the router's own push from triggering CI recursively.
 > - **Git:** Read-only for repo state queries (`gh pr view`, `gh run list`, `gh repo view`). Write allowed for per-step status.json commits and the single close push at Step 5 / Failure Path. NEVER stage anything other than `docs/plans/logs/{FID}/status.json` (`git add -A` is fine — no other files should have changed); NEVER use `--no-verify`. Destructive git **PROHIBITED**.
 > - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
@@ -68,7 +68,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    ```
    **If** the exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
-4. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,number --jq '.headRefName + "\t" + .headRefOid + "\t" + .state'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`. Assert `BRANCH`, `HEAD_SHA` non-empty. **Else** → **Failure Path**.
+4. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
 5. **If** `PR_STATE` != OPEN → **Failure Path**.
 6. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**.
 7. Extract `FID` from `BRANCH`: `FID="${BRANCH#feat/}"`. Assert `FID` non-empty and `FID` != `BRANCH`. **Else** → **Failure Path**.
@@ -77,33 +77,38 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    ISSUE_ID=$(echo "$FID" | grep -oE '^[a-z]+-[0-9]+' | tr '[:lower:]' '[:upper:]')
    ```
    Assert non-empty. **Else** → **Failure Path**.
-9. Update status and commit:
+9. Resolve the CI run id that triggered the router (matches PR head SHA):
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
-   [ -f "$STATUS" ] || echo '[]' > "$STATUS"
-   if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "ci-router" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-     t=$(mktemp); jq '. + [{workflow:"ci-router", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   fi
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"ci-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): ci-router-start-workflow"
+   RUN_ID=$(gh run list --branch "$BRANCH" --limit 5 --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId")
    ```
-10. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+   Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
+10. Update status and commit:
+    ```bash
+    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+    mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
+    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
+    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "ci-router" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
+      t=$(mktemp); jq '. + [{workflow:"ci-router", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    fi
+    PARENT_SHA=$(git rev-parse HEAD)
+    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+      '.[-1].steps += [{step:"ci-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
+      "$STATUS" > "$t" && mv "$t" "$STATUS"
+    git add -A && git commit --allow-empty -m "chore({FID}): ci-router-start-workflow"
+    ```
+11. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
     ```comment
     ## CI Router
     ### Step 1 — Start Workflow - Status: {CI_STATUS}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
-    [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
+    [{OWNER_REPO}#{PR_NUMBER}]({PR_URL})
+    [{OWNER_REPO} CI run {RUN_ID}](https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID})
     ```
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`CI_STATUS` in `pass|fail`, `PR_NUMBER`, `OWNER_REPO`, `BRANCH`, `HEAD_SHA`, `FID`, `ISSUE_ID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] Placeholders non-empty (`CI_STATUS` in `pass|fail`, `PR_NUMBER`, `PR_URL`, `OWNER_REPO`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, `ISSUE_ID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] PR is OPEN and branch in `feat/**` namespace
 - [ ] Workflow status updated (`ci-router` `IN_PROGRESS`, step `ci-start-workflow` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 1` section, fresh comment)
@@ -127,12 +132,18 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    ```comment
    ### Step 2 — Stale-Run Guard - Verdict: {GUARD_VERDICT}
    ```
-5. **If** `GUARD_VERDICT` = FAIL → **STOP**, no further downstream steps.
+5. **If** `GUARD_VERDICT` = FAIL → close workflow, commit, and push, then **STOP**:
+   ```bash
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
+   git push origin "$(git branch --show-current)"
+   ```
 
 ### 🔒 Gate 2 — Stale-Run Guard
 
 - [ ] `LATEST_RUN_SHA` == `HEAD_SHA`
-- [ ] Workflow status updated (step `ci-stale-run-guard` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `ci-stale-run-guard` recorded with `parentSha`, `verdict`; workflow closed to `DONE` and pushed on FAIL)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -156,12 +167,18 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    ```comment
    ### Step 3 — Opt-In Gate - Verdict: {AUTO_VERDICT}
    ```
-5. **If** `AUTO_VERDICT` = FAIL → **STOP**, no further downstream steps.
+5. **If** `AUTO_VERDICT` = FAIL → close workflow, commit, and push, then **STOP**:
+   ```bash
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "docs({FID}): ci-router DONE [skip ci]"
+   git push origin "$(git branch --show-current)"
+   ```
 
 ### 🔒 Gate 3 — Opt-In Gate
 
-- [ ] Label Auto present in `{LABELS}`
-- [ ] Workflow status updated (step `ci-opt-in-gate` recorded with `parentSha`, `verdict`)
+- [ ] Label `Auto` present in `{LABELS}`
+- [ ] Workflow status updated (step `ci-opt-in-gate` recorded with `parentSha`, `verdict`; workflow closed to `DONE` and pushed on FAIL)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
