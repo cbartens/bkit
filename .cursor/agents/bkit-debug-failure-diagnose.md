@@ -34,21 +34,20 @@ tools:
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Read `docs/knowledge.md` fully → collect entries with symptom / error-class / workflow-step matching the failure → cite matches in `Prior Knowledge` → use entries to seed hypotheses; do NOT derive from scratch unless necessary.
+4. Read `docs/knowledge.md` fully → grep entries by symptom / error-class / workflow-step → cite matches in `Prior Knowledge` → seed hypotheses from them; derive from scratch only if no match.
 5. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 6. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted diagnosis.
    - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-7. Check dep versions (`npx {TOOL} --version`, `brew info`, `pnpm outdated`) before assuming code bugs.
-8. Read CI/CD logs from input Context (NEVER `/tmp/`).
-9. Read `.agents/docs.md` § Observability for filter syntax (logging, traces, CDC).
-10. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
-11. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` (local tests) — failures = primary signal.
-12. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
-13. Update **Create** output with ALL considered hypothesis including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}` (heredoc form for multi-line findings) as work progresses. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending, write `PENDING` and set later via `Edit`.
-14. Non-obvious traps → note in output for remediator to APPEND to `docs/knowledge.md`. Check existing entries first to avoid duplicates.
-15. Update **Create** output - set `Verdict` via `Edit`; mapping:
+7. Check dep versions: `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
+8. Read CI/runtime logs from supplied inputs.
+9. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
+10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`. Local test failures = primary signal.
+11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
+12. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
+13. Non-obvious traps → note in output for remediator to append to `docs/knowledge.md`; check existing entries first.
+14. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
     - `FAIL` = unable to diagnose → orchestrator routes to Failure Path → `bkit-debug-abort-handover`.
     - `CONCERNS` = ambiguous root cause but plausible fix path.
@@ -102,19 +101,19 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 #### Reason
 
-[why this hypothesis given symptoms / prior knowledge]
+[Why this hypothesis given symptoms / prior knowledge]
 
 #### Act
 
-[test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
+[Test, command, file read, diff inspection performed, or untested dismissals `Dismissed a priori — see KN-{N}`]
 
 #### Observe
 
-[concrete output; do NOT paraphrase]
+[Concrete log lines / command output / stack traces - quoted verbatim from logs or test outputs; do NOT paraphrase]
 
 #### Result
 
-CONFIRMED | REFUTED | INCONCLUSIVE — [one-line justification; initially set to `PENDING`.]
+CONFIRMED | REFUTED | INCONCLUSIVE — [One-line justification; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after diagnosing failure and producing output. Do NOT fix, change code.**

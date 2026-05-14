@@ -27,7 +27,7 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Apply gap fixes (edit/create source files); ONLY identified gaps, no new scope. Do NOT just analyse.
-- **Blockers:** Append `BLOCKED` lines to log for any blocked gaps. NO out-of-scope deferral.
+- **Blockers:** Append `BLOCKED` log line per blocked gap; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -38,12 +38,12 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Read plan gaps and all log files (`DONE` gap entries = done, `BLOCKED` = blocked). Find first gap NOT `DONE` in logs and resume.
 5. Update **Create** output after each gap — append `DONE` / `BLOCKED` log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses.
-6. Determine `Strategy` from input Context; missing → `Verdict` = FAIL. Apply:
+6. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted remediation from current gaps.
    - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
    - `FINAL` → Run `pnpm outdated`. Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 7. Implement sequentially in priority order — apply targeted remediation per gap (edit/create source files); implement missing tests if suggested → verify acceptance criteria met → append log entry → proceed.
-8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]'; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
+8. Run `if [ -f turbo.json ]; then pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue; else set -e; for s in typecheck test format:check lint:slop lint:prose; do jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && pnpm "$s"; done; fi` - ALL local tests MUST pass.
 9. Once all remediations verified (tests pass) → APPEND gotchas (if any) to `docs/knowledge.md`.
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = every gap has a `DONE` entry across logs AND local tests pass.

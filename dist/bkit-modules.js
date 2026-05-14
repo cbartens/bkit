@@ -188,6 +188,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set([
     ".agents/prompts.md",
     ".agents/workflows.md",
     ".agents/IDEs.md",
+    ".agents/cloud.md",
 ]);
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
@@ -368,7 +369,7 @@ export function runCoreModule(ctx) {
 // ---------------------------------------------------------------------------
 const BKIT_PREFIX = "bkit-";
 export function runClaudeModule(ctx) {
-    const { dryRun, tokens, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const pairs = [
         [".agents/workflows", ".claude/commands"],
@@ -437,6 +438,49 @@ export function runClaudeModule(ctx) {
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }
+        }
+    }
+    // Markered-text — cloud-bootstrap.sh (Tier 2 managed block).
+    // SessionStart hook for Claude Code on the web. bkit owns the install steps
+    // between `# <!-- bkit:start -->` and `# <!-- bkit:end -->` (pnpm install +
+    // vale sync); consumers add per-repo install steps OUTSIDE the markers.
+    // Switched from Tier 3 (byte-equal-text seed-or-print) in BAR-191 follow-up
+    // so bkit can ship base updates without trampling consumer extensions.
+    {
+        const src = path.join(claudeTemplates, "hooks", "cloud-bootstrap.sh");
+        const dst = ".claude/hooks/cloud-bootstrap.sh";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
+                if (!dryRun && fs.existsSync(dst)) {
+                    fs.chmodSync(dst, 0o755);
+                }
+            }
+            // Always emit cloud-env-customize advisory pointing consumers at
+            // `.agents/cloud.md` for the paste-into-claude.ai recipe AND the Cursor
+            // Background Agents setup. The repo hooks are half the picture; the
+            // cloud-side setup script (Claude) + Dockerfile (Cursor) are the other
+            // half. Both clouds are now aligned on vale 3.9.1 + pnpm 10.33.0 + gh.
+            advisories.push({
+                id: "cloud-env-customize",
+                severity: "advisory",
+                detect: "Cloud env config splits across the repo (scripts + Dockerfile, bkit-managed) and the online dashboards (env vars + auth tokens, manual). Claude Code on the web reads its setup script + env vars from the Claude app; Cursor Background Agents read `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars from Cursor Settings.",
+                action: "Three locations to touch — full recipe in `.agents/cloud.md`.\n\n" +
+                    "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
+                    "  - `.cursor/Dockerfile`: change Node major above the bkit block if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below.\n" +
+                    "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n" +
+                    "  - `.cursor/environment.json`: Tier 3, fully consumer-owned — set `install` / `start` / `terminals[]` / `env` for your stack.\n\n" +
+                    "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
+                    "  - Name: `bkit-shared` (or per-repo).\n" +
+                    "  - Setup script: paste from `.agents/cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
+                    "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+                    "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.\n\n" +
+                    "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
+                    "  - `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — don't hardcode.\n" +
+                    "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.",
+            });
         }
     }
 }
@@ -517,10 +561,12 @@ export function runCursorModule(ctx) {
             console.log(`${logPrefix} ${tag}cursor: ${hooksDst}`);
         }
     }
-    // Markered-text — manifest format: "markered-text" — preflight hook + shared rules.
-    // Both files use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
+    // Markered-text — manifest format: "markered-text" — preflight hook + shared rules + Dockerfile.
+    // All use html-comment markers (# <!-- bkit:start --> / # <!-- bkit:end -->).
     // Uses writeTier2 to update only the bkit-managed block; consumer content outside
-    // markers is preserved. Changed from writeTier1 to align dispatch with manifest format.
+    // markers is preserved. Dockerfile switched from Tier 3 to Tier 2 in BAR-191 follow-up
+    // so bkit can ship base-toolchain updates without trampling consumer Node-version /
+    // Playwright / Supabase / monorepo customisations.
     {
         const markeredFiles = [
             [path.join(cursorTemplates, "hooks", "preflight.sh"), ".cursor/hooks/preflight.sh"],
@@ -528,6 +574,7 @@ export function runCursorModule(ctx) {
                 path.join(cursorTemplates, "rules", "00-shared-rules.mdc"),
                 ".cursor/rules/00-shared-rules.mdc",
             ],
+            [path.join(cursorTemplates, "Dockerfile"), ".cursor/Dockerfile"],
         ];
         for (const [src, dst] of markeredFiles) {
             if (!fs.existsSync(src))
@@ -544,16 +591,16 @@ export function runCursorModule(ctx) {
     // differing. These files are consumer-configurable; bkit does not force-overwrite them.
     // The manifest classifies them "byte-equal-text" for check/uninstall dispatch; install
     // intentionally uses seed-or-print to preserve consumer modifications on upgrade.
+    //
+    // `.cursor/environment.json` stays Tier 3 because the `install` / `start` / `terminals[]`
+    // fields are typically completely consumer-owned (monorepos commonly prebuild
+    // package workspaces in `install`, set `env.PORT`, and expose dev-server ports
+    // via `terminals[]`). Splitting it on a marker isn't worth the JSON complexity.
     const tier3Files = [
         [
             path.join(cursorTemplates, "settings.json"),
             ".cursor/settings.json",
             CURSOR_SETTINGS_MERGE_INSTRUCTIONS,
-        ],
-        [
-            path.join(cursorTemplates, "Dockerfile"),
-            ".cursor/Dockerfile",
-            CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS,
         ],
         [
             path.join(cursorTemplates, "environment.json"),
@@ -650,6 +697,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   After merging, push to a feature branch and verify the workflow runs to
   green before merging to your default branch.
 `;
+// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-ci-router.yml`
+// is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
+// logic lives in the mirrored slash-command orchestrator. No consumer-side
+// customisation surface, so no merge instructions are needed.
 const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -755,6 +806,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .husky/pre-push ---
 `;
+// CLOUD_BOOTSTRAP_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file is
+// now Tier 2 markered-text; writeTier2 updates only the bkit:start/bkit:end
+// block and preserves consumer extensions outside it. The cloud-env-customize
+// advisory above carries the customization guidance.
 const CURSOR_SETTINGS_MERGE_INSTRUCTIONS = `[bkit] .cursor/settings.json exists — bkit will not overwrite consumer Cursor config. Review the reference defaults and merge if useful.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -767,26 +822,30 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .cursor/settings.json ---
 `;
-const CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS = `[bkit] .cursor/Dockerfile exists — bkit will not overwrite. Reference shown below for comparison only.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .cursor/Dockerfile. The bkit reference is a minimal Cursor cloud-agent
-  base image. If your file diverges intentionally (custom system deps,
-  alternative base image, project-specific tooling), keep your version.
-  Otherwise consider syncing to the reference.
-
-  --- begin bkit reference .cursor/Dockerfile ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .cursor/Dockerfile ---
-`;
-const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. Reference shown below for comparison only.
+// CURSOR_DOCKERFILE_MERGE_INSTRUCTIONS removed in BAR-191 follow-up — file
+// is now Tier 2 markered-text. bkit owns the toolchain block (vale + gh +
+// jq + python3 + corepack-pinned pnpm); consumers customise Node major,
+// Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
+// those across upgrades.
+const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. This file is fully consumer-owned because the \`install\` / \`start\` / \`terminals[]\` / \`env\` fields are typically repo-specific.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .cursor/environment.json. Compare against the bkit reference below.
-  Merge any new fields (e.g. terminal/install/start hooks) you want, but
-  keep project-specific overrides.
+  Merge new top-level fields if useful; keep your project-specific overrides.
+
+  Typical non-trivial customisations consumers add:
+  - Monorepo prebuild: \`"install": "pnpm install --frozen-lockfile && npx turbo run build --filter='./packages/*'"\`
+    so workspace packages are compiled before the agent starts.
+  - Dev-server terminal + port forwarding: \`env: { PORT: "4000" }\` plus a
+    \`terminals[]\` entry that runs \`pnpm turbo dev --filter=web\` with
+    \`ports: [4000]\` exposed.
+  - \`start\` field with a one-line "read docs/deployments.md before setup"
+    nudge so the agent doesn't blindly run dev commands.
+
+  The bkit baseline runs \`pnpm install --frozen-lockfile && vale sync\` (when
+  .vale.ini exists). Replace if your monorepo needs prebuild, your repo uses
+  npm/yarn/bun, or you don't ship vale.
 
   --- begin bkit reference .cursor/environment.json ---
 {{TEMPLATE_CONTENT}}
@@ -830,6 +889,42 @@ export function runCiModule(ctx) {
     }
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
+    }
+    // bkit-ci-router.yml — Tier 1 canonical overwrite. Thin GHA plumbing that
+    // wakes on CI completion and dispatches the `/bkit-ci-router` orchestrator
+    // inside a fresh Claude Code session via claude-code-action. The routing
+    // logic lives in the mirrored `.claude/commands/bkit-ci-router.md` slash
+    // command (which evolves with bkit), so the YAML body itself is pure plumbing
+    // with no expected per-consumer customisation — auto-overwrite on every
+    // install keeps the mirror in lockstep with the canonical template. Cursor
+    // consumers configure an equivalent trigger in the Cursor cloud agents
+    // dashboard (see `.agents/cloud.md` § Post-CI auto-routing).
+    const ciRouterSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "workflows", "bkit-ci-router.yml");
+    if (fs.existsSync(ciRouterSrc)) {
+        const ciRouterDst = path.join(".github", "workflows", "bkit-ci-router.yml");
+        const ciRouterPrev = ws.writes.length;
+        writeTier1(ciRouterSrc, ciRouterDst, tokens, dryRun, ws);
+        if (ws.writes.length > ciRouterPrev) {
+            console.log(`${logPrefix} ${tag}ci: ${ciRouterDst}`);
+        }
+        // Always emit the dual-IDE setup advisory. The GHA workflow is the Claude
+        // half; the Cursor half (dashboard trigger + paste-once prompt) is manual.
+        advisories.push({
+            id: "ci-router-setup",
+            severity: "advisory",
+            detect: "`.github/workflows/bkit-ci-router.yml` is in place (Claude half of post-CI auto-routing). The Cursor half is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
+            action: "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
+                "IN GITHUB (Claude half):\n" +
+                "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
+                "  - Confirm `LINEAR_API_KEY` and `GH_BKIT_TOKEN` are already set (preflight + bkit package install both need them).\n" +
+                "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the router exits no-op.\n\n" +
+                "IN CURSOR DASHBOARD (Cursor half):\n" +
+                "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
+                "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
+                "  - Prompt (paste literally, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER` — Cursor substitutes the variables from the trigger payload.\n" +
+                "  - Allowed concurrency: latest-supersedes (newer CI completion cancels in-flight router runs).\n\n" +
+                "Both halves invoke the same `/bkit-ci-router` orchestrator (lives in `.cursor/commands/bkit-ci-router.md` + `.claude/commands/bkit-ci-router.md`, mirrored from `.agents/workflows/bkit-ci-router.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
+        });
     }
     // Ensure the typecheck script the workflow calls exists in package.json.
     // `test` is deliberately not managed — too opinionated for a default.
@@ -1002,16 +1097,9 @@ export function runLintModule(ctx) {
             lastWrite.devDepsAdded = lintDevDeps.added;
         }
     }
-    // F7: vale is a system binary, not an npm package. The seeded .vale.ini
-    // references the `write-good` Vale package which Vale downloads via
-    // `vale sync`. Print a one-time hint after writing .vale.ini so the consumer
-    // knows to run sync before lint:prose works against the seeded styles.
-    advisories.push({
-        id: "vale-sync-recommended",
-        severity: "advisory",
-        detect: ".vale.ini references the `write-good` Vale package which requires `vale sync` to download.",
-        action: "Run `vale sync` (one-time per repo) to download the write-good package. Vale itself is a system binary; install via brew/apt/etc. The lint:prose script soft-skips when vale isn't on PATH, so CI passes either way.",
-    });
+    // vale sync advisory removed in v2.1.0 — duplicated by `vale-package-not-synced`
+    // (Phase 3, gated on `vale --version` actually succeeding). The Phase 3 variant
+    // is actionable; this one fired on every install regardless of vale presence.
 }
 // ---------------------------------------------------------------------------
 // runGitHooksModule — .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print)
@@ -1093,18 +1181,14 @@ export function runGitHooksModule(ctx) {
         });
     }
     // Ensure husky devDep — without it, the `prepare: husky install` script we
-    // just added blows up on `pnpm install` with `husky: not found`. This was
-    // BAR-138 Finding 5 from visitfrasercoast smoke testing.
+    // just added blows up on `pnpm install` with `husky: not found`. Surfaced
+    // by BAR-138 Finding 5 during consumer-repo smoke testing.
     const hookDevDeps = ensurePackageJsonDevDeps({ husky: "^9.1.7" }, dryRun, ws);
     if (hookDevDeps.added.length > 0) {
         console.log(`${logPrefix} ${tag}git-hooks: package.json devDependencies added [${hookDevDeps.added.join(", ")}] — run \`pnpm install\` to fetch`);
-        advisories.push({
-            id: "git-hooks-husky-devdep-added",
-            severity: "advisory",
-            detect: "husky added to package.json devDependencies.",
-            action: "Run `pnpm install` to fetch husky; husky install will then activate the hooks.",
-        });
-        // Thread devDepsAdded through the WriteSet for Phase 3 detection
+        // husky-devdep-added advisory removed in v2.1.0 — duplicated by the generic
+        // `devdeps-need-fetch` Phase 3 advisory which fires for any added devDep.
+        // Thread devDepsAdded through the WriteSet for Phase 3 detection.
         const lastWrite = ws.writes[ws.writes.length - 1];
         if (lastWrite && lastWrite.path === "package.json") {
             lastWrite.devDepsAdded = hookDevDeps.added;

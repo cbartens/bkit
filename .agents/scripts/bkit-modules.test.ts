@@ -240,11 +240,11 @@ describe("bkit-manifest: single dispatch on entry.format", () => {
     expect(paths).not.toContain(".husky/pre-push");
   });
 
-  it("byte-equal-text entries: .cursor/Dockerfile, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {
+  it("byte-equal-text entries: .cursor/environment.json, ci.yml, .vale.ini, slop-scan.config.json use format byte-equal-text", () => {
     const allEntries = getInstallManifest([]);
     const byteEqualEntries = allEntries.filter((e) => e.format === "byte-equal-text");
     const paths = byteEqualEntries.map((e) => e.path);
-    expect(paths).toContain(".cursor/Dockerfile");
+    expect(paths).toContain(".cursor/environment.json");
     expect(paths).toContain(".github/workflows/ci.yml");
     expect(paths).toContain(".vale.ini");
     expect(paths).toContain("slop-scan.config.json");

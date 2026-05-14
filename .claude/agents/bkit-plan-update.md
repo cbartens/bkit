@@ -29,6 +29,7 @@ maxTurns: 50
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Update plan only; do NOT build, install, or write code.
+- **Multi-lens inputs:** Inputs carry distinct lenses; merge with max-wins on CRITICAL, apply OPTIONAL on merit. Single-input findings are normal, not outvoted.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -43,15 +44,15 @@ maxTurns: 50
    ```
 3. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 4. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-5. Update **Create** output — apply each CRITICAL + consensus-OPTIONAL item via `Edit` as content becomes available.
-6. Identify CRITICAL items in each Read critique — these MUST apply. Apply ALL; resolve cross-critique conflicts by preferring stricter wording.
-7. Identify OPTIONAL items in each Read critique — apply ONLY if all critiques agree (consensus required).
-8. Update **Create** output - set `Verdict` via `Edit`; mapping:
-   - `PASS` = all CRITICAL items applied (OPTIONAL consensus respected).
-   - `CONCERNS` = some OPTIONAL items skipped (no consensus).
-   - `FAIL` = critiques contradictory, plan unanimously rejected, or post-edit template structure broken.
-9. Update `Verdict` `PENDING` in **Create** output via `Edit` with computed `Verdict`.
-10. Re-read **Create** output; assert template structure intact per `docs/plans/template.md`. Failed → update Verdict to `FAIL`.
+5. Update **Create** output — apply findings via `Edit` as content becomes available.
+6. Every `Agent Execution Runbook` task's `Done when` entry MUST survive merge intact. Critique may edit surrounding task text; `Done when` text may ONLY tighten testability / codebase-verifiability — NEVER remove or weaken.
+7. Identify all CRITICAL items — these MUST be applied; no consensus required. **If** conflict across findings → resolve by preferring stricter wording.
+8. Identify OPTIONAL items — apply each on individual merit; no consensus required. **If** conflict with applied CRITICAL or scope expansion → skip.
+9. Update **Create** output - set `Verdict` via `Edit`; mapping:
+   - `PASS` = all CRITICAL items applied; OPTIONAL items applied on merit.
+   - `CONCERNS` = some OPTIONAL items skipped.
+   - `FAIL` = findings contradictory and unresolvable, plan unanimously rejected by all lenses.
+10. Re-read **Create** output → assert plan template structure intact per `docs/plans/template.md`. **If** NOT intact → set `Verdict` = FAIL via `Edit`.
 
 **Output format:**
 
@@ -60,7 +61,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 <!-- verdict:end -->
 
-[Modified plan body — verbatim copy of prior versioned plan with CRITICAL + consensus-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
+[Modified plan body — verbatim copy of prior versioned plan with CRITICAL + merit-OPTIONAL items applied via surgical Edit. Unmodified regions preserved EXACTLY.]
 ```
 
 > ⛔ **STOP after updating plan and producing output. Do NOT code, expand scope.**

@@ -25,7 +25,7 @@ afterEach(() => {
 
 // ---------------------------------------------------------------------------
 // Root-cause comment (Reviewer 2 C1 investigation):
-// The 14-vs-15 mismatch in app-gether-life was caused by runTemplates rule 3a
+// The 14-vs-15 mismatch surfaced in a consumer repo was caused by runTemplates rule 3a
 // (append-block path). In dry-run mode, the append-block branch DID write the
 // entry to `writes++` BEFORE the `continue`, so the count was correct. However
 // the WriteSet accumulator (introduced in v4-2) must track the *path* of each
@@ -58,7 +58,7 @@ describe("Dry-run parity — check writeset ≡ install writeset", () => {
   });
 
   it("rule 3a (dest no markers, template has block): dry-run predicts append correctly — 14-vs-15 regression", () => {
-    // This is the specific regression scenario from app-gether-life:
+    // This is the specific regression scenario surfaced in a consumer repo:
     // .gitignore exists with consumer entries, template has a bkit block.
     // Both dry-run AND live-run should report the same writeset entry.
     fs.writeFileSync(

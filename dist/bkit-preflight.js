@@ -112,7 +112,7 @@ export function detectPrettierignoreNoMarkers(cwd) {
         id: "prettierignore-no-markers",
         severity: "advisory",
         detect: ".prettierignore exists but has no bkit-managed block markers.",
-        action: "bkit will append its managed block to .prettierignore. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section.",
+        action: "Add `# bkit:start` / `# bkit:end` markers around the section bkit owns. Without markers, `bkit install` appends its block to EOF — fine for fresh installs but harder to merge cleanly on upgrade.",
     };
 }
 export function detectLintProseF9Vulnerable(cwd) {
@@ -243,7 +243,7 @@ const BKIT_PRETTIERIGNORE_PATHS = [
     "*.tsbuildinfo",
     "pnpm-lock.yaml",
 ];
-export function detectPrettierignoreScopeNarrowing(cwd) {
+export function detectPrettierignoreScopeBroadening(cwd) {
     const filePath = path.join(cwd, ".prettierignore");
     if (!fs.existsSync(filePath))
         return null;
@@ -267,7 +267,7 @@ export function detectPrettierignoreScopeNarrowing(cwd) {
     if (broadenings.length === 0)
         return null;
     return {
-        id: "prettierignore-scope-narrowing",
+        id: "prettierignore-scope-broadening",
         severity: "advisory",
         detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
         action: "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/rules.md, .agents/docs.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
@@ -297,7 +297,7 @@ export function detectLegacyBkitEnvelope(cwd, relPath) {
     return {
         id: "legacy-bkit-envelope-detected",
         severity: "advisory",
-        detect: `${relPath} contains a __bkit__ envelope from bkit ≤ v1.1.1. Run \`pnpm bkit upgrade\` to migrate.`,
+        detect: `${relPath} contains a __bkit__ envelope from bkit <= v1.1.1.`,
         action: "Run `pnpm bkit upgrade` to strip the __bkit__ envelope and migrate to v2.0.0 deep-containment schema. The upgrade is idempotent and preserves all consumer-owned keys.",
     };
 }
@@ -383,7 +383,7 @@ export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     return {
         id: "tier2-text-drift",
         severity: "advisory",
-        detect: `[${relPath}] bkit-managed marker block content differs from template.`,
+        detect: `${relPath} bkit-managed marker block content differs from template.`,
         action: `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
             "Content outside the bkit:start/bkit:end markers is preserved.",
     };
@@ -538,7 +538,7 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
     const gitignoreDup = detectGitignoreBlockDuplicates(cwd);
     if (gitignoreDup)
         advisories.push(gitignoreDup);
-    const prettierBroad = detectPrettierignoreScopeNarrowing(cwd);
+    const prettierBroad = detectPrettierignoreScopeBroadening(cwd);
     if (prettierBroad)
         advisories.push(prettierBroad);
     const prettierignore = detectPrettierignoreNoMarkers(cwd);

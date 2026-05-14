@@ -11,7 +11,7 @@
 
 ## Route
 
-### Step 1 — Extract from prompt XML (no MCP)
+### Step 1 — Extract from prompt XML (NOT MCP)
 
 **If** prompt contains `<LINEAR_ISSUE>` XML block:
 

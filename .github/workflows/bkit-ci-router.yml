@@ -1,0 +1,88 @@
+name: bkit-ci-router
+
+# Wakes when the CI workflow completes on a `feat/**` branch and dispatches the
+# bkit-ci-router orchestrator inside a fresh Claude Code session on the runner.
+# The orchestrator (`.agents/workflows/bkit-ci-router.md`, mirrored to
+# `.claude/commands/bkit-ci-router.md` via `bkit install`) decides ship vs.
+# debug and invokes the matching skill in the same session. Cursor consumers
+# configure the equivalent trigger in the Cursor cloud agents dashboard —
+# this YAML is the Claude half only.
+#
+# Required secrets: ANTHROPIC_API_KEY, LINEAR_API_KEY, GH_BKIT_TOKEN.
+# Required Linear label on the issue: `Auto` (opt-in).
+# Docs: .agents/cloud.md § Post-CI auto-routing.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: ['feat/**']
+    types: [completed]
+
+concurrency:
+  # Latest CI completion supersedes any in-flight router run on the same
+  # branch. Ship squash-merge is a single GitHub-atomic API call, so a mid-run
+  # cancel cannot leave the PR in a partial state.
+  group: bkit-ci-router-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  # contents: write — the router commits + pushes the single per-run
+  # status.json update to `dev` with `[skip ci]` (BAR-187 canonical pattern,
+  # matches bkit-build / bkit-ship / bkit-debug close-workflow).
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  route:
+    # Only fire on terminal CI conclusions. Skip cancelled / skipped runs.
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Check out `dev` at the workspace root so the router's
+          # `$REPO_ROOT/docs/plans/logs/{FID}/status.json` resolves to dev's
+          # working copy — matches the BAR-187 invariant that status.json
+          # always lives on dev. The dispatched /bkit-ship or /bkit-debug
+          # creates its own `feat/{FID}` worktree under `.worktrees/`.
+          ref: dev
+          fetch-depth: 0
+          # Token must have contents:write on this repo to push status.json
+          # back to `dev` at workflow termination. GH_BKIT_TOKEN is reused
+          # (already required for @cbartens/bkit install).
+          token: ${{ secrets.GH_BKIT_TOKEN }}
+
+      - name: Configure git user
+        run: |
+          git config user.name 'bkit-ci-router[bot]'
+          git config user.email 'bkit-ci-router@users.noreply.github.com'
+
+      - name: Resolve PR number for head branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR_NUMBER" ]; then
+            echo "::notice::No open PR for branch $BRANCH — no-op exit."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch /bkit-ci-router on Claude Code runner
+        if: steps.pr.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: "/bkit-ci-router ${{ github.event.workflow_run.conclusion }} ${{ steps.pr.outputs.number }}"
+          # Lock the runner-side session to the same tool surface bkit grants
+          # the local orchestrator (see .claude/settings.json `permissions.allow`).
+          claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,mcp__linear__*"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}

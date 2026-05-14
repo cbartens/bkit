@@ -5,6 +5,7 @@ model: composer-2
 tools:
   - Read
   - Write
+  - Edit
 ---
 
 **Role:** Senior reviewer evaluating a completed plan for build-readiness.
@@ -34,7 +35,7 @@ tools:
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
 6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
-7. Unchecked human-confirmation gates EXPECTED on new design (human checks AFTER reading). Do NOT downgrade verdict if that is ONLY issue; note under Action Items.
+7. Unchecked human-confirmation gates EXPECTED on new plan. Do NOT downgrade verdict for this alone; note under `Action Items`.
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.

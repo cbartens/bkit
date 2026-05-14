@@ -98,11 +98,25 @@ describe("getInstallManifest", () => {
     expect(slopEntry!.format).toBe("byte-equal-text");
   });
 
-  it("cursor manifest includes Dockerfile as byte-equal-text", () => {
+  it("cursor manifest includes environment.json as byte-equal-text", () => {
+    const entries = getInstallManifest(["cursor"]);
+    const envEntry = entries.find((e) => e.path === ".cursor/environment.json");
+    expect(envEntry).toBeDefined();
+    expect(envEntry!.format).toBe("byte-equal-text");
+  });
+
+  it("cursor manifest includes Dockerfile as markered-text (Tier 2 — base toolchain block + consumer extensions)", () => {
     const entries = getInstallManifest(["cursor"]);
     const dockerEntry = entries.find((e) => e.path === ".cursor/Dockerfile");
     expect(dockerEntry).toBeDefined();
-    expect(dockerEntry!.format).toBe("byte-equal-text");
+    expect(dockerEntry!.format).toBe("markered-text");
+  });
+
+  it("claude manifest includes cloud-bootstrap.sh as markered-text (Tier 2 — install steps block + consumer extensions)", () => {
+    const entries = getInstallManifest(["claude"]);
+    const bootstrapEntry = entries.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh");
+    expect(bootstrapEntry).toBeDefined();
+    expect(bootstrapEntry!.format).toBe("markered-text");
   });
 });
 

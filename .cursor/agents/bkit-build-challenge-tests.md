@@ -27,7 +27,9 @@ tools:
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Write tests ONLY; NO implementation changes. Vitest for API/backend, Playwright for UI E2E. Feature's changed files only.
+- **Blockers:** Append `BLOCKED` log line per blocker; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
+- **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
 **Process:**
 
@@ -37,7 +39,7 @@ tools:
 4. Identify untested: Error paths, edge cases (empty/null/boundary/concurrent), security paths from challenge, integration points. **If** fixed bugs → write regression tests that would have caught the original bug.
 5. Write test files: Each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming style as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright) files.
 6. Co-locate with existing test files.
-7. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]'` → append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses. **If** any FAIL on newly-added test files → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
+7. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue` → append log entry at EOF via Bash `echo {log entry} >> {output}` as work progresses. **If** any FAIL on newly-added test files → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass. **If** failures in unrelated tests → do NOT block this agent's verdict.
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = tests added and newly-added pass.
    - `FAIL` = generated tests do not compile or run.
@@ -56,11 +58,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None; initially set to `PENDING`.]
+[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"; initially set to `PENDING`.]
 
 ## Bugs Discovered
 
-[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict.. Empty in stub; populated via Bash `echo >>` as work progresses.]
+[List of out-of-scope bugs found during test runs, one per line. Do NOT block this agent's verdict. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after generating tests and producing output. Do NOT change implementation, expand scope.**

@@ -50,6 +50,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
+  { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "claude" },
   // Mirrors from .agents/ — managed dynamically; not listed individually here
   // because the exact set depends on the bkit-prefix prompt/workflow files at
   // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -60,13 +61,14 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
   { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
-  { path: ".cursor/Dockerfile", format: "byte-equal-text", module: "cursor" },
+  { path: ".cursor/Dockerfile", format: "markered-text", module: "cursor" },
   { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 
 const CI_MANIFEST: ManifestEntry[] = [
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
+  { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",

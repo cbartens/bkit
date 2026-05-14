@@ -6,6 +6,7 @@ model: claude-haiku-4-5-20251001
 tools:
   - Read
   - Write
+  - Edit
 permissionMode: acceptEdits
 maxTurns: 25
 ---
@@ -26,7 +27,7 @@ maxTurns: 25
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Summarise only; do NOT build, install, or write code.
-- **Parallel:** If input Context indicates parallel run, do NOT reference other workers' outputs (avoid circular reasoning).
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 

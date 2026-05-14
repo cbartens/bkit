@@ -149,7 +149,7 @@ describe("filterBkitIgnored — Tier-3 drift suppressed when file is in .bkitign
     fs.writeFileSync(path.join(tmpDir, ".bkitignore"), "**/*.yml\n", "utf-8");
 
     const nonTier3: PreflightFinding = {
-      id: "gh-bkit-token-missing-shell",
+      id: "gh-bkit-token-unset-shell",
       severity: "advisory",
       detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
       action: "Export GH_BKIT_TOKEN.",
@@ -157,7 +157,7 @@ describe("filterBkitIgnored — Tier-3 drift suppressed when file is in .bkitign
 
     const result = filterBkitIgnored([nonTier3], tmpDir);
     expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe("gh-bkit-token-missing-shell");
+    expect(result[0]!.id).toBe("gh-bkit-token-unset-shell");
   });
 
   it("no-op when .bkitignore is absent", () => {

@@ -143,7 +143,7 @@
 - [ ] **New API route** — `requireFamilyMember`/`requireFamilyMemberHono` applied? Rate-limited if auth-adjacent?
 - [ ] **New DB table/column** — RLS enabled deny-by-default? Family-scoped via `family_members` join?
 - [ ] **Role-gated mutation** — `familyRole` checked at API layer (not RLS alone)?
-- [ ] **User input** — Zod schema in `@app-gether-life/validators`? `schema.parse()` called in handler?
+- [ ] **User input** — Zod schema in your validators package? `schema.parse()` called in handler?
 - [ ] **PII** — absent from logs? CDC trigger updated if new column on monitored table?
 - [ ] **Redirect URL** — validated via `isAllowedRedirect()`?
 - [ ] **Webhook** — signature verified? Secret in env schema?

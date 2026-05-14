@@ -227,7 +227,7 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
           "bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has `# bkit:start` / `# bkit:end` markers around the bkit section. Run `pnpm bkit install --git-hooks` after adding markers.",
       },
       {
-        id: "gh-bkit-token-missing-shell",
+        id: "gh-bkit-token-unset-shell",
         severity: "advisory",
         detect: "GH_BKIT_TOKEN is not set in the shell environment.",
         action:
@@ -250,7 +250,7 @@ coding assistant to apply each item. Each ACTION is self-contained.
 DETECT: .husky/pre-commit exists but has no bkit-managed block markers.
 ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.
 
---- 2/2 [advisory] gh-bkit-token-missing-shell ---
+--- 2/2 [advisory] gh-bkit-token-unset-shell ---
 DETECT: GH_BKIT_TOKEN is not set in the shell environment.
 ACTION: Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
 
@@ -378,7 +378,7 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
     spy.mockRestore();
   });
 
-  it("runPostInstallCheck emits gh-bkit-token-missing-shell when GH_BKIT_TOKEN is explicitly deleted", () => {
+  it("runPostInstallCheck emits gh-bkit-token-unset-shell when GH_BKIT_TOKEN is explicitly deleted", () => {
     // Harden: explicitly delete the env var so the test cannot silently pass
     // due to ambient env state. This mirrors what the subprocess test would
     // exercise, without relying on tsx being available.
@@ -397,12 +397,12 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
 
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
 
-    // gh-bkit-token-missing-shell must appear, proving detectShellToken was
+    // gh-bkit-token-unset-shell must appear, proving detectShellToken was
     // called and returned "missing" (env var is deleted → Boolean("") === false)
-    expect(result.some((f) => f.id === "gh-bkit-token-missing-shell")).toBe(true);
+    expect(result.some((f) => f.id === "gh-bkit-token-unset-shell")).toBe(true);
 
     // Confirm the finding has a non-empty detect and action
-    const finding = result.find((f) => f.id === "gh-bkit-token-missing-shell");
+    const finding = result.find((f) => f.id === "gh-bkit-token-unset-shell");
     expect(finding!.detect).toBeTruthy();
     expect(finding!.action).toBeTruthy();
   });
@@ -416,13 +416,13 @@ describe("Phase 1 blocker short-circuit — vi.spyOn hardened path", () => {
 describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () => {
   it("Phase 3 entry replaces preflight entry when ids match, and only one entry appears", () => {
     const preflightAdvisory: PreflightFinding = {
-      id: "gh-bkit-token-missing-shell",
+      id: "gh-bkit-token-unset-shell",
       severity: "advisory",
       detect: "PREFLIGHT DETECT TEXT — must NOT survive into output",
       action: "PREFLIGHT ACTION TEXT",
     };
 
-    // GH_BKIT_TOKEN unset → Phase 3 will emit its own gh-bkit-token-missing-shell
+    // GH_BKIT_TOKEN unset → Phase 3 will emit its own gh-bkit-token-unset-shell
     delete process.env.GH_BKIT_TOKEN;
     execSync.mockImplementation(() => {
       throw new Error("gh: command not found");
@@ -430,7 +430,7 @@ describe("runPostInstallCheck — cross-phase dedup Phase-3-wins contract", () =
 
     const result = runPostInstallCheck([preflightAdvisory], makeWs(), makeModules("lint"), tmpDir);
 
-    const matches = result.filter((f) => f.id === "gh-bkit-token-missing-shell");
+    const matches = result.filter((f) => f.id === "gh-bkit-token-unset-shell");
     // Exactly one occurrence
     expect(matches).toHaveLength(1);
     // Phase 3 wins — detect text must NOT be the preflight text

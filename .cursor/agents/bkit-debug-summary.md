@@ -5,6 +5,7 @@ model: composer-2
 tools:
   - Read
   - Write
+  - Edit
 ---
 
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
@@ -54,7 +55,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Diagnosis Status
 
-[Root cause identified? Strategy used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`.]
+[Root cause identified? `Strategy` used (STANDARD/PIVOT/FINAL)? Confidence?; initially set to `PENDING`.]
 
 ## Remediation Status
 

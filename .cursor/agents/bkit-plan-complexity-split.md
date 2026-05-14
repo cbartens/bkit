@@ -25,6 +25,7 @@ tools:
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Mandate:** Split plan only; do NOT build, install, or write code.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -35,12 +36,13 @@ tools:
 4. Estimate total agent tokens required to execute the master plan end-to-end. Target sub-plan count = `ceil(total / 100K)`. Each sub-plan budget = ≤100K tokens.
 5. Partition tasks, constraints, 🔒 Gates into sub-plans by domain (API/DB/web/mobile/infra) and dependency order. Each sub-plan ≤100K tokens.
 6. Name: `{plan-name}-1.md`, `{plan-name}-2.md`, etc.
-7. Copy ALL tasks, constraints, 🔒 Gates from master into sub-plans.
+7. Copy ALL tasks (preserve `Done when` entry verbatim), constraints, 🔒 Gates from master into sub-plans.
 8. Each sub-plan self-contained per `docs/plans/template.md`, include `**Parent Plan:** {master-plan-path}`.
 9. Bidirectional links: Master↔sub-plans. Relative paths.
 10. Self-verify (mandatory before verdict; max 2 fix iterations, **If** still failing → `FAIL`):
     - Count tasks in original vs sum across sub-plans. **If** mismatch → fix in place, recount.
     - Confirm every task, constraint, and 🔒 Gate appears in exactly one sub-plan.
+    - Confirm every task's `Done when` entry survived the copy verbatim.
     - Confirm each sub-plan's estimated tokens ≤100K.
     - Confirm master is high-level index with correct bidirectional links.
     - Confirm each sub-plan references parent and is self-contained per `docs/plans/template.md`.

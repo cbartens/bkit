@@ -5,6 +5,7 @@ model: composer-2
 tools:
   - Read
   - Write
+  - Edit
 ---
 
 **Role:** Senior reviewer evaluating a completed build cycle for shippability.

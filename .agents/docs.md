@@ -44,10 +44,10 @@
 | `docs/pending.md` | ● | ● | ● | ● | — |
 | `.agents/skills.md` | — | — | ● | — | — |
 | `.agents/workflows.md` | — | — | — | — | — |
+| `.agents/cloud.md` | — | — | — | — | — |
 | `docs/plans/template.md` | — | ● | — | — | — |
 | `docs/audits/*.md` | ○ | ○ | — | — | — |
 | `docs/setup.md` | — | — | — | — | — |
-| `docs/dispatch.md` | — | — | ○ | ○ | ○ |
 
 ---
 
@@ -118,6 +118,7 @@
 | --- | --- |
 | `.agents/skills.md` | Registry of installed agent skills and install/update commands. |
 | `.agents/workflows.md` | Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog. |
+| `.agents/cloud.md` | Cloud agent environments — Claude Code on the web (setup script + env vars in Claude app) AND Cursor Background Agents (`.cursor/Dockerfile` + `environment.json` + Linear preflight). Aligned on vale 3.9.1 + pnpm 10.33.0. |
 | `docs/plans/template.md` | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
 
 ### Setup
@@ -126,12 +127,5 @@
 | File | Scope |
 | --- | --- |
 | `docs/setup.md` | Local dev — CLIs, configuration, secrets, troubleshooting. Humans only. |
-
-### Operations
-
-<!-- prettier-ignore -->
-| File | Scope |
-| --- | --- |
-| `docs/dispatch.md` | Claude Cowork Dispatch surfaces, venv handling, keep-awake, preflight interaction. |
 
 <!-- bkit:end -->

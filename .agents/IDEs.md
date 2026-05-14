@@ -35,6 +35,8 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 
 - Replace literal `` `Agent` tool `` with `` `Task` tool ``.
 - Replace `using \`Agent\` tool`with`using \`Task\` tool`.
+- Replace literal `` `Skill` tool `` with `` `Task` tool `` (slash-command invocation — Cursor's `Task` covers both subagent and slash-command surfaces; Claude splits them into `Agent` + `Skill`).
+- Replace `using \`Skill\` tool`with`using \`Task\` tool`.
 - Replace `@<name>` with `/<name>` for kebab-case identifiers, **only inside `**Subagent:**` lines and the protocol description block**. Don't touch `@` elsewhere (markdown anchors, email addresses, npm scopes).
 - Subagent body files do NOT contain invocation phrasing — no body transform needed.
 
@@ -55,7 +57,7 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 | `maxTurns` | required | not supported | Drop on Cursor side. |
 | `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | Pinned per-agent on both sides. On Claude, locks the agent to a specific model independent of session default. On Cursor, drives runner selection via T3 transform. |
 | `readonly` | not supported (use `tools` allowlist) | optional boolean | Derive on Cursor side from `tools` (true if no `Edit`/`Write`/`Bash`). Semantics: blocks file writes; whether also blocks bash/terminal is **TBD** (Cursor docs unclear; verify). |
-| `is_background` | not supported | optional boolean (Cursor 2.4+) | Default false. Reserve for future opt-in on parallelisable subagents (e.g. `bkit-design-brainstorm-ideate-1` and `-2`). |
+| `is_background` | not supported | optional boolean (Cursor 2.4+) | Default false. Reserve for future opt-in on parallelisable subagents (e.g. `bkit-design-brainstorm-ideate-1` / `-2` / `-3`, `bkit-plan-review-1` / `-2` / `-3`). |
 
 ### Body
 
@@ -67,7 +69,7 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 
 ## Models
 
-> **Effort vs model — different mechanisms.** Claude uses `effort: low|medium|high` as thinking-budget knob within whichever Claude model is user's default; same model, different reasoning depth. Cursor uses explicit `model:` per agent; cross-family diversity (`bkit-design-brainstorm-ideate-1` vs `-2`, `bkit-plan-review-1` vs `-2`) is real model selection across Claude / GPT / Composer families, not single-family effort tier. **Per-agent model assignment is canonical**; derive Cursor `model` from lookup table below, NOT from `effort` alone.
+> **Effort vs model — different mechanisms.** Claude uses `effort: low|medium|high|xhigh` as thinking-budget knob layered on a pinned model; same model, different reasoning depth. Cursor uses explicit `model:` per agent; cross-family diversity (`bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`) is real model selection across Claude / GPT / Composer families, not single-family effort tier. **Per-agent model assignment is canonical**; derive Cursor `model` from `prompts.md` § Models, NOT from `effort` alone.
 
 ### Cursor model catalog
 
@@ -211,15 +213,25 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 
 ## Runtime environment (cloud agents)
 
-<!-- prettier-ignore -->
-| Concern | Claude | Cursor |
-| --- | --- | --- |
-| Build env | (decommissioned in BAR-125; no GHA runtime) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
-| Install/start | n/a | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
-| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
-| Secrets | n/a | Cursor Cloud env vars |
+> Setup recipe + alignment guarantees: `.agents/cloud.md`. This section = host-diff matrix only.
 
-**Install behaviour:** template drops; project-specific tokens (pnpm version, port number, dev command) substituted at install.
+<!-- prettier-ignore -->
+| Concern | Claude Code on the web | Cursor Background Agents |
+| --- | --- | --- |
+| Where env config lives | Claude app (per-environment), NOT in repo | In repo (`.cursor/`) |
+| Custom base image | Not supported — setup script layers on top of Anthropic-managed Ubuntu 24.04 | Supported — `.cursor/Dockerfile` |
+| Cold-start cache | Snapshot keyed by setup-script body hash (~7d TTL) | Docker image layers |
+| Per-snapshot install | `.claude/hooks/cloud-bootstrap.sh` (SessionStart, fires when `CLAUDE_CODE_REMOTE=true`) | `.cursor/environment.json` → `install` |
+| Build env | Setup script (paste-in via Claude app UI) | `.cursor/Dockerfile` (Cursor Cloud builds custom image) |
+| Install/start | n/a (handled by bootstrap hook) | `.cursor/environment.json` → `install`, `start`, `terminals[]`, `env`, `ports` |
+| Port forwarding | n/a | `.cursor/environment.json` → `terminals[].ports` |
+| Cloud-session detection | `CLAUDE_CODE_REMOTE=true` (env var) | `is_background_agent === true` (stdin JSON) |
+| Default network | `Trusted` allowlist (npm, GitHub, PyPI, Docker Hub, vale tarball) | Outbound open in the sandbox |
+| Reusable across repos | Yes — one env, many repos (snapshot is generic; per-repo install via bootstrap hook) | No — Dockerfile per repo (bkit Tier 3 keeps content byte-identical) |
+| Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
+| Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
+
+**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.33.0 (corepack-pinned), gh CLI. See `.agents/cloud.md` for paste-in recipe + sharing-across-repos pattern.
 
 ---
 
@@ -258,7 +270,7 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 | Claude Code | Synchronous `Agent` tool calls; parallel calls in single turn = parallel execution within main agent. No first-class async/background concept. |
 | Cursor | `is_background: true` on subagent → spawns Cursor Cloud Agent that runs detached; main agent continues. Async by design. |
 
-**Implication:** workflow's "parallel" pairs (`bkit-design-brainstorm-ideate-1`/`-2`, `bkit-plan-review-1`/`-2`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true`. Default off in canonical files; Cursor host config can flip selected subagents on at install time.
+**Implication:** workflow's parallel fan-outs (triplets `bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`; pairs `bkit-design-review-*`, `bkit-plan-scope-check-*`, `bkit-build-challenge-*`, `bkit-ship-update-docs`/`-summary`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true`. Default off in canonical files; Cursor host config can flip selected subagents on at install time.
 
 ---
 

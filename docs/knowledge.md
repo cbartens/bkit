@@ -308,3 +308,39 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-187, BAR-183, BAR-184, `.agents/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`
+
+## KN-23: Server-side CI is the only quality gate; agent self-verification is informational, not authoritative (2026-05-14)
+
+- **Category:** agentic
+- **Symptom:** Debug-loop subagent declares `Verdict: PASS` after `pnpm turbo lint typecheck test --filter='...[origin/dev]'`, then CI fails on `test:integration` / `test:e2e` against the same SHA. Loop closes "successfully" but the underlying failure persists; multiple iterations push status JSON without ever fixing anything.
+- **Root cause:** Agent-local verify can only run what's runnable in the agent context. Integration tests need real Supabase + env vars; E2E needs a deployed Vercel preview — neither is available locally. Subagent PASS verdict is structurally narrower than CI PASS. Treating subagent verdict as a gate creates a false-confidence loop.
+- **Fix or rule:** Single source of truth for "merge-ready" is the consumer's CI run. Agent-local verify exists to catch trivially broken code before push (typecheck, unit). Subagent PASS means "didn't make it worse on the things I can see locally" — never "ready to merge." When designing CI gates, prefer server-side enforcement (e.g., adding `test:integration` to partial CI on push to dev) over expanding agent verify suites. Bkit ci.yml template ships the structural gate; agent prompts run the narrower verify with `--continue` to surface multiple failures per run.
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-192, BAR-195, `.agents/workflows/bkit-debug.md` Step 6, `.agents/prompts/bkit-debug-failure-remediate.md`, `.agents/prompts/bkit-debug-failure-diagnose.md`, `.agents/templates/.github/workflows/ci.yml`
+
+## KN-24: Turbo content-keyed cache replays across SHAs — declare external-state proxies in `inputs` to avoid ghost-greens (2026-05-14)
+
+- **Category:** testing
+- **Symptom:** CI reports `test:integration` green on a dev push, but the same test would fail when actually executed because external state (DB migration, RLS policy, fixture data) changed since the cache was warmed. Turbo replays a stale-but-input-hash-matching result.
+- **Root cause:** Turbo's remote cache key is content-keyed on declared `inputs`. Default `inputs` for a task covers source files in the package only. External dependencies — Supabase migration files, seed/fixture data, env templates — are invisible to the hash, so a change there does NOT bust the cache. PR-merge-to-dev typically replays the PR's cached green correctly; concurrent migrations from another PR landing on dev between PR-CI and merge-CI are the failure mode.
+- **Fix or rule:** For tasks that touch external state (`test:integration`, `test:e2e`), declare external-state proxies in the consumer's `turbo.json` task `inputs` — `supabase/migrations/**`, fixture files, env templates. Cache replay then only fires when inputs that affect the test outcome are truly unchanged. Defence in depth: bkit ci.yml template ships direct-push-to-dev detection that sets `TURBO_FORCE=1` (no PR ancestry → cache always busted). Manual escape hatch: `[force cache]` tag in commit message / PR title. The one residual ghost-green that no automation catches: direct edits to the dev DB without a migration file (out-of-band schema drift).
+- **Type:** pattern
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** phase
+- **Related:** BAR-192, BAR-195, `.agents/templates/.github/workflows/ci.yml` (Detect Tags and Direct Push step), consumer `turbo.json` `inputs` declaration
+
+## KN-25: DB schema state persists across code rollback — reset required for schema-aware tests (2026-05-14)
+
+- **Category:** testing
+- **Symptom:** Rolling code back to a known-good SHA leaves the linked Supabase project carrying migrations from the rolled-out range. Schema-aware tests (e.g. `cdc-schema-assurance`) compare live DB structure against code expectations and fail on the "clean" rolled-back tree because the DB is ahead of the code.
+- **Root cause:** `git revert` / `git reset` rewinds the source tree only. Supabase migrations applied during the rolled-out range remain materialised in the linked dev project — Supabase has no "unapply" semantics for code-driven migrations. Any test that introspects the live schema sees columns / tables / RLS the code no longer declares, and flags the drift as a failure.
+- **Fix or rule:** When rolling back code that contained applied migrations, reset the linked dev DB before treating the rolled-back tree as the new baseline. One-liner reset against the Supabase service-role connection: drop the `public` and `stripe` (or other consumer-managed) schemas with `CASCADE`, truncate `supabase_migrations.schema_migrations`, then `supabase db push --linked --include-all` to replay the surviving migration files. Same procedure applies whether the rollback was production-side (cherry-pick revert) or dev-side (`git reset --hard <green-sha>`). Documented as a sibling runbook to the production-rollback playbook in the consumer's `deployments.md` (bkit-marker section).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** high
+- **Source:** phase
+- **Related:** BAR-192, BAR-195, `.agents/templates/docs/deployments.md` (Dev rollback runbook), Supabase CLI `db push --linked --include-all`

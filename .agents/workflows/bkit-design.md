@@ -21,7 +21,7 @@ description: "Design Feature — Autonomous design phase"
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): design DONE`; Failure Path → `chore({FID}): design FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): design DONE [skip ci]`; Failure Path → `chore({FID}): design FAILED [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -107,7 +107,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`.lock` exists at `$REPO_ROOT/docs/plans/logs/{FID}/`)
+- [ ] Lock acquired (`$REPO_ROOT/docs/plans/logs/{FID}/.lock` exists)
 - [ ] Issue update attempted (state `In Progress`, label `Design`)
 - [ ] Issue comment attempted (`Step 1` section)
 
@@ -120,7 +120,7 @@ description: "Design Feature — Autonomous design phase"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build]"
    fi
    ```
 2. Create/resume the worktree:
@@ -164,10 +164,10 @@ description: "Design Feature — Autonomous design phase"
    fi
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
+     '.[-1].steps += [{step:"design-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-input.md"]}]' \
+     '.[-1].steps += [{step:"design-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
@@ -183,22 +183,26 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
 - [ ] Artifact written (`design-input.md`, non-empty)
-- [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `start-workflow` and `worktree-setup` recorded with `parentSha`)
+- [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `design-start-workflow` and `design-worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
 
 ## 🧠 Step 3 — Brainstorm & Ideate
 
-1. Launch both subagents in parallel using `Agent` tool:
+1. Launch all three subagents in parallel using `Agent` tool. Each carries a distinct lens; the synthesiser merges across them:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/logs/{FID}/design-input.md`.
      Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
+   - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-3`
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Read: `docs/plans/logs/{FID}/design-input.md`.
+     Create: `docs/plans/logs/{FID}/design-brainstorm-ideate-3.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
@@ -206,7 +210,7 @@ description: "Design Feature — Autonomous design phase"
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/logs/{FID}/design-brainstorm-ideate-2.md"]}]' \
+     '.[-1].steps += [{step:"design-brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/logs/{FID}/design-brainstorm-ideate-2.md","docs/plans/logs/{FID}/design-brainstorm-ideate-3.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
    ```
@@ -217,9 +221,9 @@ description: "Design Feature — Autonomous design phase"
 
 ### 🔒 Gate 3 — Brainstorm & Ideate
 
-- [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, no inline work)
-- [ ] Artifacts written (`design-brainstorm-ideate-1.md` and `design-brainstorm-ideate-2.md`, non-empty)
-- [ ] Workflow status updated (step `brainstorm-ideate` recorded with `parentSha`)
+- [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, `@bkit-design-brainstorm-ideate-3`, no inline work)
+- [ ] Artifacts written (`design-brainstorm-ideate-1.md`, `design-brainstorm-ideate-2.md`, `design-brainstorm-ideate-3.md`, non-empty)
+- [ ] Workflow status updated (step `design-brainstorm-ideate` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -227,8 +231,8 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 4 — Generate Design
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
+   Read: `docs/plans/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/logs/{FID}/design-brainstorm-ideate-3.md`.
    Create: `docs/plans/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
@@ -313,7 +317,7 @@ description: "Design Feature — Autonomous design phase"
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
-     '.[-1].steps += [{step:"apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-v2-reviewed.md"]}]' \
+     '.[-1].steps += [{step:"design-apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-v2-reviewed.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
@@ -329,7 +333,7 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
 - [ ] `APPLY_REVIEW_VERDICT` extracted
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
-- [ ] Workflow status updated (step `apply-review` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
 
 ---
@@ -385,7 +389,7 @@ description: "Design Feature — Autonomous design phase"
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-summary.md"]}]' \
+     '.[-1].steps += [{step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/design-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary [skip build] [skip ci]"
    ```
@@ -411,7 +415,7 @@ description: "Design Feature — Autonomous design phase"
 - [ ] `SUMMARY_VERDICT` extracted
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
-- [ ] Workflow status updated (step `summary` recorded with `parentSha`, `verdict`)
+- [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
 ---
@@ -465,7 +469,7 @@ description: "Design Feature — Autonomous design phase"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"design-workstream-issues", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues [skip build] [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues [skip build]"
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -498,14 +502,14 @@ description: "Design Feature — Autonomous design phase"
    [ -s "$DRAFT" ] || { echo "Draft empty: $DRAFT" >&2; exit 1; }
    ```
 2. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-3. Commit feat artifacts and update status:
+3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
+     '.[-1].steps += [{step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
@@ -516,7 +520,7 @@ description: "Design Feature — Autonomous design phase"
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash "feat/{FID}"
    git add "docs/plans/logs/{FID}/status.json"
-   git commit -m "docs({FID}): design DONE"
+   git commit -m "docs({FID}): design DONE [skip ci]"
    git push origin dev || { echo "dev push failed" >&2; exit 1; }
    git show "dev:docs/plans/drafts/{FID}-design.md" > /dev/null 2>&1 || { echo "Canonical design missing on dev" >&2; exit 1; }
    git worktree remove "$REPO_ROOT/.worktrees/{FID}" --force
@@ -540,8 +544,8 @@ description: "Design Feature — Autonomous design phase"
 - [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
 - [ ] Canonical design copied (`docs/plans/drafts/{FID}-design.md`, verified on `dev` post-merge)
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Changes merged to `dev` and pushed
+- [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
+- [ ] Changes merged to `dev` and pushed with `[skip ci]`
 - [ ] Worktree removed and feature branch deleted
-- [ ] Workflow status updated (`design` `DONE`, step `close-workflow` recorded with `parentSha`)
 - [ ] Issue update attempted (state `In Review`; phase label `Design` preserved)
 - [ ] Issue comment attempted (`Step 10` section)

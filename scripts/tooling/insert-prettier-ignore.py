@@ -10,8 +10,9 @@ sit directly above the table head with no blank line between them.
 Usage:
   python3 tooling/prettier/insert-prettier-ignore.py [path ...]
 
-Defaults to `.agents` and `docs` if no paths are supplied. Skips tables
-inside fenced code blocks (``` / ~~~). Skips tables already wrapped.
+Defaults to `.agents`, `docs`, and `README.md` if no paths are supplied.
+Skips tables inside fenced code blocks (``` / ~~~). Skips tables already
+wrapped.
 """
 
 from __future__ import annotations
@@ -145,7 +146,7 @@ def collect_targets(args: list[str]) -> list[Path]:
     if args:
         roots = [Path(a) for a in args]
     else:
-        roots = [Path(".agents"), Path("docs")]
+        roots = [Path(".agents"), Path("docs"), Path("README.md")]
     files: list[Path] = []
     for root in roots:
         if root.is_file() and root.suffix == ".md":

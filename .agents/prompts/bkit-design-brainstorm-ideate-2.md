@@ -27,13 +27,20 @@ maxTurns: 50
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Parallel:** If input Context indicates parallel run, do NOT reference other outputs (avoid circular reasoning).
+- **Mandate:** Brainstorm design approaches only; do NOT write design doc, plans, or code.
+- **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
+- **Lens discipline:** Stay within Process-defined lens; out-of-lens findings NOT in remit.
 
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Propose 2–3 approaches — lead with recommended. Trade-offs: Complexity, extensibility, risk, maintenance. YAGNI ruthlessly. Do NOT contradict existing approved decisions.
+3. Propose 2–3 approaches reasoned from first principles — what is the best long-term shape if existing constraints did NOT matter? Lead with recommended. Ignore "we already have X" as a default; for each approach, flag the existing-codebase friction it creates. Do NOT contradict existing approved decisions, but DO surface where they constrain the ideal shape. Per approach evaluate trade-offs:
+   - Complexity: LOW/MEDIUM/HIGH.
+   - Extensibility: Future-change handling.
+   - Risk: Main failure mode.
+   - Maintenance: Ongoing cost.
+   - Friction vs ideal: Migration cost, surfaces touched, breaks.
 4. Decisions — decided, alternatives, why.
 5. Produce **Create** output.
 
@@ -41,6 +48,8 @@ maxTurns: 50
 
 ```markdown
 # Design Brainstorm & Ideas
+
+Lens: Optimal-tradeoff — best long-term shape ignoring legacy constraints.
 
 ## Approach A — [Name (e.g. "Single-table inheritance")] ⭐ Recommended
 

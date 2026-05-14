@@ -121,64 +121,64 @@ describe("buildDecisionTable — markered-text format", () => {
 
 describe("buildDecisionTable — byte-equal-text hash guard", () => {
   it("byte-equal-text file: unknown hash (no tier3Hashes entry) → skip-tier3-unknown", () => {
-    writeFile(".cursor/Dockerfile", "FROM debian\n");
+    writeFile(".cursor/environment.json", '{"build":{"dockerfile":"Dockerfile"}}\n');
     // No .bkit-version file → no hash recorded
     const table = buildDecisionTable(["cursor"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
+    const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
   });
 
   it("byte-equal-text file: hash matches → decision=delete", () => {
-    const content = "original cursor dockerfile\n";
-    writeFile(".cursor/Dockerfile", content);
+    const content = '{"build":{"dockerfile":"Dockerfile"},"install":"pnpm install"}\n';
+    writeFile(".cursor/environment.json", content);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256(content) },
+      tier3Hashes: { ".cursor/environment.json": sha256(content) },
     });
     const table = buildDecisionTable(["cursor"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
+    const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
   });
 
   it("byte-equal-text file: hash mismatch (consumer modified) → skip-tier3-modified", () => {
-    const originalContent = "original dockerfile\n";
-    const modifiedContent = "consumer modified dockerfile\n";
-    writeFile(".cursor/Dockerfile", modifiedContent);
+    const originalContent = '{"install":"pnpm install"}\n';
+    const modifiedContent = '{"install":"pnpm install && pnpm build"}\n';
+    writeFile(".cursor/environment.json", modifiedContent);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256(originalContent) },
+      tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
     });
     const table = buildDecisionTable(["cursor"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
+    const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-modified");
   });
 
   it("byte-equal-text with --force → decision=delete regardless of hash", () => {
-    const originalContent = "original dockerfile\n";
-    writeFile(".cursor/Dockerfile", "consumer modified\n");
+    const originalContent = '{"install":"pnpm install"}\n';
+    writeFile(".cursor/environment.json", '{"install":"consumer modified"}\n');
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256(originalContent) },
+      tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
     });
     const table = buildDecisionTable(["cursor"], makeCtx({ force: true }));
-    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
+    const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
     expect(entry!.reason).toContain("--force");
   });
 
   it("retro-fit: v0.6.x .bkit-version (plain text, no tier3Hashes) → skip-tier3-unknown", () => {
-    writeFile(".cursor/Dockerfile", "dockerfile content\n");
+    writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
     // Simulate v0.6.x plain-text .bkit-version
     const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
 
     const table = buildDecisionTable(["cursor"], makeCtx());
-    const entry = table.find((r) => r.file === ".cursor/Dockerfile");
+    const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
   });
@@ -288,31 +288,31 @@ describe("runUninstall — round-trip", () => {
   });
 
   it("preserves byte-equal-text file when hash unknown (no tier3Hashes)", async () => {
-    writeFile(".cursor/Dockerfile", "dockerfile content\n");
+    writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
     await runUninstall(["cursor"], makeCtx());
-    expect(fileExists(".cursor/Dockerfile")).toBe(true);
+    expect(fileExists(".cursor/environment.json")).toBe(true);
   });
 
   it("deletes byte-equal-text file when hash matches install-time hash", async () => {
-    const content = "original dockerfile\n";
-    writeFile(".cursor/Dockerfile", content);
+    const content = '{"install":"pnpm install"}\n';
+    writeFile(".cursor/environment.json", content);
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256(content) },
+      tier3Hashes: { ".cursor/environment.json": sha256(content) },
     });
     await runUninstall(["cursor"], makeCtx());
-    expect(fileExists(".cursor/Dockerfile")).toBe(false);
+    expect(fileExists(".cursor/environment.json")).toBe(false);
   });
 
   it("preserves byte-equal-text file when hash mismatches (consumer modified)", async () => {
-    writeFile(".cursor/Dockerfile", "consumer modified\n");
+    writeFile(".cursor/environment.json", '{"install":"consumer modified"}\n');
     writeBkitVersionFile({
       pinnedVersion: "0.7.0",
-      tier3Hashes: { ".cursor/Dockerfile": sha256("original content\n") },
+      tier3Hashes: { ".cursor/environment.json": sha256('{"install":"original"}\n') },
     });
     await runUninstall(["cursor"], makeCtx());
-    expect(fileExists(".cursor/Dockerfile")).toBe(true);
-    expect(readFile(".cursor/Dockerfile")).toBe("consumer modified\n");
+    expect(fileExists(".cursor/environment.json")).toBe(true);
+    expect(readFile(".cursor/environment.json")).toBe('{"install":"consumer modified"}\n');
   });
 });
 

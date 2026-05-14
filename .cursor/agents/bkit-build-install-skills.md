@@ -24,6 +24,7 @@ tools:
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
+- **Mandate:** Install matching skills only; do NOT code or expand scope.
 
 **Process:**
 

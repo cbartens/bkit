@@ -14,8 +14,8 @@ Typical cycle for issue `BAR-123` "Add feature X":
 2. **Trigger** — Linear comment (`@curspr /bkit-plan BAR-123`) or slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
 3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
-5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, `@bkit-plan-review-1` ‖ `@bkit-plan-review-2`, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
-6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `docs(bar-123-…): plan complete [skip build] [skip ci]` → push.
+5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
+6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(bar-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(bar-123-…): summary` (build / debug / ship) → push.
 7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/bar-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/drafts/{FID}-{design,plan}.md`. Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
@@ -34,7 +34,7 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 | Design | `/bkit-design` | 10 | `docs/plans/drafts/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 11 | `docs/plans/drafts/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
 | Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
-| Debug | `/bkit-debug` | 8 | Remediation commit on feature branch | No |
+| Debug | `/bkit-debug` | 12 | Remediation commit on feature branch | No |
 | Ship | `/bkit-ship` | 11 | Squash-merged PR, plans archived, issue `Done` | Yes |
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
@@ -102,7 +102,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | --- | --- | --- |
 | `branch` | `dev` | git branch the agent works on |
 | `model` | `claude-4.7-opus-high-thinking`, `composer-2`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
-| `repo` | `gether-life/app-gether-life` | repo the agent operates in |
+| `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
 Per-agent (subagent) model assignments live in `.agents/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.agents/IDEs.md` § Cursor model catalog.
 

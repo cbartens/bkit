@@ -16,7 +16,7 @@ import {
   detectBkitVersionMajorDowngrade,
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
-  detectPrettierignoreScopeNarrowing,
+  detectPrettierignoreScopeBroadening,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -495,19 +495,19 @@ describe("detectGitignoreBlockDuplicates", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectPrettierignoreScopeNarrowing — Detector D (BAR-141 iter 2)
+// detectPrettierignoreScopeBroadening — Detector D (BAR-141 iter 2)
 // ---------------------------------------------------------------------------
 
-describe("detectPrettierignoreScopeNarrowing", () => {
+describe("detectPrettierignoreScopeBroadening", () => {
   it("flags when on-disk block has narrower paths than what bkit will install (e.g. .agents/skills/find-skills/)", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".prettierignore"),
       "# bkit:start\nnode_modules/\n.agents/skills/find-skills/\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeDefined();
-    expect(f?.id).toBe("prettierignore-scope-narrowing");
+    expect(f?.id).toBe("prettierignore-scope-broadening");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain(".agents/skills/find-skills/");
     expect(f?.detect).toContain(".agents/skills/");
@@ -519,7 +519,7 @@ describe("detectPrettierignoreScopeNarrowing", () => {
       "# bkit:start\nnode_modules/\ndist/\n.agents/skills/\n.claude/\n.cursor/\n.github/\n.husky/_/\n*.tsbuildinfo\npnpm-lock.yaml\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
@@ -529,18 +529,18 @@ describe("detectPrettierignoreScopeNarrowing", () => {
       "# bkit:start\nnode_modules/\n.agents/skills/\n# bkit:end\n",
       "utf-8",
     );
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
   it("returns null when no bkit block markers present", () => {
     fs.writeFileSync(path.join(tmpDir, ".prettierignore"), "node_modules/\n", "utf-8");
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 
   it("returns null when .prettierignore does not exist", () => {
-    const f = detectPrettierignoreScopeNarrowing(tmpDir);
+    const f = detectPrettierignoreScopeBroadening(tmpDir);
     expect(f).toBeNull();
   });
 });
@@ -679,13 +679,15 @@ describe("B3 — Vercel CLI hang guard: detectVercelEnv skips shell-out when .ve
 });
 
 // ---------------------------------------------------------------------------
-// BAR-186 — SessionStart hook (preflight.sh) Dispatch handling
+// BAR-186 — SessionStart hook (preflight.sh) — retained regression coverage
 //
 // The bash hook at .agents/templates/.claude/hooks/preflight.sh runs as a
 // Claude SessionStart hook (a different surface from the install-time TS
-// preflight in this file). These tests cover the BAR-186 changes:
-//   - Brew-bin check is Darwin-gated (Linux sandbox / CI now pass through).
-//   - BKIT_PREFLIGHT_BYPASS=dispatch skips the Linear Auto/state guards.
+// preflight in this file). Dispatch-specific bypass logic was reverted on
+// 2026-05-13; the latent-bug fixes from BAR-186 remain:
+//   - Brew-bin check is Darwin-gated (Linux sandbox / CI pass through).
+//   - IDE-skip path (empty LINEAR_ISSUE_ID exits 0 silently).
+//   - Missing LINEAR_API_KEY still hard-stops when a Linear issue is present.
 // ---------------------------------------------------------------------------
 
 const SESSIONSTART_HOOK_PATH = path.join(
@@ -731,25 +733,6 @@ describe("BAR-186 — SessionStart preflight.sh source-level checks", () => {
     expect(brewBinsIdx).toBeGreaterThan(-1);
     expect(darwinIdx).toBeLessThan(brewBinsIdx);
   });
-
-  it("honours BKIT_PREFLIGHT_BYPASS=dispatch and exits before the Linear API call", () => {
-    const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
-    expect(src).toContain("BKIT_PREFLIGHT_BYPASS");
-    expect(src).toContain('"dispatch"');
-    // Bypass branch must come before the LINEAR_API_KEY guard so missing API
-    // key does not block a Dispatch session.
-    const bypassIdx = src.indexOf("BKIT_PREFLIGHT_BYPASS");
-    const apiKeyIdx = src.indexOf('"${LINEAR_API_KEY:-}"');
-    expect(bypassIdx).toBeGreaterThan(-1);
-    expect(apiKeyIdx).toBeGreaterThan(-1);
-    expect(bypassIdx).toBeLessThan(apiKeyIdx);
-  });
-
-  it("bypass branch emits additionalContext naming what's relaxed", () => {
-    const src = fs.readFileSync(SESSIONSTART_HOOK_PATH, "utf-8");
-    expect(src).toMatch(/Dispatch bypass active/);
-    expect(src).toMatch(/Destruction guards remain in force/);
-  });
 });
 
 describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
@@ -759,33 +742,10 @@ describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
     expect(result.stdout).toBe("");
   });
 
-  it("BKIT_PREFLIGHT_BYPASS=dispatch skips the Linear gate even without LINEAR_API_KEY", () => {
+  it("missing LINEAR_API_KEY hard-stops when LINEAR_ISSUE_ID is present (regression guard)", () => {
     const result = runSessionStartHook({
       LINEAR_ISSUE_ID: "BAR-186-test",
-      BKIT_PREFLIGHT_BYPASS: "dispatch",
-      // intentionally no LINEAR_API_KEY — without bypass this would exit 1
-    });
-    expect(result.status).toBe(0);
-    // additionalContext payload is emitted on stdout as JSON
-    expect(result.stdout).toContain("Dispatch bypass active");
-    expect(result.stdout).toContain("BAR-186-test");
-  });
-
-  it("without bypass, missing LINEAR_API_KEY still hard-stops (regression guard)", () => {
-    const result = runSessionStartHook({
-      LINEAR_ISSUE_ID: "BAR-186-test",
-      // no BKIT_PREFLIGHT_BYPASS, no LINEAR_API_KEY
-    });
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain("LINEAR_API_KEY not set");
-  });
-
-  it("unrelated values for BKIT_PREFLIGHT_BYPASS do NOT trigger bypass", () => {
-    // Defence in depth: only the literal "dispatch" relaxes the gate.
-    const result = runSessionStartHook({
-      LINEAR_ISSUE_ID: "BAR-186-test",
-      BKIT_PREFLIGHT_BYPASS: "yes",
-      // no LINEAR_API_KEY — should still hard-stop
+      // no LINEAR_API_KEY
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("LINEAR_API_KEY not set");

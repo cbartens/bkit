@@ -176,7 +176,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     expect(banner).toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("runPostInstallCheck adds gh-bkit-token-missing-shell when token is unset", () => {
+  it("runPostInstallCheck adds gh-bkit-token-unset-shell when token is unset", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     const ws = makeWriteSet();
 
@@ -193,7 +193,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
         false, // not dry-run
       );
       const ids = postFindings.map((f) => f.id);
-      expect(ids).toContain("gh-bkit-token-missing-shell");
+      expect(ids).toContain("gh-bkit-token-unset-shell");
     } finally {
       if (savedToken !== undefined) process.env.GH_BKIT_TOKEN = savedToken;
     }
@@ -224,12 +224,12 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
     const ids = postFindings.map((f) => f.id);
     expect(ids).toContain("lint-prose-f9-vulnerable");
     // Phase 3 shell token finding should also be present
-    expect(ids).toContain("gh-bkit-token-missing-shell");
+    expect(ids).toContain("gh-bkit-token-unset-shell");
 
     const banner = formatChecklist(postFindings);
     expect(banner).toBeTruthy();
     expect(banner).toContain("lint-prose-f9-vulnerable");
-    expect(banner).toContain("gh-bkit-token-missing-shell");
+    expect(banner).toContain("gh-bkit-token-unset-shell");
   });
 
   it("no duplicate ids in the final checklist", () => {
@@ -277,7 +277,7 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
     expect(preflightAdvisories.length).toBeGreaterThan(0);
 
     const ws = makeWriteSet();
-    // Unset token to ensure Phase 3 would add gh-bkit-token-missing-shell if invoked
+    // Unset token to ensure Phase 3 would add gh-bkit-token-unset-shell if invoked
     const savedToken = process.env.GH_BKIT_TOKEN;
     delete process.env.GH_BKIT_TOKEN;
 
@@ -299,8 +299,8 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
     const preflightIds = preflightAdvisories.map((f) => f.id);
     expect(dryRunIds).toEqual(preflightIds);
 
-    // Specifically, gh-bkit-token-missing-shell must NOT appear (Phase 3 is skipped)
-    expect(dryRunIds).not.toContain("gh-bkit-token-missing-shell");
+    // Specifically, gh-bkit-token-unset-shell must NOT appear (Phase 3 is skipped)
+    expect(dryRunIds).not.toContain("gh-bkit-token-unset-shell");
     expect(dryRunIds).not.toContain("npmrc-missing-gh-packages");
     expect(dryRunIds).not.toContain("vale-package-not-synced");
     expect(dryRunIds).not.toContain("devdeps-need-fetch");
@@ -322,7 +322,7 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
   it("Phase 3 detectors are not invoked in dry-run (spy verification)", () => {
     // Verify via spy that runPostInstallCheck dryRun=true skips the internal
     // execSync-using detectors. We do this by patching process.env to make
-    // detectShellToken() report "missing", then confirming gh-bkit-token-missing-shell
+    // detectShellToken() report "missing", then confirming gh-bkit-token-unset-shell
     // does NOT appear in dryRun output (proving the detector was not called).
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     const ws = makeWriteSet();
@@ -343,9 +343,9 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
       if (savedToken !== undefined) process.env.GH_BKIT_TOKEN = savedToken;
     }
 
-    // If Phase 3 were invoked, GH_BKIT_TOKEN missing would add gh-bkit-token-missing-shell.
+    // If Phase 3 were invoked, GH_BKIT_TOKEN missing would add gh-bkit-token-unset-shell.
     // Its absence proves Phase 3 was NOT invoked.
-    expect(dryRunFindings.map((f) => f.id)).not.toContain("gh-bkit-token-missing-shell");
+    expect(dryRunFindings.map((f) => f.id)).not.toContain("gh-bkit-token-unset-shell");
   });
 
   it("blockers still fire in dry-run (Phase 1 remains active in bkit check)", () => {
