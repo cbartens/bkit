@@ -1,3 +1,7 @@
+---
+description: "Debug Feature — Autonomous diagnosis and remediation"
+---
+
 # Debug Feature (Workflow 4/5)
 
 **Role:** Orchestrator managing workflow with subagents.
@@ -18,7 +22,7 @@
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
 > - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE [skip ci]`; Failure Path → `chore({FID}): debug FAILED [skip ci]`.
-> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
@@ -57,7 +61,7 @@
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** `OBSERVE_MODE` = analyse **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
+5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/debug-handover.md`.
@@ -247,21 +251,50 @@
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file under `test-results/` verbatim into one log; `playwright-report/` (HTML viewer + minified assets) is kept on disk for human use but excluded from the dump; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
+   ```bash
+   E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
+   if [ "${E2E_FAILED:-0}" -gt 0 ]; then
+     E2E_DIR="docs/plans/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
+     mkdir -p "$E2E_DIR"
+     gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
+     if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
+       E2E_LOG="docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md"
+       SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
+       {
+         echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
+         echo
+         echo "Scanned: ${SCAN_ROOT#$E2E_DIR/} (text files only; binary artifacts listed below)"
+         find "$SCAN_ROOT" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
+           rel="${f#$E2E_DIR/}"
+           printf '\n===== file: %s =====\n' "$rel"
+           cat "$f"
+           echo
+         done
+         printf '\n===== binary artifacts (not inlined; full tree under %s/) =====\n' "${E2E_DIR#docs/plans/logs/}"
+         find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
+       } > "$E2E_LOG"
+       [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
+     else
+       rmdir "$E2E_DIR" 2>/dev/null || true
+     fi
+   fi
+   ```
+4. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
    ````bash
    FETCH_EXAMPLE=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null | awk '/^<!-- debug-fetch:start -->/,/^<!-- debug-fetch:end -->/' | sed -n '/^```/,/^```/p' | sed '/^```/d')
    ````
-4. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
+5. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
    ```bash
    RUNTIME_LOGS=$({customised command} 2>/dev/null)
    [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"
    ```
-5. Update status and commit:
+6. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    ARTIFACTS=()
-   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
@@ -271,10 +304,11 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-logs attempt ${DEBUG_ATTEMPT}"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
    [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
+   [debug-logs-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-e2e-{DEBUG_ATTEMPT}.md)
    [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
    ```
 
@@ -282,9 +316,10 @@
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
+- [ ] Playwright artifact download + verbatim dump attempted (if e2e job failed; missing artifact is non-fatal; NO content processing)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
-- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
 - [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
@@ -306,7 +341,7 @@
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
+3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
@@ -343,7 +378,7 @@
 
 **Run only if** `OBSERVE_MODE` = off.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
+1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source files.
@@ -457,7 +492,7 @@
 
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
-1. **Subagent:** Invoke `@bkit-debug-summary` using `Task` tool:
+1. **Subagent:** Invoke `@bkit-debug-summary` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only), `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/debug-summary.md`.
@@ -499,7 +534,7 @@
 
 **Run only if** `OBSERVE_MODE` = instrument.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-instrument` using `Task` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-instrument` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Instrument mode — `DEBUG_ATTEMPT` exhausted at `{DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`; this is the single observation pass before terminal handover. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Update: Source files (instrumentation only).
@@ -552,7 +587,7 @@
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Task` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md`.
@@ -589,7 +624,7 @@
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-revert` using `Task` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-revert` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Revert mode — strip every `[DEBUG-OBSERVE]` line; lint/typecheck/test gate must pass. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Update: Source files (revert only).

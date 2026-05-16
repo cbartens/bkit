@@ -251,21 +251,50 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file under `test-results/` verbatim into one log; `playwright-report/` (HTML viewer + minified assets) is kept on disk for human use but excluded from the dump; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
+   ```bash
+   E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
+   if [ "${E2E_FAILED:-0}" -gt 0 ]; then
+     E2E_DIR="docs/plans/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
+     mkdir -p "$E2E_DIR"
+     gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
+     if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
+       E2E_LOG="docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md"
+       SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
+       {
+         echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
+         echo
+         echo "Scanned: ${SCAN_ROOT#$E2E_DIR/} (text files only; binary artifacts listed below)"
+         find "$SCAN_ROOT" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
+           rel="${f#$E2E_DIR/}"
+           printf '\n===== file: %s =====\n' "$rel"
+           cat "$f"
+           echo
+         done
+         printf '\n===== binary artifacts (not inlined; full tree under %s/) =====\n' "${E2E_DIR#docs/plans/logs/}"
+         find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
+       } > "$E2E_LOG"
+       [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
+     else
+       rmdir "$E2E_DIR" 2>/dev/null || true
+     fi
+   fi
+   ```
+4. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
    ````bash
    FETCH_EXAMPLE=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null | awk '/^<!-- debug-fetch:start -->/,/^<!-- debug-fetch:end -->/' | sed -n '/^```/,/^```/p' | sed '/^```/d')
    ````
-4. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
+5. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
    ```bash
    RUNTIME_LOGS=$({customised command} 2>/dev/null)
    [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"
    ```
-5. Update status and commit:
+6. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    ARTIFACTS=()
-   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
@@ -275,10 +304,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-logs attempt ${DEBUG_ATTEMPT}"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
    [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
+   [debug-logs-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-e2e-{DEBUG_ATTEMPT}.md)
    [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
    ```
 
@@ -286,9 +316,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
+- [ ] Playwright artifact download + verbatim dump attempted (if e2e job failed; missing artifact is non-fatal; NO content processing)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
-- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
 - [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
