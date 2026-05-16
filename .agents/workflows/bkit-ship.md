@@ -192,8 +192,37 @@ description: "Ship Feature — Autonomous merge and archive"
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
 5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
-7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
-8. Update status and commit:
+7. Regression-gate verification — assert no previously-failing CI step is now `skipped`/`cancelled`/missing (catches Vercel-ignore rules or `decide`-step demotion masking a never-fired regression gate):
+   ```bash
+   BRANCH_NAME=$(git branch --show-current)
+   HEAD_SHA=$(gh pr view {PR_NUMBER} --json headRefOid --jq '.headRefOid')
+   CURRENT_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --limit 5 \
+     --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId // \"\"")
+   PRIOR_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --status failure --limit 20 \
+     --json databaseId,createdAt --jq "[.[] | select((.databaseId | tostring) != \"$CURRENT_RUN_ID\")] | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"")
+   REGRESSION_VERDICT=PASS
+   REGRESSION_SKIPPED=""
+   if [ -n "$CURRENT_RUN_ID" ] && [ -n "$PRIOR_RUN_ID" ]; then
+     PRIOR_FAILED_STEPS=$(gh run view "$PRIOR_RUN_ID" --json jobs \
+       --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | unique | join("\n")')
+     CURRENT_STEPS_JSON=$(gh run view "$CURRENT_RUN_ID" --json jobs --jq '[.jobs[].steps[] | {name, conclusion}]')
+     while IFS= read -r STEP; do
+       [ -z "$STEP" ] && continue
+       CONCLUSION=$(echo "$CURRENT_STEPS_JSON" | jq -r --arg n "$STEP" '[.[] | select(.name == $n)] | .[0].conclusion // "missing"')
+       if [ "$CONCLUSION" != "success" ]; then
+         REGRESSION_VERDICT=FAIL
+         REGRESSION_SKIPPED="${REGRESSION_SKIPPED}- ${STEP} (now: ${CONCLUSION})\n"
+       fi
+     done <<< "$PRIOR_FAILED_STEPS"
+   fi
+   if [ "$REGRESSION_VERDICT" = "FAIL" ]; then
+     printf 'Regression-gate verification FAILED — previously-failing CI steps were not re-run successfully:\n%b\nPrior failed run: %s; current run: %s. Re-run via /bkit-debug or push a [force build] commit; ship aborted.\n' "$REGRESSION_SKIPPED" "$PRIOR_RUN_ID" "$CURRENT_RUN_ID" >&2
+     exit 1
+   fi
+   ```
+   **If** the `exit 1` fires → **Failure Path**.
+8. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
+9. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -210,12 +239,12 @@ description: "Ship Feature — Autonomous merge and archive"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-   ```comment
-   ### Step 2 — Worktree Setup
-   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-   [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
-   ```
+10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+    ```comment
+    ### Step 2 — Worktree Setup
+    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+    [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
+    ```
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -225,6 +254,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
 - [ ] PR base verified (`PR_BASE` = dev)
 - [ ] No PR CI failures confirmed
+- [ ] Regression-gate verification passed (no previously-failing CI step now `skipped`/`cancelled`/missing in the run on PR HEAD)
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `ship-start-workflow` and `ship-worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
