@@ -2,7 +2,7 @@
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
 
-# Debug Feature (Workflow 4/5)
+# Debug Feature (Workflow 4/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Remediate feature failures and push to branch.
@@ -251,7 +251,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file under `test-results/` verbatim into one log; `playwright-report/` (HTML viewer + minified assets) is kept on disk for human use but excluded from the dump; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright report, combine every text file under `test-results/` verbatim, and write logs artifact to `docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md`:
    ```bash
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
@@ -316,7 +316,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
-- [ ] Playwright artifact download + verbatim dump attempted (if e2e job failed; missing artifact is non-fatal; NO content processing)
+- [ ] Playwright artifact download attempted (if e2e job failed)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
 - [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
@@ -366,7 +366,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `STRATEGY` computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`debug-failure-diagnose-{TEST_ATTEMPT}.md`, non-empty)
-- [ ] `DIAGNOSE_VERDICT` extracted
+- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
@@ -433,7 +433,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-4. Update status (file-only; Step 5 fix commit must remain HEAD so Step 7's push lands `fix(...)` as the CI-trigger HEAD — adding an intermediate `chore(...)` here would bury the fix):
+4. Update status:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -467,7 +467,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. Increment `DEBUG_ATTEMPT` + 1.
-2. Update status (file-only; Step 5 fix commit must be HEAD at push so CI / Vercel evaluate against `fix(...)` not a `chore(...)` follow-up):
+2. Update status (file-only — no commit between Step 5 and the push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -526,7 +526,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-summary`, no inline work)
 - [ ] Artifact written (`debug-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
@@ -579,7 +579,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifact written (`debug-observe-instrument-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Source files modified with `[DEBUG-OBSERVE]` lines
 - [ ] `DEBUG_ATTEMPT` NOT incremented
-- [ ] `OBSERVE_INSTRUMENT_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `[skip ci]`)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
@@ -616,7 +616,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-observe-analyse`, no inline work)
 - [ ] Artifact written (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`, non-empty)
-- [ ] `OBSERVE_ANALYSE_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_ANALYSE_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-observe-analyse` recorded with `parentSha`, `verdict`)

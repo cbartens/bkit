@@ -1,8 +1,4 @@
----
-description: "Debug Feature — Autonomous diagnosis and remediation"
----
-
-# Debug Feature (Workflow 4/5)
+# Debug Feature (Workflow 4/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Remediate feature failures and push to branch.
@@ -22,7 +18,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
 > - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE [skip ci]`; Failure Path → `chore({FID}): debug FAILED [skip ci]`.
-> - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
+> - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
@@ -61,7 +57,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Stderr: {last 20 lines if shell}
    ```
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** `OBSERVE_MODE` = analyse **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
-5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
+5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/debug-handover.md`.
@@ -251,7 +247,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright artifact (uploaded by the `bkit-stub:e2e-artifacts` step) and dump every text file under `test-results/` verbatim into one log; `playwright-report/` (HTML viewer + minified assets) is kept on disk for human use but excluded from the dump; missing artifact is non-fatal; NO filtering, summarisation, or extraction — diagnose subagent owns interpretation:
+3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright report, combine every text file under `test-results/` verbatim, and write logs artifact to `docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md`:
    ```bash
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
@@ -316,7 +312,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
-- [ ] Playwright artifact download + verbatim dump attempted (if e2e job failed; missing artifact is non-fatal; NO content processing)
+- [ ] Playwright artifact download attempted (if e2e job failed)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
 - [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
@@ -341,7 +337,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
    - **Else** → **Failure Path**.
-3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
+3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
@@ -366,7 +362,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `STRATEGY` computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`debug-failure-diagnose-{TEST_ATTEMPT}.md`, non-empty)
-- [ ] `DIAGNOSE_VERDICT` extracted
+- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
@@ -378,7 +374,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `OBSERVE_MODE` = off.
 
-1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read:`docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source files.
@@ -433,7 +429,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-4. Update status (file-only; Step 5 fix commit must remain HEAD so Step 7's push lands `fix(...)` as the CI-trigger HEAD — adding an intermediate `chore(...)` here would bury the fix):
+4. Update status:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -467,7 +463,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. Increment `DEBUG_ATTEMPT` + 1.
-2. Update status (file-only; Step 5 fix commit must be HEAD at push so CI / Vercel evaluate against `fix(...)` not a `chore(...)` follow-up):
+2. Update status (file-only — no commit between Step 5 and the push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -496,7 +492,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
-1. **Subagent:** Invoke `@bkit-debug-summary` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-debug-summary` using `Task` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only), `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
    Create: `docs/plans/logs/{FID}/debug-summary.md`.
@@ -526,7 +522,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-summary`, no inline work)
 - [ ] Artifact written (`debug-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
@@ -538,7 +534,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `OBSERVE_MODE` = instrument.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-instrument` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-instrument` using `Task` tool:
    Context: You are a subagent in the Debug phase. Observe Instrument mode — `DEBUG_ATTEMPT` exhausted at `{DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}`; this is the single observation pass before terminal handover. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Update: Source files (instrumentation only).
@@ -579,7 +575,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifact written (`debug-observe-instrument-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Source files modified with `[DEBUG-OBSERVE]` lines
 - [ ] `DEBUG_ATTEMPT` NOT incremented
-- [ ] `OBSERVE_INSTRUMENT_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `[skip ci]`)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
@@ -591,7 +587,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Task` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md`.
@@ -616,7 +612,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-observe-analyse`, no inline work)
 - [ ] Artifact written (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`, non-empty)
-- [ ] `OBSERVE_ANALYSE_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_ANALYSE_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-observe-analyse` recorded with `parentSha`, `verdict`)
@@ -628,7 +624,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 **Run only if** `OBSERVE_MODE` = analyse.
 
-1. **Subagent:** Invoke `@bkit-debug-observe-revert` using `Agent` tool:
+1. **Subagent:** Invoke `@bkit-debug-observe-revert` using `Task` tool:
    Context: You are a subagent in the Debug phase. Observe Revert mode — strip every `[DEBUG-OBSERVE]` line; lint/typecheck/test gate must pass. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
    Read: glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Update: Source files (revert only).

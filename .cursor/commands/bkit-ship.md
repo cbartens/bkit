@@ -1,4 +1,4 @@
-# Ship Feature (Workflow 5/5)
+# Ship Feature (Workflow 5/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Merge feature PR to default integration branch.
@@ -17,7 +17,7 @@
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step Steps 1-6: file-only write on dev working copy + commit on `feat/{FID}`. Steps 7-11 on `dev`: per-step file-only status write; per-step commit on `dev` for substantial-work steps (Step 8 update-docs-summary, Step 9 prune-skills); push deferred to Close Workflow. `dev` push ONCE per run: Close Workflow → final commit `docs({FID}): ship DONE [skip ci]` + push; Failure Path → `chore({FID}): ship FAILED [skip ci]` + push.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step Steps 1-7: file-only write on dev working copy + commit on `feat/{FID}`. Steps 8-12 on `dev`: per-step file-only status write; per-step commit on `dev` for substantial-work steps (Step 9 update-docs-summary, Step 10 prune-skills); push deferred to Close Workflow. `dev` push ONCE per run: Close Workflow → final commit `docs({FID}): ship DONE [skip ci]` + push; Failure Path → `chore({FID}): ship FAILED [skip ci]` + push.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -188,37 +188,8 @@
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
 5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
 6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
-7. Regression-gate verification — assert no previously-failing CI step is now `skipped`/`cancelled`/missing (catches Vercel-ignore rules or `decide`-step demotion masking a never-fired regression gate):
-   ```bash
-   BRANCH_NAME=$(git branch --show-current)
-   HEAD_SHA=$(gh pr view {PR_NUMBER} --json headRefOid --jq '.headRefOid')
-   CURRENT_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --limit 5 \
-     --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId // \"\"")
-   PRIOR_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --status failure --limit 20 \
-     --json databaseId,createdAt --jq "[.[] | select((.databaseId | tostring) != \"$CURRENT_RUN_ID\")] | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"")
-   REGRESSION_VERDICT=PASS
-   REGRESSION_SKIPPED=""
-   if [ -n "$CURRENT_RUN_ID" ] && [ -n "$PRIOR_RUN_ID" ]; then
-     PRIOR_FAILED_STEPS=$(gh run view "$PRIOR_RUN_ID" --json jobs \
-       --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | unique | join("\n")')
-     CURRENT_STEPS_JSON=$(gh run view "$CURRENT_RUN_ID" --json jobs --jq '[.jobs[].steps[] | {name, conclusion}]')
-     while IFS= read -r STEP; do
-       [ -z "$STEP" ] && continue
-       CONCLUSION=$(echo "$CURRENT_STEPS_JSON" | jq -r --arg n "$STEP" '[.[] | select(.name == $n)] | .[0].conclusion // "missing"')
-       if [ "$CONCLUSION" != "success" ]; then
-         REGRESSION_VERDICT=FAIL
-         REGRESSION_SKIPPED="${REGRESSION_SKIPPED}- ${STEP} (now: ${CONCLUSION})\n"
-       fi
-     done <<< "$PRIOR_FAILED_STEPS"
-   fi
-   if [ "$REGRESSION_VERDICT" = "FAIL" ]; then
-     printf 'Regression-gate verification FAILED — previously-failing CI steps were not re-run successfully:\n%b\nPrior failed run: %s; current run: %s. Re-run via /bkit-debug or push a [force build] commit; ship aborted.\n' "$REGRESSION_SKIPPED" "$PRIOR_RUN_ID" "$CURRENT_RUN_ID" >&2
-     exit 1
-   fi
-   ```
-   **If** the `exit 1` fires → **Failure Path**.
-8. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
-9. Update status and commit:
+7. Create: `docs/plans/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
+8. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -235,7 +206,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
     ### Step 2 — Worktree Setup
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -250,14 +221,66 @@
 - [ ] Counters initialised (`PR_NUMBER` non-empty, `MERGE_ATTEMPT` = 0)
 - [ ] PR base verified (`PR_BASE` = dev)
 - [ ] No PR CI failures confirmed
-- [ ] Regression-gate verification passed (no previously-failing CI step now `skipped`/`cancelled`/missing in the run on PR HEAD)
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `ship-start-workflow` and `ship-worktree-setup` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
 
-## 🧠 Step 3 — Conflict Resolve
+## 🤖 Step 3 — Regression Guard
+
+1. Resolve current and prior CI runs and assert no previously-failing CI step is now `skipped`, `cancelled` or missing:
+   ```bash
+   BRANCH_NAME=$(git branch --show-current)
+   HEAD_SHA=$(gh pr view {PR_NUMBER} --json headRefOid --jq '.headRefOid')
+   CURRENT_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --limit 5 \
+     --json databaseId,headSha --jq "[.[] | select(.headSha == \"$HEAD_SHA\")] | .[0].databaseId // \"\"")
+   PRIOR_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --status failure --limit 25 \
+     --json databaseId,createdAt --jq "[.[] | select((.databaseId | tostring) != \"$CURRENT_RUN_ID\")] | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"")
+   REGRESSION_VERDICT=PASS
+   REGRESSION_SKIPPED=""
+   if [ -n "$CURRENT_RUN_ID" ] && [ -n "$PRIOR_RUN_ID" ]; then
+     PRIOR_FAILED_STEPS=$(gh run view "$PRIOR_RUN_ID" --json jobs \
+       --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | unique | join("\n")')
+     CURRENT_STEPS_JSON=$(gh run view "$CURRENT_RUN_ID" --json jobs --jq '[.jobs[].steps[] | {name, conclusion}]')
+     while IFS= read -r STEP; do
+       [ -z "$STEP" ] && continue
+       CONCLUSION=$(echo "$CURRENT_STEPS_JSON" | jq -r --arg n "$STEP" '[.[] | select(.name == $n)] | .[0].conclusion // "missing"')
+       if [ "$CONCLUSION" != "success" ]; then
+         REGRESSION_VERDICT=FAIL
+         REGRESSION_SKIPPED="${REGRESSION_SKIPPED}- ${STEP} (now: ${CONCLUSION})\n"
+       fi
+     done <<< "$PRIOR_FAILED_STEPS"
+   fi
+   ```
+   **If** `REGRESSION_VERDICT` = FAIL → **Failure Path**.
+2. Update status and commit:
+   ```bash
+   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   PARENT_SHA=$(git rev-parse HEAD)
+   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REGRESSION_VERDICT" \
+     '.[-1].steps += [{step:"ship-regression-guard", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
+     "$STATUS" > "$t" && mv "$t" "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): regression-guard"
+   ```
+3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 3 — Regression Guard - Verdict: {REGRESSION_VERDICT}
+   ```
+
+### 🔒 Gate 3 — Regression Guard
+
+- [ ] `CURRENT_RUN_ID` resolved from PR HEAD SHA
+- [ ] `PRIOR_RUN_ID` resolved or no prior failed CI run on branch
+- [ ] Previously-failing CI steps re-asserted in current run
+- [ ] Verdict determined (`REGRESSION_VERDICT`)
+- [ ] Verdict valid (`REGRESSION_VERDICT` in `PASS|FAIL`)
+- [ ] Workflow status updated (step `ship-regression-guard` recorded with `parentSha`, `verdict`)
+- [ ] Issue comment attempted (`Step 3` section)
+
+---
+
+## 🧠 Step 4 — Conflict Resolve
 
 **Run only if:** Sentinel `docs/plans/logs/{FID}/.rebase-failed` exists after Step 2.
 
@@ -280,22 +303,22 @@
    ```
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Conflict Resolve - Verdict: {RESOLVE_VERDICT}
+   ### Step 4 — Conflict Resolve - Verdict: {RESOLVE_VERDICT}
    ```
 
-### 🔒 Gate 3 — Conflict Resolve
+### 🔒 Gate 4 — Conflict Resolve
 
 - [ ] Subagent invoked (`@bkit-ship-conflict-resolve`, no inline work)
 - [ ] Artifact written (`ship-conflict-resolve.md`, non-empty)
-- [ ] `RESOLVE_VERDICT` extracted
+- [ ] Verdict extracted (`RESOLVE_VERDICT`)
 - [ ] Verdict valid (`RESOLVE_VERDICT` in `PASS|FAIL`)
 - [ ] Sentinel cleared on PASS
 - [ ] Workflow status updated (step `ship-conflict-resolve` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 3` section)
+- [ ] Issue comment attempted (`Step 4` section)
 
 ---
 
-## 🤖 Step 4 — Merge PR
+## 🤖 Step 5 — Merge PR
 
 1. Increment `MERGE_ATTEMPT` + 1.
 2. Inspect `dev` branch state and auto-commit any dirty paths before squash-merge:
@@ -335,15 +358,15 @@
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 4 — Merge PR - Verdict: {MERGE_VERDICT}
+   ### Step 5 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-8. **If** `state` = MERGED → Step 7.
+8. **If** `state` = MERGED → Step 8.
 9. **If** `state` != MERGED:
-   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 5.
+   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 6.
    - **Else** → **Failure Path**.
 10. **Else** → **Failure Path**.
 
-### 🔒 Gate 4 — Merge PR
+### 🔒 Gate 5 — Merge PR
 
 - [ ] `MERGE_ATTEMPT` incremented
 - [ ] PR merge attempted
@@ -353,11 +376,11 @@
 - [ ] Verdict valid (`MERGE_VERDICT` in `PASS|FAIL`)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 4` section)
+- [ ] Issue comment attempted (`Step 5` section)
 
 ---
 
-## 🧠 Step 5 — Failure Diagnose
+## 🧠 Step 6 — Failure Diagnose
 
 **Run only if** `state` != MERGED.
 
@@ -378,22 +401,22 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 5 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
+   ### Step 6 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
    ```
 
-### 🔒 Gate 5 — Failure Diagnose
+### 🔒 Gate 6 — Failure Diagnose
 
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`, non-empty)
-- [ ] `DIAGNOSE_VERDICT` extracted
+- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
-- [ ] Issue comment attempted (`Step 5` section)
+- [ ] Issue comment attempted (`Step 6` section)
 
 ---
 
-## 🧠 Step 6 — Failure Remediate
+## 🧠 Step 7 — Failure Remediate
 
 **Run only if** `state` != MERGED.
 
@@ -426,22 +449,22 @@
    ```
 7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 6 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
+   ### Step 7 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
    ```
-8. **Re-run Step 4**.
+8. **Re-run Step 5**.
 
-### 🔒 Gate 6 — Failure Remediate
+### 🔒 Gate 7 — Failure Remediate
 
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`ship-failure-remediate-{MERGE_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
-- [ ] Issue comment attempted (`Step 6` section)
+- [ ] Issue comment attempted (`Step 7` section)
 
 ---
 
-## 🤖 Step 7 — Switch to Dev
+## 🤖 Step 8 — Switch to Dev
 
 **Run only if** `state` = MERGED.
 
@@ -471,20 +494,20 @@
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 7 — Switch to Dev
+   ### Step 8 — Switch to Dev
    [{OWNER_REPO}/tree/dev](https://github.com/{OWNER_REPO}/tree/dev)
    ```
 
-### 🔒 Gate 7 — Switch to Dev
+### 🔒 Gate 8 — Switch to Dev
 
 - [ ] On `dev` branch
 - [ ] `dev` up to date with origin
 - [ ] Workflow status updated (step `ship-switch-to-dev` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 7` section)
+- [ ] Issue comment attempted (`Step 8` section)
 
 ---
 
-## 🧠 Step 8 — Update Docs & Summary
+## 🧠 Step 9 — Update Docs & Summary
 
 **Run only if** `state` = MERGED.
 
@@ -526,16 +549,16 @@
    ```
 8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 8 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
+   ### Step 9 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
+9. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
 10. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
 11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
 12. **Else** → **Failure Path**.
 
-### 🔒 Gate 8 — Update Docs & Summary
+### 🔒 Gate 9 — Update Docs & Summary
 
 - [ ] Squash SHA verified on `origin/dev`
 - [ ] Plans moved to `docs/plans/completed/{YYYYMM}/`
@@ -545,11 +568,11 @@
 - [ ] Verdicts extracted (`UPDATE_DOCS_VERDICT`, `SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 8` section)
+- [ ] Issue comment attempted (`Step 9` section)
 
 ---
 
-## 🤖 Step 9 — Prune Skills
+## 🤖 Step 10 — Prune Skills
 
 **Run only if** `state` = MERGED.
 
@@ -572,19 +595,19 @@
    ```
 3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 9 — Prune Skills
+   ### Step 10 — Prune Skills
    ```
 
-### 🔒 Gate 9 — Prune Skills
+### 🔒 Gate 10 — Prune Skills
 
 - [ ] Feature-specific skills pruned
 - [ ] Logs at `docs/plans/logs/{FID}/` retained for manual cleanup
 - [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 9` section)
+- [ ] Issue comment attempted (`Step 10` section)
 
 ---
 
-## 🤖 Step 10 — Worktree Cleanup
+## 🤖 Step 11 — Worktree Cleanup
 
 **Run only if** `state` = MERGED.
 
@@ -616,21 +639,21 @@
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 10 — Worktree Cleanup
+   ### Step 11 — Worktree Cleanup
    ```
 
-### 🔒 Gate 10 — Worktree Cleanup
+### 🔒 Gate 11 — Worktree Cleanup
 
 - [ ] Worktree removed (`.worktrees/{FID}`, or was already absent)
 - [ ] `git worktree prune` executed
 - [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
-- [ ] Issue comment attempted (`Step 10` section)
+- [ ] Issue comment attempted (`Step 11` section)
 
 ---
 
-## 🤖 Step 11 — Close Workflow
+## 🤖 Step 12 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Assert squash-merge CI run completed `run-tests`:
@@ -664,10 +687,10 @@
 4. Add `Merged` phase to `{LABELS}`, drop old phase and drop `Failed` if present → `save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 11 — Close Workflow
+   ### Step 12 — Close Workflow
    ```
 
-### 🔒 Gate 11 — Close Workflow
+### 🔒 Gate 12 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] All documents archived and logs retained for manual cleanup
