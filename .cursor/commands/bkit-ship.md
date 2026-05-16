@@ -207,11 +207,11 @@
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
 9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-    ```comment
-    ### Step 2 — Worktree Setup
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
-    ```
+   ```comment
+   ### Step 2 — Worktree Setup
+   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+   [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
+   ```
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -238,8 +238,9 @@
    PRIOR_RUN_ID=$(gh run list --branch "$BRANCH_NAME" --workflow CI --status failure --limit 25 \
      --json databaseId,createdAt --jq "[.[] | select((.databaseId | tostring) != \"$CURRENT_RUN_ID\")] | sort_by(.createdAt) | reverse | .[0].databaseId // \"\"")
    REGRESSION_VERDICT=PASS
-   REGRESSION_SKIPPED=""
-   if [ -n "$CURRENT_RUN_ID" ] && [ -n "$PRIOR_RUN_ID" ]; then
+   if [ -z "$CURRENT_RUN_ID" ]; then
+     REGRESSION_VERDICT=FAIL
+   elif [ -n "$PRIOR_RUN_ID" ]; then
      PRIOR_FAILED_STEPS=$(gh run view "$PRIOR_RUN_ID" --json jobs \
        --jq '[.jobs[].steps[] | select(.conclusion == "failure") | .name] | unique | join("\n")')
      CURRENT_STEPS_JSON=$(gh run view "$CURRENT_RUN_ID" --json jobs --jq '[.jobs[].steps[] | {name, conclusion}]')
@@ -248,7 +249,6 @@
        CONCLUSION=$(echo "$CURRENT_STEPS_JSON" | jq -r --arg n "$STEP" '[.[] | select(.name == $n)] | .[0].conclusion // "missing"')
        if [ "$CONCLUSION" != "success" ]; then
          REGRESSION_VERDICT=FAIL
-         REGRESSION_SKIPPED="${REGRESSION_SKIPPED}- ${STEP} (now: ${CONCLUSION})\n"
        fi
      done <<< "$PRIOR_FAILED_STEPS"
    fi
