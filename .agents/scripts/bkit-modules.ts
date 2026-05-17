@@ -1076,7 +1076,8 @@ export function runCiModule(ctx: ModuleContext): void {
         "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
         "IN GITHUB (Claude half):\n" +
         "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
-        "  - Confirm `LINEAR_API_KEY` and `GH_BKIT_TOKEN` are already set (preflight + bkit package install both need them).\n" +
+        "  - Confirm `LINEAR_API_KEY` is set (router reads the `Auto` opt-in label and appends comments).\n" +
+        "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
         "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the router exits no-op.\n\n" +
         "IN CURSOR DASHBOARD (Cursor half):\n" +
         "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
