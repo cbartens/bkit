@@ -50,10 +50,11 @@ maxTurns: 50
 11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
 12. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 13. Non-obvious traps → note in output for remediator to append to `docs/knowledge.md`; check existing entries first.
-14. Update **Create** output - set `Verdict` via `Edit`; mapping:
+14. Rot-signal check while looking for root-cause: **If** stack trace shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace and root-cause analysis already require.
+15. Update **Create** output - set `Verdict` via `Edit`; mapping:
     - `PASS` = root cause identified with concrete fix instructions.
-    - `FAIL` = unable to diagnose → orchestrator routes to Failure Path → `bkit-debug-abort-handover`.
-    - `CONCERNS` = ambiguous root cause but plausible fix path.
+    - `CONCERNS` = ambiguous root cause but plausible fix path, or any rot-signals detected.
+    - `FAIL` = unable to diagnose.
 
 **Output format:**
 
@@ -83,6 +84,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Root Cause
 
 [Per issue analysis — proximate cause + design fragility + contributing factors; initially set to `PENDING`.]
+
+## Rot Signals
+
+[Comma-separated list of rot signal slugs - subset of `architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift` with one-line evidence per slug or "No rot signals found."; initially set to `PENDING`.]
 
 ## Recommended Fix
 

@@ -37,7 +37,8 @@ maxTurns: 25
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. APPEND failure → `docs/pending.md`.
+5. Extract `Rot Signals` from diagnose attempts → aggregate into handover - dedupe slugs but retain all evidence.
+6. Append failure → `docs/pending.md`.
 
 **Output format:**
 
@@ -51,6 +52,11 @@ maxTurns: 25
 ## What's Actually Happening
 
 [Causal chain: Symptom → Trigger → Proximate cause → Root cause (design fragility) → Contributing factors (env, timing, races); initially set to `PENDING`.]
+
+## Rot Signals
+
+[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs + all provided evidence or "No rot signals found."; initially set to `PENDING`.]
+
 
 ## Attempt History
 
