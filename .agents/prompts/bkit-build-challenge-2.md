@@ -74,7 +74,7 @@ Lens: Security — auth, secrets, input validation, data exposure, OWASP, RLS/te
 
 ## Findings Log
 
-[If `CONCERNS`/`FAIL`: prioritized list — per finding: severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), file:line, exploit scenario, suggested fix. If `PASS`: "No issues found.". Empty in stub; populated via Bash `echo >>` as work progresses.]
+[If `CONCERNS`/`FAIL`: prioritized list — per finding: severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), file:line, exploit scenario, suggested fix. If `PASS` then `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after reviewing diff and producing output. Do NOT fix — workflow applies fixes.**

@@ -58,7 +58,7 @@ Lens: Pragmatic — existing code, minimal new infra, ship fastest.
 
 ## Approach C — [Name (optional)]
 
-[Same fields, or "N/A"]
+[Same fields. If no third approach then `None`]
 
 ## Decisions
 

@@ -17,6 +17,11 @@ REPO="cbartens/bkit"
 ENV_FILE="$REPO_ROOT/.env.local"
 DRY_RUN=false
 
+# Strip GH_TOKEN from gh's env: if the caller has a fine-grained PAT exported
+# (e.g. sourced from an env file), gh prefers it over the `gh auth login`
+# session and 403s on actions/secrets/public-key. Use the auth-login user.
+gh_clean() { env -u GH_TOKEN gh "$@"; }
+
 for arg in "$@"; do
   [[ "$arg" == "--dry-run" ]] && DRY_RUN=true
 done
@@ -52,7 +57,7 @@ for key in "${GITHUB_KEYS[@]}"; do
   if [ "$DRY_RUN" = true ]; then
     echo "  🔍 $key = ${val:0:8}..."
   else
-    echo -n "$val" | gh secret set "$key" --repo "$REPO"
+    printf '%s' "$val" | gh_clean secret set "$key" --repo "$REPO"
     echo "  ✅ $key"
   fi
 done
@@ -63,7 +68,7 @@ done
 echo ""
 echo "🧹 Phase 2: Cleaning unused GitHub secrets..."
 
-CURRENT_SECRETS=$(gh api "/repos/$REPO/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")
+CURRENT_SECRETS=$(gh_clean api "/repos/$REPO/actions/secrets" --jq '.secrets[].name' 2>/dev/null || echo "")
 CLEANUP_COUNT=0
 
 for secret in $CURRENT_SECRETS; do
@@ -79,7 +84,7 @@ for secret in $CURRENT_SECRETS; do
     if [ "$DRY_RUN" = true ]; then
       echo "  🔍 Would remove: $secret (not in GITHUB_KEYS)"
     else
-      gh secret remove "$secret" --repo "$REPO"
+      gh_clean secret remove "$secret" --repo "$REPO"
       echo "  🗑️  Removed: $secret"
     fi
     CLEANUP_COUNT=$((CLEANUP_COUNT + 1))

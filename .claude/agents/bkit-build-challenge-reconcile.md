@@ -61,7 +61,7 @@ Failures: <integer ≥ 0>
 
 ## Findings
 
-[If `CONCERNS`/`FAIL`: prioritized list — per finding: lens, severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), file:line, exploit scenario, suggested fix, `agreement: {N}/{total}`. If `PASS`: "No issues found."; initially set to `PENDING`.]
+[If `CONCERNS`/`FAIL`: prioritized list — per finding: lens, severity (CRITICAL/HIGH/MEDIUM/LOW), class (mechanical/architectural), file:line, exploit scenario, suggested fix, `agreement: {N}/{total}`. If `PASS` then `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after reconciling findings and producing output. Do NOT fix — workflow applies fixes.**

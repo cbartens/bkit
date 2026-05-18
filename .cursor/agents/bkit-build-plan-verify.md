@@ -64,15 +64,15 @@ Failures: <integer ≥ 0>
 
 ## Sub-Plans Verified
 
-[Count, or "N/A" for Single scope. Holistic: count MUST match number of `docs/plans/active/{FID}-plan-*.md` files; mismatch → `CONCERNS`; initially set to `PENDING`.]
+[Count. Holistic: count MUST match number of sub-plan files; mismatch → `CONCERNS`. If Single scope then `None`; initially set to `PENDING`.]
 
 ## Integration Gaps
 
-[Count + description (Holistic only), or "N/A"; initially set to `PENDING`.]
+[Count + description (Holistic only). If Single scope then `None`; initially set to `PENDING`.]
 
 ## Previously Attempted
 
-[Reference to prior verification attempts, or "N/A"; initially set to `PENDING`.]
+[Reference to prior verification attempts. If first attempt then `None`; initially set to `PENDING`.]
 
 ## Notes
 
@@ -80,7 +80,7 @@ Failures: <integer ≥ 0>
 
 ## Identified Gaps Log
 
-[Count + brief description per gap, or "None". Empty in stub; populated via Bash `echo >>` as work progresses.]
+[Count + brief description per gap. If no gaps then `None`. Empty in stub; populated via Bash `echo >>` as work progresses.]
 ```
 
 > ⛔ **STOP after verifying plan and producing output. Do NOT fix.**
