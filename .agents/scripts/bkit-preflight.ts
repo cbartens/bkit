@@ -387,6 +387,43 @@ export function detectPlaywrightReporterHostile(cwd: string): PreflightFinding |
 }
 
 /**
+ * Advisory: consumer's `docs/observability.md` has the bkit-managed block (which
+ * ships an `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` example
+ * inside it) but no customised `debug-fetch` marker pair AFTER `<!-- bkit:end -->`.
+ *
+ * `/bkit-debug`'s runtime sub-fetch only reads the first `debug-fetch` block
+ * occurring after `<!-- bkit:end -->` (consumer section) — the example shipped
+ * inside the managed block is intentionally skipped. Without consumer-section
+ * markers, the runtime-log artifact (`debug-context-runtime-{ATTEMPT}.md`) is
+ * silently empty on every debug run.
+ *
+ * Only fires when the consumer has the bkit-managed block at all. Consumers
+ * who fully own `docs/observability.md` (no markers) are not nagged.
+ */
+export function detectObservabilityDebugFetchMissing(cwd: string): PreflightFinding | null {
+  const filePath = path.join(cwd, "docs", "observability.md");
+  if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, "utf-8");
+  // Require the bkit-managed block (line-anchored `<!-- bkit:end -->`).
+  const endIdx = content.search(/^<!-- bkit:end -->$/m);
+  if (endIdx === -1) return null;
+  const afterBkitEnd = content.slice(endIdx);
+  // Consumer-section markers must be line-anchored to mirror the workflow's
+  // `sed`/`awk` extraction (`.agents/workflows/bkit-debug.md:298`).
+  const hasStart = /^<!-- debug-fetch:start -->$/m.test(afterBkitEnd);
+  const hasEnd = /^<!-- debug-fetch:end -->$/m.test(afterBkitEnd);
+  if (hasStart && hasEnd) return null;
+  return {
+    id: "observability-debug-fetch-missing",
+    severity: "advisory",
+    detect:
+      "docs/observability.md has the bkit-managed block but no customised `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` pair after `<!-- bkit:end -->`. `/bkit-debug`'s runtime-log sub-fetch will silently produce an empty artifact.",
+    action:
+      "Copy the `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` block (with its fenced `bash` query) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then customise the query for your log backend (`gcloud logging read` / `aws logs filter-log-events` / `datadog logs query` etc.). Keep it idempotent and read-only — the agent customises severity / freshness / limit at run-time.",
+  };
+}
+
+/**
  * Advisory: detect __bkit__ envelope at top-level of a JSON file.
  * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
  * Action: run `pnpm bkit upgrade`.
@@ -681,6 +718,9 @@ export function runPreflight(
 
   const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
   if (playwrightReporterHostile) advisories.push(playwrightReporterHostile);
+
+  const observabilityDebugFetch = detectObservabilityDebugFetchMissing(cwd);
+  if (observabilityDebugFetch) advisories.push(observabilityDebugFetch);
 
   return {
     blockers: dedupeById(blockers),

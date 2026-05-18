@@ -19,6 +19,7 @@ import {
   detectPrettierignoreScopeBroadening,
   detectCiYmlVerboseCiBlockMissing,
   detectPlaywrightReporterHostile,
+  detectObservabilityDebugFetchMissing,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -586,6 +587,74 @@ describe("detectCiYmlVerboseCiBlockMissing", () => {
 
   it("returns null when ci.yml does not exist", () => {
     const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+});
+
+describe("detectObservabilityDebugFetchMissing", () => {
+  function writeObservability(content: string): void {
+    const dir = path.join(tmpDir, "docs");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "observability.md"), content, "utf-8");
+  }
+
+  const BKIT_BLOCK_WITH_EXAMPLE =
+    "<!-- bkit:start -->\n" +
+    "# Observability\n\n" +
+    "<!-- debug-fetch:start -->\n" +
+    "```bash\ngcloud logging read ... --limit=50\n```\n" +
+    "<!-- debug-fetch:end -->\n\n" +
+    "<!-- bkit:end -->\n";
+
+  it("flags when bkit block present but no consumer-section debug-fetch markers after bkit:end", () => {
+    writeObservability(BKIT_BLOCK_WITH_EXAMPLE);
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("observability-debug-fetch-missing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("docs/observability.md");
+    expect(f?.detect).toContain("debug-fetch");
+    expect(f?.action).toContain("after `<!-- bkit:end -->`");
+    expect(f?.action).toContain("log backend");
+  });
+
+  it("does NOT flag when a customised debug-fetch pair exists after bkit:end", () => {
+    writeObservability(
+      BKIT_BLOCK_WITH_EXAMPLE +
+        "\n## Consumer\n\n" +
+        "<!-- debug-fetch:start -->\n" +
+        "```bash\naws logs filter-log-events --log-group-name app --limit 50\n```\n" +
+        "<!-- debug-fetch:end -->\n",
+    );
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when docs/observability.md has no bkit-managed block (consumer-owned)", () => {
+    writeObservability("# Observability\n\nFully consumer-managed file, no bkit markers here.\n");
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("flags when only debug-fetch:start exists after bkit:end (malformed/missing pair)", () => {
+    writeObservability(
+      BKIT_BLOCK_WITH_EXAMPLE + "\n<!-- debug-fetch:start -->\n```bash\nfoo\n```\n",
+    );
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("observability-debug-fetch-missing");
+  });
+
+  it("does NOT count debug-fetch markers that appear only INSIDE the bkit-managed block", () => {
+    // Markers only inside bkit block — workflow skips these, so detector must flag.
+    writeObservability(BKIT_BLOCK_WITH_EXAMPLE);
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("observability-debug-fetch-missing");
+  });
+
+  it("returns null when docs/observability.md does not exist", () => {
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeNull();
   });
 });
