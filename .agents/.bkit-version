@@ -35,7 +35,7 @@
     "docs/webhooks.md": "c8c11dcd84fae1815a36978e7a83ab26d45406edbbd6d66697c0eb7bdadff7e9",
     "slop-scan.config.json": "6186de06a906ba7340a6faa95a4acb42f37f1d18500c8f5e3bf1e104e44e098e",
     "gitattributes": "c1b6f47d9ef1abc3726b77c857431cc507d9c85bc8a3be5e729c76a5d75ba44e",
-    "docs/plans/template.md": "c9e80491f65e5639a405dc96e78428ed466a359ee2197cfcd83720f93e95de0d",
+    "docs/plans/template.md": "38f60ac8ddb19d3d82c6ca5c7f0caec49fd8591f3ee7af96f50f8d06d7014d53",
     "docs/dispatch.md": "f5b8265f91b58e26c5b84f3b76916653d1898f75a3327445f283b220a3689da6",
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",

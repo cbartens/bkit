@@ -252,7 +252,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md"
    ```
 3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md`:
-   ```bash
+   ````bash
    LAST_PASS_SHA=$(gh run list --branch dev --workflow ci.yml --status success --limit 5 --json headSha --jq '.[0].headSha // ""' 2>/dev/null)
    if [ -n "$LAST_PASS_SHA" ]; then
      DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
@@ -263,7 +263,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
        } > "docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md"
      fi
    fi
-   ```
+   ````
 4. Run local test suite → **if** test output non-empty write to `docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md`:
    ```bash
    TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
