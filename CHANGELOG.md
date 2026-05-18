@@ -10,6 +10,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.2.1] — 2026-05-18
+
+### Added
+
+- **`.agents/advisories.md` persistent artifact (preflight + post-install).** `bkit install` / `check` / `doctor` now write the most-recent preflight + post-install checklist to `.agents/advisories.md` so consumers can revisit findings between runs. Overwritten on every run; clean runs write a "no advisories" stub. New `bkit-postinstall.ts` module owns the rendering. Added to the bkit-managed `.gitignore` block (transient artifact, not committed).
+- **README quick-install block.** Paste-ready installer prompt walks an AI through PAT setup + `.npmrc` configuration + initial `bkit install`. Lowers the barrier for first-time consumers.
+- **GitHub Actions supply-chain pinning guide.** New `docs/security.md` § "Supply-Chain (GitHub Actions)" (also in template) — recommends SHA-pinning `uses:` lines and pairing with Dependabot for auto-bumps. `docs/deployments.md` gains a pointer to the new section.
+
+---
+
 ## [2.2.0] — 2026-05-18
 
 ### Added
