@@ -244,11 +244,14 @@ jobs:
       #     [ "$VERBOSE_CI" = "1" ] && EXTRA_ARGS="--trace=on"
       #     pnpm test:e2e \${EXTRA_ARGS:+-- $EXTRA_ARGS}
 
-      # bkit-stub:e2e-artifacts — Upload Playwright report + traces on E2E failure so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
-      # Under [verbose ci]: traces/videos/screenshots land in test-results/; sharded runs
-      # additionally write blob-report/ intermediate. All three paths covered below.
+      # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
+      # \`if: always()\` captures both failure AND job-timeout cancel: Playwright's HTML reporter
+      # only finalises \`playwright-report/index.html\` at suite onEnd, but per-test trace.zip files
+      # in \`test-results/\` write incrementally and survive mid-suite SIGTERM. Without \`always()\`,
+      # cancelled runs lose all per-test traces. Under [verbose ci]: per-test trace.zip lands in
+      # test-results/; sharded runs additionally write blob-report/ intermediate.
       # - name: Upload Playwright Artifacts
-      #   if: failure() && steps.e2e.conclusion == 'failure'
+      #   if: always()
       #   uses: actions/upload-artifact@v4
       #   with:
       #     name: playwright-report
