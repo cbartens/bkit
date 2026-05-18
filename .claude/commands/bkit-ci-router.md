@@ -143,6 +143,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 ### 🔒 Gate 2 — Stale-Run Guard
 
 - [ ] `LATEST_RUN_SHA` == `HEAD_SHA`
+- [ ] Verdict determined (`GUARD_VERDICT`)
 - [ ] Workflow status updated (step `ci-stale-run-guard` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
 - [ ] On FAIL, workflow status pushed to `dev` with `[skip ci]`
 - [ ] Issue comment attempted (`Step 2` section)
@@ -181,6 +182,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 ### 🔒 Gate 3 — Opt-In Gate
 
 - [ ] Label `Auto` present in `{LABELS}`
+- [ ] Verdict determined (`AUTO_VERDICT`)
 - [ ] Workflow status updated (step `ci-opt-in-gate` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
 - [ ] On FAIL, workflow status pushed to `dev` with `[skip ci]`
 - [ ] Issue comment attempted (`Step 3` section)

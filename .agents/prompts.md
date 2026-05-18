@@ -251,7 +251,7 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-debug-failure-diagnose` | Investigate test/CI failure → diagnosis log; no fixes. Standard/Pivot/Final by attempt. Reads `docs/knowledge.md` fully → cites matching entries in `## Prior Knowledge` section → uses them to seed hypotheses. Output uses append-only ReAct `Hypothesis {N}` blocks; refuted hypotheses must remain. |
 | `bkit-debug-failure-remediate` | Apply diagnosis fix; lint/typecheck/test gate; may append `knowledge.md`/`decisions.md`. |
 | `bkit-debug-observe-instrument` | Add `[DEBUG-OBSERVE]` instrumentation; lint/typecheck/test gate. Wired into `/debug` § Step 9 (`MODE` = observe-instrument). |
-| `bkit-debug-observe-analyse` | Read pre-fetched CI/runtime logs from `debug-logs-*.md` + instrumentation report; extract `[DEBUG-OBSERVE]` evidence; write handover doc. Wired into `/debug` § Step 10 (`MODE` = observe-analyse). |
+| `bkit-debug-observe-analyse` | Read pre-fetched CI/runtime context from `debug-context-*.md` + instrumentation report; extract `[DEBUG-OBSERVE]` evidence; write handover doc. Wired into `/debug` § Step 10 (`MODE` = observe-analyse). |
 | `bkit-debug-observe-revert` | Strip all `[DEBUG-OBSERVE]` lines; lint/typecheck/test gate. Wired into `/debug` § Step 11 (`MODE` = observe-analyse). |
 | `bkit-debug-abort-handover` | Read all prior diagnose/remediate/verify logs → handover doc + `pending.md` append. Called from build/debug/ship Failure Paths. |
 | `bkit-debug-summary` | Read-only verdict on debug loop outcome. |

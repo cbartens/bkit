@@ -30,10 +30,15 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
   });
 
   it("env: GH_BKIT_TOKEN appears under the install step (after pnpm install --frozen-lockfile)", () => {
+    // Note: GH_BKIT_TOKEN is declared at BOTH job-level (so subsequent pnpm/npx
+    // steps don't emit ".npmrc env substitution failed" warnings) AND at the
+    // install step itself (explicit, plus required by the BAR-138 contract).
+    // This assertion locates the step-level declaration adjacent to the install
+    // command, ignoring any earlier job-level occurrence.
     const lines = content.split("\n");
     const installLineIdx = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
-    const envTokenIdx = lines.findIndex((l) =>
-      l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
+    const envTokenIdx = lines.findIndex(
+      (l, i) => i > installLineIdx && l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
     );
     expect(installLineIdx).toBeGreaterThan(-1);
     expect(envTokenIdx).toBeGreaterThan(installLineIdx);

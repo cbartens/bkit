@@ -76,7 +76,7 @@ Verdict: PASS | FAIL
 
 ## Blockers
 
-[Only on `FAIL` — losslessness or template violations preventing PASS, or "None"]
+[Only on `FAIL` — losslessness or template violations preventing PASS. If `PASS` then `None`]
 ```
 
 > ⛔ **STOP after splitting plan and producing output. Do NOT code.**

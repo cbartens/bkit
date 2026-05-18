@@ -58,7 +58,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"; initially set to `PENDING`.]
+[Per blocker: id + reason. `FAIL` requires ≥1 blocker. If no blockers then `None`; initially set to `PENDING`.]
 
 ## Bugs Discovered
 

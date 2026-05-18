@@ -57,11 +57,11 @@ tools:
 
 ## Pending Items
 
-[`{FID}` matches in `docs/pending.md` for human review, or "None"]
+[`{FID}` matches in `docs/pending.md` for human review. If no matches then `None`]
 
 ## Blockers
 
-[Per blocker: id + reason. `FAIL` requires ≥1 blocker. Else "None"]
+[Per blocker: id + reason. `FAIL` requires ≥1 blocker. If no blockers then `None`]
 ```
 
 > ⛔ **STOP after writing the sync report. Do NOT code, deploy.**

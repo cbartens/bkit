@@ -59,7 +59,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
+[`Run #{RUN_ID}` link. If no run then `None`; initially set to `PENDING`.]
 
 ## Instrumentation Recap
 

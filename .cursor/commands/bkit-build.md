@@ -1,4 +1,4 @@
-# Build Feature (Workflow 3/5)
+# Build Feature (Workflow 3/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Build feature and raise PR for default integration branch.
@@ -714,7 +714,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `STRATEGY` computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`build-failure-diagnose-{TEST_ATTEMPT}.md`, non-empty)
-- [ ] `DIAGNOSE_VERDICT` extracted
+- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
@@ -793,7 +793,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] Subagent invoked (`@bkit-build-summary`, no inline work)
 - [ ] Artifact written (`build-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `build-summary` recorded with `parentSha`, `verdict`)

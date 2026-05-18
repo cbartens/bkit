@@ -60,7 +60,7 @@ Lens: Risk premortem — failure modes, scale, time, handover.
 
 ## Approach C — [Name (optional)]
 
-[Same fields, or "N/A"]
+[Same fields. If no third approach then `None`]
 
 ## Decisions
 

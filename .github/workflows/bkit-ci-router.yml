@@ -8,7 +8,10 @@ name: bkit-ci-router
 # configure the equivalent trigger in the Cursor cloud agents dashboard —
 # this YAML is the Claude half only.
 #
-# Required secrets: ANTHROPIC_API_KEY, LINEAR_API_KEY, GH_BKIT_TOKEN.
+# Required secrets: ANTHROPIC_API_KEY, LINEAR_API_KEY. The auto-provided
+# `github.token` (scoped by the `permissions:` block below) handles all repo
+# git/gh access — GH_BKIT_TOKEN is package-install scoped and has no access
+# to consumer repos, so this workflow does not use it.
 # Required Linear label on the issue: `Auto` (opt-in).
 # Docs: .agents/cloud.md § Post-CI auto-routing.
 
@@ -49,10 +52,12 @@ jobs:
           # creates its own `feat/{FID}` worktree under `.worktrees/`.
           ref: dev
           fetch-depth: 0
-          # Token must have contents:write on this repo to push status.json
-          # back to `dev` at workflow termination. GH_BKIT_TOKEN is reused
-          # (already required for @cbartens/bkit install).
-          token: ${{ secrets.GH_BKIT_TOKEN }}
+          # The auto-provided GITHUB_TOKEN inherits the `permissions:` block
+          # above (contents: write), which is what the router needs to push
+          # status.json back to `dev`. Do not swap in GH_BKIT_TOKEN here — it
+          # is scoped to the `@cbartens/bkit` package and has no access to
+          # the consumer repo (would 403 on checkout).
+          token: ${{ github.token }}
 
       - name: Configure git user
         run: |
@@ -62,7 +67,7 @@ jobs:
       - name: Resolve PR number for head branch
         id: pr
         env:
-          GH_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
@@ -85,4 +90,4 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
-          GH_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}

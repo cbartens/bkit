@@ -49,15 +49,15 @@ tools:
 
 ## Already Installed
 
-[Skill folders already present in `.agents/skills/`, or "None"]
+[Skill folders already present in `.agents/skills/`. If none present then `None`]
 
 ## Newly Installed
 
-[Skill folders + packages added via `npx skills add`, or "None"]
+[Skill folders + packages added via `npx skills add`. If none added then `None`]
 
 ## Not Found
 
-[Technologies with no matching skill, or "None"]
+[Technologies with no matching skill. If all matched then `None`]
 ```
 
 > ⛔ **STOP after installing skills and producing output. Do NOT code, expand scope.**

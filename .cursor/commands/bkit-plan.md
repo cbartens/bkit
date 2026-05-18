@@ -1,4 +1,4 @@
-# Plan Feature (Workflow 2/5)
+# Plan Feature (Workflow 2/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Create plan in `docs/plans/drafts/` — no code, no execution.
@@ -292,7 +292,7 @@
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
-- [ ] `APPLY_REVIEW_VERDICT` extracted
+- [ ] Verdict extracted (`APPLY_REVIEW_VERDICT`)
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
@@ -369,7 +369,7 @@
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Scope expansions in `docs/pending.md` (if any)
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
-- [ ] `APPLY_SCOPE_VERDICT` extracted
+- [ ] Verdict extracted (`APPLY_SCOPE_VERDICT`)
 - [ ] Verdict valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
@@ -443,7 +443,7 @@
 - [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
 - [ ] Artifact written (`plan-v4-split.md`, non-empty)
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
-- [ ] `SPLIT_VERDICT` extracted
+- [ ] Verdict extracted (`SPLIT_VERDICT`)
 - [ ] Verdict valid (`SPLIT_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
@@ -488,7 +488,7 @@
 - [ ] `PLAN_FINAL` resolved to highest `plan-v*.md` (excluding child `plan-v4-N.md`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
 - [ ] Artifact written (`plan-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)

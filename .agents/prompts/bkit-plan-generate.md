@@ -40,9 +40,9 @@ maxTurns: 50
 5. Build chronological steps and strict 🔒 Gates per `docs/plans/template.md`.
 6. Every `Agent Execution Runbook` task MUST carry a `Done when` entry — terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Tasks without it are rejected. Derive from matching `Derived Test Matrix` row where applicable.
 7. `Acceptance Scenario` per template section (expand NOT replace on design if provided).
-8. `Supersession Inventory` per template section. "None" if plan adds without replacing.
-9. New architecture/technology decisions (if any) → append `docs/decisions.md`.
-10. Out-of-scope ideas (if any) → append `docs/pending.md`.
+8. `Supersession Inventory` per template section. If plan adds without replacing then `None`.
+9. New architecture/technology decisions (if any) → append `docs/decisions.md`; check existing entries first.
+10. Out-of-scope ideas (if any) → append `docs/pending.md`; check existing entries first.
 
 **Output format:** See `docs/plans/template.md`.
 

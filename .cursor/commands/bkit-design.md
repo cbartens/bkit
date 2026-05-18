@@ -1,4 +1,4 @@
-# Design Feature (Workflow 1/5)
+# Design Feature (Workflow 1/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Create design in `docs/plans/drafts/` — no plans, no code, no execution.
@@ -290,7 +290,7 @@
 
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
 - [ ] Artifacts written (`design-review-1.md` and `design-review-2.md`, non-empty)
-- [ ] `REVIEW_VERDICT` extracted (worst-of-two)
+- [ ] Verdict extracted (`REVIEW_VERDICT`, worst-of-two)
 - [ ] Verdict valid (each review's `Verdict` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`design-review-1.md` and `design-review-2.md`)
 - [ ] Routed correctly (FAIL → Failure Path; PASS/CONCERNS → Step 6)
@@ -327,7 +327,7 @@
 
 - [ ] Subagent invoked (`@bkit-design-update`, no inline work)
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
-- [ ] `APPLY_REVIEW_VERDICT` extracted
+- [ ] Verdict extracted (`APPLY_REVIEW_VERDICT`)
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
@@ -363,7 +363,7 @@
 
 - [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
 - [ ] Artifact written (`design-v3-organised.md`, non-empty)
-- [ ] `ORGANISE_VERDICT` extracted
+- [ ] Verdict extracted (`ORGANISE_VERDICT`)
 - [ ] Verdict valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-organise` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
@@ -408,7 +408,7 @@
 - [ ] `DESIGN_FINAL` resolved to highest `design-v*.md`
 - [ ] Subagent invoked (`@bkit-design-summary`, no inline work)
 - [ ] Artifact written (`design-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)

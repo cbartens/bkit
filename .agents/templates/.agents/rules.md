@@ -15,7 +15,8 @@
 
 ### Principles
 
-- **Completeness over shortcuts:** AI makes thoroughness cheap. No deferred tests, no 90% solutions. In-scope = complete or skip; out-of-scope → `docs/pending.md`. NEVER silent shortcuts.
+- **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
+- **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
 - **Investigate before implementing:** Search `{framework/runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 - **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, not mandate. NEVER skip human gates.
@@ -60,6 +61,7 @@
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
 - **CI:** Pushes auto-trigger; NEVER manually trigger - final push to PR / `dev` HEAD MUST NOT contain `[skip ci]`.
+- **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
 

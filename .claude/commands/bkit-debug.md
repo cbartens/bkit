@@ -2,7 +2,7 @@
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
 
-# Debug Feature (Workflow 4/5)
+# Debug Feature (Workflow 4/6)
 
 **Role:** Orchestrator managing workflow with subagents.
 **Scope:** Remediate feature failures and push to branch.
@@ -238,7 +238,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ---
 
-## 🤖 Step 3 — Fetch Logs
+## 🤖 Step 3 — Fetch Context
 
 1. Discover CI run for branch:
    ```bash
@@ -246,51 +246,104 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId // ""')
    RUN_CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
    ```
-2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch CI logs → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md`:
+2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch CI logs → **if** output non-empty write to `docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md`:
    ```bash
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
-   [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
+   [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
+3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md`:
+   ````bash
+   LAST_PASS_SHA=$(gh run list --branch dev --workflow ci.yml --status success --limit 5 --json headSha --jq '.[0].headSha // ""' 2>/dev/null)
+   if [ -n "$LAST_PASS_SHA" ]; then
+     DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
+     if [ -n "$DIFF_STAT" ]; then
+       {
+         printf '# Diff vs last-passing CI on dev (last-passing-sha: %s)\n\n' "$LAST_PASS_SHA"
+         printf '```\n%s\n```\n' "$DIFF_STAT"
+       } > "docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md"
+     fi
+   fi
+   ````
+4. Run local test suite → **if** test output non-empty write to `docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md`:
+   ```bash
+   TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
+   [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
+   ```
+5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md`:
+   ```bash
+   E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
+   if [ "${E2E_FAILED:-0}" -gt 0 ]; then
+     E2E_DIR="docs/plans/logs/{FID}/debug-e2e-${DEBUG_ATTEMPT}"
+     mkdir -p "$E2E_DIR"
+     gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
+     if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
+       E2E_LOG="docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md"
+       SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
+       {
+         echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
+         echo
+         echo "Scanned: ${SCAN_ROOT#$E2E_DIR/} (text files only; binary artifacts listed below)"
+         find "$SCAN_ROOT" -type f \( -name "*.md" -o -name "*.json" -o -name "*.txt" -o -name "*.log" -o -name "*.xml" \) | sort | while read -r f; do
+           rel="${f#$E2E_DIR/}"
+           printf '\n===== file: %s =====\n' "$rel"
+           cat "$f"
+           echo
+         done
+         printf '\n===== binary artifacts (not inlined; full tree under %s/) =====\n' "${E2E_DIR#docs/plans/logs/}"
+         find "$E2E_DIR" -type f \( -name "*.html" -o -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.webm" -o -name "*.zip" \) | sed "s|^$E2E_DIR/||" | sort
+       } > "$E2E_LOG"
+       [ -s "$E2E_LOG" ] || rm -f "$E2E_LOG"
+     else
+       rmdir "$E2E_DIR" 2>/dev/null || true
+     fi
+   fi
+   ```
+6. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
    ````bash
    FETCH_EXAMPLE=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null | awk '/^<!-- debug-fetch:start -->/,/^<!-- debug-fetch:end -->/' | sed -n '/^```/,/^```/p' | sed '/^```/d')
    ````
-4. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
+7. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write to `docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md`:
    ```bash
    RUNTIME_LOGS=$({customised command} 2>/dev/null)
-   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"
+   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md"
    ```
-5. Update status and commit:
+8. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    ARTIFACTS=()
-   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+   for f in "docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
    ARTIFACTS_JSON=$(printf '%s\n' "${ARTIFACTS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$FETCH_VERDICT" --argjson a "$DEBUG_ATTEMPT" --argjson arts "$ARTIFACTS_JSON" \
-     '.[-1].steps += [{step:"debug-fetch-logs", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}]' \
+     '.[-1].steps += [{step:"debug-fetch-context", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): fetch-logs attempt ${DEBUG_ATTEMPT}"
+   git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
-   [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
-   [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
+   ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
+   [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
+   [debug-context-diff-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md)
+   [debug-context-tests-local-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md)
+   [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
+   [debug-context-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md)
    ```
 
-### 🔒 Gate 3 — Fetch Logs
+### 🔒 Gate 3 — Fetch Context
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
+- [ ] Diff vs last-passing CI on `dev` attempted
+- [ ] Local test suite run attempted
+- [ ] Playwright artifact download attempted (if e2e job failed)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
-- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] Artifacts written (if output available, `debug-context-ci-{DEBUG_ATTEMPT}.md`, `debug-context-diff-{DEBUG_ATTEMPT}.md`, `debug-context-tests-local-{DEBUG_ATTEMPT}.md`, `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`, `debug-context-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
-- [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
+- [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
 
 ---
@@ -312,7 +365,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
+   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-context-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 5. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -335,7 +388,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `STRATEGY` computed before invocation
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`debug-failure-diagnose-{TEST_ATTEMPT}.md`, non-empty)
-- [ ] `DIAGNOSE_VERDICT` extracted
+- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
@@ -361,7 +414,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
      '.[-1].steps += [{step:"debug-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT}"
+   FIX_DESC=$(grep -m1 '^DONE — Step' "docs/plans/logs/{FID}/debug-failure-remediate-${TEST_ATTEMPT}-log.md" 2>/dev/null \
+     | sed -E 's/^DONE — Step [0-9]+: //; s/ — .*$//' \
+     | tr -d '\r\n`"\\' \
+     | sed -E 's/[[:space:]]+$//' \
+     | cut -c1-72)
+   [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt ${TEST_ATTEMPT}"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   git add -A && git commit --allow-empty -m "fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -396,14 +456,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
-4. Update status and commit:
+4. Update status:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
      '.[-1].steps += [{step:"debug-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
 5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
@@ -431,7 +490,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **and** all Step 5 tests PASS.
 
 1. Increment `DEBUG_ATTEMPT` + 1.
-2. Update status and commit:
+2. Update status (file-only — no commit between Step 5 and the push):
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -439,10 +498,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      '.[-1].steps += [{step:"debug-push-remediation", status:"DONE", attempt:$da, at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): push-remediation attempt ${DEBUG_ATTEMPT}/${`MAX_DEBUG_ATTEMPT`}"
    ```
-3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+3. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+   ```bash
+   if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
+     CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
+     case "$CURRENT_TITLE" in
+       *"[verbose ci]"*) ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+     esac
+   fi
+   ```
+4. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 7 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
    ```
@@ -450,8 +518,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 7 — Push Remediation
 
 - [ ] `DEBUG_ATTEMPT` incremented
-- [ ] Commit pushed to branch
+- [ ] Step 5 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push)
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
+- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 7` section)
 
@@ -474,7 +543,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '.[-1].steps += [{step:"debug-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): summary"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
 6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
@@ -491,7 +561,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-summary`, no inline work)
 - [ ] Artifact written (`debug-summary.md`, non-empty)
-- [ ] `SUMMARY_VERDICT` extracted
+- [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
@@ -528,15 +598,26 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_INSTRUMENT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
      '.[-1].steps += [{step:"debug-observe-instrument", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/debug-observe-instrument-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}${VERBOSE_SUFFIX}"
    ```
-5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+   ```bash
+   if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
+     CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
+     case "$CURRENT_TITLE" in
+       *"[verbose ci]"*) ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+     esac
+   fi
+   ```
+6. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 9 — Observe Instrument - Verdict: {OBSERVE_INSTRUMENT_VERDICT}
    [observe-instrument-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-observe-instrument-{DEBUG_ATTEMPT}.md)
    ```
-7. → Step 12 (close as in-progress; issue stays `Debug` label awaiting CI).
+8. Close workflow → Step 12.
 
 ### 🔒 Gate 9 — Observe Instrument
 
@@ -544,9 +625,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifact written (`debug-observe-instrument-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Source files modified with `[DEBUG-OBSERVE]` lines
 - [ ] `DEBUG_ATTEMPT` NOT incremented
-- [ ] `OBSERVE_INSTRUMENT_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `[skip ci]`)
+- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
@@ -558,7 +640,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
+   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-context-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-observe-analyse-{DEBUG_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `OBSERVE_ANALYSE_VERDICT`.
@@ -581,7 +663,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] Subagent invoked (`@bkit-debug-observe-analyse`, no inline work)
 - [ ] Artifact written (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`, non-empty)
-- [ ] `OBSERVE_ANALYSE_VERDICT` extracted
+- [ ] Verdict extracted (`OBSERVE_ANALYSE_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-observe-analyse` recorded with `parentSha`, `verdict`)
@@ -642,7 +724,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status, commit, and push:
+2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `[verbose ci]` in PR title → strip `[verbose ci]` from PR title:
+   ```bash
+   if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ] && [ "$OBSERVE_MODE" = "off" ]; then
+     CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
+     NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?\[verbose ci\]//')
+     [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
+   fi
+   ```
+3. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
@@ -651,13 +741,14 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      '.[-1].steps += [{step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    ```
-3. Capture branch state:
+4. Capture branch state:
    ```bash
    CURRENT=$(git branch --show-current)
    PR_URL=""
@@ -667,11 +758,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      EXISTING_PR=$(gh pr list --head "$CURRENT" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
    fi
    ```
-4. Set `TRIGGER_PR`:
+5. Set `TRIGGER_PR`:
    - **If** `CURRENT` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
-5. **If** `TRIGGER_PR` = 1 → create PR:
+6. **If** `TRIGGER_PR` = 1 → create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
    <!-- bkit:start -->
@@ -680,26 +771,29 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    EOF
    )"
    ```
-6. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
-7. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-8. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
+7. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
+8. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
+9. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
    ```bash
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}"
    git push origin "$(git branch --show-current)"
    ```
-9. Update status, commit, and push:
-   ```bash
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE [skip ci]"
-   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
-   ```
-10. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
+10. Update status, commit, and push:
+
+```bash
+git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
+git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
+git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE [skip ci]"
+git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
+```
+
+11. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
+12. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
     ```comment
     ### Step 12 — Close Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -711,6 +805,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
+- [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
 - [ ] HEAD on remote does NOT contain `[skip ci]`
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
