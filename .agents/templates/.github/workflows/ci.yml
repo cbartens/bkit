@@ -20,6 +20,23 @@ concurrency:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+    # bkit:start verbose-ci-env
+    # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
+    # [force build] / [force cache] / [skip ci] (independent contains() per marker).
+    # See docs/deployments.md § "Commit-message force tags" for where to put the marker
+    # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
+    # and docs/testing.md § "CI verbosity" for the full knob list.
+    #
+    # GH_BKIT_TOKEN is also declared at the job level so every pnpm/npx invocation in
+    # this job (vitest, turbo, etc.) can substitute ${GH_BKIT_TOKEN} when reading
+    # .npmrc. Without it, pnpm emits "Failed to replace env in config" warnings on
+    # every read after the install step. The install step keeps its own env: block
+    # for explicitness and to satisfy the BAR-138 regression tests.
+    env:
+      TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+    # bkit:end verbose-ci-env
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +49,16 @@ jobs:
       - uses: pnpm/action-setup@v4
 
       # bkit:start
+      # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
+      # $GITHUB_ENV. Note that steps with their own `env:` block override $GITHUB_ENV —
+      # those steps must inline these vars in their env: declaration to stay verbose-aware.
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
       - name: Check SHA Cache
         id: cache
         env:
@@ -196,14 +223,27 @@ jobs:
       #     exit 1
 
       # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
+      # Under [verbose ci]: appends --trace=on so Playwright writes per-test trace.zip
+      # (snapshots + network + console + source) — the canonical e2e debug artifact.
+      # `--video` and `--screenshot` are NOT Playwright CLI flags — they're `use:` keys in
+      # playwright.config.ts. Enabling standalone video / screenshot files requires editing
+      # the config (out of scope for this stub). Trace's snapshot timeline covers the
+      # dominant diagnose use case. Never pass --reporter=line — let playwright.config.ts's
+      # reporter chain run unmodified, otherwise verbose traces are written but no reporter
+      # surfaces them.
       # - name: Run E2E Tests
       #   id: e2e
       #   if: (steps.detect.outputs.should_run_e2e == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true'
       #   env:
       #     TARGET_URL: ${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
-      #   run: pnpm test:e2e
+      #   run: |
+      #     EXTRA_ARGS=""
+      #     [ "$VERBOSE_CI" = "1" ] && EXTRA_ARGS="--trace=on"
+      #     pnpm test:e2e ${EXTRA_ARGS:+-- $EXTRA_ARGS}
 
       # bkit-stub:e2e-artifacts — Upload Playwright report + traces on E2E failure so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
+      # Under [verbose ci]: traces/videos/screenshots land in test-results/; sharded runs
+      # additionally write blob-report/ intermediate. All three paths covered below.
       # - name: Upload Playwright Artifacts
       #   if: failure() && steps.e2e.conclusion == 'failure'
       #   uses: actions/upload-artifact@v4
@@ -212,6 +252,7 @@ jobs:
       #     path: |
       #       playwright-report/
       #       test-results/
+      #       blob-report/
       #     retention-days: 14
       #     if-no-files-found: ignore
       # bkit:end

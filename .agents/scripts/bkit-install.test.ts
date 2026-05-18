@@ -895,11 +895,14 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
     const content = fs.readFileSync(templatePath, "utf-8");
     // GH_BKIT_TOKEN must be present as the env var for registry auth
     expect(content).toContain("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}");
-    // The env block must appear after the pnpm install line
+    // GH_BKIT_TOKEN is now declared at job-level too (so non-install pnpm steps
+    // don't emit ".npmrc env substitution failed" warnings). Locate the step-
+    // level declaration adjacent to the install command, skipping any earlier
+    // job-level occurrence.
     const lines = content.split("\n");
     const installLine = lines.findIndex((l) => l.includes("pnpm install --frozen-lockfile"));
-    const envTokenLine = lines.findIndex((l) =>
-      l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
+    const envTokenLine = lines.findIndex(
+      (l, i) => i > installLine && l.includes("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}"),
     );
     expect(installLine).toBeGreaterThan(-1);
     expect(envTokenLine).toBeGreaterThan(installLine);
