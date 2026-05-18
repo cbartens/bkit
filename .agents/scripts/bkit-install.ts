@@ -10,6 +10,7 @@ import {
   runPostInstallCheck,
   formatChecklist,
   readChangelogVersionDelta,
+  writeAdvisoriesArtifact,
 } from "./bkit-postinstall.js";
 import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade.js";
@@ -740,6 +741,24 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
   return { writes, deletes };
 }
 
+/**
+ * Read the installing bkit version from the package root's package.json.
+ * Returns "0.0.0" when unreadable (e.g. dev tree without a package.json at the
+ * resolved root) — keeps the advisories artifact informational, not fatal.
+ */
+function getInstallingVersion(): string {
+  try {
+    const pkgJsonPath = path.join(getPkgRoot(), "package.json");
+    if (fs.existsSync(pkgJsonPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8")) as { version?: string };
+      return pkg.version ?? "0.0.0";
+    }
+  } catch {
+    // best-effort
+  }
+  return "0.0.0";
+}
+
 async function main() {
   const { verb, modules, uninstallFlags, upgradeFlags } = parseArgs(process.argv.slice(2));
 
@@ -765,6 +784,12 @@ async function main() {
     } else {
       console.log(`${LOG_PREFIX} No advisories found.`);
     }
+    writeAdvisoriesArtifact(allFindings, {
+      cwd: process.cwd(),
+      mode: "doctor",
+      version: getInstallingVersion(),
+      logPrefix: LOG_PREFIX,
+    });
     return;
   }
 
@@ -921,6 +946,12 @@ async function main() {
     // accumulated in ctx.advisories to preserve parity with legacy printSink dump.
     const banner = formatChecklist(ctx.advisories);
     if (banner) console.log(banner);
+    writeAdvisoriesArtifact(ctx.advisories, {
+      cwd: process.cwd(),
+      mode: "check",
+      version: getInstallingVersion(),
+      logPrefix: LOG_PREFIX,
+    });
     process.exit(1);
   }
 
@@ -931,6 +962,12 @@ async function main() {
     // Zero-drift dry-run: emit Phase 1 advisories if any.
     const banner = formatChecklist(ctx.advisories);
     if (banner) console.log(banner);
+    writeAdvisoriesArtifact(ctx.advisories, {
+      cwd: process.cwd(),
+      mode: "check",
+      version: getInstallingVersion(),
+      logPrefix: LOG_PREFIX,
+    });
     return;
   }
 
@@ -949,6 +986,12 @@ async function main() {
   const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
+  writeAdvisoriesArtifact(postFindings, {
+    cwd: process.cwd(),
+    mode: "install",
+    version: getInstallingVersion(),
+    logPrefix: LOG_PREFIX,
+  });
 
   // P2.T9: exit-1 on Phase 3 blockers + recovery action text.
   // Blockers in Phase 3 are actionable hard-fails (e.g. gh-bkit-token gap in CI).

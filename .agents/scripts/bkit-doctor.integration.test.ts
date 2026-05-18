@@ -110,7 +110,7 @@ describe("bkit doctor — integration", () => {
     expect(combinedOutput).toContain("bkit-version-pin-stale");
   });
 
-  it("does NOT write any files to the consumer directory", () => {
+  it("writes only the .agents/advisories.md artifact (no other side effects)", () => {
     if (!fs.existsSync(tsxBin)) return;
 
     seedMinimalConsumer(tmpDir);
@@ -126,9 +126,13 @@ describe("bkit doctor — integration", () => {
     });
 
     const filesAfter = listFilesRecursive(tmpDir);
+    const newFiles = filesAfter.filter((f) => !filesBefore.includes(f));
 
-    // No new files should have been written
-    expect(filesAfter.sort()).toEqual(filesBefore.sort());
+    // The only permitted new file is the advisories artifact (referenceable
+    // snapshot of the doctor run). Everything else must remain untouched.
+    const advisoryPath = path.join(tmpDir, ".agents", "advisories.md");
+    expect(newFiles).toEqual([advisoryPath]);
+    expect(fs.readFileSync(advisoryPath, "utf-8")).toContain("# bkit advisories");
   });
 });
 

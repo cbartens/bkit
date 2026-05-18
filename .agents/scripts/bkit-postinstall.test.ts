@@ -29,6 +29,8 @@ import {
   runPostInstallCheck,
   dedupeById,
   readChangelogVersionDelta,
+  renderAdvisoriesMarkdown,
+  writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
 
 // ---------------------------------------------------------------------------
@@ -921,6 +923,119 @@ describe("formatChecklist", () => {
     const result = formatChecklist(findings);
     expect(result).toContain("[bkit] Post-install checklist");
     expect(result).toContain("INSTRUCTIONS FOR AN AI AGENT");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderAdvisoriesMarkdown + writeAdvisoriesArtifact
+// ---------------------------------------------------------------------------
+
+describe("renderAdvisoriesMarkdown", () => {
+  const fixedTs = "2026-05-18T12:00:00.000Z";
+
+  it("renders a 'no advisories' stub when findings is empty", () => {
+    const md = renderAdvisoriesMarkdown([], {
+      mode: "install",
+      version: "2.2.0",
+      timestamp: fixedTs,
+    });
+    expect(md).toContain("# bkit advisories");
+    expect(md).toContain(`_Generated: ${fixedTs}_`);
+    expect(md).toContain("_bkit: 2.2.0_");
+    expect(md).toContain("_Mode: install_");
+    expect(md).toContain("**No advisories.** Last run was clean.");
+    expect(md).not.toContain("INSTRUCTIONS FOR AN AI AGENT");
+  });
+
+  it("renders findings as numbered sections with severity, detect, action", () => {
+    const findings: PreflightFinding[] = [
+      { id: "a-blocker", severity: "blocker", detect: "Detect A", action: "Action A" },
+      { id: "an-advisory", severity: "advisory", detect: "Detect B", action: "Action B" },
+    ];
+    const md = renderAdvisoriesMarkdown(findings, {
+      mode: "doctor",
+      version: "9.9.9",
+      timestamp: fixedTs,
+    });
+    expect(md).toContain("_Mode: doctor_");
+    expect(md).toContain("2 finding(s) — 1 blocker, 1 advisory.");
+    expect(md).toContain("INSTRUCTIONS FOR AN AI AGENT");
+    expect(md).toContain("## 1/2 [blocker] a-blocker");
+    expect(md).toContain("**Detect:** Detect A");
+    expect(md).toContain("**Action:** Action A");
+    expect(md).toContain("## 2/2 [advisory] an-advisory");
+    expect(md).toContain("**Detect:** Detect B");
+    expect(md).toContain("**Action:** Action B");
+  });
+
+  it("counts severities correctly with mixed list", () => {
+    const findings: PreflightFinding[] = [
+      { id: "x1", severity: "blocker", detect: "d", action: "a" },
+      { id: "x2", severity: "blocker", detect: "d", action: "a" },
+      { id: "x3", severity: "advisory", detect: "d", action: "a" },
+    ];
+    const md = renderAdvisoriesMarkdown(findings, {
+      mode: "check",
+      version: "1.0.0",
+      timestamp: fixedTs,
+    });
+    expect(md).toContain("3 finding(s) — 2 blocker, 1 advisory.");
+  });
+});
+
+describe("writeAdvisoriesArtifact", () => {
+  it("writes .agents/advisories.md to the consumer cwd, creating .agents/ if missing", () => {
+    const artifactDir = path.join(tmpDir, ".agents");
+    const artifactPath = path.join(artifactDir, "advisories.md");
+    expect(fs.existsSync(artifactDir)).toBe(false);
+
+    writeAdvisoriesArtifact([{ id: "x", severity: "advisory", detect: "d", action: "a" }], {
+      cwd: tmpDir,
+      mode: "install",
+      version: "2.2.0",
+      logPrefix: "[bkit-install]",
+    });
+
+    expect(fs.existsSync(artifactPath)).toBe(true);
+    const content = fs.readFileSync(artifactPath, "utf-8");
+    expect(content).toContain("# bkit advisories");
+    expect(content).toContain("## 1/1 [advisory] x");
+  });
+
+  it("overwrites an existing artifact on each call", () => {
+    const artifactPath = path.join(tmpDir, ".agents", "advisories.md");
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(artifactPath, "STALE CONTENT");
+
+    writeAdvisoriesArtifact([], {
+      cwd: tmpDir,
+      mode: "install",
+      version: "2.2.0",
+      logPrefix: "[bkit-install]",
+    });
+
+    const content = fs.readFileSync(artifactPath, "utf-8");
+    expect(content).not.toContain("STALE CONTENT");
+    expect(content).toContain("**No advisories.** Last run was clean.");
+  });
+
+  it("does not throw on write failure (best-effort, logs error)", () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    // Make .agents/ a file (not a directory) so mkdirSync recursively fails at file location.
+    fs.writeFileSync(path.join(tmpDir, ".agents"), "blocker");
+
+    expect(() =>
+      writeAdvisoriesArtifact([], {
+        cwd: tmpDir,
+        mode: "install",
+        version: "2.2.0",
+        logPrefix: "[bkit-install]",
+      }),
+    ).not.toThrow();
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Failed to write .agents/advisories.md"),
+    );
+    errSpy.mockRestore();
   });
 });
 
