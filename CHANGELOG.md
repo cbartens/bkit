@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+---
+
+## [2.2.0] — 2026-05-18
+
 ### Added
 
 - **`[verbose ci]` commit-message / PR-title marker (BAR-224).** Opt-in max-detail CI logging — append `[verbose ci]` to a commit message or PR title to escalate one CI run. Lean knob set: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled — `--video` and `--screenshot` are `playwright.config.ts use:` keys, NOT CLI flags; trace.zip covers their use case). Composes with `[force build]` / `[force cache]` in any order. Template ships:
@@ -25,6 +29,31 @@ Format: `## [version] — YYYY-MM-DD`
   - **Local mode (`DEBUG_MODE = local`, debug on dev/main push):** every commit-message in `.agents/workflows/bkit-debug.md` that does not carry `[skip ci]` gets `[verbose ci]` appended conditionally via `VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"` (5 sites: failure-remediate fix, summary, observe-instrument, close-workflow, create-pr). `push.head_commit.message` reads the marker → CI runs verbose. PR-mode runs skip the suffix entirely so commit history stays clean (no `[verbose ci]` clutter in commit subjects or squash bodies).
   - **PR mode (`DEBUG_MODE = pr`, debug on feature-branch + open PR):** Step 7 sub-step 2a (off-mode push path) and Step 9 sub-step 4a (instrument-mode push path) set `[verbose ci]` in the PR title immediately before their push — set co-located with the push that needs it. Step 12 sub-step 1a strips it **only when `OBSERVE_MODE = off`** (successful remediation close). `pull_request.synchronize` events read `pull_request.title` (the `push` event does not fire for non-`main`/`dev` branches), so the title is the only surface that works for PR-mode CI. **`OBSERVE_MODE = instrument` close + analyse handover + Failure Path all intentionally preserve the marker** so the next consumer (analyse cycle, observe-revert push, post-handover human investigator) keeps getting verbose CI without manual re-adding.
   - `bkit-build.md` intentionally not wired — build's pushes are happy-path by definition; verbose is contraindicated on shippable commits. The build→debug handoff (when build's Failure Path triggers a debug cycle) is where verbose kicks in automatically via the rules above.
+- **`bkit-debug` rot-signal hint via diagnose → summary / handover (BAR-219).** `bkit-debug-failure-diagnose` emits a `## Rot Signals` body section listing applicable lens slugs (subset of `architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`) with one-line evidence per match when stack trace / root-cause analysis surfaces structural rot on-path. `bkit-debug-summary` + `bkit-debug-abort-handover` aggregate across diagnose attempts (dedupe slugs, retain all evidence) so the signal reaches humans regardless of debug-cycle outcome. Summary `Verdict` semantically extended — `CONCERNS` now covers rot-detected cases alongside the original "ambiguous root cause" meaning.
+- **`bkit-debug-failure-diagnose` minimum-bundle hardening (BAR-198).** Four BAR-197-class failure modes retrofitted onto diagnose; remediate keeps its existing "loyal soldier" contract:
+  - **Scar-tissue scan (A)** — Step 7 finds reverted commits with candidate files → `Prior Knowledge`. Catches lessons rolled back from code that never reached `docs/knowledge.md` (the BAR-166 / BAR-192 re-application gap).
+  - **Blast Radius check (B)** — Step 14 enumerates affected surfaces when `Recommended Remediation` effects propagate beyond named files (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing); unhandled break → `Verdict` = FAIL.
+  - **Scope-split (C)** — Step 12 routes recommendations to either `Recommended Remediation` (in-scope, remediate applies) or `Out-of-Scope Recommendations` (deferred for human triage). `bkit-debug-summary` + `bkit-debug-abort-handover` aggregate the out-of-scope section across diagnose attempts.
+  - **PIVOT / FINAL re-application check (F)** — Step 5 strategy clauses demand explicit answering: "Is this a re-application of prior commit SHA / debug log? What new evidence makes it work this time?" Anti-recurrence check (Step 13) provides the reactive backstop catching recommendations that resemble reverted attempts.
+- **`/bkit-debug` Step 3 Context fetch refactor (BAR-198).** Workflow Step 3 renamed "Fetch Logs" → "Fetch Context"; expanded from 3 to 5 sub-fetches in priority order, with all deterministic data-gathering moved out of diagnose:
+  - `debug-context-ci-{ATTEMPT}.md` — CI logs (`gh run view --log-failed`).
+  - `debug-context-diff-{ATTEMPT}.md` — diff vs last-passing CI on `dev` (`gh run list --workflow ci.yml --status success` → `git diff <last-pass-sha>..HEAD --stat`). Filter pins to `ci.yml` so an unrelated workflow's success doesn't define the diff baseline.
+  - `debug-context-tests-local-{ATTEMPT}.md` — `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue` stdout/stderr.
+  - `debug-context-tests-e2e-{ATTEMPT}.md` — Playwright artifact (`gh run download -n playwright-report`).
+  - `debug-context-runtime-{ATTEMPT}.md` — runtime fetch template from `docs/observability.md` (BAR-194 mechanism, now under the unified naming).
+
+  Diagnose reads pre-staged context as supplied input; signal-weight hints inline ("local-test output = primary signal", "diff vs last-passing CI = scope-narrowing signal"). Workflow status step renamed `debug-fetch-logs` → `debug-fetch-context`. All references in `.agents/workflows.md`, `.agents/prompts.md`, `.agents/templates/docs/observability.md`, `docs/observability.md` updated.
+
+### Changed
+
+- **Cross-prompt output body description style normalised (BAR-198 / BAR-219).** Body section instructions across debug + audit / build / design / plan / ship summary prompts unified to "If X then \`Y\`" pattern (e.g. `If no rot signals then None`). Grammar fix `"NEVER assumed outcomes or infer results"` → `"NEVER assume outcomes or infer results"` across 6 summary prompts.
+- **`.agents/rules.md` adds "End-state over diff-size" principle.** AI makes changes cheap — never pick solutions based on lower cost-of-change; always pick the solution with best quality-of-end-state. Sits alongside "Completeness over shortcuts" in § Principles.
+- **`scripts/secrets/sync-github.sh` strips `GH_TOKEN` from gh env.** New `gh_clean()` wrapper drops the env var so the auth-login session takes precedence over a sourced fine-grained PAT that would otherwise 403 on `actions/secrets/public-key`. Plus `printf '%s'` over `echo -n` for portable secret value writes.
+
+### Fixed
+
+- **README.md historical-commentary cleanup.** Dropped `"(was only required for git-dep model)"` parenthetical and rephrased the `"Removed in v0.4.0 (breaking)"` block as forward-looking `"Upgrading from v0.3.x"` instruction. Historical context belongs here (CHANGELOG.md), not README.
+- **`docs/architecture.md` historical-commentary cleanup.** Dropped `"bkit-tier1-defaults.ts DELETED (v2.0.0) — sole consumer migrateTier1JsonToTier2 removed"` comment from the `.agents/scripts/` tree (already in this file's v2.0.0 entry + `docs/decisions.md`). Dropped the trailing `(v2.0.0+)` annotation on `bkit-tiers.ts` description.
 
 ---
 
