@@ -175,7 +175,7 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
 2. **Remove any pre-existing `installCommand` git-shim** from `vercel.json` if present:
 
    ```json
-   // REMOVE THIS — no longer needed (was only required for git-dep model):
+   // REMOVE THIS:
    {
      "installCommand": "git config --global url.\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\".insteadOf \"https://github.com/cbartens/bkit/\" && pnpm install"
    }
@@ -185,7 +185,8 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
 
 3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
 
-> **Removed in v0.4.0 (breaking):** Git-dependency install path (`pnpm add -D github:cbartens/bkit#vX.Y.Z`), GHA `Configure private-repo auth` step, and `installCommand` git-shim are all removed. Consumers upgrading from v0.3.x must add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, and drop the auth-shim from CI and Vercel config.
+> [!IMPORTANT]
+> **Upgrading from v0.3.x:** add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, and drop the auth-shim from CI (`Configure private-repo auth` step) and Vercel config (`installCommand` git-shim). The git-dependency install path (`pnpm add -D github:cbartens/bkit#vX.Y.Z`) is not supported on v0.4.0+.
 
 ## Install lifecycle
 

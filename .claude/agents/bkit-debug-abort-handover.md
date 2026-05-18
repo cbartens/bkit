@@ -38,7 +38,8 @@ maxTurns: 25
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Extract `Rot Signals` from diagnose attempts → aggregate into handover - dedupe slugs but retain all evidence.
-6. Append failure → `docs/pending.md`.
+6. Extract `Out-of-Scope Recommendations` from diagnose attempts → aggregate (dedupe paths, retain all rationales).
+7. Append failures → `docs/pending.md`; check existing entries first.
 
 **Output format:**
 
@@ -55,8 +56,11 @@ maxTurns: 25
 
 ## Rot Signals
 
-[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs + all provided evidence or "No rot signals found."; initially set to `PENDING`.]
+[Aggregated `Rot Signals` content across diagnose attempts: Comma-separated deduped rot signal slugs + all provided evidence. If no rot signals then `None`; initially set to `PENDING`.]
 
+## Out-of-Scope Recommendations
+
+[Aggregated `Out-of-Scope Recommendations` content across diagnose attempts: Deduped file paths + all rationales. If nothing out-of-scope then `None`; initially set to `PENDING`.]
 
 ## Attempt History
 

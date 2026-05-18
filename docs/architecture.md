@@ -33,8 +33,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
-│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / byte-equal-text) + deepContains/writeTier2JsonContained (v2.0.0+)
-│   │                       # bkit-tier1-defaults.ts DELETED (v2.0.0) — sole consumer migrateTier1JsonToTier2 removed (superseded by format-aware containment)
+│   ├── bkit-tiers.ts       # Format-aware file-write primitives (fully-managed / markered-text / byte-equal-text) + deepContains/writeTier2JsonContained
 │   ├── bkit-tokens.ts      # Token resolver (node version, pnpm major, git branch, etc.)
 │   ├── bkit-version.ts     # .bkit-version JSON schema (pinnedVersion, tier3Hashes, canonicalHashes)
 │   ├── bkit-manifest.ts    # Per-module install-write manifest (drives uninstall + key stripping)

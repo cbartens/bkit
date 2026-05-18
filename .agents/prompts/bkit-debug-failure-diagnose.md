@@ -35,26 +35,26 @@ maxTurns: 50
 **Process:**
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
-2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
+2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory. CI/runtime logs = primary signal.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Read `docs/knowledge.md` fully → grep entries by symptom / error-class / workflow-step → cite matches in `Prior Knowledge` → seed hypotheses from them; derive from scratch only if no match.
-5. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-6. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
+4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
+5. Determine `Strategy` from input Context; **If** missing → `Verdict` = FAIL. Apply:
    - `STANDARD` → Targeted diagnosis.
-   - `PIVOT` → Identify what prior attempt failed and why. Different angle — do NOT repeat.
+   - `PIVOT` → Identify what prior attempts failed and why. Explicitly answer: Re-application of prior commit SHA / debug log? **If** yes → what new evidence makes it work this time? Different angle — do NOT repeat verbatim.
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
-7. Check dep versions: `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
-8. Read CI/runtime logs from supplied inputs.
-9. Investigate logs, stack traces, failing tests, deployment/runtime exceptions.
-10. Run `pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`. Local test failures = primary signal.
-11. Diff vs last green CI: `gh run list --branch dev --status success --limit 5` → pick most recent ALL-pass SHA via `gh run view {RUN_ID}` → `git diff <green-sha>..HEAD --stat`. Delta = scope-narrowing signal.
-12. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
-13. Non-obvious traps → note in output for remediator to append to `docs/knowledge.md`; check existing entries first.
-14. Rot-signal check while looking for root-cause: **If** stack trace shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace and root-cause analysis already require.
+6. Read historical gotchas: Search `docs/knowledge.md` → grep entries by symptom / error-class / workflow-step. **If** any matches → add to `Prior Knowledge`.
+7. Read scar-tissue: Search for reverted commits with candidate files. **If** any matches capture what was tried and why reverted → add to `Prior Knowledge`.
+8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
+9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent dep bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
+10. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
+11. Rot-signal check: **If** stack trace / root-cause analysis shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis already require.
+12. Scope-split: **If** files are named in inputs as work targets → in-scope; add to `Recommended Remediation`. **Else** files only surfacing elsewhere (failure logs / error traces) → out-of-scope; add to `Out-of-Scope Recommendations` with one-line rationale.
+13. Anti-recurrence check: **If** any `Recommended Remediation` resembles a reverted attempt → pivot or justify retry in `Hypotheses` with new evidence.
+14. Blast-radius check: **If** `Recommended Remediation` change effects could reach anything beyond files being modified (loaders, schemas, public contracts, shared utilities, config globals, middleware, routing — anything other code depends on) → enumerate affected surfaces under `Blast Radius` → verify each remains compatible; NEVER skip silently. **If** unhandled break in any surface → set `Verdict` = FAIL via `Edit` immediately; do NOT defer to final pass.
 15. Update **Create** output - set `Verdict` via `Edit`; mapping:
-    - `PASS` = root cause identified with concrete fix instructions.
-    - `CONCERNS` = ambiguous root cause but plausible fix path, or any rot-signals detected.
-    - `FAIL` = unable to diagnose.
+    - `PASS` = root cause identified, concrete fix, blast radius handled.
+    - `CONCERNS` = ambiguous root cause but plausible fix, or any rot-signals detected.
+    - `FAIL` = cannot diagnose, or blast radius shows unhandled break in any affected surface.
 
 **Output format:**
 
@@ -67,15 +67,15 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Run
 
-[`Run #{RUN_ID}` link, or "N/A"; initially set to `PENDING`.]
+[`Run #{RUN_ID}` link. If no run then `None`; initially set to `PENDING`.]
 
 ## Prior Attempts Reviewed
 
-[What was tried + why it failed (Pivot/Final), or "N/A"; initially set to `PENDING`.]
+[What was tried + why it failed (Pivot/Final). If Standard then `None`; initially set to `PENDING`.]
 
 ## Prior Knowledge
 
-[Matched `docs/knowledge.md` entries that informed this diagnosis - per line `KN-{N}: <one-line summary> — applied as <how>` or "No issues found."; initially set to `PENDING`.]
+[Matched `docs/knowledge.md` entries that informed this diagnosis - per line `KN-{N}: <one-line summary> — applied as <how>`. If no matches then `None`; initially set to `PENDING`.]
 
 ## Failures
 
@@ -87,11 +87,19 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Rot Signals
 
-[Comma-separated list of rot signal slugs - subset of `architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift` with one-line evidence per slug or "No rot signals found."; initially set to `PENDING`.]
+[Comma-separated list of rot signal slugs - subset of `architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift` with one-line evidence per slug. If no rot signals then `None`; initially set to `PENDING`.]
 
-## Recommended Fix
+## Recommended Remediation
 
-[Prioritized fix instructions: file, line, code-level guidance; initially set to `PENDING`.]
+[Prioritized remediation instructions for in-scope files: File, line, code-level guidance; initially set to `PENDING`.]
+
+## Out-of-Scope Recommendations
+
+[Remediations outside of scope. Per item: File path + one-line rationale. If nothing out-of-scope then `None`; initially set to `PENDING`.]
+
+## Blast Radius
+
+[Effects beyond named files. For each propagating change: List affected surfaces + compatibility verdict. If no propagation then `Localised`; initially set to `PENDING`.]
 
 ## Suggested Tests
 

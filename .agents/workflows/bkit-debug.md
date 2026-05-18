@@ -238,7 +238,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 ---
 
-## 🤖 Step 3 — Fetch Logs
+## 🤖 Step 3 — Fetch Context
 
 1. Discover CI run for branch:
    ```bash
@@ -246,12 +246,30 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    RUN_ID=$(echo "$RUN_JSON" | jq -r '.[0].databaseId // ""')
    RUN_CONCLUSION=$(echo "$RUN_JSON" | jq -r '.[0].conclusion // ""')
    ```
-2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch CI logs → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md`:
+2. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → fetch CI logs → **if** output non-empty write to `docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md`:
    ```bash
    CI_LOGS=$(gh run view "$RUN_ID" --log-failed 2>/dev/null)
-   [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md"
+   [ -n "$CI_LOGS" ] && printf '%s' "$CI_LOGS" > "docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md"
    ```
-3. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download Playwright report, combine every text file under `test-results/` verbatim, and write logs artifact to `docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md`:
+3. **If** last-passing-CI SHA exists and diff output non-empty write to `docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md`:
+   ````bash
+   LAST_PASS_SHA=$(gh run list --branch dev --workflow ci.yml --status success --limit 5 --json headSha --jq '.[0].headSha // ""' 2>/dev/null)
+   if [ -n "$LAST_PASS_SHA" ]; then
+     DIFF_STAT=$(git diff "$LAST_PASS_SHA..HEAD" --stat 2>/dev/null)
+     if [ -n "$DIFF_STAT" ]; then
+       {
+         printf '# Diff vs last-passing CI on dev (last-passing-sha: %s)\n\n' "$LAST_PASS_SHA"
+         printf '```\n%s\n```\n' "$DIFF_STAT"
+       } > "docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md"
+     fi
+   fi
+   ````
+4. Run local test suite → **if** test output non-empty write to `docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md`:
+   ```bash
+   TEST_OUTPUT=$(pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue 2>&1 || true)
+   [ -n "$TEST_OUTPUT" ] && printf '%s' "$TEST_OUTPUT" > "docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md"
+   ```
+5. **If** `RUN_ID` non-empty **and** `RUN_CONCLUSION` != `success` → detect e2e job failure → **if** failed download outputs, combine every text file under `test-results/` verbatim, and write to `docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md`:
    ```bash
    E2E_FAILED=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select((.name | test("e2e"; "i")) or (.steps // [] | any(.name | test("e2e|playwright"; "i")))) | select(.conclusion=="failure")] | length' 2>/dev/null || echo 0)
    if [ "${E2E_FAILED:-0}" -gt 0 ]; then
@@ -259,7 +277,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      mkdir -p "$E2E_DIR"
      gh run download "$RUN_ID" -n playwright-report -D "$E2E_DIR" 2>/dev/null || true
      if [ -n "$(ls -A "$E2E_DIR" 2>/dev/null)" ]; then
-       E2E_LOG="docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md"
+       E2E_LOG="docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md"
        SCAN_ROOT="$E2E_DIR/test-results"; [ -d "$SCAN_ROOT" ] || SCAN_ROOT="$E2E_DIR"
        {
          echo "# Playwright Report (run ${RUN_ID}, attempt ${DEBUG_ATTEMPT})"
@@ -280,48 +298,52 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      fi
    fi
    ```
-4. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
+6. Detect runtime logs fetch example from the **first** `debug-fetch` block **after** `<!-- bkit:end -->`:
    ````bash
    FETCH_EXAMPLE=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null | awk '/^<!-- debug-fetch:start -->/,/^<!-- debug-fetch:end -->/' | sed -n '/^```/,/^```/p' | sed '/^```/d')
    ````
-5. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write logs artifact to `docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md`:
+7. **If** `FETCH_EXAMPLE` non-empty → use it as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write to `docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md`:
    ```bash
    RUNTIME_LOGS=$({customised command} 2>/dev/null)
-   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"
+   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md"
    ```
-6. Update status and commit:
+8. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    ARTIFACTS=()
-   for f in "docs/plans/logs/{FID}/debug-logs-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-logs-runtime-${DEBUG_ATTEMPT}.md"; do
+   for f in "docs/plans/logs/{FID}/debug-context-ci-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-diff-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-tests-local-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-tests-e2e-${DEBUG_ATTEMPT}.md" "docs/plans/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md"; do
      [ -s "$f" ] && ARTIFACTS+=("$f")
    done
    [ ${#ARTIFACTS[@]} -gt 0 ] && FETCH_VERDICT=PASS || FETCH_VERDICT=FAIL
    ARTIFACTS_JSON=$(printf '%s\n' "${ARTIFACTS[@]}" | jq -R . | jq -s 'map(select(. != ""))')
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$FETCH_VERDICT" --argjson a "$DEBUG_ATTEMPT" --argjson arts "$ARTIFACTS_JSON" \
-     '.[-1].steps += [{step:"debug-fetch-logs", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}]' \
+     '.[-1].steps += [{step:"debug-fetch-context", status:"DONE", verdict:$v, at:$t, parentSha:$p, attempt:$a, artifacts:$arts}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): fetch-logs attempt ${DEBUG_ATTEMPT}"
+   git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
-   ### Step 3 — Fetch Logs - Verdict: {FETCH_VERDICT}
-   [debug-logs-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-ci-{DEBUG_ATTEMPT}.md)
-   [debug-logs-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-e2e-{DEBUG_ATTEMPT}.md)
-   [debug-logs-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-logs-runtime-{DEBUG_ATTEMPT}.md)
+   ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
+   [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
+   [debug-context-diff-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md)
+   [debug-context-tests-local-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md)
+   [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
+   [debug-context-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md)
    ```
 
-### 🔒 Gate 3 — Fetch Logs
+### 🔒 Gate 3 — Fetch Context
 
 - [ ] `RUN_ID` discovery attempted
 - [ ] CI logs fetch attempted
+- [ ] Diff vs last-passing CI on `dev` attempted
+- [ ] Local test suite run attempted
 - [ ] Playwright artifact download attempted (if e2e job failed)
 - [ ] Runtime logs example fetch detection attempted
 - [ ] Customised runtime logs fetch attempted (if example present)
-- [ ] Artifacts written (if output available, `debug-logs-ci-{DEBUG_ATTEMPT}.md`, `debug-logs-e2e-{DEBUG_ATTEMPT}.md`, `debug-logs-runtime-{DEBUG_ATTEMPT}.md`)
+- [ ] Artifacts written (if output available, `debug-context-ci-{DEBUG_ATTEMPT}.md`, `debug-context-diff-{DEBUG_ATTEMPT}.md`, `debug-context-tests-local-{DEBUG_ATTEMPT}.md`, `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`, `debug-context-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
-- [ ] Workflow status updated (step `debug-fetch-logs` recorded with `parentSha`, `verdict`, `artifacts`)
+- [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
 
 ---
@@ -343,7 +365,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Debug: `{DEBUG_MODE}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
+   Read:`docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/debug-input-*.md`, glob `docs/plans/logs/{FID}/debug-context-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`.
    Create: `docs/plans/logs/{FID}/debug-failure-diagnose-{TEST_ATTEMPT}.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 5. Read `debug-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
@@ -618,7 +640,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 
 1. **Subagent:** Invoke `@bkit-debug-observe-analyse` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Observe Analyse mode — read CI logs from prior instrumented run, summarise evidence into per-step disk summary. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-logs-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
+   Read: `docs/plans/logs/{FID}/debug-input-{DEBUG_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/debug-context-*.md`, glob `docs/plans/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/logs/{FID}/debug-failure-remediate-*-log.md`, glob `docs/plans/logs/{FID}/debug-observe-instrument-*.md`.
    Create: `docs/plans/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `debug-observe-analyse-{DEBUG_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `OBSERVE_ANALYSE_VERDICT`.

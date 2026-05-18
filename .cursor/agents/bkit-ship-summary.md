@@ -35,7 +35,7 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
-6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
+6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = merged green, no retries.
    - `FAIL` = merge blocked.
@@ -56,11 +56,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## CI Status
 
-[Green first attempt → "Green, no retries." Else: retries / what broke / fixed / link to failing runs; initially set to `PENDING`.]
+[Retries / what broke / fixed / link to failing runs. If green first attempt then `Green`; initially set to `PENDING`.]
 
 ## Action Items
 
-[Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). "None" if pure clean ship; initially set to `PENDING`.]
+[Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). If pure clean ship then `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

@@ -56,7 +56,7 @@ tools:
 
 ## Blockers
 
-[Per blocker: id + reason. ≥1 blocker means caller treats this run as failed. Else "None"]
+[Per blocker: id + reason. ≥1 blocker means caller treats this run as failed. If no blockers then `None`]
 ```
 
 > ⛔ **STOP after instrumenting logging and producing output. Do NOT commit, push — caller orchestrates the next step.**

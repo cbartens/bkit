@@ -37,7 +37,7 @@ maxTurns: 25
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Synthesise inputs for below output.
-6. Base verdict ONLY on read files. No assumed outcomes, no inferred results.
+6. Base verdict ONLY on read files. NEVER assume outcomes or infer results.
 7. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = plan done, all tests pass, no unresolved findings; ONLY original out-of-scope items unresolved.
    - `FAIL` = some plan tasks not done, tests failing, or unresolved CRITICAL severity findings from challenge.
@@ -74,7 +74,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Generated Tests
 
-[Edge cases added? Bugs caught? Challenge phase skipped or no findings → "No additional tests beyond plan-mandated ones."; initially set to `PENDING`.]
+[Edge cases added? Bugs caught? If challenge phase skipped or no findings then `None`; initially set to `PENDING`.]
 
 ## Risks
 
