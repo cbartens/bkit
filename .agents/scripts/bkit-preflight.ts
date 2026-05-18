@@ -228,6 +228,7 @@ const BKIT_GITIGNORE_LINES = [
   "docs/plans/logs/**/raw/",
   "docs/plans/logs/**/.lock",
   ".husky/_",
+  ".agents/advisories.md",
 ];
 
 export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | null {

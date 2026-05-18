@@ -12,6 +12,43 @@ Agent workflow system wiring Claude Code (and Cursor) into a five-phase Linear-i
 >
 > **Use a classic PAT, not fine-grained.** GitHub Packages npm registry currently rejects fine-grained PATs with HTTP 403 even when `Packages: read` is granted (verified 2026-05). Until GitHub fixes this, classic with `read:packages` scope is the only working option.
 
+## Quick install — paste this into your AI
+
+After creating a classic GitHub PAT with `read:packages` scope ([Tokens (classic)](https://github.com/settings/tokens)) and saving it as `GH_BKIT_TOKEN=<token>` in a local env file in this repo (e.g. `.env.local`, `apps/web/.env.preview`), copy the block below into Claude Code / Cursor / any coding agent. Replace `<ENV-FILE-PATH>` with your env file's path.
+
+````text
+Please install the latest `@cbartens/bkit` in this repo.
+
+1. I've created a classic GitHub PAT with `read:packages` scope and saved it as `GH_BKIT_TOKEN=<token>` in `<ENV-FILE-PATH>` (for example `.env.local` or `apps/web/.env.preview`). Confirmed.
+
+2. To access `GH_BKIT_TOKEN` without leaking it into your context: `source` is a shell builtin, not file I/O — the permission layer that gates `Read` / `grep` / `cat` does NOT see it, and the token text never enters your context. Use this pattern in a single Bash tool call:
+
+   ```bash
+   set -a; source <ENV-FILE-PATH> 2>/dev/null; set +a; <command that needs the token>
+   ```
+
+   Verify the token loaded without leaking the value: `echo "len=${#GH_BKIT_TOKEN}"`.
+
+   Caveat: shell state does NOT persist between separate Bash tool calls. The `source` and the consuming command MUST run in the SAME invocation — chain with `;` or `&&`.
+
+3. Ensure `.npmrc` at the repo root contains these two lines (create or update; never inline the token value):
+
+   ```
+   @cbartens:registry=https://npm.pkg.github.com
+   //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
+   ```
+
+   Then resolve and install the latest `@cbartens/bkit` and seed the full stack in a single Bash call:
+
+   ```bash
+   set -a; source <ENV-FILE-PATH>; set +a; \
+     pnpm add -D @cbartens/bkit@latest && \
+     pnpm exec bkit install
+   ```
+
+   `pnpm exec bkit install` seeds `.agents/`, `.claude/`, `.cursor/`, CI workflows, lint, and git-hooks. Report the resolved version and any advisories printed by `bkit install`.
+````
+
 ## Install
 
 bkit is distributed via the **GitHub Packages npm registry** (`https://npm.pkg.github.com`). Add to a consumer repo:
@@ -60,21 +97,7 @@ pnpm exec bkit check --full
 
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
 
-> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** Plain `pnpm add -D @cbartens/bkit@<new-version>` (or `pnpm update`) only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate ("DRIFT DETECTED" on `.agents/.bkit-version`). Commit the resync changes alongside the version bump in the same PR. This applies to every version change — initial 0.3.x → 0.4.0 / 1.x → 2.0.0 cutovers **and** routine 2.0.x → 2.0.y upgrades.
-
-> **⚠️ pnpm 10: `pnpm update @cbartens/bkit` overwrites the manifest range.** pnpm 10 rewrites `package.json` from `"@cbartens/bkit": "^2"` to the resolved exact-minor (e.g. `"^2.0.5"`) and pins the lockfile specifier to match. To preserve a major-floating range, restore the manifest and re-resolve the lockfile after `pnpm update`:
->
-> ```bash
-> pnpm update @cbartens/bkit
-> # Check whether pnpm 10 narrowed the manifest range
-> grep '"@cbartens/bkit"' package.json   # expect "^2", not "^2.x.y"
-> # If narrowed: edit package.json back to "^2", then re-resolve:
-> pnpm install --frozen-lockfile=false
-> # Verify lockfile specifier:
-> grep -A2 "'@cbartens/bkit'" pnpm-lock.yaml   # expect specifier: ^2
-> ```
-
-> **Removed in v0.2.0 (breaking):** `bkit init` (use `bkit install --full`) and `bkit install --host=claude|cursor` (use `--claude` / `--cursor`). Both error as unknown.
+> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
@@ -84,12 +107,12 @@ For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bki
 
 Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
 
-## JSON ownership model — deep-containment (v2.0.0+)
+## JSON ownership model — deep-containment
 
-Starting v2.0.0, `.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment** instead of the former `__bkit__` envelope. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` upgrade byte-identically — no special key or wrapper required.
+`.claude/settings.json` and `.cursor/hooks.json` are managed via **deep-containment**. bkit declares a scope (the full template JSON tree) that must be present as a subset of the consumer document. Consumer-added keys outside the template tree survive every `bkit install` byte-identically — no special key or wrapper required.
 
 ```json
-// .claude/settings.json (v2.0.0+)
+// .claude/settings.json
 {
   "hooks": {
     "SessionStart": [
@@ -105,12 +128,10 @@ In this example, `hooks.SessionStart` is the bkit-declared scope (from the templ
 
 **Rules:**
 
-- Consumer keys outside the template tree survive every `bkit install` upgrade byte-identically.
+- Consumer keys outside the template tree survive every `bkit install` byte-identically.
 - `bkit install` uses `deepContains(template, consumer)` to check that every template leaf is present. On drift, it deep-merges template-wins — consumer-only siblings are preserved.
 - `bkit check` surfaces a `tier2-json-drift` advisory when `deepContains` fails; exits 0 so the consumer can review before next install.
 - `.cursor/hooks.json` uses the Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
-
-**Upgrading from v0.8.0–v1.1.1 (legacy `__bkit__` envelope):** Run `pnpm bkit upgrade` after bumping to v2.0.0. bkit automatically strips the `__bkit__` block, verifies deep-containment, and logs `[bkit] migrated <file> — stripped __bkit__ envelope (v2.0.0)`. Consumer-added keys are preserved. Re-running is idempotent. See [CHANGELOG v2.0.0](./CHANGELOG.md) for full breaking-change details.
 
 ## Consumer CI auth
 
@@ -184,9 +205,6 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
    With `.npmrc` committed and `GH_BKIT_TOKEN` set as a Vercel env var, a plain `pnpm install` resolves `@cbartens/bkit` from the registry directly.
 
 3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
-
-> [!IMPORTANT]
-> **Upgrading from v0.3.x:** add `.npmrc`, expand `GH_BKIT_TOKEN` PAT scope to `read:packages`, and drop the auth-shim from CI (`Configure private-repo auth` step) and Vercel config (`installCommand` git-shim). The git-dependency install path (`pnpm add -D github:cbartens/bkit#vX.Y.Z`) is not supported on v0.4.0+.
 
 ## Install lifecycle
 
@@ -298,7 +316,7 @@ pnpm exec bkit uninstall --nuke --yes
 | --- | --- |
 | `fully-managed` | Always deleted (bkit owns 100% of the file). |
 | `markered-text` | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains. |
-| `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. No recorded hash (pre-v0.7.x install) → preserved. |
+| `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. |
 
 ### Idempotency
 
@@ -359,28 +377,7 @@ BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
 
 This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.
 
-## Upgrade (v0.9.0+)
-
-`bkit upgrade` diffs old vs new template content against your consumer drift and applies non-conflicting changes. Files modified since install are flagged as conflicts — never silently overwritten.
-
-```bash
-# Review what would change (no writes)
-pnpm exec bkit upgrade --dry-run
-
-# Upgrade non-conflicting files; show conflict list (interactive)
-pnpm exec bkit upgrade
-
-# CI-safe: auto-apply non-conflicting; exit non-zero on conflicts
-pnpm exec bkit upgrade --non-interactive
-```
-
-**Conflict behaviour:** When `bkit upgrade` detects that a managed file has consumer drift (on-disk content differs from the hash recorded at last install), it emits the conflict to stderr and does NOT overwrite the file. The conflict entry includes both the new template content and the current on-disk content — paste into a coding assistant to apply the three-way merge manually.
-
-**How drift detection works:** Each `bkit install` records a `canonicalHashes` map in `.agents/.bkit-version` — sha256 of every file bkit wrote. On upgrade, `bkit upgrade` compares the current on-disk hash to the recorded canonical hash to detect consumer modifications.
-
-**Backward compatibility:** Consumers without a `canonicalHashes` entry (installed before v0.9.0) have no recorded hash for any file. `bkit upgrade` treats these as "unknown" and does not silently overwrite them — run `bkit install` once to seed the canonical hashes before using `bkit upgrade`.
-
-## Transactional install (v0.9.0+)
+## Transactional install
 
 `bkit install` writes to a `.bkit-staging/<module>/` staging directory per module. Staged files are atomically renamed to their consumer destination only after ALL modules complete successfully.
 
