@@ -312,6 +312,80 @@ export function detectPrettierignoreScopeBroadening(cwd: string): PreflightFindi
 // Phase 1 JSON advisories / blockers (BAR-167)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// [verbose ci] marker advisories (BAR-224)
+// ---------------------------------------------------------------------------
+
+/**
+ * Advisory: consumer's `.github/workflows/ci.yml` has bkit-managed markers but is
+ * missing the `# bkit:start verbose-ci-env` named block that enables the
+ * `[verbose ci]` commit/PR-title marker.
+ *
+ * Without the env block, the marker is a silent no-op — bkit-debug prompts will
+ * still recommend `[verbose ci]` on thin-log failures, but the consumer's CI will
+ * not escalate log detail. Surfacing this as an advisory directs the consumer to
+ * `bkit install` which rewrites the bkit-managed block to include the env.
+ *
+ * Only fires when the consumer has opted into a bkit-managed ci.yml at all (other
+ * bkit markers present). Consumers who own their ci.yml entirely are not nagged.
+ */
+export function detectCiYmlVerboseCiBlockMissing(cwd: string): PreflightFinding | null {
+  const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+  if (!fs.existsSync(ciPath)) return null;
+  const content = fs.readFileSync(ciPath, "utf-8");
+  // YAML-aware marker detection: allow leading whitespace, because ci.yml markers are
+  // indented inside `jobs:` / `steps:` (unlike the strict `hasBkitMarkers` used for
+  // flat-structure files like .gitignore / .prettierignore where indentation is unusual).
+  const hasAnyBkitMarker = /^\s*# bkit:start\b/m.test(content);
+  if (!hasAnyBkitMarker) return null;
+  // Named block marker present? `# bkit:start verbose-ci-env`
+  if (/^\s*# bkit:start verbose-ci-env\b/m.test(content)) return null;
+  return {
+    id: "ci-yml-verbose-ci-block-missing",
+    severity: "advisory",
+    detect:
+      ".github/workflows/ci.yml has bkit-managed markers but is missing the `# bkit:start verbose-ci-env` block. The `[verbose ci]` commit-message / PR-title marker will silently no-op.",
+    action:
+      "Run `pnpm bkit install` to add the verbose-ci-env block (sets TURBO_LOG_LEVEL=full, NODE_OPTIONS=--trace-warnings, DEBUG=vercel:*,supabase:* under the marker). After install, append `[verbose ci]` to the PR title (for feature-branch pushes — the workflow fires on `pull_request`, not `push`) or to the commit message (for direct pushes to `dev` / `main`).",
+  };
+}
+
+/**
+ * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
+ * overrides the configured reporter chain in `playwright.config.ts`. Under
+ * `[verbose ci]` with `--trace=on`, this writes trace artifacts that no reporter
+ * surfaces — pure cost (artifact upload + storage) with zero diagnostic payoff.
+ *
+ * "Hostile" gap per the BAR-224 signal-vs-noise classification. Detected in the
+ * consumer-owned region of ci.yml (bkit-managed block stripped) so we never fire
+ * on a bkit-shipped stub.
+ */
+export function detectPlaywrightReporterHostile(cwd: string): PreflightFinding | null {
+  const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+  if (!fs.existsSync(ciPath)) return null;
+  const content = fs.readFileSync(ciPath, "utf-8");
+  // Filter out YAML comment lines (those starting with optional whitespace + `#`) before
+  // matching, so we don't fire on bkit-shipped commented stubs or commented-out consumer
+  // examples. `stripBkitBlock` is unsuitable here because it uses strict line-anchored
+  // marker detection that misses indented YAML markers.
+  const activeContent = content
+    .split("\n")
+    .filter((line) => !/^\s*#/.test(line))
+    .join("\n");
+  // Match a literal `playwright test` invocation followed (anywhere) by `--reporter=line`.
+  // Both substrings must appear in active (non-comment) content. Heuristic but conservative.
+  if (!/playwright\s+test/.test(activeContent)) return null;
+  if (!/--reporter[= ]line\b/.test(activeContent)) return null;
+  return {
+    id: "playwright-reporter-line-override-hostile",
+    severity: "advisory",
+    detect:
+      ".github/workflows/ci.yml has a `playwright test` invocation that passes `--reporter=line`. Under `[verbose ci]` with `--trace=on`, trace artifacts are written but no reporter surfaces them — pure cost.",
+    action:
+      "Drop the `--reporter=line` flag so `playwright.config.ts`'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: `pnpm test:e2e ${VERBOSE_CI:+-- --trace=on}` — never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they're `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config's `list` reporter.",
+  };
+}
+
 /**
  * Advisory: detect __bkit__ envelope at top-level of a JSON file.
  * Fires when consumer has not yet run `bkit upgrade` to v2.0.0.
@@ -600,6 +674,13 @@ export function runPreflight(
 
   const versionPinStale = detectBkitVersionPinStale(cwd);
   if (versionPinStale) advisories.push(versionPinStale);
+
+  // BAR-224: [verbose ci] marker advisories
+  const verboseCiMissing = detectCiYmlVerboseCiBlockMissing(cwd);
+  if (verboseCiMissing) advisories.push(verboseCiMissing);
+
+  const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
+  if (playwrightReporterHostile) advisories.push(playwrightReporterHostile);
 
   return {
     blockers: dedupeById(blockers),

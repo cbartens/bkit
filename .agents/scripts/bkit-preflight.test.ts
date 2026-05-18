@@ -17,6 +17,8 @@ import {
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
   detectPrettierignoreScopeBroadening,
+  detectCiYmlVerboseCiBlockMissing,
+  detectPlaywrightReporterHostile,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -541,6 +543,102 @@ describe("detectPrettierignoreScopeBroadening", () => {
 
   it("returns null when .prettierignore does not exist", () => {
     const f = detectPrettierignoreScopeBroadening(tmpDir);
+    expect(f).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [verbose ci] marker advisories (BAR-224)
+// ---------------------------------------------------------------------------
+
+describe("detectCiYmlVerboseCiBlockMissing", () => {
+  function writeCiYml(content: string): void {
+    const dir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "ci.yml"), content, "utf-8");
+  }
+
+  it("flags when bkit markers present but verbose-ci-env block missing", () => {
+    writeCiYml(
+      "jobs:\n  run-tests:\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
+    );
+    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("ci-yml-verbose-ci-block-missing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("pnpm bkit install");
+    expect(f?.action).toContain("[verbose ci]");
+  });
+
+  it("does NOT flag when verbose-ci-env named block is present", () => {
+    writeCiYml(
+      "jobs:\n  run-tests:\n    # bkit:start verbose-ci-env\n    env:\n      VERBOSE_CI: ''\n    # bkit:end verbose-ci-env\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
+    );
+    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when ci.yml has no bkit markers at all (consumer owns ci.yml entirely)", () => {
+    writeCiYml("jobs:\n  run-tests:\n    steps:\n      - run: echo hi\n");
+    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("returns null when ci.yml does not exist", () => {
+    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+});
+
+describe("detectPlaywrightReporterHostile", () => {
+  function writeCiYml(content: string): void {
+    const dir = path.join(tmpDir, ".github", "workflows");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "ci.yml"), content, "utf-8");
+  }
+
+  it("flags when consumer step runs `playwright test --reporter=line`", () => {
+    writeCiYml(
+      "jobs:\n  e2e:\n    steps:\n      - run: pnpm exec playwright test --reporter=line --workers=2\n",
+    );
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("playwright-reporter-line-override-hostile");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("Drop the `--reporter=line` flag");
+    expect(f?.action).toContain("VERBOSE_CI");
+  });
+
+  it("does NOT flag when `playwright test` runs without --reporter", () => {
+    writeCiYml("jobs:\n  e2e:\n    steps:\n      - run: pnpm exec playwright test --workers=2\n");
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when --reporter is set but not to `line`", () => {
+    writeCiYml(
+      "jobs:\n  e2e:\n    steps:\n      - run: pnpm exec playwright test --reporter=html\n",
+    );
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when --reporter=line is only inside the bkit-managed stub region", () => {
+    writeCiYml(
+      "jobs:\n  e2e:\n    steps:\n      # bkit:start\n      # - run: playwright test --reporter=line\n      # bkit:end\n",
+    );
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("returns null when ci.yml does not exist", () => {
+    const f = detectPlaywrightReporterHostile(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when --reporter=line appears without a playwright test invocation", () => {
+    writeCiYml("jobs:\n  test:\n    steps:\n      - run: someothertool --reporter=line\n");
+    const f = detectPlaywrightReporterHostile(tmpDir);
     expect(f).toBeNull();
   });
 });

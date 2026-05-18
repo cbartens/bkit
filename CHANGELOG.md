@@ -6,6 +6,28 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **`[verbose ci]` commit-message / PR-title marker (BAR-224).** Opt-in max-detail CI logging — append `[verbose ci]` to a commit message or PR title to escalate one CI run. Lean knob set: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled — `--video` and `--screenshot` are `playwright.config.ts use:` keys, NOT CLI flags; trace.zip covers their use case). Composes with `[force build]` / `[force cache]` in any order. Template ships:
+  - `bkit:start verbose-ci-env` named env block at `jobs.run-tests:` level in `.agents/templates/.github/workflows/ci.yml`.
+  - `Configure Verbose CI` step propagating verbose envs via `$GITHUB_ENV` (visible activation echo in CI logs).
+  - Verbose-aware Playwright stub commentary — never pass `--reporter=line`, conditionally append trace/video/screenshot.
+  - Canonical marker row in `.agents/templates/docs/deployments.md` § "Commit-message force tags" alongside `[force build]` / `[force cache]` / `[skip ci]`, including the explicit PR-title-vs-commit-message rule (push events read `head_commit.message`; pull_request events read `pull_request.title` — feature-branch pushes only fire pull_request, so the marker MUST go in the PR title there).
+  - Testing-specific reference in `.agents/templates/docs/testing.md` § "CI verbosity" covering the knob list, when-to-use, hostile `--reporter=line` gap, and gitignore'd artifact paths.
+- **Playwright artifact gitignore guardrail (BAR-224).** `.agents/templates/gitignore` now ignores `test-results/`, `playwright-report/`, `blob-report/`, `.last-run.json`, and `playwright/.auth/` inside the bkit-managed block. Prevents accidental commit of trace/video binaries (1-50MB each) under `[verbose ci]`, and protects the auth-state directory which contains live session tokens.
+- **Cancel-resilient Playwright artifact upload (BAR-224).** `bkit-stub:e2e-artifacts` upload condition changed from `if: failure() && steps.e2e.conclusion == 'failure'` to `if: always()`. The HTML reporter only finalises `playwright-report/index.html` at suite `onEnd`; on job-timeout SIGTERM that file is never written. But per-test `trace.zip` files in `test-results/` write incrementally and survive mid-suite cancel. Previous condition skipped uploads on cancel (cancel ≠ failure in GH Actions), losing all traces. `if: always()` captures both failure and cancel paths.
+- **Two new `bkit install` advisories (BAR-224).**
+  - `ci-yml-verbose-ci-block-missing` — fires when consumer's ci.yml has bkit markers but is missing the new `bkit:start verbose-ci-env` block; directs to `pnpm bkit install`.
+  - `playwright-reporter-line-override-hostile` — fires when a `playwright test` invocation passes `--reporter=line`, which silently overrides the configured reporter chain and causes verbose traces to be written but never surfaced.
+- **`bkit-debug` orchestrator wires `[verbose ci]` on every CI-triggering push (BAR-224).** Debug mode is failure-recovery by definition — verbose is the right default, not a retry escalation. Two surfaces wired:
+  - **Local mode (`DEBUG_MODE = local`, debug on dev/main push):** every commit-message in `.agents/workflows/bkit-debug.md` that does not carry `[skip ci]` gets `[verbose ci]` appended conditionally via `VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"` (5 sites: failure-remediate fix, summary, observe-instrument, close-workflow, create-pr). `push.head_commit.message` reads the marker → CI runs verbose. PR-mode runs skip the suffix entirely so commit history stays clean (no `[verbose ci]` clutter in commit subjects or squash bodies).
+  - **PR mode (`DEBUG_MODE = pr`, debug on feature-branch + open PR):** Step 7 sub-step 2a (off-mode push path) and Step 9 sub-step 4a (instrument-mode push path) set `[verbose ci]` in the PR title immediately before their push — set co-located with the push that needs it. Step 12 sub-step 1a strips it **only when `OBSERVE_MODE = off`** (successful remediation close). `pull_request.synchronize` events read `pull_request.title` (the `push` event does not fire for non-`main`/`dev` branches), so the title is the only surface that works for PR-mode CI. **`OBSERVE_MODE = instrument` close + analyse handover + Failure Path all intentionally preserve the marker** so the next consumer (analyse cycle, observe-revert push, post-handover human investigator) keeps getting verbose CI without manual re-adding.
+  - `bkit-build.md` intentionally not wired — build's pushes are happy-path by definition; verbose is contraindicated on shippable commits. The build→debug handoff (when build's Failure Path triggers a debug cycle) is where verbose kicks in automatically via the rules above.
+
+---
+
 ## [2.1.0] — 2026-05-14
 
 ### Added

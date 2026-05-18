@@ -102,3 +102,4 @@
 - **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
 - **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
 - **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.
+- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.agents/scripts/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
