@@ -145,6 +145,10 @@ Composition guidance:
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
 
+## GitHub Actions pinning
+
+Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/dependabot.yml` (ecosystem `github-actions`, weekly). Pinning without Dependabot is worse than not pinning — CVEs in pinned actions are never patched. Full rule + minimal config: `security.md` § Supply-Chain (GitHub Actions).
+
 <!-- bkit:end -->
 
 ## Project
