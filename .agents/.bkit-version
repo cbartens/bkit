@@ -4,8 +4,8 @@
     ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "dc42882f5c39f5cb3c6c51497efa0f4f7e539f65e4748859f61e833672724f08",
-    "docs/testing.md": "e3427f08372b1fed0d80a9192c5309c099c3b543e3d70299e34f74abefd3dcf5",
+    "docs/deployments.md": "752f155898f7f807fdf6600c3ac28beae5a335628e29425c3d0bcadace97afec",
+    "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "21b5bfa2bbf7c3d06a569e76be71a792b6bdecba3195aab9da6659b91f58c586",
@@ -43,6 +43,7 @@
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
     ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692",
     "docs/observability.md": "7bbf5e7f2de2ebfd1470e53522453d5cdbb3fca08b9adea59fdc2e75637726ac",
-    "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5"
+    "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
+    ".gitignore": "295872bb84dfd3d6dd28127b61a5e2678fff3000ecbf3e90328ae47867c608f4"
   }
 }
