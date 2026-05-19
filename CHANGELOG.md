@@ -10,6 +10,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.2.2] — 2026-05-19
+
+### Changed
+
+- **Docs/config housekeeping.** `docs/deployments.md` documents the org/repo Workflow permissions setting required for `bkit-ci-router` (BAR-148). Subagent model pins swapped from `composer-2` to `composer-2.5` across Cursor configs. Autonomous workflow `CAUTION` blocks gain the Narrate invariant (BAR-229). `friction.md` entries captured by BAR-155 + BAR-230 pruned.
+
+---
+
 ## [2.2.1] — 2026-05-18
 
 ### Added
