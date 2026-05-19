@@ -26,7 +26,6 @@ tools:
 - **Mandate:** Write handover only; do NOT fix or change code.
 - **When:** Invoked when max remediation retries exceeded or agent irrecoverably blocked.
 - **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
-- **Terminal handover:** Output is read by humans + posted to Linear verbatim. Orchestrator does NOT extract a verdict — workflow is already FAILED at this point.
 
 **Process:**
 

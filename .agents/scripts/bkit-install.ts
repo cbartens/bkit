@@ -776,7 +776,6 @@ async function main() {
       { writes: [] },
       modules,
       process.cwd(),
-      false,
     );
     const banner = formatChecklist(allFindings);
     if (banner) {
@@ -940,38 +939,17 @@ async function main() {
 
   const totalWrites = ws.writes.length;
 
-  if (dryRun && totalWrites > 0) {
-    console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
-    // Dry-run: skip Phase 3 (check stays read-only). Still emit Phase 1 advisories
-    // accumulated in ctx.advisories to preserve parity with legacy printSink dump.
-    const banner = formatChecklist(ctx.advisories);
-    if (banner) console.log(banner);
-    writeAdvisoriesArtifact(ctx.advisories, {
-      cwd: process.cwd(),
-      mode: "check",
-      version: getInstallingVersion(),
-      logPrefix: LOG_PREFIX,
-    });
-    process.exit(1);
-  }
-
   // Done banner first so the line count is easy to find above the checklist.
-  console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
-
+  // For check, "would occur" makes intent explicit; for install, writes already happened.
   if (dryRun) {
-    // Zero-drift dry-run: emit Phase 1 advisories if any.
-    const banner = formatChecklist(ctx.advisories);
-    if (banner) console.log(banner);
-    writeAdvisoriesArtifact(ctx.advisories, {
-      cwd: process.cwd(),
-      mode: "check",
-      version: getInstallingVersion(),
-      logPrefix: LOG_PREFIX,
-    });
-    return;
+    console.log(`${LOG_PREFIX} ${totalWrites} write(s) would occur.`);
+  } else {
+    console.log(`${LOG_PREFIX} Done. ${totalWrites} write(s).`);
   }
 
   // --- Phase 3: Post-install checks (re-detect + unified output) ---
+  // Runs for both install AND check — detectors are read-only, so check produces
+  // the same advisory set as install would emit against the same filesystem state.
   // Changelog version-delta header (A7): surface what changed in the installed version.
   try {
     const pkgJsonPath = path.join(getPkgRoot(), "package.json");
@@ -988,10 +966,19 @@ async function main() {
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
     cwd: process.cwd(),
-    mode: "install",
+    mode: dryRun ? "check" : "install",
     version: getInstallingVersion(),
     logPrefix: LOG_PREFIX,
   });
+
+  // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
+  if (dryRun) {
+    if (totalWrites > 0) {
+      console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
+      process.exit(1);
+    }
+    return;
+  }
 
   // P2.T9: exit-1 on Phase 3 blockers + recovery action text.
   // Blockers in Phase 3 are actionable hard-fails (e.g. gh-bkit-token gap in CI).

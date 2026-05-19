@@ -1071,26 +1071,6 @@ describe("runPostInstallCheck deduplication", () => {
     expect(matches[0]!.detect).not.toBe("Old preflight detect text");
   });
 
-  it("returns empty array in dry-run mode (Phase 3 skipped)", () => {
-    delete process.env.GH_BKIT_TOKEN;
-    const preflightAdvisories: PreflightFinding[] = [];
-    const ws = makeWs();
-    // dryRun=true → skip Phase 3
-    const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir, true);
-    // In dry-run, returns preflightAdvisories as-is (empty)
-    expect(result).toHaveLength(0);
-  });
-
-  it("returns preflight advisories unchanged in dry-run mode", () => {
-    const preflightAdvisories: PreflightFinding[] = [
-      { id: "husky-no-markers-precommit", severity: "advisory", detect: "d", action: "a" },
-    ];
-    const ws = makeWs();
-    const result = runPostInstallCheck(preflightAdvisories, ws, makeModules("lint"), tmpDir, true);
-    expect(result).toHaveLength(1);
-    expect(result[0]!.id).toBe("husky-no-markers-precommit");
-  });
-
   it("gh-bkit-token-unset-shell is emitted when GH_BKIT_TOKEN is unset", () => {
     delete process.env.GH_BKIT_TOKEN;
     const result = runPostInstallCheck([], makeWs(), makeModules("lint"), tmpDir);
