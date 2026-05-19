@@ -156,6 +156,26 @@ What this does and why it's split from the in-repo hook:
 
 Keep total runtime under ~5 minutes or the snapshot won't build.
 
+## MCP issue-tracker integration
+
+bkit wires two MCP servers into `.claude/settings.json`. Both are **remote HTTP MCPs with OAuth-on-first-use** — no PATs, no env vars, no docker. Claude Code launches a browser auth flow the first time each server is touched, and stores the resulting token in its own secret store.
+
+```json
+"mcpServers": {
+  "linear":  { "url": "https://mcp.linear.app/mcp" },
+  "github":  { "url": "https://api.githubcopilot.com/mcp/" }
+}
+```
+
+- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used by workflows when `bkit.issueTracker` is set to `linear`.
+- **GitHub** — official GitHub MCP server. Despite the `api.githubcopilot.com` hostname, this is the standard GitHub MCP endpoint and is **not gated by a Copilot subscription**. Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider (default once migration #39 lands).
+
+**Auth flow on first use** (per MCP server, per Claude install): Claude Code prompts you to authorize in a browser; you accept; the token is stored in Claude's local secret store. No further action on subsequent sessions.
+
+**`gh auth login` is still required separately** for the gh CLI surface (PR creation, branch ops, git push) and is the recommended setup step for every consumer. It is **not** what authenticates MCP — MCP auth is independent OAuth managed by Claude Code.
+
+**Cloud sessions** (Claude on the web, Cursor Background Agents): MCP OAuth runs the first time the cloud session touches the server, same as local. No env vars in the dashboard for MCP auth. (Dashboard env vars are still needed for non-MCP surfaces — see § Environment variables.)
+
 ## After saving the Claude env
 
 1. Trigger a session: `claude --remote "echo ready"` from the repo, or tap the env in the iOS app.
