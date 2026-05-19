@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Glob

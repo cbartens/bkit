@@ -101,7 +101,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | Parent | Example sub-labels in this workspace | What it controls |
 | --- | --- | --- |
 | `branch` | `dev` | git branch the agent works on |
-| `model` | `claude-4.7-opus-high-thinking`, `composer-2`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
+| `model` | `claude-4.7-opus-high-thinking`, `composer-2.5`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
 Per-agent (subagent) model assignments live in `.agents/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.agents/IDEs.md` § Cursor model catalog.

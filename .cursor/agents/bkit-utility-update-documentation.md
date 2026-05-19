@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Grep

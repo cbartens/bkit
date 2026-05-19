@@ -116,7 +116,7 @@ describe("T2 — command body rewrites", () => {
 
 describe("T3 — subagent frontmatter rewrite", () => {
   const modelLookup = new Map([
-    ["build-plan", "composer-2"],
+    ["build-plan", "composer-2.5"],
     ["design-synthesize", "claude-4.7-opus-high-thinking"],
   ]);
 
@@ -125,7 +125,7 @@ describe("T3 — subagent frontmatter rewrite", () => {
     const result = applyT3(input, modelLookup);
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
-    expect(result).toContain("model: composer-2");
+    expect(result).toContain("model: composer-2.5");
     expect(result).toContain("tools:");
     expect(result).toContain("- Read");
     expect(result).toContain("- Edit");
@@ -256,18 +256,18 @@ describe("parseModelLookup", () => {
 
   it("parses model lookup from inline table string", () => {
     const tmp = path.join(os.tmpdir(), "test-subagents.md");
-    fs.writeFileSync(tmp, makeSubagentsMd([{ name: "test-agent", model: "composer-2" }]));
+    fs.writeFileSync(tmp, makeSubagentsMd([{ name: "test-agent", model: "composer-2.5" }]));
     const lookup = parseModelLookup(tmp);
-    expect(lookup.get("test-agent")).toBe("composer-2");
+    expect(lookup.get("test-agent")).toBe("composer-2.5");
     fs.rmSync(tmp);
   });
 
   it("strips backticks from model values (table cells use backtick-wrapped values)", () => {
-    const content = `# S\n\n## Models\n\n| name | Cursor model | Claude effort | Cursor RO | role hint |\n| --- | --- | --- | --- | --- |\n| \`build-plan\` | \`composer-2\` | \`medium\` | — | task exec |\n`;
+    const content = `# S\n\n## Models\n\n| name | Cursor model | Claude effort | Cursor RO | role hint |\n| --- | --- | --- | --- | --- |\n| \`build-plan\` | \`composer-2.5\` | \`medium\` | — | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-backtick.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseModelLookup(tmp);
-    expect(lookup.get("build-plan")).toBe("composer-2");
+    expect(lookup.get("build-plan")).toBe("composer-2.5");
     expect(lookup.get("build-plan")).not.toContain("`");
     fs.rmSync(tmp);
   });

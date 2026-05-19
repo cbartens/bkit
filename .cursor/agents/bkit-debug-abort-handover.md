@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-abort-handover
 description: Senior incident commander writing clear, calm handovers when automation cannot proceed.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Write
