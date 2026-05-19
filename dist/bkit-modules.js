@@ -915,6 +915,7 @@ export function runCiModule(ctx) {
             detect: "`.github/workflows/bkit-ci-router.yml` is in place (Claude half of post-CI auto-routing). The Cursor half is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
             action: "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
                 "IN GITHUB (Claude half):\n" +
+                "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first router fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
                 "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
                 "  - Confirm `LINEAR_API_KEY` is set (router reads the `Auto` opt-in label and appends comments).\n" +
                 "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
