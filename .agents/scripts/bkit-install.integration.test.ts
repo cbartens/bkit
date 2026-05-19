@@ -257,7 +257,7 @@ describe("Scenario 2 — advisory checklist: N triggers → exit 0, checklist re
 //    renders Phase 1 advisories via formatChecklist; Phase 3 detectors NOT invoked"
 // ---------------------------------------------------------------------------
 
-describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped", () => {
+describe("Scenario 3 — bkit check: Phase 3 detectors run for parity with install", () => {
   beforeEach(() => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -272,87 +272,37 @@ describe("Scenario 3 — bkit check dry-run: Phase 1 rendered, Phase 3 skipped",
     fs.writeFileSync(path.join(tmpDir, ".husky", "pre-commit"), "#!/bin/sh\npnpm test\n", "utf-8");
   });
 
-  it("runPostInstallCheck with dryRun=true returns only preflight advisories (no Phase 3 additions)", () => {
+  it("runPostInstallCheck includes Phase 3 detector findings (gh-bkit-token-unset-shell when token unset)", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    expect(preflightAdvisories.length).toBeGreaterThan(0);
-
     const ws = makeWriteSet();
-    // Unset token to ensure Phase 3 would add gh-bkit-token-unset-shell if invoked
     const savedToken = process.env.GH_BKIT_TOKEN;
     delete process.env.GH_BKIT_TOKEN;
 
-    let dryRunFindings: ReturnType<typeof runPostInstallCheck>;
+    let findings: ReturnType<typeof runPostInstallCheck>;
     try {
-      dryRunFindings = runPostInstallCheck(
-        preflightAdvisories,
-        ws,
-        makeModules("core", "lint"),
-        tmpDir,
-        true, // dryRun = true
-      );
+      findings = runPostInstallCheck(preflightAdvisories, ws, makeModules("core", "lint"), tmpDir);
     } finally {
       if (savedToken !== undefined) process.env.GH_BKIT_TOKEN = savedToken;
     }
 
-    // dry-run: output must be exactly the preflight advisories — no Phase 3 additions
-    const dryRunIds = dryRunFindings.map((f) => f.id);
-    const preflightIds = preflightAdvisories.map((f) => f.id);
-    expect(dryRunIds).toEqual(preflightIds);
-
-    // Specifically, gh-bkit-token-unset-shell must NOT appear (Phase 3 is skipped)
-    expect(dryRunIds).not.toContain("gh-bkit-token-unset-shell");
-    expect(dryRunIds).not.toContain("npmrc-missing-gh-packages");
-    expect(dryRunIds).not.toContain("vale-package-not-synced");
-    expect(dryRunIds).not.toContain("devdeps-need-fetch");
+    // Phase 3 ran: gh-bkit-token-unset-shell must appear when token is missing.
+    expect(findings.map((f) => f.id)).toContain("gh-bkit-token-unset-shell");
   });
 
-  it("formatChecklist renders Phase 1 advisories in dry-run (parity with legacy printSink dump)", () => {
+  it("formatChecklist renders Phase 1 advisories", () => {
     const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
     const banner = formatChecklist(preflightAdvisories);
-    // Phase 1 advisories should still produce a visible banner in dry-run
     expect(banner).toBeTruthy();
     expect(banner).toContain("lint-prose-f9-vulnerable");
   });
 
   it("formatChecklist([]) returns empty string — no banner emitted on zero advisories", () => {
-    // Edge case: zero findings → no banner
     expect(formatChecklist([])).toBe("");
   });
 
-  it("Phase 3 detectors are not invoked in dry-run (spy verification)", () => {
-    // Verify via spy that runPostInstallCheck dryRun=true skips the internal
-    // execSync-using detectors. We do this by patching process.env to make
-    // detectShellToken() report "missing", then confirming gh-bkit-token-unset-shell
-    // does NOT appear in dryRun output (proving the detector was not called).
-    const { advisories: preflightAdvisories } = runPreflight(makeModules("core", "lint"), tmpDir);
-    const ws = makeWriteSet();
-
-    const savedToken = process.env.GH_BKIT_TOKEN;
-    delete process.env.GH_BKIT_TOKEN;
-
-    let dryRunFindings: ReturnType<typeof runPostInstallCheck>;
-    try {
-      dryRunFindings = runPostInstallCheck(
-        preflightAdvisories,
-        ws,
-        makeModules("core", "lint"),
-        tmpDir,
-        true,
-      );
-    } finally {
-      if (savedToken !== undefined) process.env.GH_BKIT_TOKEN = savedToken;
-    }
-
-    // If Phase 3 were invoked, GH_BKIT_TOKEN missing would add gh-bkit-token-unset-shell.
-    // Its absence proves Phase 3 was NOT invoked.
-    expect(dryRunFindings.map((f) => f.id)).not.toContain("gh-bkit-token-unset-shell");
-  });
-
-  it("blockers still fire in dry-run (Phase 1 remains active in bkit check)", () => {
-    // Remove package.json to trigger a blocker
+  it("blockers fire from preflight (Phase 1 remains active in bkit check)", () => {
     fs.rmSync(path.join(tmpDir, "package.json"), { force: true });
     const { blockers } = runPreflight(makeModules("core"), tmpDir);
-    // Blockers should fire even in dry-run (preflight is always active)
     expect(blockers.some((f) => f.id === "no-package-json")).toBe(true);
   });
 });

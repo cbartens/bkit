@@ -915,8 +915,10 @@ export function readChangelogVersionDelta(version: string): string | null {
  *
  * - Intra-phase dedup: Phase 3 findings are deduped by id (first occurrence wins).
  * - Cross-phase dedup: Phase 3 wins on id conflict (re-detection is more accurate).
- * - dryRun: if true, skip Phase 3 detectors and return preflightAdvisories as-is
- *   (check mode stays read-only; Phase 1 advisories still rendered by caller).
+ *
+ * Runs unconditionally for both `bkit install` and `bkit check` — detectors are
+ * read-only (env probes, gh/vale CLI version checks, file reads) and produce the
+ * same advisory set against the same filesystem state regardless of caller.
  *
  * cwd defaults to process.cwd().
  */
@@ -925,14 +927,7 @@ export function runPostInstallCheck(
   ws: WriteSet,
   modules: Set<ModuleFlag>,
   cwd: string = process.cwd(),
-  dryRun = false,
 ): PreflightFinding[] {
-  if (dryRun) {
-    // Dry-run: skip Phase 3; return preflight advisories only (deduped defensively).
-    // Apply .bkitignore filter so `bkit check` exits 0 for ignored Tier-3 files.
-    return dedupeById(filterBkitIgnored([...preflightAdvisories], cwd));
-  }
-
   const phase3: PreflightFinding[] = [];
 
   // Shell token

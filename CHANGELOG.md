@@ -10,6 +10,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.2.3] — 2026-05-19
+
+### Changed
+
+- **`bkit check` now runs Phase 3 detectors for parity with `bkit install`.** Previously, `check` returned only Phase 1 preflight + Phase 2 module-dispatched advisories, masking runtime-state findings (`gh-bkit-token-unset-shell`, `npmrc-missing-gh-packages`, `ci-yml-missing-token-env`, `gha-actions-floating-tags`, `dependabot-config-missing`, `cloud-secrets-three-locations`, etc.) that only `install` would surface. Both commands now produce the identical advisory set against the same filesystem state — `check` is `install` minus the writes. CI drift gate semantics preserved: `bkit check` still exits 1 when any Tier-1/Tier-2 write would occur. The `dryRun` parameter on `runPostInstallCheck` is removed (was effectively dead code after this change).
+
+---
+
 ## [2.2.2] — 2026-05-19
 
 ### Changed

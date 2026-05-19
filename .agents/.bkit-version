@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "2.2.2",
+  "pinnedVersion": "2.2.3",
   "tier3Hashes": {
     ".github/workflows/bkit-ci-router.yml": "ff7bd4f6abfea025a9a10eec993f11295a071ac08d05ef863e3c2d47542e1692"
   },
