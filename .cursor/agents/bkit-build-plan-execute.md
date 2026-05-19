@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Grep

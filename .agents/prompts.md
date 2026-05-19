@@ -129,9 +129,9 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-design-review-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
 | `bkit-design-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
 | `bkit-design-organise` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
-| `bkit-design-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
+| `bkit-design-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-design-generate` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
-| `bkit-plan-complexity-check` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | complexity check |
+| `bkit-plan-complexity-check` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | complexity check |
 | `bkit-plan-generate` | `gpt-5.4-high` | `claude-opus-4-7` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
 | `bkit-plan-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 1 (tightness + design-coverage) |
 | `bkit-plan-review-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
@@ -139,36 +139,36 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 | `bkit-plan-scope-check-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
 | `bkit-plan-scope-check-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 25 | scope audit slot 2 |
 | `bkit-plan-complexity-split` | `gpt-5.4-high` | `claude-opus-4-7` | `high` | 50 | split large plan |
-| `bkit-plan-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
+| `bkit-plan-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-plan-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
-| `bkit-build-install-skills` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | skill identifier |
+| `bkit-build-install-skills` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | skill identifier |
 | `bkit-build-challenge-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
 | `bkit-build-challenge-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
 | `bkit-build-challenge-reconcile` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
-| `bkit-build-challenge-tests` | `composer-2` | `claude-sonnet-4-6` | `medium` | 50 | test generator (source modifier, no test loop) |
-| `bkit-build-plan-execute` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |
-| `bkit-build-challenge-remediate` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | fix challenge findings (source modifier with test loop) |
-| `bkit-build-plan-gaps-remediate` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | fix verification gaps (source modifier with test loop) |
-| `bkit-build-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
+| `bkit-build-challenge-tests` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 50 | test generator (source modifier, no test loop) |
+| `bkit-build-plan-execute` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |
+| `bkit-build-challenge-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | fix challenge findings (source modifier with test loop) |
+| `bkit-build-plan-gaps-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | fix verification gaps (source modifier with test loop) |
+| `bkit-build-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-build-plan-verify` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | verify impl vs plan |
-| `bkit-debug-abort-handover` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | handover writer |
+| `bkit-debug-abort-handover` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | handover writer |
 | `bkit-debug-failure-diagnose` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
 | `bkit-debug-observe-analyse` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | analyse observability data |
 | `bkit-debug-observe-instrument` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | add debug logging (source modifier, no test loop) |
 | `bkit-debug-observe-revert` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 25 | remove debug logging |
-| `bkit-debug-failure-remediate` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | implement diagnosis fixes (source modifier with test loop) |
-| `bkit-debug-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
-| `bkit-ship-summary` | `composer-2` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
+| `bkit-debug-failure-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | implement diagnosis fixes (source modifier with test loop) |
+| `bkit-debug-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
+| `bkit-ship-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-ship-update-docs` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | update completed.md (multi-doc writer) |
-| `bkit-ship-conflict-resolve` | `composer-2` | `claude-sonnet-4-6` | `medium` | 100 | mechanical rebase-conflict resolver (source modifier with test loop) |
+| `bkit-ship-conflict-resolve` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | mechanical rebase-conflict resolver (source modifier with test loop) |
 | `bkit-utility-audit-codebase` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | codebase audit |
 | `bkit-utility-audit-security` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | security audit |
 | `bkit-utility-audit-tests` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | test coverage audit |
-| `bkit-utility-compress-markdown` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | token-optimize markdown |
-| `bkit-utility-audit-logs` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | scan production logs |
-| `bkit-utility-update-documentation` | `composer-2` | `claude-sonnet-4-6` | `medium` | 50 | doc sync (multi-doc writer) |
-| `bkit-utility-update-references` | `composer-2` | `claude-sonnet-4-6` | `medium` | 50 | fix broken refs |
-| `bkit-utility-audit-logs-ship` | `composer-2` | `claude-sonnet-4-6` | `medium` | 25 | post-deploy verify |
+| `bkit-utility-compress-markdown` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | token-optimize markdown |
+| `bkit-utility-audit-logs` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | scan production logs |
+| `bkit-utility-update-documentation` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 50 | doc sync (multi-doc writer) |
+| `bkit-utility-update-references` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 50 | fix broken refs |
+| `bkit-utility-audit-logs-ship` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | post-deploy verify |
 
 **Effort vs maxTurns vs model — three independent knobs:**
 

@@ -259,6 +259,15 @@ The routing **logic** lives in a single bkit-managed slash-command orchestrator 
 /bkit-ci-router $CI_STATUS $PR_NUMBER
 ```
 
+## Claude — required GitHub Actions permissions
+
+Flip **both** org and repo before the first router run, otherwise `actions/checkout@v4` 403s with `Write access to repository not granted`. The workflow declares `permissions: contents: write` at workflow scope, but the org/repo "Workflow permissions" ceiling overrides it — repo cannot exceed org.
+
+- **Org**: `https://github.com/organizations/{ORG}/settings/actions` → Workflow permissions → **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.
+- **Repo**: `https://github.com/{ORG}/{REPO}/settings/actions` → same section, same two settings. Apply at the repo too — inheriting from org is not automatic.
+
+`workflow_run`-triggered runs do **not** inherit the parent CI workflow's `permissions:` block (only fork-PR tokens get narrowed), so the parent CI staying at `contents: read` is fine.
+
 ## Claude — required GitHub repo secrets
 
 <!-- prettier-ignore -->
@@ -267,7 +276,7 @@ The routing **logic** lives in a single bkit-managed slash-command orchestrator 
 | `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
 | `LINEAR_API_KEY` | Router reads issue labels (Linear `Auto` opt-in gate) + appends comments. Already present for the Linear webhook flow. | Linear personal API key. |
 
-The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-ci-router.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.json push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block.
+The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-ci-router.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.json push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
 
 ## Routing decision (router orchestrator)
 

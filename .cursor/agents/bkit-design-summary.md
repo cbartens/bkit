@@ -1,7 +1,7 @@
 ---
 name: bkit-design-summary
 description: Senior reviewer evaluating a design doc for readiness to enter planning.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Write

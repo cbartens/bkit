@@ -76,7 +76,7 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 <!-- prettier-ignore -->
 | Model ID | Tier | Typical use |
 | --- | --- | --- |
-| `composer-2` | $ | Fast cheap; build executors, summarizers, ship-summary, utilities |
+| `composer-2.5` | $ | Fast cheap; build executors, summarizers, ship-summary, utilities |
 | `claude-4.7-opus-high-thinking` | $$$ | High-thought review, audit, design synthesis, debug diagnose, ship docs |
 | `claude-4.6-opus-high-thinking` | $$$ | Previous-gen Opus — kept as fallback / availability hedge |
 | `claude-4.6-opus-high-thinking-fast` | $$$ | Faster 4.6 variant |
@@ -91,7 +91,7 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.**
 
 > [!NOTE]
-> **Subagent model whitelist — needs verification.** Cursor may restrict which models are valid as **subagent runners** (separate from main-agent / Cloud Agent model lists). A probe-time signal flagged that `claude-4.7-opus-high-thinking` may not be in the subagent-allowed set, and `composer-2-fast` / `gpt-5.4-medium` were referenced as examples of subagent-valid models. The `Cursor model` column in `prompts.md` is currently sourced from the Cloud Agent label catalog above — if Cursor substitutes / rejects on subagent dispatch, expect runtime failures across the 17 subagents pinned to `claude-4.7-opus-high-thinking`. Empirical probe required: dispatch one subagent per model ID via Cursor `Task` tool and confirm the model lands. Open follow-up; not BAR-113 scope.
+> **Subagent model whitelist — needs verification.** Cursor may restrict which models are valid as **subagent runners** (separate from main-agent / Cloud Agent model lists). A probe-time signal flagged that `claude-4.7-opus-high-thinking` may not be in the subagent-allowed set, and `composer-2.5` / `gpt-5.4-medium` were referenced as examples of subagent-valid models. The `Cursor model` column in `prompts.md` is currently sourced from the Cloud Agent label catalog above — if Cursor substitutes / rejects on subagent dispatch, expect runtime failures across the 17 subagents pinned to `claude-4.7-opus-high-thinking`. Empirical probe required: dispatch one subagent per model ID via Cursor `Task` tool and confirm the model lands. Open follow-up; not BAR-113 scope.
 
 ### Per-subagent model assignment
 
@@ -108,10 +108,10 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 | --- | --- | --- | --- |
 | `/bkit-design` | `claude-4.7-opus-high-thinking` | `sonnet` / `medium` | Procedural orchestration; parallel review pair surfaces drift fast. |
 | `/bkit-plan` | `gpt-5.4-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.json plumbing. |
-| `/bkit-build` | `composer-2` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
+| `/bkit-build` | `composer-2.5` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
 | `/bkit-debug` | `claude-4.7-opus-high-thinking` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
-| `/bkit-ship` | `composer-2` | `sonnet` / `medium` | Short, fully procedural. |
-| CI automations (`ci-pass`, `ci-fail`) | `composer-2` | n/a |  |
+| `/bkit-ship` | `composer-2.5` | `sonnet` / `medium` | Short, fully procedural. |
+| CI automations (`ci-pass`, `ci-fail`) | `composer-2.5` | n/a |  |
 
 **Rationale:** orchestrator does sequential step execution, bash/`jq`/`git`, Linear MCP calls, verdict extraction from subagent files, gate verification. Hard reasoning is delegated to subagents (pinned `model:`, no inheritance from session). Sonnet 4.6 handles strict procedural execution.
 
@@ -121,7 +121,7 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 
 **Suggested Claude rollout:** Sonnet first on `/bkit-plan`, `/bkit-design`, `/bkit-ship` — shorter, parallel fan-out, drift visible at verdict gates. Keep `/bkit-build` + `/bkit-debug` on Opus until clean Sonnet runs of others build confidence; downgrade after. All at `medium` reasoning.
 
-Automation sessions (Cursor Cloud) use `composer-2` for metadata/API plumbing; the agent they LAUNCH runs the phase model from this table.
+Automation sessions (Cursor Cloud) use `composer-2.5` for metadata/API plumbing; the agent they LAUNCH runs the phase model from this table.
 
 ### Cursor model label IDs
 
@@ -130,7 +130,7 @@ Used by Cursor Cloud Agents UI for label-based routing:
 <!-- prettier-ignore -->
 | Label | ID |
 | --- | --- |
-| composer-2 | `6daa407f-69d4-4bbd-bdc8-ad846611b668` |
+| composer-2.5 | `6daa407f-69d4-4bbd-bdc8-ad846611b668` |
 | claude-4.7-opus-high-thinking | `6b77d100-7454-43d5-82f9-bf6a616c6b4b` |
 | claude-4.6-opus-high-thinking | `41ecf3c1-1574-4226-a116-8d85235bdccf` |
 | claude-4.6-opus-high-thinking-fast | `aaa2bccd-533c-4b73-8f0c-3f2ea469ab71` |

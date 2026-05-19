@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Grep

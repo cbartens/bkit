@@ -14,6 +14,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Order:** Execute sequentially unless stated otherwise.
 > - **No Improv:** No ad-hoc task lists, no skipping, no alternative approaches, or scope beyond this file.
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
+> - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.

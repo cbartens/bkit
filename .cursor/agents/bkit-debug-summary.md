@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Write

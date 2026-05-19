@@ -1,7 +1,7 @@
 ---
 name: utility-harvest-friction
 description: Consumer-repo friction harvester — collects friction content from every bkit consumer worktree into the bkit repo.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Glob

@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
-model: composer-2
+model: composer-2.5
 tools:
   - Read
   - Grep
