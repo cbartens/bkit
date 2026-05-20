@@ -43,6 +43,39 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
+      # BAR-148 diagnostic — print the inherited GITHUB_TOKEN's effective scopes
+      # BEFORE checkout. Hypothesis: a workflow_run triggered by a pull_request
+      # CI run inherits a read-scoped installation token regardless of the
+      # receiver's permissions: block, which would explain the 403 on checkout.
+      # Remove this step once root-cause is confirmed.
+      - name: Probe inherited token scopes (BAR-148 diagnostic)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "::group::workflow_run event context"
+          echo "trigger event:       ${{ github.event.workflow_run.event }}"
+          echo "source workflow:     ${{ github.event.workflow_run.name }}"
+          echo "head branch:         ${{ github.event.workflow_run.head_branch }}"
+          echo "head sha:            ${{ github.event.workflow_run.head_sha }}"
+          echo "head repo fork:      ${{ github.event.workflow_run.head_repository.fork }}"
+          echo "conclusion:          ${{ github.event.workflow_run.conclusion }}"
+          echo "::endgroup::"
+          echo "::group::repo .permissions via gh api (what GITHUB_TOKEN can see)"
+          gh api "repos/${{ github.repository }}" --jq '.permissions' || echo "gh api failed: $?"
+          echo "::endgroup::"
+          echo "::group::repo-level Actions permissions"
+          gh api "repos/${{ github.repository }}/actions/permissions" || echo "gh api failed: $?"
+          echo "::endgroup::"
+          echo "::group::raw token introspection via /repos endpoint"
+          # 200 with `permissions.push:true` = write scope. 200 with push:false = read scope.
+          # 403/404 = token can't even see the repo (a deeper auth problem).
+          curl -sS -o /tmp/repo.json -w "HTTP %{http_code}\n" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}"
+          jq '.permissions // {error: .message}' /tmp/repo.json || cat /tmp/repo.json
+          echo "::endgroup::"
+
       - uses: actions/checkout@v4
         with:
           # Check out `dev` at the workspace root so the router's
