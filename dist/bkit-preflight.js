@@ -724,7 +724,18 @@ export function detectDirenvMissing(cwd) {
         id: "mcp-env-direnv-missing",
         severity: "advisory",
         detect: ".envrc exists but direnv is not installed. .agents/.env will not be auto-loaded into your shell.",
-        action: '[mcp-env] Install direnv (`brew install direnv` on macOS, or follow https://direnv.net/docs/installation.html), add the shell hook to your rc file (e.g. `eval "$(direnv hook zsh)"` in ~/.zshrc), then run `direnv allow` in this repo to enable auto-load of .agents/.env.',
+        action: "[mcp-env] direnv auto-loads .agents/.env into your shell on cd, so tokens stay scoped to the repo. Set it up:\n\n" +
+            "    # 1. One-time per machine — install direnv\n" +
+            "    brew install direnv                                              # macOS\n" +
+            "    # Linux / other: https://direnv.net/docs/installation.html\n\n" +
+            "    # 2. One-time per machine — add the shell hook, then reload\n" +
+            "    echo 'eval \"$(direnv hook zsh)\"' >> ~/.zshrc && source ~/.zshrc\n" +
+            "    # bash: echo 'eval \"$(direnv hook bash)\"' >> ~/.bashrc && source ~/.bashrc\n\n" +
+            "    # 3. One-time per repo — copy the example, fill in tokens, allow\n" +
+            "    cp .agents/.env.example .agents/.env                             # if not already done\n" +
+            "    # edit .agents/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY\n" +
+            "    direnv allow\n\n" +
+            "After step 3, restart Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers. Alternative if you do not want direnv: export GH_BKIT_TOKEN / GH_TOKEN / LINEAR_API_KEY in ~/.zshrc or ~/.bashrc directly — works but leaks tokens into every shell on this machine.",
     };
 }
 /**

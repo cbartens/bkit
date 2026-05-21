@@ -833,7 +833,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-unset-shell",
             severity: "advisory",
             detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
-            action: "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
+            action: "Set GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
@@ -842,7 +842,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-empty-shell",
             severity: "advisory",
             detect: 'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
-            action: "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token.\n\n" +
+            action: "Set a non-empty GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .agents/.env.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
