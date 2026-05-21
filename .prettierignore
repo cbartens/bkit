@@ -12,5 +12,10 @@ dist/
 .husky/_/
 *.tsbuildinfo
 pnpm-lock.yaml
+# Tier-3 seed files (byte-equal-text) — bkit seeds these; consumers may modify
+# them but should not have prettier reformat bkit's canonical JSON layout.
+.mcp.json
+.envrc
+.agents/.env.example
 
 # bkit:end

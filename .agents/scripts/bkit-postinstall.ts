@@ -3,7 +3,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync } from "node:child_process";
-import type { PreflightFinding } from "./bkit-preflight.js";
+import {
+  type PreflightFinding,
+  detectMissingDotenv,
+  detectBlankDotenvKeys,
+  detectDirenvMissing,
+  detectDirenvNotAllowed,
+} from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
@@ -938,7 +944,7 @@ export function runPostInstallCheck(
       severity: "advisory",
       detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
       action:
-        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
+        "Set GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
         AGENT_INLINE_SOURCE_GUIDANCE,
     });
   } else if (shellStatus === "empty") {
@@ -948,7 +954,7 @@ export function runPostInstallCheck(
       detect:
         'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
       action:
-        "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token.\n\n" +
+        "Set a non-empty GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .agents/.env.\n\n" +
         AGENT_INLINE_SOURCE_GUIDANCE,
     });
   }
@@ -1098,6 +1104,17 @@ export function runPostInstallCheck(
   // devDeps need fetch
   const devDeps = detectDevDepsNeedFetch(ws);
   if (devDeps) phase3.push(devDeps);
+
+  // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
+  // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
+  // after writes, so Phase 1 cannot see them on first install.
+  const missingDotenv = detectMissingDotenv(cwd);
+  if (missingDotenv) phase3.push(missingDotenv);
+  phase3.push(...detectBlankDotenvKeys(cwd));
+  const direnvMissing = detectDirenvMissing(cwd);
+  if (direnvMissing) phase3.push(direnvMissing);
+  const direnvNotAllowed = detectDirenvNotAllowed(cwd);
+  if (direnvNotAllowed) phase3.push(direnvNotAllowed);
 
   // Intra-phase dedup (first occurrence wins)
   const deduped = dedupeById(phase3);

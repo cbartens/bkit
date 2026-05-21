@@ -2,6 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync } from "node:child_process";
+import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 /**
  * Detect whether GH_BKIT_TOKEN is set in the shell environment.
@@ -982,6 +983,19 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const devDeps = detectDevDepsNeedFetch(ws);
     if (devDeps)
         phase3.push(devDeps);
+    // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
+    // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
+    // after writes, so Phase 1 cannot see them on first install.
+    const missingDotenv = detectMissingDotenv(cwd);
+    if (missingDotenv)
+        phase3.push(missingDotenv);
+    phase3.push(...detectBlankDotenvKeys(cwd));
+    const direnvMissing = detectDirenvMissing(cwd);
+    if (direnvMissing)
+        phase3.push(direnvMissing);
+    const direnvNotAllowed = detectDirenvNotAllowed(cwd);
+    if (direnvNotAllowed)
+        phase3.push(direnvNotAllowed);
     // Intra-phase dedup (first occurrence wins)
     const deduped = dedupeById(phase3);
     // Dedupe the incoming preflightAdvisories (ctx.advisories may contain module-emitted

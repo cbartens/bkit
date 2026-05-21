@@ -5,7 +5,9 @@ Agent workflow system wiring Claude Code (and Cursor) into a five-phase Linear-i
 > [!IMPORTANT]
 > **`GH_BKIT_TOKEN` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
 >
-> 1. **Local shell** — `export GH_BKIT_TOKEN=<classic PAT, read:packages>` in your shell rc
+> 1. **Local shell** — pick one of two flows (see § Local env setup for details):
+>    - **(A) Quick:** `export GH_BKIT_TOKEN=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
+>    - **(B) direnv + `.agents/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.agents/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.agents/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
 > 2. **`.npmrc` at repo root** — two lines (registry + auth) — see § Consumer CI auth below
 > 3. **GitHub Actions repo secret** — `gh secret set GH_BKIT_TOKEN --body=<token>` per consumer repo
 > 4. **Vercel env vars** (if applicable) — `vercel env add GH_BKIT_TOKEN preview/production`
@@ -67,8 +69,9 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 1 | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages) | [§ Consumer CI auth](#consumer-ci-auth) step 1 |
 | 2 | Add `GH_BKIT_TOKEN` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
 | 3 | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
-| 4 | Export `GH_BKIT_TOKEN` locally (`export GH_BKIT_TOKEN=…` in shell rc) and run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
-| 5 | Run `pnpm exec bkit install` to seed the full stack | [§ Install](#install) (this section) |
+| 4 | Export `GH_BKIT_TOKEN` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
+| 5 | Run `pnpm exec bkit install` to seed the full stack (creates `.agents/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
+| 5a | Set up direnv + `.agents/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
 
@@ -98,6 +101,50 @@ pnpm exec bkit check --full
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
 
 > **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
+
+### Local env setup
+
+Two flows — pick one. Both end with the same env vars (`GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY`) available to your shell, `gh` CLI, `pnpm`, and Claude/Cursor MCP servers.
+
+#### Flow A — Shell export (quickest, no extra deps)
+
+```bash
+# Add to ~/.zshrc (or ~/.bashrc)
+export GH_BKIT_TOKEN=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
+export GH_TOKEN=<fine-grained PAT>                     # gh CLI + GitHub MCP
+export LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
+
+# Reload
+source ~/.zshrc                                        # or: source ~/.bashrc
+```
+
+Pros: one step, no install. Cons: tokens live in every shell on this machine; no per-repo scoping.
+
+#### Flow B — direnv + `.agents/.env` (recommended for daily use)
+
+`bkit install` seeds `.agents/.env.example` (placeholders + permission notes) and `.envrc` (`dotenv_if_exists .agents/.env`). direnv loads `.agents/.env` automatically when you `cd` into the repo, and unloads when you leave — tokens stay scoped to the repo.
+
+```bash
+# 1. One-time per machine — install direnv
+brew install direnv                                                # macOS
+# Linux / other: https://direnv.net/docs/installation.html
+
+# 2. One-time per machine — add the shell hook, then reload
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
+# bash: echo 'eval "$(direnv hook bash)"' >> ~/.bashrc && source ~/.bashrc
+
+# 3. One-time per consumer repo (after `bkit install` has seeded the templates)
+cp .agents/.env.example .agents/.env
+# Edit .agents/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY
+direnv allow                                                       # trust the .envrc
+
+# 4. Verify
+echo "len=${#GH_TOKEN}"                                            # non-zero → loaded
+```
+
+After step 4, restart any open Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers.
+
+`.agents/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.agents/cloud.md`](.agents/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 

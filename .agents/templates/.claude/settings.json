@@ -51,14 +51,6 @@
     ],
     "defaultMode": "default"
   },
-  "mcpServers": {
-    "linear": {
-      "url": "https://mcp.linear.app/mcp"
-    },
-    "github": {
-      "url": "https://api.githubcopilot.com/mcp/"
-    }
-  },
   "hooks": {
     "SessionStart": [
       {

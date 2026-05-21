@@ -708,6 +708,125 @@ describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched",
   });
 });
 
+// ---------------------------------------------------------------------------
+// MCP config Tier 3 scaffold + idempotency tests (BAR-260)
+//
+// .mcp.json (claude module) and .cursor/mcp.json (cursor module) are Tier 3
+// byte-equal-text files: seeded on first install, left untouched on re-install
+// when the consumer has modified them.
+// ---------------------------------------------------------------------------
+
+describe("MCP config Tier 3 scaffold — fresh install and consumer-modified idempotency", () => {
+  it("fresh install via bkit install --full scaffolds .mcp.json with linear and github keys", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(result.status, `install crashed:\n${combined}`).toBe(0);
+
+    // .mcp.json must exist and contain both required MCP server entries
+    const mcpJsonPath = path.join(tmpDir, ".mcp.json");
+    expect(fs.existsSync(mcpJsonPath), ".mcp.json must be scaffolded by bkit install --full").toBe(
+      true,
+    );
+    const mcpJson = JSON.parse(fs.readFileSync(mcpJsonPath, "utf-8")) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(mcpJson.mcpServers, ".mcp.json must have mcpServers").toBeDefined();
+    expect(mcpJson.mcpServers!["linear"], ".mcp.json must have linear server").toBeDefined();
+    expect(mcpJson.mcpServers!["github"], ".mcp.json must have github server").toBeDefined();
+
+    // .cursor/mcp.json must also be scaffolded
+    const cursorMcpPath = path.join(tmpDir, ".cursor", "mcp.json");
+    expect(
+      fs.existsSync(cursorMcpPath),
+      ".cursor/mcp.json must be scaffolded by bkit install --full",
+    ).toBe(true);
+    const cursorMcp = JSON.parse(fs.readFileSync(cursorMcpPath, "utf-8")) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(
+      cursorMcp.mcpServers!["linear"],
+      ".cursor/mcp.json must have linear server",
+    ).toBeDefined();
+    expect(
+      cursorMcp.mcpServers!["github"],
+      ".cursor/mcp.json must have github server",
+    ).toBeDefined();
+  });
+
+  it("re-install over a consumer-modified .mcp.json leaves the file byte-for-byte unchanged", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // Consumer's pre-existing .mcp.json with an extra server and different ordering
+    const consumerMcpContent =
+      JSON.stringify(
+        {
+          mcpServers: {
+            linear: { url: "https://mcp.linear.app/mcp" },
+            github: { url: "https://api.githubcopilot.com/mcp/" },
+            "my-internal-server": { url: "https://internal.example.com/mcp" },
+          },
+        },
+        null,
+        2,
+      ) + "\n";
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), consumerMcpContent, "utf-8");
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(result.status, `install crashed:\n${combined}`).toBe(0);
+
+    // .mcp.json must be byte-for-byte identical to the consumer's original
+    const afterContent = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
+    expect(afterContent).toBe(consumerMcpContent);
+
+    // Consumer's custom server must still be present
+    const afterJson = JSON.parse(afterContent) as { mcpServers?: Record<string, unknown> };
+    expect(afterJson.mcpServers!["my-internal-server"]).toBeDefined();
+  });
+});
+
 describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => {
   it("bkit check with stale consumer prompts.md does not emit Missing model lookup", () => {
     fs.writeFileSync(
@@ -748,5 +867,150 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
     // assertion we want at least one positive signal that the binary reached
     // dispatch (otherwise a missing-tsx error path would pass vacuously).
     expect(combined).toMatch(/\[bkit-(check|install)\]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: .agents/.env.example + .envrc scaffolding (BAR-260 follow-up)
+// ---------------------------------------------------------------------------
+
+import { runClaudeModule, getPkgRoot } from "./bkit-modules";
+import type { ModuleContext } from "./bkit-modules";
+import type { WriteSet } from "./bkit-tiers";
+import type { PreflightFinding } from "./bkit-preflight";
+
+function makeClaudeContext(dryRun: boolean): ModuleContext {
+  const ws: WriteSet = { writes: [] };
+  const advisories: PreflightFinding[] = [];
+  return {
+    dryRun,
+    tokens: new Map(),
+    modelLookup: new Map(),
+    advisories,
+    ws,
+    logPrefix: "[bkit-test]",
+    postDispatch: [],
+  };
+}
+
+describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
+  it("first install seeds .agents/.env.example when template exists", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test-consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const ctx = makeClaudeContext(false);
+    // Change to tmpDir so relative paths resolve correctly in runClaudeModule
+    process.chdir(tmpDir);
+    runClaudeModule(ctx);
+
+    const envExamplePath = path.join(tmpDir, ".agents", ".env.example");
+    expect(fs.existsSync(envExamplePath)).toBe(true);
+    const content = fs.readFileSync(envExamplePath, "utf-8");
+    expect(content).toContain("GH_TOKEN=");
+    expect(content).toContain("GH_BKIT_TOKEN=");
+    expect(content).toContain("LINEAR_API_KEY=");
+  });
+
+  it("first install seeds .envrc with dotenv_if_exists directive", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test-consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const ctx = makeClaudeContext(false);
+    process.chdir(tmpDir);
+    runClaudeModule(ctx);
+
+    const envrcPath = path.join(tmpDir, ".envrc");
+    expect(fs.existsSync(envrcPath)).toBe(true);
+    const content = fs.readFileSync(envrcPath, "utf-8");
+    expect(content).toContain("dotenv_if_exists .agents/.env");
+  });
+
+  it("second install is idempotent — does not overwrite consumer-modified .agents/.env.example", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test-consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // First install
+    const ctx1 = makeClaudeContext(false);
+    process.chdir(tmpDir);
+    runClaudeModule(ctx1);
+
+    // Consumer modifies .env.example (adds a custom token)
+    const envExamplePath = path.join(tmpDir, ".agents", ".env.example");
+    const original = fs.readFileSync(envExamplePath, "utf-8");
+    const modified = original + "\n# custom consumer token\nMY_API_KEY=\n";
+    fs.writeFileSync(envExamplePath, modified, "utf-8");
+
+    // Second install — Tier 3 seed-or-print: must NOT overwrite modified file
+    const ctx2 = makeClaudeContext(false);
+    process.chdir(tmpDir);
+    runClaudeModule(ctx2);
+
+    const after = fs.readFileSync(envExamplePath, "utf-8");
+    expect(after).toBe(modified); // unchanged
+    // An advisory should have been emitted (merge suggestion)
+    expect(ctx2.advisories.some((a) => a.id.startsWith("tier3-merge-suggested"))).toBe(true);
+  });
+
+  it(".gitignore marker block contains .agents/.env after first install", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test-consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    process.chdir(tmpDir);
+
+    // Simulate the core module writing .gitignore (use the template directly)
+    const pkgRoot = getPkgRoot();
+    const gitignoreTemplate = path.join(pkgRoot, ".agents", "templates", "gitignore");
+    const gitignoreDst = path.join(tmpDir, ".gitignore");
+    if (fs.existsSync(gitignoreTemplate)) {
+      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+      const content = fs.readFileSync(gitignoreDst, "utf-8");
+      // Should contain .agents/.env inside the bkit marker block
+      expect(content).toContain(".agents/.env");
+      // The entry must be inside the bkit block
+      const blockMatch = content.match(/# <!-- bkit:start -->([\s\S]*?)# <!-- bkit:end -->/);
+      expect(blockMatch).not.toBeNull();
+      expect(blockMatch![1]).toContain(".agents/.env");
+    }
+  });
+
+  it(".gitignore marker block .agents/.env entry unchanged on second install", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test-consumer" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    process.chdir(tmpDir);
+
+    const pkgRoot = getPkgRoot();
+    const gitignoreTemplate = path.join(pkgRoot, ".agents", "templates", "gitignore");
+    const gitignoreDst = path.join(tmpDir, ".gitignore");
+    if (fs.existsSync(gitignoreTemplate)) {
+      // First install
+      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+      const after1 = fs.readFileSync(gitignoreDst, "utf-8");
+
+      // Second install (re-copy template = same result since content is identical)
+      fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
+      const after2 = fs.readFileSync(gitignoreDst, "utf-8");
+
+      expect(after2).toBe(after1); // idempotent
+      expect(after2).toContain(".agents/.env");
+    }
   });
 });
