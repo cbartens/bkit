@@ -290,6 +290,9 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
+| `dependabot-config-missing` | `.github/workflows/` present without `.github/dependabot.yml` (run `bkit install --ci` to seed) |
+| `dependabot-target-branch-missing` | `dependabot.yml` present but no `updates[]` entry declares `target-branch: dev` (Dependabot PRs will hit `main` and be rejected) |
+| `dependabot-config-invalid` | `dependabot.yml` exists but is malformed (no `version: 2`, no `updates:`, or tab-indented) |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 

@@ -479,6 +479,10 @@ export function detectGhaFloatingTags(cwd) {
 /**
  * Detect whether `.github/dependabot.yml` exists. Without it, GHA action SHA
  * pins never get refreshed on upstream releases or CVE disclosure.
+ *
+ * This only fires when `bkit install --ci` has NOT been run (the CI module
+ * seeds dependabot.yml as Tier 3). If the file is absent, point at the
+ * canonical installer rather than duplicating the snippet here.
  */
 export function detectDependabotConfigMissing(cwd) {
     const yml = path.join(cwd, ".github", "dependabot.yml");
@@ -492,14 +496,96 @@ export function detectDependabotConfigMissing(cwd) {
         id: "dependabot-config-missing",
         severity: "advisory",
         detect: ".github/dependabot.yml is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures.",
-        action: "Seed a minimal `.github/dependabot.yml` with the `github-actions` ecosystem polling weekly:\n\n" +
+        action: "Run `pnpm bkit install --ci` to seed the bkit-shipped `.github/dependabot.yml` (Tier 3 seed-or-print). The shipped template covers the `github-actions` ecosystem with `target-branch: dev` (required for bkit branch-protection conventions) and a `chore(deps)` commit-message prefix.\n\n" +
+            "After seeding, the config must be merged all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on a feature branch or on dev alone is silently inert — no PRs will fire until it reaches the default branch.\n\n" +
+            "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and the canonical snippet (single source of truth: `.agents/templates/.github/dependabot.yml`).",
+    };
+}
+/**
+ * Detect whether `.github/dependabot.yml` exists but is missing `target-branch:
+ * dev` on at least one updates[] entry. bkit consumers gate `main` to
+ * PRs-from-dev only (see #67 / docs/deployments.md), so a Dependabot PR
+ * without target-branch: dev hits `main` and is rejected by branch protection
+ * — silent breakage of the update flow.
+ *
+ * Conservative match: regex for `target-branch:\s*dev`. Fires only when the
+ * file exists, has at least one `package-ecosystem:` entry, AND no
+ * `target-branch: dev` line appears anywhere. (Per-entry validation is left
+ * to the AI merge instructions emitted on seed-or-print.)
+ */
+export function detectDependabotTargetBranchMissing(cwd) {
+    const yml = path.join(cwd, ".github", "dependabot.yml");
+    const yaml = path.join(cwd, ".github", "dependabot.yaml");
+    const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
+    if (!filePath)
+        return null;
+    let content;
+    try {
+        content = fs.readFileSync(filePath, "utf-8");
+    }
+    catch {
+        return null;
+    }
+    // No updates[] entries → another detector handles invalid shape.
+    if (!/^\s*-\s*package-ecosystem:/m.test(content))
+        return null;
+    if (/^\s*target-branch:\s*dev\s*$/m.test(content))
+        return null;
+    return {
+        id: "dependabot-target-branch-missing",
+        severity: "advisory",
+        detect: ".github/dependabot.yml exists but no updates[] entry declares `target-branch: dev`. Dependabot PRs will target the default branch (`main`), which bkit-convention branch protection rejects for non-dev PRs — the update flow will silently fail.",
+        action: "Add `target-branch: dev` to every `updates[]` entry, e.g.:\n\n" +
+            "    updates:\n" +
+            "      - package-ecosystem: github-actions\n" +
+            "        directory: /\n" +
+            "        target-branch: dev\n" +
+            "        schedule:\n" +
+            "          interval: weekly\n\n" +
+            "Push the change all the way to `main` (GitHub reads dependabot.yml only from the default branch). Verify under repo Insights → Dependency graph → Dependabot that the config is recognised.",
+    };
+}
+/**
+ * Detect whether `.github/dependabot.yml` exists but fails basic shape checks
+ * (no `version: 2`, no `updates:` key, or starts with tabs that break YAML).
+ * Light-touch — not a full YAML parse, just regex-based smell tests. Full
+ * validation happens server-side on push.
+ */
+export function detectDependabotConfigInvalid(cwd) {
+    const yml = path.join(cwd, ".github", "dependabot.yml");
+    const yaml = path.join(cwd, ".github", "dependabot.yaml");
+    const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
+    if (!filePath)
+        return null;
+    let content;
+    try {
+        content = fs.readFileSync(filePath, "utf-8");
+    }
+    catch {
+        return null;
+    }
+    const issues = [];
+    if (!/^\s*version:\s*2\s*$/m.test(content))
+        issues.push("missing `version: 2`");
+    if (!/^\s*updates:\s*$/m.test(content))
+        issues.push("missing `updates:` array");
+    if (/^\t/m.test(content))
+        issues.push("contains tab indentation (YAML requires spaces)");
+    if (issues.length === 0)
+        return null;
+    return {
+        id: "dependabot-config-invalid",
+        severity: "advisory",
+        detect: `.github/dependabot.yml exists but is malformed: ${issues.join("; ")}. GitHub will silently ignore the config — no PRs will fire.`,
+        action: "Repair the file. Required minimum shape:\n\n" +
             "    version: 2\n" +
             "    updates:\n" +
             "      - package-ecosystem: github-actions\n" +
             "        directory: /\n" +
+            "        target-branch: dev\n" +
             "        schedule:\n" +
-            '          interval: "weekly"\n\n' +
-            "Add `npm` / `pip` / other ecosystems the consumer cares about as siblings.",
+            "          interval: weekly\n\n" +
+            "Or run `pnpm bkit install --ci` and follow the merge advisory to overlay the bkit reference. Verify under repo Insights → Dependency graph → Dependabot after pushing to the default branch.",
     };
 }
 /**
@@ -961,6 +1047,13 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const dependabot = detectDependabotConfigMissing(cwd);
     if (dependabot)
         phase3.push(dependabot);
+    // dependabot.yml exists but missing target-branch: dev or otherwise malformed.
+    const dependabotTargetBranch = detectDependabotTargetBranchMissing(cwd);
+    if (dependabotTargetBranch)
+        phase3.push(dependabotTargetBranch);
+    const dependabotInvalid = detectDependabotConfigInvalid(cwd);
+    if (dependabotInvalid)
+        phase3.push(dependabotInvalid);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);

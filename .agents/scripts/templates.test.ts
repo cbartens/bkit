@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
+const CONSUMER_DEPENDABOT_TEMPLATE = path.resolve(".agents/templates/.github/dependabot.yml");
 
 describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
   let content: string;
@@ -57,6 +58,49 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
 
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
+  });
+});
+
+describe("consumer dependabot template (.agents/templates/.github/dependabot.yml)", () => {
+  const content = fs.readFileSync(CONSUMER_DEPENDABOT_TEMPLATE, "utf-8");
+
+  it("template file exists", () => {
+    expect(fs.existsSync(CONSUMER_DEPENDABOT_TEMPLATE)).toBe(true);
+  });
+
+  it("declares version: 2", () => {
+    expect(content).toMatch(/^version:\s*2\s*$/m);
+  });
+
+  it("declares an updates: array", () => {
+    expect(content).toMatch(/^updates:\s*$/m);
+  });
+
+  it("includes the github-actions ecosystem", () => {
+    expect(content).toMatch(/package-ecosystem:\s*github-actions/);
+  });
+
+  it("targets the dev branch (required for bkit branch-protection convention)", () => {
+    expect(content).toMatch(/^\s*target-branch:\s*dev\s*$/m);
+  });
+
+  it("ships chore(deps) commit-message prefix to match conventional-commit history", () => {
+    expect(content).toMatch(/prefix:\s*"chore\(deps\)"/);
+  });
+
+  it("contains no tab indentation (YAML requires spaces)", () => {
+    expect(content).not.toMatch(/^\t/m);
+  });
+
+  it("documents that the file must reach the default branch to fire", () => {
+    expect(content).toMatch(/default branch/i);
+  });
+
+  it("npm ecosystem is shipped commented out (opt-in)", () => {
+    // Active entries use `- package-ecosystem:`; commented npm uses `# - package-ecosystem: npm`.
+    expect(content).toMatch(/#\s*-\s*package-ecosystem:\s*npm/);
+    // Sanity-check: no UNCOMMENTED npm entry by default.
+    expect(content).not.toMatch(/^\s*-\s*package-ecosystem:\s*npm/m);
   });
 });
 

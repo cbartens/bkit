@@ -37,6 +37,7 @@ const CURSOR_MANIFEST = [
 const CI_MANIFEST = [
     { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
     { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
+    { path: ".github/dependabot.yml", format: "byte-equal-text", module: "ci" },
     {
         path: "package.json",
         format: "markered-text",

@@ -21,17 +21,25 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
 ```
 
-**Pair with `.github/dependabot.yml`.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Minimal config:
+**Pair with `.github/dependabot.yml`.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. `bkit install --ci` seeds the canonical config (Tier 3 seed-or-print) — single source of truth is `.agents/templates/.github/dependabot.yml`. Minimum shape:
 
 ```yaml
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
 ```
 
-Dependabot scans every `uses:` line in `.github/workflows/*.yml` weekly and opens one PR per outdated action with release notes attached; CVE-driven PRs fire immediately regardless of schedule.
+`target-branch: dev` is **mandatory**, not optional — bkit consumers gate `main` to PRs-from-dev-only, so Dependabot PRs without it hit `main` and are rejected by branch protection, silently breaking the update flow.
+
+> **Important:** GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`). The config must be merged all the way through `dev → main` before any PR fires. A new config on a feature branch or sitting on `dev` alone is silently inert — no PRs will open. Verify under repo **Insights → Dependency graph → Dependabot** that the config is recognised after pushing to `main`.
+
+Dependabot scans every `uses:` line in `.github/workflows/*.yml` weekly and opens one PR per outdated action with release notes attached; CVE-driven PRs fire immediately regardless of schedule. Dependabot PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-ci-router` will not dispatch on them by design.
 
 <!-- bkit:end -->
