@@ -8,6 +8,27 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Added
+
+- **Dependabot config shipped as Tier 3.** `bkit install --ci` (or `bkit install` no-flags) now seeds `.github/dependabot.yml` (seed-or-print) alongside `.github/workflows/ci.yml`. Template at `.agents/templates/.github/dependabot.yml` ships the `github-actions` ecosystem with `target-branch: dev` (mandatory for bkit branch-protection — Dependabot PRs without it hit `main` and are rejected), `commit-message.prefix: "chore(deps)"`, weekly schedule, `open-pull-requests-limit: 10`, and `groups:` to bundle per-ecosystem PRs. `npm` ecosystem is shipped commented-out as opt-in. Existing consumer `.github/dependabot.yml` triggers `tier3-merge-suggested-dependabot.yml` advisory with AI-paste-ready merge instructions.
+- **Two new Phase 3 detectors.** `dependabot-target-branch-missing` fires when `.github/dependabot.yml` has `updates[]` entries but no `target-branch: dev` anywhere — silent-breakage prevention against the main-branch protection contract. `dependabot-config-invalid` fires on missing `version: 2`, missing `updates:`, or tab indentation. Both wired into `runPostInstallCheck`.
+- **bkit repo dogfoods its own template.** `.github/dependabot.yml` added at bkit repo root; npm ecosystem deliberately omitted for v1 (low breaking-change tolerance on tooling deps — revisit if manual upgrade cadence becomes painful). GitHub issue #109 tracks the decision and acceptance criteria.
+
+### Changed
+
+- **`detectDependabotConfigMissing` advisory rewritten.** No longer embeds a snippet inline; points consumers at `pnpm bkit install --ci` and the single source of truth (`.agents/templates/.github/dependabot.yml`). Eliminates parallel-copy drift between detector, `docs/security.md`, and the template.
+- **`docs/security.md` § Supply-Chain (GitHub Actions) updated.** Snippet now matches the shipped template (`target-branch: dev`, `chore(deps)` prefix). New must-be-on-default-branch callout: GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so the config must reach `main` before any PR fires — a config on `dev` alone is silently inert. Notes that `bkit-ci-router` does not dispatch on Dependabot PRs by design (Dependabot tokens have no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY`). Mirror in `.agents/templates/docs/security.md`.
+- **`docs/deployments.md` § GitHub Actions pinning pointer.** Updated to mention `target-branch: dev` and the default-branch propagation rule; mirror in `.agents/templates/docs/deployments.md`.
+- **README advisory IDs table.** Adds the three dependabot entries (`dependabot-config-missing`, `dependabot-target-branch-missing`, `dependabot-config-invalid`).
+
+---
+
+## [2.2.3] — 2026-05-19
+
+### Changed
+
+- **`bkit check` now runs Phase 3 detectors for parity with `bkit install`.** Previously, `check` returned only Phase 1 preflight + Phase 2 module-dispatched advisories, masking runtime-state findings (`gh-bkit-token-unset-shell`, `npmrc-missing-gh-packages`, `ci-yml-missing-token-env`, `gha-actions-floating-tags`, `dependabot-config-missing`, `cloud-secrets-three-locations`, etc.) that only `install` would surface. Both commands now produce the identical advisory set against the same filesystem state — `check` is `install` minus the writes. CI drift gate semantics preserved: `bkit check` still exits 1 when any Tier-1/Tier-2 write would occur. The `dryRun` parameter on `runPostInstallCheck` is removed (was effectively dead code after this change).
+
 ---
 
 ## [2.2.3] — 2026-05-19

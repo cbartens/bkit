@@ -76,6 +76,10 @@ export { getPkgRoot } from "./bkit-paths.js";
 const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", "scripts"]);
 // Top-level template files (non-directory) that belong to core
 const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore"]);
+// Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
+// owned by other modules — skip in the core Tier 2 templates pass to avoid
+// double-recording them in the WriteSet. These are written by their owning module.
+const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
     ".github",
@@ -135,6 +139,11 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
     if (!fs.existsSync(srcDir))
         return;
     for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
+        // Skip Tier 3 files inside .agents/ subtemplate dir — they are owned by their
+        // respective modules and written via writeTier3 (seed-or-print), not Tier 2.
+        if (ent.isFile() && relBase === ".agents" && AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
+            continue;
+        }
         const srcPath = path.join(srcDir, ent.name);
         const relPath = path.join(relBase, ent.name);
         if (ent.isDirectory()) {
@@ -172,6 +181,12 @@ const COPY_EXCLUDE = new Set([
     "friction.md",
     "docs.md",
     "skills.md",
+    // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
+    // template at .agents/templates/.agents/.env.example). Including it in the
+    // payload copy would double-handle the same destination — Tier 3 sees the
+    // file already written by payload copy in live mode, skips its own write,
+    // and dry-run vs install writesets diverge. Tier 3 owns this file.
+    ".env.example",
 ]);
 // Top-level `.agents/` files that bkit owns end-to-end (no managed-block, no
 // consumer edits). copyAdditive's default skip-if-exists semantics are wrong
@@ -483,6 +498,59 @@ export function runClaudeModule(ctx) {
             });
         }
     }
+    // Byte-equal-text — manifest format: "byte-equal-text" — .mcp.json root-level MCP config.
+    // Tier 3 seed-or-print: write on first install, emit advisory if consumer has modified it.
+    // File is consumer-configurable (consumers add project-specific MCP servers); bkit seeds
+    // the canonical linear + github entries and defers future edits to consumer.
+    {
+        const mcpSrc = path.join(PKG_ROOT, ".agents", "templates", ".mcp.json");
+        const mcpDst = ".mcp.json";
+        if (fs.existsSync(mcpSrc)) {
+            const prevLen = ws.writes.length;
+            const result = writeTier3(mcpSrc, mcpDst, dryRun, advisories, ws, MCP_ROOT_MERGE_INSTRUCTIONS);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
+            }
+            else if (result.suggested) {
+                console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
+            }
+        }
+    }
+    // Byte-equal-text — .agents/.env.example — Tier 3 seed-or-print.
+    // Seeds the canonical token-placeholder file on first install; emits merge
+    // instructions if consumer has modified. Not claude-specific but the claude
+    // module is the default-runs-everywhere module — appropriate home for
+    // consumer-setup scaffolding that all environments need.
+    {
+        const envExampleSrc = path.join(PKG_ROOT, ".agents", "templates", ".agents", ".env.example");
+        const envExampleDst = ".agents/.env.example";
+        if (fs.existsSync(envExampleSrc)) {
+            const prevLen = ws.writes.length;
+            const result = writeTier3(envExampleSrc, envExampleDst, dryRun, advisories, ws, ENV_EXAMPLE_MERGE_INSTRUCTIONS);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${envExampleDst}`);
+            }
+            else if (result.suggested) {
+                console.log(`${logPrefix} ${tag}claude: ${envExampleDst} (exists; AI merge instructions printed)`);
+            }
+        }
+    }
+    // Byte-equal-text — .envrc — Tier 3 seed-or-print.
+    // Seeds a single-line dotenv_if_exists directive for direnv auto-load.
+    {
+        const envrcSrc = path.join(PKG_ROOT, ".agents", "templates", ".envrc");
+        const envrcDst = ".envrc";
+        if (fs.existsSync(envrcSrc)) {
+            const prevLen = ws.writes.length;
+            const result = writeTier3(envrcSrc, envrcDst, dryRun, advisories, ws, ENVRC_MERGE_INSTRUCTIONS);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${envrcDst}`);
+            }
+            else if (result.suggested) {
+                console.log(`${logPrefix} ${tag}claude: ${envrcDst} (exists; AI merge instructions printed)`);
+            }
+        }
+    }
 }
 // ---------------------------------------------------------------------------
 // runCursorModule — T1/T2/T3 transforms from .agents/ → .cursor/
@@ -607,6 +675,7 @@ export function runCursorModule(ctx) {
             ".cursor/environment.json",
             CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS,
         ],
+        [path.join(cursorTemplates, "mcp.json"), ".cursor/mcp.json", CURSOR_MCP_MERGE_INSTRUCTIONS],
     ];
     for (const [src, dst, msg] of tier3Files) {
         if (!fs.existsSync(src))
@@ -701,6 +770,44 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
 // logic lives in the mirrored slash-command orchestrator. No consumer-side
 // customisation surface, so no merge instructions are needed.
+const DEPENDABOT_YML_MERGE_INSTRUCTIONS = `[bkit] .github/dependabot.yml exists — bkit will not overwrite. Review the reference defaults and merge if needed.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .github/dependabot.yml. Compare it to the bkit reference below and
+  apply ONLY the required merge actions. Preserve any consumer-specific
+  ecosystems (npm groupings, ignore rules, reviewers, etc.).
+
+  Required merge actions:
+
+  1. Ensure every \`updates[]\` entry has \`target-branch: dev\`. bkit consumers
+     gate \`main\` to PRs-from-dev-only — Dependabot PRs without target-branch:
+     dev will hit \`main\` and be rejected by branch protection, silently
+     breaking the entire update flow.
+
+  2. Ensure every \`updates[]\` entry has \`commit-message.prefix:\` set so
+     PR titles match the conventional-commit style used elsewhere in the
+     repo. For the \`github-actions\` ecosystem use \`prefix: "chore(deps)"\`;
+     for \`npm\` add \`prefix-development: "chore(deps-dev)"\` to distinguish
+     prod vs dev bumps.
+
+  3. Verify the file ships on the default branch. GitHub reads dependabot.yml
+     ONLY from the default branch (typically \`main\`). The file must be
+     merged all the way through dev → main before Dependabot opens any PR.
+     A config on a feature branch or on dev alone is silently inert.
+
+  Do NOT remove or rename existing \`updates[]\` entries unless you know the
+  ecosystem is unused — losing an ecosystem means CVE-driven PRs stop firing
+  for it.
+
+  --- begin bkit reference dependabot.yml ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference dependabot.yml ---
+
+  After merging, push the change all the way to the default branch. Dependabot
+  validity is reported under repo Insights → Dependency graph → Dependabot;
+  check that tab if no PRs appear within ~24h of merge.
+`;
 const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -827,6 +934,54 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // jq + python3 + corepack-pinned pnpm); consumers customise Node major,
 // Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
 // those across upgrades.
+const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .agents/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .agents/.env.example. Compare against the bkit reference below.
+  Merge any new token entries you find (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY)
+  into your existing file. Keep any project-specific additions you have.
+
+  --- begin bkit reference .agents/.env.example ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .agents/.env.example ---
+`;
+const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .agents/.env via direnv.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .envrc. Compare against the bkit reference below.
+  Ensure the file contains \`dotenv_if_exists .agents/.env\` so direnv
+  auto-exports the tokens into your shell. Keep any existing lines.
+
+  --- begin bkit reference .envrc ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .envrc ---
+`;
+const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .mcp.json. Compare against the bkit reference below.
+  Ensure the mcpServers object contains entries for both "linear" and "github".
+  Keep any project-specific server entries you have added.
+
+  --- begin bkit reference .mcp.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .mcp.json ---
+`;
+const CURSOR_MCP_MERGE_INSTRUCTIONS = `[bkit] .cursor/mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .cursor/mcp.json. Compare against the bkit reference below.
+  Ensure the mcpServers object contains entries for both "linear" and "github".
+  Keep any project-specific server entries you have added.
+
+  --- begin bkit reference .cursor/mcp.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .cursor/mcp.json ---
+`;
 const CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS = `[bkit] .cursor/environment.json exists — bkit will not overwrite. This file is fully consumer-owned because the \`install\` / \`start\` / \`terminals[]\` / \`env\` fields are typically repo-specific.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -927,6 +1082,22 @@ export function runCiModule(ctx) {
                 "  - Allowed concurrency: latest-supersedes (newer CI completion cancels in-flight router runs).\n\n" +
                 "Both halves invoke the same `/bkit-ci-router` orchestrator (lives in `.cursor/commands/bkit-ci-router.md` + `.claude/commands/bkit-ci-router.md`, mirrored from `.agents/workflows/bkit-ci-router.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
         });
+    }
+    // dependabot.yml — Tier 3 seed-or-print. Seeds a `target-branch: dev` config
+    // matching bkit's branch-protection convention (consumer PRs land on dev;
+    // main only accepts PRs from dev). If consumer already maintains their own
+    // dependabot.yml, the AI merge instruction is emitted as an advisory.
+    const dependabotSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "dependabot.yml");
+    if (fs.existsSync(dependabotSrc)) {
+        const dependabotDst = path.join(".github", "dependabot.yml");
+        const prevDepLen = ws.writes.length;
+        const dependabotResult = writeTier3(dependabotSrc, dependabotDst, dryRun, advisories, ws, DEPENDABOT_YML_MERGE_INSTRUCTIONS);
+        if (ws.writes.length > prevDepLen) {
+            console.log(`${logPrefix} ${tag}ci: ${dependabotDst}`);
+        }
+        else if (dependabotResult.suggested) {
+            console.log(`${logPrefix} ${tag}ci: ${dependabotDst} (exists; AI merge instructions printed)`);
+        }
     }
     // Ensure the typecheck script the workflow calls exists in package.json.
     // `test` is deliberately not managed — too opinionated for a default.

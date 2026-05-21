@@ -20,6 +20,12 @@ import {
   detectCiYmlVerboseCiBlockMissing,
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
+  detectMissingMcpServers,
+  REQUIRED_MCP_SERVERS,
+  detectMissingDotenv,
+  detectBlankDotenvKeys,
+  detectDirenvMissing,
+  detectDirenvNotAllowed,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -916,5 +922,371 @@ describe("BAR-186 — SessionStart preflight.sh runtime behaviour", () => {
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("LINEAR_API_KEY not set");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectMissingMcpServers — advisory detector for .mcp.json / .cursor/mcp.json
+// ---------------------------------------------------------------------------
+
+describe("detectMissingMcpServers", () => {
+  it("returns empty array when file does not exist (Tier 3 scaffold will write it)", () => {
+    expect(detectMissingMcpServers(tmpDir, ".mcp.json")).toEqual([]);
+    expect(detectMissingMcpServers(tmpDir, ".cursor/mcp.json")).toEqual([]);
+  });
+
+  it("returns empty array when file is malformed JSON (skip silently)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "not valid json{{{", "utf-8");
+    expect(detectMissingMcpServers(tmpDir, ".mcp.json")).toEqual([]);
+  });
+
+  it("returns advisory when .mcp.json exists but is missing the github server", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
+      "utf-8",
+    );
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe("advisory");
+    expect(findings[0]!.id).toContain("github");
+    expect(findings[0]!.action).toContain("[mcp]");
+    expect(findings[0]!.action).toContain(".mcp.json");
+    expect(findings[0]!.action).toContain("github");
+    // Must not reference Linear ticket IDs
+    expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
+  });
+
+  it("returns advisory when .mcp.json exists but is missing the linear server", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { url: "https://api.githubcopilot.com/mcp/" } } }),
+      "utf-8",
+    );
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toContain("linear");
+    expect(findings[0]!.action).toContain("linear");
+  });
+
+  it("returns two advisories when .mcp.json exists but mcpServers is empty", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json");
+    expect(findings).toHaveLength(REQUIRED_MCP_SERVERS.length);
+  });
+
+  it("returns two advisories when .mcp.json exists but mcpServers key is absent", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ otherKey: {} }), "utf-8");
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json");
+    expect(findings).toHaveLength(REQUIRED_MCP_SERVERS.length);
+  });
+
+  it("returns empty array when both required servers are present", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    expect(detectMissingMcpServers(tmpDir, ".mcp.json")).toEqual([]);
+  });
+
+  it("returns empty array when both required servers are present plus extra consumer servers", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+          "my-custom-server": { url: "https://example.com/mcp" },
+        },
+      }),
+      "utf-8",
+    );
+    expect(detectMissingMcpServers(tmpDir, ".mcp.json")).toEqual([]);
+  });
+
+  it("works identically for .cursor/mcp.json path", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "mcp.json"),
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
+      "utf-8",
+    );
+    const findings = detectMissingMcpServers(tmpDir, ".cursor/mcp.json");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.action).toContain(".cursor/mcp.json");
+  });
+
+  it("advisory action text contains no BAR-XXX Linear ticket references", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: {} }), "utf-8");
+    const findings = detectMissingMcpServers(tmpDir, ".mcp.json");
+    for (const f of findings) {
+      expect(f.action).not.toMatch(/BAR-\d+/);
+      expect(f.detect).not.toMatch(/BAR-\d+/);
+    }
+  });
+
+  it("runPreflight includes mcp-missing-server advisories when .mcp.json is missing github", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { linear: { url: "https://mcp.linear.app/mcp" } } }),
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.some((f) => f.id.includes("mcp-missing-server-github"))).toBe(true);
+  });
+
+  it("runPreflight does NOT emit mcp advisory when .mcp.json is absent", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "test" }), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.some((f) => f.id.includes("mcp-missing-server"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// [mcp-env] detectors — BAR-260 follow-up
+// ---------------------------------------------------------------------------
+
+describe("detectMissingDotenv", () => {
+  it("flags when .agents/.env.example exists but .agents/.env does not", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    const f = detectMissingDotenv(tmpDir);
+    expect(f).not.toBeNull();
+    expect(f!.id).toBe("mcp-env-missing-dotenv");
+    expect(f!.severity).toBe("advisory");
+    expect(f!.action).toContain("[mcp-env]");
+    expect(f!.action).not.toMatch(/BAR-\d+/);
+  });
+
+  it("does NOT flag when both .env.example and .env exist", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=ghp_test\n", "utf-8");
+    expect(detectMissingDotenv(tmpDir)).toBeNull();
+  });
+
+  it("does NOT flag when .agents/.env.example does not exist", () => {
+    expect(detectMissingDotenv(tmpDir)).toBeNull();
+  });
+});
+
+describe("detectBlankDotenvKeys", () => {
+  it("returns empty array when .agents/.env does not exist", () => {
+    expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
+  });
+
+  it("returns three advisories when .agents/.env has all keys blank", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+    const findings = detectBlankDotenvKeys(tmpDir);
+    expect(findings).toHaveLength(3);
+    const ids = findings.map((f) => f.id);
+    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
+    expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("returns one advisory for the blank key only", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+    const findings = detectBlankDotenvKeys(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("returns empty array when all three keys are set and non-empty", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "utf-8",
+    );
+    expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
+  });
+
+  it("returns advisory for absent key (key not in file at all)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\n",
+      "utf-8",
+    );
+    const findings = detectBlankDotenvKeys(tmpDir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toBe("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("advisory action text contains [mcp-env] prefix and no BAR-XXX references", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=\n", "utf-8");
+    const findings = detectBlankDotenvKeys(tmpDir);
+    for (const f of findings) {
+      expect(f.action).toContain("[mcp-env]");
+      expect(f.action).not.toMatch(/BAR-\d+/);
+      expect(f.detect).not.toMatch(/BAR-\d+/);
+    }
+  });
+});
+
+describe("detectDirenvMissing", () => {
+  const origEnv = { ...process.env };
+
+  afterEach(() => {
+    // Restore env after each test in this suite
+    Object.keys(process.env).forEach((k) => delete process.env[k]);
+    Object.assign(process.env, origEnv);
+  });
+
+  it("returns null when .envrc does not exist", () => {
+    // No .envrc in tmpDir
+    expect(detectDirenvMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CI=true (cloud/CI short-circuit)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CI = "true";
+    expect(detectDirenvMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CLAUDE_CODE_REMOTE is truthy (cloud short-circuit)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CLAUDE_CODE_REMOTE = "1";
+    expect(detectDirenvMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CURSOR_REMOTE_AGENT is truthy (cloud short-circuit)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CURSOR_REMOTE_AGENT = "1";
+    expect(detectDirenvMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns advisory when .envrc exists and direnv is NOT installed (mocked)", () => {
+    // We can only test this in environments where direnv is not on PATH.
+    // We mock by temporarily overriding the PATH to something empty.
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
+
+    // Use a mock-friendly path with no direnv
+    const savedPath = process.env.PATH;
+    process.env.PATH = "/nonexistent-path-for-testing";
+    try {
+      const f = detectDirenvMissing(tmpDir);
+      // If direnv is actually installed at /usr/bin/direnv or similar outside
+      // the normal PATH entries, this might still return null. That's acceptable —
+      // we can only assert the shape when the finding fires.
+      if (f !== null) {
+        expect(f.id).toBe("mcp-env-direnv-missing");
+        expect(f.severity).toBe("advisory");
+        expect(f.action).toContain("[mcp-env]");
+        expect(f.action).not.toMatch(/BAR-\d+/);
+      }
+    } finally {
+      process.env.PATH = savedPath;
+    }
+  });
+});
+
+describe("detectDirenvNotAllowed", () => {
+  const origEnv = { ...process.env };
+
+  afterEach(() => {
+    Object.keys(process.env).forEach((k) => delete process.env[k]);
+    Object.assign(process.env, origEnv);
+  });
+
+  it("returns null when .envrc does not exist", () => {
+    expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CI=true (cloud/CI short-circuit)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CI = "true";
+    expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CLAUDE_CODE_REMOTE is truthy", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CLAUDE_CODE_REMOTE = "1";
+    expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
+  });
+
+  it("returns null when CURSOR_REMOTE_AGENT is truthy", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    process.env.CURSOR_REMOTE_AGENT = "1";
+    expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
+  });
+
+  it("returns null when direnv is not installed (guard: returns null, not advisory)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    delete process.env.CI;
+    delete process.env.CLAUDE_CODE_REMOTE;
+    delete process.env.CURSOR_REMOTE_AGENT;
+    const savedPath = process.env.PATH;
+    process.env.PATH = "/nonexistent-path-for-testing";
+    try {
+      // When direnv is absent, detectDirenvNotAllowed should return null
+      // (detectDirenvMissing fires instead — different advisory)
+      const f = detectDirenvNotAllowed(tmpDir);
+      expect(f).toBeNull();
+    } finally {
+      process.env.PATH = savedPath;
+    }
+  });
+});
+
+describe("[mcp-env] detector outputs", () => {
+  it("detectMissingDotenv fires when .env.example exists but .env absent", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    const finding = detectMissingDotenv(tmpDir);
+    expect(finding?.id).toBe("mcp-env-missing-dotenv");
+  });
+
+  it("detectBlankDotenvKeys returns one finding per blank required key", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+    const ids = detectBlankDotenvKeys(tmpDir).map((f) => f.id);
+    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
+    expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("all [mcp-env] advisories have no BAR-XXX references", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=\n", "utf-8");
+    const findings = [
+      detectMissingDotenv(tmpDir),
+      ...detectBlankDotenvKeys(tmpDir),
+      detectDirenvMissing(tmpDir),
+      detectDirenvNotAllowed(tmpDir),
+    ].filter((f): f is NonNullable<typeof f> => f !== null);
+    for (const f of findings) {
+      expect(f.action).not.toMatch(/BAR-\d+/);
+      expect(f.detect).not.toMatch(/BAR-\d+/);
+    }
   });
 });

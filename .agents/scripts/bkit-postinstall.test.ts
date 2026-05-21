@@ -22,6 +22,8 @@ import {
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
   detectDependabotConfigMissing,
+  detectDependabotTargetBranchMissing,
+  detectDependabotConfigInvalid,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -766,6 +768,145 @@ describe("detectDependabotConfigMissing", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yaml"), "version: 2\n");
     expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+  });
+
+  it("advisory action mentions bkit installer and default-branch rule (no embedded snippet drift)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = detectDependabotConfigMissing(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.action).toMatch(/pnpm bkit install --ci/);
+    expect(result!.action).toMatch(/default branch/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDependabotTargetBranchMissing
+// ---------------------------------------------------------------------------
+
+describe("detectDependabotTargetBranchMissing", () => {
+  it("returns null when no dependabot.yml exists", () => {
+    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when file has no updates[] entries yet (other detector handles invalid shape)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\nupdates: []\n");
+    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
+  });
+
+  it("fires when updates[] is present but no target-branch: dev anywhere", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      [
+        "version: 2",
+        "updates:",
+        "  - package-ecosystem: github-actions",
+        "    directory: /",
+        "    schedule:",
+        "      interval: weekly",
+        "",
+      ].join("\n"),
+    );
+    const result = detectDependabotTargetBranchMissing(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dependabot-target-branch-missing");
+    expect(result!.detect).toMatch(/main/);
+  });
+
+  it("fires when target-branch is set to a value other than dev", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      [
+        "version: 2",
+        "updates:",
+        "  - package-ecosystem: github-actions",
+        "    directory: /",
+        "    target-branch: main",
+        "    schedule:",
+        "      interval: weekly",
+        "",
+      ].join("\n"),
+    );
+    expect(detectDependabotTargetBranchMissing(tmpDir)).not.toBeNull();
+  });
+
+  it("returns null when at least one updates[] entry has target-branch: dev", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      [
+        "version: 2",
+        "updates:",
+        "  - package-ecosystem: github-actions",
+        "    directory: /",
+        "    target-branch: dev",
+        "    schedule:",
+        "      interval: weekly",
+        "",
+      ].join("\n"),
+    );
+    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null for .yaml (alternate ext) with target-branch: dev", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yaml"),
+      "version: 2\nupdates:\n  - package-ecosystem: npm\n    target-branch: dev\n",
+    );
+    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDependabotConfigInvalid
+// ---------------------------------------------------------------------------
+
+describe("detectDependabotConfigInvalid", () => {
+  it("returns null when file does not exist", () => {
+    expect(detectDependabotConfigInvalid(tmpDir)).toBeNull();
+  });
+
+  it("returns null for a valid minimal file", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      "version: 2\nupdates:\n  - package-ecosystem: github-actions\n",
+    );
+    expect(detectDependabotConfigInvalid(tmpDir)).toBeNull();
+  });
+
+  it("fires when version: 2 is missing", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      "updates:\n  - package-ecosystem: github-actions\n",
+    );
+    const result = detectDependabotConfigInvalid(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dependabot-config-invalid");
+    expect(result!.detect).toMatch(/version: 2/);
+  });
+
+  it("fires when updates: key is missing", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    const result = detectDependabotConfigInvalid(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toMatch(/updates/);
+  });
+
+  it("fires when file is indented with tabs (YAML-invalid)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "dependabot.yml"),
+      "version: 2\nupdates:\n\t- package-ecosystem: github-actions\n",
+    );
+    const result = detectDependabotConfigInvalid(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toMatch(/tab/);
   });
 });
 

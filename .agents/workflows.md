@@ -776,7 +776,7 @@ pnpm install --frozen-lockfile   # symlink-only ~5s; required because pnpm per-p
 
 ## Linear Integration
 
-MCP server: `https://mcp.linear.app/mcp` (OAuth — wired in `.claude/settings.json` as `mcpServers.linear`).
+MCP server: `https://mcp.linear.app/mcp` (OAuth — wired in `.mcp.json` as `mcpServers.linear`).
 
 Tool names (only these are used):
 
@@ -913,7 +913,7 @@ Without `acceptEdits` / wildcard allow surface, every `Bash`, `Edit`, `Write`, M
 | `ask` | `sudo:*`, `curl:*`, `wget:*`, `brew install:*`, `pnpm publish:*`, `npm publish:*`, `git push --force(:* / -f)`, `git reset --hard:*`, `git clean -fd(x):*`, `git filter-branch:*`, `gh repo delete:*`, `gh pr close:*`, `gh release delete:*`, `vercel rm/remove:*`, `supabase db reset / projects delete:*` | Per-call human confirmation for destructive ops. |
 | `deny` | `Bash(rm -rf /\* | ~/\* | $HOME/_)`, `Bash(chmod -R 777 /:_)`, `Read(./.env | ./.env.\* | ./apps/_/.env_ | ./packages/_/.env_ | ./**/secrets/** | ./\*_/_.pem | ./\*_/_.p12 | ./\*\*/id_rsa)` | Hard-block catastrophic deletes and secret reads. |
 
-`mcpServers.linear.url = https://mcp.linear.app/mcp`. SessionStart hook `bash .claude/hooks/preflight.sh` runs at every session start.
+`.mcp.json` declares `mcpServers.linear.url = https://mcp.linear.app/mcp` and `mcpServers.github.url = https://api.githubcopilot.com/mcp/`. SessionStart hook `bash .claude/hooks/preflight.sh` runs at every session start.
 
 **Anti-pattern:** never use `--dangerously-skip-permissions` on host. Use it only inside sandboxed CI containers.
 

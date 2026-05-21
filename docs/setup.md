@@ -29,14 +29,22 @@
 
 ## Local environment variables
 
+bkit ships `.agents/.env.example` (placeholders) and `.envrc` (`dotenv_if_exists .agents/.env`). The canonical local-secrets file is `.agents/.env` (gitignored), auto-loaded via direnv on every `cd` into the repo.
+
 ```bash
-export GH_BKIT_TOKEN=<classic PAT, read:packages>   # @cbartens/bkit on GitHub Packages
-export LINEAR_API_KEY=<personal API key>            # Linear preflight (Auto label / state gate)
-export GH_TOKEN=<fine-grained PAT>                  # gh CLI (repo + workflow scopes)
-export ANTHROPIC_API_KEY=<key>                      # Optional — Claude Code headless / CI
+# One-time per machine
+brew install direnv
+echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash users use ~/.bashrc
+
+# One-time per repo clone
+cp .agents/.env.example .agents/.env   # then fill in GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
+direnv allow                            # trust the .envrc; auto-loads on subsequent cd
+
+# Verify
+echo "len=${#GH_TOKEN}"                 # non-zero → loaded
 ```
 
-`LINEAR_ISSUE_ID` is injected per-session by the cloud integration — don't hardcode.
+`LINEAR_ISSUE_ID` is injected per-session by the cloud integration — never put it in `.agents/.env`. Cloud sessions (Claude on the web, Cursor Background Agents) set the same variable names in their respective dashboards, not via this file.
 
 ## Bootstrap
 

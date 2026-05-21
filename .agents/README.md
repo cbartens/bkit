@@ -136,7 +136,7 @@ bkit uses a three-tier model to handle different file ownership scenarios withou
 | --- | --- | --- |
 | **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
 | **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.husky/pre-commit`, `.husky/pre-push`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
-| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
+| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml`, `.github/dependabot.yml` |
 | **Managed package.json keys** (BAR-138, v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | `scripts.typecheck` (`--ci`), `scripts.format:check` / `lint:prose` / `lint:slop` (`--lint`), `scripts.prepare` (`--git-hooks`); `devDependencies.prettier` + `slop-scan` (`--lint`), `devDependencies.husky` (`--git-hooks`) |
 
 **Marker syntax** is format-specific:
@@ -161,6 +161,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
+| `.github/dependabot.yml` | ci | `.agents/templates/.github/dependabot.yml` | Tier 3 (seed-or-print); `target-branch: dev` required by bkit branch protection |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |

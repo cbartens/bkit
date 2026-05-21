@@ -156,6 +156,51 @@ What this does and why it's split from the in-repo hook:
 
 Keep total runtime under ~5 minutes or the snapshot won't build.
 
+## Environment variables
+
+Token management splits by session type:
+
+- **Local sessions** — bkit seeds `.agents/.env.example` (token placeholders) and `.envrc` (`dotenv_if_exists .agents/.env`) on first install. Copy `.env.example` to `.agents/.env`, fill in your tokens, then run `direnv allow`. direnv auto-exports `GH_TOKEN`, `GH_BKIT_TOKEN`, and `LINEAR_API_KEY` into your shell whenever you enter the repo — no manual `source` or shell-rc export needed. `.agents/.env` is gitignored; never commit it.
+
+  ```bash
+  cp .agents/.env.example .agents/.env
+  # edit .agents/.env — fill in GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY
+  direnv allow
+  ```
+
+- **Cloud sessions** (Claude Code on the web, Cursor Background Agents) — the `.agents/.env` file is not present in cloud containers. Set the same names (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY`) in the respective online dashboards: Claude app → environment selector → Environment variables; Cursor → Settings → Background Agents → Environment Variables. The dashboard list in the sections below is the canonical reference for which names to set.
+
+## MCP issue-tracker integration
+
+bkit wires two MCP servers into `.mcp.json` at the repo root (project-shared, read by Claude Code's `/mcp` UI). Cursor reads the same shape from `.cursor/mcp.json`. Both are **remote HTTP MCPs with OAuth-on-first-use** — no PATs, no env vars, no docker. Claude Code launches a browser auth flow the first time each server is touched, and stores the resulting token in its own secret store.
+
+> Note: `mcpServers` declared inside `.claude/settings.json` is silently ignored by Claude Code — server definitions only take effect from `.mcp.json` (project) or `claude mcp add` (user scope). The `mcp__<name>__*` entries in `.claude/settings.json` `permissions.allow` are tool-permission allowlists, which is a different concern and remain there.
+
+```json
+"mcpServers": {
+  "linear": { "type": "http", "url": "https://mcp.linear.app/mcp" },
+  "github": {
+    "type": "http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": { "Authorization": "Bearer ${GH_TOKEN}" }
+  }
+}
+```
+
+`"type": "http"` is required — without it Claude Code defaults to stdio transport and rejects the entry for missing `command`.
+
+- **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used by workflows when `bkit.issueTracker` is set to `linear`. Authenticates via OAuth (Dynamic Client Registration) — browser flow on first use, no env var needed.
+- **GitHub** — official GitHub MCP server at `api.githubcopilot.com` (not gated by a Copilot subscription). Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider (default once migration #39 lands). The endpoint does **not** support OAuth DCR, so authentication is via `Authorization: Bearer ${GH_TOKEN}` — reusing the same fine-grained PAT bkit already requires for the `gh` CLI surface (see § Environment variables).
+
+**Auth flow per server:**
+
+- **Linear:** Claude Code prompts a browser authorize on first use; token stored in Claude's local secret store. No further action.
+- **GitHub:** Claude Code substitutes `${GH_TOKEN}` from the environment at session start. If `GH_TOKEN` is unset, the server fails to connect. Set it in the shell (`export GH_TOKEN=...`) or, for cloud sessions, in the dashboard env vars.
+
+**`gh auth login` is still required separately** for the gh CLI surface (PR creation, branch ops, git push). `GH_TOKEN` is read automatically by both `gh` and the GitHub MCP — they share the PAT but exercise different surfaces.
+
+**Cloud sessions** (Claude on the web, Cursor Background Agents): Linear MCP runs its OAuth flow on first touch, same as local. GitHub MCP reads `GH_TOKEN` from the dashboard env vars — make sure it's set there alongside `LINEAR_API_KEY` and `GH_BKIT_TOKEN`.
+
 ## After saving the Claude env
 
 1. Trigger a session: `claude --remote "echo ready"` from the repo, or tap the env in the iOS app.

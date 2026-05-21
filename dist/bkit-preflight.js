@@ -8,6 +8,7 @@
 //   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
 import { extractManagedBlock } from "./bkit-install.js";
@@ -202,6 +203,7 @@ const BKIT_GITIGNORE_LINES = [
     "docs/plans/logs/**/.lock",
     ".husky/_",
     ".agents/advisories.md",
+    ".agents/.env",
 ];
 export function detectGitignoreBlockDuplicates(cwd) {
     const gitignorePath = path.join(cwd, ".gitignore");
@@ -243,6 +245,9 @@ const BKIT_PRETTIERIGNORE_PATHS = [
     ".husky/_/",
     "*.tsbuildinfo",
     "pnpm-lock.yaml",
+    ".mcp.json",
+    ".envrc",
+    ".agents/.env.example",
 ];
 export function detectPrettierignoreScopeBroadening(cwd) {
     const filePath = path.join(cwd, ".prettierignore");
@@ -568,6 +573,207 @@ function semverGt(a, b) {
     return false;
 }
 // ---------------------------------------------------------------------------
+// Advisory: missing MCP server entries in .mcp.json / .cursor/mcp.json
+// ---------------------------------------------------------------------------
+/**
+ * The set of MCP server keys that bkit considers required in any mcpServers object.
+ * Exported so tests can reference it without duplication.
+ */
+export const REQUIRED_MCP_SERVERS = ["linear", "github"];
+/**
+ * Advisory: one finding per missing required MCP server key in a given mcp.json file.
+ *
+ * Semantics:
+ *   - File absent      → return [] (Tier 3 scaffold will write it on next install)
+ *   - File malformed   → return [] (parse-failure is a different advisory class)
+ *   - File present, mcpServers missing a required key → one advisory per missing key
+ *   - File present, all required keys present → return []
+ *
+ * Follows `[context] Message` advisory format.
+ */
+export function detectMissingMcpServers(cwd, relPath) {
+    const absPath = path.join(cwd, relPath);
+    if (!fs.existsSync(absPath))
+        return [];
+    let doc;
+    try {
+        doc = JSON.parse(fs.readFileSync(absPath, "utf-8"));
+    }
+    catch {
+        return []; // malformed JSON — skip silently
+    }
+    const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
+        ? doc.mcpServers
+        : null;
+    const findings = [];
+    for (const key of REQUIRED_MCP_SERVERS) {
+        if (mcpServers && Object.prototype.hasOwnProperty.call(mcpServers, key))
+            continue;
+        const urlHint = key === "linear"
+            ? `"url": "https://mcp.linear.app/mcp"`
+            : key === "github"
+                ? `"url": "https://api.githubcopilot.com/mcp/"`
+                : `"url": "<server-url>"`;
+        findings.push({
+            id: `mcp-missing-server-${key}-${relPath.replace(/[^a-z0-9]/gi, "-")}`,
+            severity: "advisory",
+            detect: `${relPath} is missing the ${key} MCP server in mcpServers.`,
+            action: `[mcp] ${relPath} is missing the ${key} MCP server. Add it to mcpServers: {"${key}": {${urlHint}}}`,
+        });
+    }
+    return findings;
+}
+// ---------------------------------------------------------------------------
+// [mcp-env] advisories — direnv + .agents/.env setup (BAR-260 follow-up)
+// ---------------------------------------------------------------------------
+/**
+ * Advisory: .agents/.env.example exists but .agents/.env does not.
+ * Consumer ran `bkit install` (which seeds .env.example) but has not yet
+ * copied it to .agents/.env and filled in their tokens.
+ */
+export function detectMissingDotenv(cwd) {
+    const examplePath = path.join(cwd, ".agents", ".env.example");
+    const envPath = path.join(cwd, ".agents", ".env");
+    if (!fs.existsSync(examplePath))
+        return null;
+    if (fs.existsSync(envPath))
+        return null;
+    return {
+        id: "mcp-env-missing-dotenv",
+        severity: "advisory",
+        detect: ".agents/.env.example exists but .agents/.env does not. MCP servers and agent tooling will not have access to GH_TOKEN, GH_BKIT_TOKEN, or LINEAR_API_KEY.",
+        action: "[mcp-env] Copy .agents/.env.example to .agents/.env and fill in your tokens (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY). Then run `direnv allow` to auto-export them into your shell. .agents/.env is gitignored and safe to commit-skip.",
+    };
+}
+/**
+ * Advisory: .agents/.env exists but one or more required keys are blank or absent.
+ * Returns one finding per missing/blank key.
+ */
+export function detectBlankDotenvKeys(cwd) {
+    const envPath = path.join(cwd, ".agents", ".env");
+    if (!fs.existsSync(envPath))
+        return [];
+    const content = fs.readFileSync(envPath, "utf-8");
+    const lines = content.split("\n");
+    // Build a map of key → value from the .env file (ignore comments and blank lines)
+    const kvMap = new Map();
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#"))
+            continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx === -1)
+            continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        const value = trimmed.slice(eqIdx + 1).trim();
+        kvMap.set(key, value);
+    }
+    const REQUIRED_KEYS = [
+        {
+            key: "GH_TOKEN",
+            description: "fine-grained PAT for the GitHub MCP server and gh CLI (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write)",
+        },
+        {
+            key: "GH_BKIT_TOKEN",
+            description: "classic PAT with read:packages scope for authenticating to the GitHub Packages npm registry (@cbartens/* packages)",
+        },
+        {
+            key: "LINEAR_API_KEY",
+            description: "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
+        },
+    ];
+    const findings = [];
+    for (const { key, description } of REQUIRED_KEYS) {
+        const value = kvMap.get(key);
+        if (value !== undefined && value !== "")
+            continue;
+        const reason = value === undefined
+            ? `${key} is absent from .agents/.env`
+            : `${key} is set but has an empty value in .agents/.env`;
+        findings.push({
+            id: `mcp-env-blank-key-${key.toLowerCase()}`,
+            severity: "advisory",
+            detect: `${reason}. The associated service will not authenticate.`,
+            action: `[mcp-env] Set ${key} in .agents/.env — ${description}. After editing, run \`direnv allow\` (or re-enter the directory) to reload the env.`,
+        });
+    }
+    return findings;
+}
+/**
+ * Returns true when running in a cloud/CI environment where direnv is not
+ * applicable (agent reads env vars from the platform dashboard instead).
+ */
+function isCloudOrCi() {
+    return !!(process.env.CI || process.env.CLAUDE_CODE_REMOTE || process.env.CURSOR_REMOTE_AGENT);
+}
+/**
+ * Advisory: direnv is not installed.
+ * Short-circuits in CI / cloud environments where direnv is irrelevant.
+ */
+export function detectDirenvMissing(cwd) {
+    if (isCloudOrCi())
+        return null;
+    // Only meaningful when .envrc exists (seeded by bkit install)
+    const envrcPath = path.join(cwd, ".envrc");
+    if (!fs.existsSync(envrcPath))
+        return null;
+    const result = spawnSync("which", ["direnv"], { encoding: "utf-8" });
+    if (result.status === 0 && result.stdout.trim())
+        return null;
+    return {
+        id: "mcp-env-direnv-missing",
+        severity: "advisory",
+        detect: ".envrc exists but direnv is not installed. .agents/.env will not be auto-loaded into your shell.",
+        action: "[mcp-env] direnv auto-loads .agents/.env into your shell on cd, so tokens stay scoped to the repo. Set it up:\n\n" +
+            "    # 1. One-time per machine — install direnv\n" +
+            "    brew install direnv                                              # macOS\n" +
+            "    # Linux / other: https://direnv.net/docs/installation.html\n\n" +
+            "    # 2. One-time per machine — add the shell hook, then reload\n" +
+            "    echo 'eval \"$(direnv hook zsh)\"' >> ~/.zshrc && source ~/.zshrc\n" +
+            "    # bash: echo 'eval \"$(direnv hook bash)\"' >> ~/.bashrc && source ~/.bashrc\n\n" +
+            "    # 3. One-time per repo — copy the example, fill in tokens, allow\n" +
+            "    cp .agents/.env.example .agents/.env                             # if not already done\n" +
+            "    # edit .agents/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY\n" +
+            "    direnv allow\n\n" +
+            "After step 3, restart Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers. Alternative if you do not want direnv: export GH_BKIT_TOKEN / GH_TOKEN / LINEAR_API_KEY in ~/.zshrc or ~/.bashrc directly — works but leaks tokens into every shell on this machine.",
+    };
+}
+/**
+ * Advisory: direnv is installed but the .envrc is blocked (not allowed).
+ * Short-circuits in CI / cloud environments.
+ */
+export function detectDirenvNotAllowed(cwd) {
+    if (isCloudOrCi())
+        return null;
+    // Only meaningful when .envrc exists
+    const envrcPath = path.join(cwd, ".envrc");
+    if (!fs.existsSync(envrcPath))
+        return null;
+    // Check direnv is installed first
+    const whichResult = spawnSync("which", ["direnv"], { encoding: "utf-8" });
+    if (whichResult.status !== 0 || !whichResult.stdout.trim())
+        return null;
+    // Run `direnv status` and check whether the .envrc is allowed
+    const statusResult = spawnSync("direnv", ["status"], {
+        cwd,
+        encoding: "utf-8",
+        timeout: 5000,
+    });
+    const statusOutput = (statusResult.stdout ?? "") + (statusResult.stderr ?? "");
+    // direnv status reports "Found RC allowed false" or "Found RC path ... Blocked" when not allowed
+    if (/Found RC\s+allowed\s+false/i.test(statusOutput) ||
+        /state:\s*blocked/i.test(statusOutput) ||
+        /not allowed/i.test(statusOutput)) {
+        return {
+            id: "mcp-env-direnv-not-allowed",
+            severity: "advisory",
+            detect: "direnv is installed but the .envrc in this repo is blocked. .agents/.env is not being auto-loaded.",
+            action: "[mcp-env] Run `direnv allow` in this repo to trust the .envrc and enable auto-load of .agents/.env. direnv will then export GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY into your shell whenever you cd into the repo.",
+        };
+    }
+    return null;
+}
+// ---------------------------------------------------------------------------
 // runPreflight — main Phase 1 entry point
 // ---------------------------------------------------------------------------
 /**
@@ -674,6 +880,14 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
     const observabilityDebugFetch = detectObservabilityDebugFetchMissing(cwd);
     if (observabilityDebugFetch)
         advisories.push(observabilityDebugFetch);
+    // Missing MCP server advisory — one finding per missing required key, per file.
+    for (const relPath of [".mcp.json", ".cursor/mcp.json"]) {
+        advisories.push(...detectMissingMcpServers(cwd, relPath));
+    }
+    // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),
+    // not here — Phase 1 cannot see the scaffolds (.agents/.env.example, .envrc) on
+    // a first install because writes have not happened yet. Detectors stay exported
+    // from this file so the postinstall module can call them.
     return {
         blockers: dedupeById(blockers),
         advisories: dedupeById(advisories),

@@ -205,7 +205,7 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 | File | `.claude/settings.json` → `permissions.{allow,deny,ask}` | `.cursor/settings.json` → `plugins.<name>.enabled` (per-plugin only); fine-grained file/bash gating not project-scoped — handled by Cursor UI/global config |
 | Granularity | Per-tool glob: `Bash(*)`, `Read(./.env)`, `WebFetch(domain:github.com)`, `Bash(rm -rf /*)` | Coarse per-plugin enable/disable |
 | Modes | `defaultMode: default \ | acceptEdits \ | plan \ | bypassPermissions` | Implicit per-mode (Composer / Agent / Background) |
-| MCP server config | `mcpServers.<name>.url` inline | `plugins.<name>.enabled` (Cursor auto-discovers from registry) |
+| MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) |
 
 **Install behaviour:** template drops, host-specific. No transform — these files have no canonical form.
 

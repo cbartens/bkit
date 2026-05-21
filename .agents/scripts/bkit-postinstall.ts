@@ -3,7 +3,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync } from "node:child_process";
-import type { PreflightFinding } from "./bkit-preflight.js";
+import {
+  type PreflightFinding,
+  detectMissingDotenv,
+  detectBlankDotenvKeys,
+  detectDirenvMissing,
+  detectDirenvNotAllowed,
+} from "./bkit-preflight.js";
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
@@ -529,6 +535,10 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
 /**
  * Detect whether `.github/dependabot.yml` exists. Without it, GHA action SHA
  * pins never get refreshed on upstream releases or CVE disclosure.
+ *
+ * This only fires when `bkit install --ci` has NOT been run (the CI module
+ * seeds dependabot.yml as Tier 3). If the file is absent, point at the
+ * canonical installer rather than duplicating the snippet here.
  */
 export function detectDependabotConfigMissing(cwd: string): PreflightFinding | null {
   const yml = path.join(cwd, ".github", "dependabot.yml");
@@ -542,14 +552,91 @@ export function detectDependabotConfigMissing(cwd: string): PreflightFinding | n
     detect:
       ".github/dependabot.yml is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures.",
     action:
-      "Seed a minimal `.github/dependabot.yml` with the `github-actions` ecosystem polling weekly:\n\n" +
+      "Run `pnpm bkit install --ci` to seed the bkit-shipped `.github/dependabot.yml` (Tier 3 seed-or-print). The shipped template covers the `github-actions` ecosystem with `target-branch: dev` (required for bkit branch-protection conventions) and a `chore(deps)` commit-message prefix.\n\n" +
+      "After seeding, the config must be merged all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on a feature branch or on dev alone is silently inert — no PRs will fire until it reaches the default branch.\n\n" +
+      "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and the canonical snippet (single source of truth: `.agents/templates/.github/dependabot.yml`).",
+  };
+}
+
+/**
+ * Detect whether `.github/dependabot.yml` exists but is missing `target-branch:
+ * dev` on at least one updates[] entry. bkit consumers gate `main` to
+ * PRs-from-dev only (see #67 / docs/deployments.md), so a Dependabot PR
+ * without target-branch: dev hits `main` and is rejected by branch protection
+ * — silent breakage of the update flow.
+ *
+ * Conservative match: regex for `target-branch:\s*dev`. Fires only when the
+ * file exists, has at least one `package-ecosystem:` entry, AND no
+ * `target-branch: dev` line appears anywhere. (Per-entry validation is left
+ * to the AI merge instructions emitted on seed-or-print.)
+ */
+export function detectDependabotTargetBranchMissing(cwd: string): PreflightFinding | null {
+  const yml = path.join(cwd, ".github", "dependabot.yml");
+  const yaml = path.join(cwd, ".github", "dependabot.yaml");
+  const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
+  if (!filePath) return null;
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+  // No updates[] entries → another detector handles invalid shape.
+  if (!/^\s*-\s*package-ecosystem:/m.test(content)) return null;
+  if (/^\s*target-branch:\s*dev\s*$/m.test(content)) return null;
+  return {
+    id: "dependabot-target-branch-missing",
+    severity: "advisory",
+    detect:
+      ".github/dependabot.yml exists but no updates[] entry declares `target-branch: dev`. Dependabot PRs will target the default branch (`main`), which bkit-convention branch protection rejects for non-dev PRs — the update flow will silently fail.",
+    action:
+      "Add `target-branch: dev` to every `updates[]` entry, e.g.:\n\n" +
+      "    updates:\n" +
+      "      - package-ecosystem: github-actions\n" +
+      "        directory: /\n" +
+      "        target-branch: dev\n" +
+      "        schedule:\n" +
+      "          interval: weekly\n\n" +
+      "Push the change all the way to `main` (GitHub reads dependabot.yml only from the default branch). Verify under repo Insights → Dependency graph → Dependabot that the config is recognised.",
+  };
+}
+
+/**
+ * Detect whether `.github/dependabot.yml` exists but fails basic shape checks
+ * (no `version: 2`, no `updates:` key, or starts with tabs that break YAML).
+ * Light-touch — not a full YAML parse, just regex-based smell tests. Full
+ * validation happens server-side on push.
+ */
+export function detectDependabotConfigInvalid(cwd: string): PreflightFinding | null {
+  const yml = path.join(cwd, ".github", "dependabot.yml");
+  const yaml = path.join(cwd, ".github", "dependabot.yaml");
+  const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
+  if (!filePath) return null;
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    return null;
+  }
+  const issues: string[] = [];
+  if (!/^\s*version:\s*2\s*$/m.test(content)) issues.push("missing `version: 2`");
+  if (!/^\s*updates:\s*$/m.test(content)) issues.push("missing `updates:` array");
+  if (/^\t/m.test(content)) issues.push("contains tab indentation (YAML requires spaces)");
+  if (issues.length === 0) return null;
+  return {
+    id: "dependabot-config-invalid",
+    severity: "advisory",
+    detect: `.github/dependabot.yml exists but is malformed: ${issues.join("; ")}. GitHub will silently ignore the config — no PRs will fire.`,
+    action:
+      "Repair the file. Required minimum shape:\n\n" +
       "    version: 2\n" +
       "    updates:\n" +
       "      - package-ecosystem: github-actions\n" +
       "        directory: /\n" +
+      "        target-branch: dev\n" +
       "        schedule:\n" +
-      '          interval: "weekly"\n\n' +
-      "Add `npm` / `pip` / other ecosystems the consumer cares about as siblings.",
+      "          interval: weekly\n\n" +
+      "Or run `pnpm bkit install --ci` and follow the merge advisory to overlay the bkit reference. Verify under repo Insights → Dependency graph → Dependabot after pushing to the default branch.",
   };
 }
 
@@ -938,7 +1025,7 @@ export function runPostInstallCheck(
       severity: "advisory",
       detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
       action:
-        "Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nOr manually: export GH_BKIT_TOKEN=<your-pat>\n\nThe token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
+        "Set GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
         AGENT_INLINE_SOURCE_GUIDANCE,
     });
   } else if (shellStatus === "empty") {
@@ -948,7 +1035,7 @@ export function runPostInstallCheck(
       detect:
         'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
       action:
-        "Re-export GH_BKIT_TOKEN with a valid token value in your shell profile (e.g. ~/.zshrc or ~/.bashrc):\n\n    export GH_BKIT_TOKEN=$(gh auth token)\n\nAn empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token.\n\n" +
+        "Set a non-empty GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .agents/.env.\n\n" +
         AGENT_INLINE_SOURCE_GUIDANCE,
     });
   }
@@ -1076,6 +1163,11 @@ export function runPostInstallCheck(
   if (gha) phase3.push(gha);
   const dependabot = detectDependabotConfigMissing(cwd);
   if (dependabot) phase3.push(dependabot);
+  // dependabot.yml exists but missing target-branch: dev or otherwise malformed.
+  const dependabotTargetBranch = detectDependabotTargetBranchMissing(cwd);
+  if (dependabotTargetBranch) phase3.push(dependabotTargetBranch);
+  const dependabotInvalid = detectDependabotConfigInvalid(cwd);
+  if (dependabotInvalid) phase3.push(dependabotInvalid);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
@@ -1098,6 +1190,17 @@ export function runPostInstallCheck(
   // devDeps need fetch
   const devDeps = detectDevDepsNeedFetch(ws);
   if (devDeps) phase3.push(devDeps);
+
+  // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
+  // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
+  // after writes, so Phase 1 cannot see them on first install.
+  const missingDotenv = detectMissingDotenv(cwd);
+  if (missingDotenv) phase3.push(missingDotenv);
+  phase3.push(...detectBlankDotenvKeys(cwd));
+  const direnvMissing = detectDirenvMissing(cwd);
+  if (direnvMissing) phase3.push(direnvMissing);
+  const direnvNotAllowed = detectDirenvNotAllowed(cwd);
+  if (direnvNotAllowed) phase3.push(direnvNotAllowed);
 
   // Intra-phase dedup (first occurrence wins)
   const deduped = dedupeById(phase3);

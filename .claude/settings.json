@@ -6,16 +6,8 @@
       "Bash(*)",
       "Edit(*)",
       "Write(*)",
-      "mcp__claude_ai_Linear__list_teams",
-      "mcp__claude_ai_Linear__list_projects",
-      "mcp__claude_ai_Linear__list_issues",
-      "mcp__claude_ai_Linear__list_issue_labels",
-      "mcp__claude_ai_Linear__list_issue_statuses",
-      "mcp__claude_ai_Linear__get_issue",
-      "mcp__claude_ai_Linear__get_issue_status",
-      "mcp__claude_ai_Linear__save_issue",
-      "mcp__claude_ai_Linear__list_comments",
-      "mcp__claude_ai_Linear__save_comment",
+      "mcp__github__*",
+      "mcp__claude_ai_Linear__*",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
@@ -58,11 +50,6 @@
       "Read(./.env.*)"
     ],
     "defaultMode": "default"
-  },
-  "mcpServers": {
-    "linear": {
-      "url": "https://mcp.linear.app/mcp"
-    }
   },
   "hooks": {
     "SessionStart": [

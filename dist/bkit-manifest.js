@@ -17,6 +17,9 @@ const CLAUDE_MANIFEST = [
     { path: ".claude/settings.json", format: "json", module: "claude" },
     { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
     { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "claude" },
+    { path: ".mcp.json", format: "byte-equal-text", module: "claude" },
+    { path: ".agents/.env.example", format: "byte-equal-text", module: "claude" },
+    { path: ".envrc", format: "byte-equal-text", module: "claude" },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -28,11 +31,13 @@ const CURSOR_MANIFEST = [
     { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
     { path: ".cursor/Dockerfile", format: "markered-text", module: "cursor" },
     { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
+    { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor" },
     // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 const CI_MANIFEST = [
     { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
     { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
+    { path: ".github/dependabot.yml", format: "byte-equal-text", module: "ci" },
     {
         path: "package.json",
         format: "markered-text",

@@ -150,7 +150,14 @@ function listFilesRecursive(dir: string): string[] {
 // BAR-167 Phase 1 — doctor surfaces tier2-json-drift and legacy-bkit-envelope advisories
 // ---------------------------------------------------------------------------
 
-import { detectLegacyBkitEnvelope, detectTier2JsonDrift, runPreflight } from "./bkit-preflight";
+import {
+  detectLegacyBkitEnvelope,
+  detectTier2JsonDrift,
+  detectDirenvMissing,
+  detectDirenvNotAllowed,
+  runPreflight,
+} from "./bkit-preflight";
+import { runPostInstallCheck } from "./bkit-postinstall";
 
 describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
   it("tier2-json-drift and legacy-bkit-envelope-detected surface through runPreflight", () => {
@@ -197,5 +204,103 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
     const ids = advisories.map((a) => a.id);
     expect(ids).not.toContain("legacy-bkit-envelope-detected");
     expect(ids).not.toContain("tier2-json-drift");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// BAR-260 follow-up — doctor surfaces [mcp-env] advisories
+// ---------------------------------------------------------------------------
+
+describe("bkit doctor — [mcp-env] advisory surface", () => {
+  it("mcp-env-missing-dotenv surfaces through runPostInstallCheck when .env.example exists but .env absent", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    // No .agents/.env
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
+    const ws = { writes: [], reverts: [] };
+    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
+  });
+
+  it("mcp-env-blank-key advisories surface when .agents/.env has blank values", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
+    const ws = { writes: [], reverts: [] };
+    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const ids = findings.map((a) => a.id);
+    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
+    expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("no mcp-env advisories when .agents/.env has all keys populated and no .envrc", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "utf-8",
+    );
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
+    const ws = { writes: [], reverts: [] };
+    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(false);
+    expect(findings.some((a) => a.id.startsWith("mcp-env-blank-key-"))).toBe(false);
+    // direnv advisories depend on system state — we only check the non-system advisories
+  });
+
+  it("direnv-not-allowed skips in CI environment", () => {
+    const originalCI = process.env.CI;
+    process.env.CI = "true";
+    try {
+      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+      const f = detectDirenvNotAllowed(tmpDir);
+      expect(f).toBeNull();
+    } finally {
+      if (originalCI === undefined) delete process.env.CI;
+      else process.env.CI = originalCI;
+    }
+  });
+
+  it("direnv-missing skips in CI environment", () => {
+    const originalCI = process.env.CI;
+    process.env.CI = "true";
+    try {
+      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+      const f = detectDirenvMissing(tmpDir);
+      expect(f).toBeNull();
+    } finally {
+      if (originalCI === undefined) delete process.env.CI;
+      else process.env.CI = originalCI;
+    }
+  });
+
+  it("doctor subprocess surfaces mcp-env advisory in output when .env.example present without .env", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", CI: "true" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toContain("mcp-env-missing-dotenv");
   });
 });
