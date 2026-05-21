@@ -553,7 +553,12 @@ export function detectDependabotConfigMissing(cwd: string): PreflightFinding | n
       ".github/dependabot.yml is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures.",
     action:
       "Run `pnpm bkit install --ci` to seed the bkit-shipped `.github/dependabot.yml` (Tier 3 seed-or-print). The shipped template covers the `github-actions` ecosystem with `target-branch: dev` (required for bkit branch-protection conventions) and a `chore(deps)` commit-message prefix.\n\n" +
-      "After seeding, the config must be merged all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on a feature branch or on dev alone is silently inert — no PRs will fire until it reaches the default branch.\n\n" +
+      "After seeding, two more steps are required for Dependabot to actually start opening PRs:\n\n" +
+      "  1. Merge the config all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on dev alone is silently inert.\n" +
+      "  2. Enable repo-level prerequisites (Dependabot alerts + automated security fixes). bkit ships a helper:\n\n" +
+      "         bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+      "     Idempotent; calls `gh api -X PUT` against `vulnerability-alerts` + `automated-security-fixes`. For private repos, the Dependency graph itself may also need a one-time UI toggle at Settings → Code security and analysis (no API surface for that one).\n\n" +
+      "Verify under repo Insights → Dependency graph → Dependabot that the config is recognised as Active after both steps.\n\n" +
       "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and the canonical snippet (single source of truth: `.agents/templates/.github/dependabot.yml`).",
   };
 }
@@ -637,6 +642,63 @@ export function detectDependabotConfigInvalid(cwd: string): PreflightFinding | n
       "        schedule:\n" +
       "          interval: weekly\n\n" +
       "Or run `pnpm bkit install --ci` and follow the merge advisory to overlay the bkit reference. Verify under repo Insights → Dependency graph → Dependabot after pushing to the default branch.",
+  };
+}
+
+/**
+ * Detect whether repo-level Dependabot prerequisites (Dependabot alerts +
+ * automated security fixes) are enabled. Without them, GitHub silently
+ * ignores `.github/dependabot.yml` — version updates never fire even with
+ * a perfectly valid config on the default branch.
+ *
+ * Probe semantics:
+ *   - GET /repos/{o}/{r}/vulnerability-alerts → 204 = enabled, 404 = disabled
+ *   - gh unavailable or unauthenticated → return null (no false positives)
+ *
+ * Fires only when `.github/dependabot.yml` exists; no point flagging prereqs
+ * if there is no config to read.
+ */
+export function detectDependabotRepoPrereqs(cwd: string): PreflightFinding | null {
+  const yml = path.join(cwd, ".github", "dependabot.yml");
+  const yaml = path.join(cwd, ".github", "dependabot.yaml");
+  if (!fs.existsSync(yml) && !fs.existsSync(yaml)) return null;
+
+  let alertsEnabled: boolean | null = null;
+  try {
+    execFileSync("gh", ["api", "repos/{owner}/{repo}/vulnerability-alerts"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+    });
+    alertsEnabled = true;
+  } catch (err) {
+    // gh emits non-zero on 404 (disabled) and on transport errors (gh missing,
+    // not a GitHub repo, unauthenticated). Distinguish via the message:
+    // disabled → stderr contains "404" / "Dependabot alerts are disabled".
+    const msg = String((err as { stderr?: Buffer | string }).stderr ?? err);
+    if (/404|disabled|alerts are disabled/i.test(msg)) {
+      alertsEnabled = false;
+    } else {
+      // Transport / auth / unknown — skip silently rather than emit a false advisory.
+      return null;
+    }
+  }
+  if (alertsEnabled !== false) return null;
+
+  return {
+    id: "dependabot-repo-prereqs-disabled",
+    severity: "advisory",
+    detect:
+      ".github/dependabot.yml exists but Dependabot alerts are disabled on this repo — GitHub will silently ignore the config and no PRs will fire.",
+    action:
+      "Enable repo-level prerequisites (idempotent). bkit ships a helper:\n\n" +
+      "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+      "Or call the GitHub API directly:\n\n" +
+      "    gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts\n" +
+      "    gh api -X PUT repos/{owner}/{repo}/automated-security-fixes\n\n" +
+      "For private repos, the Dependency graph itself may also need a manual toggle at\n" +
+      "Settings → Code security and analysis → Dependency graph (GitHub does not expose\n" +
+      "an API for this toggle). After enabling, verify under repo Insights → Dependency\n" +
+      "graph → Dependabot that `.github/dependabot.yml` is listed as Active.",
   };
 }
 
@@ -1168,6 +1230,9 @@ export function runPostInstallCheck(
   if (dependabotTargetBranch) phase3.push(dependabotTargetBranch);
   const dependabotInvalid = detectDependabotConfigInvalid(cwd);
   if (dependabotInvalid) phase3.push(dependabotInvalid);
+  // dependabot.yml present but repo-level prerequisites (Dependabot alerts) disabled.
+  const dependabotPrereqs = detectDependabotRepoPrereqs(cwd);
+  if (dependabotPrereqs) phase3.push(dependabotPrereqs);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);

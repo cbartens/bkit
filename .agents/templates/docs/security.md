@@ -39,6 +39,14 @@ updates:
 `target-branch: dev` is **mandatory**, not optional — bkit consumers gate `main` to PRs-from-dev-only, so Dependabot PRs without it hit `main` and are rejected by branch protection, silently breaking the update flow.
 
 > **Important:** GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`). The config must be merged all the way through `dev → main` before any PR fires. A new config on a feature branch or sitting on `dev` alone is silently inert — no PRs will open. Verify under repo **Insights → Dependency graph → Dependabot** that the config is recognised after pushing to `main`.
+>
+> **Repo-level prerequisites (silent breakage if skipped):** GitHub also requires Dependabot alerts + automated security fixes to be **on at the repo level** before it reads the config. Run once per repo:
+>
+> ```bash
+> bash scripts/ci/bkit-set-dependabot.sh
+> ```
+>
+> Idempotent — calls `gh api -X PUT` against `vulnerability-alerts` and `automated-security-fixes`. For private repos, the Dependency graph itself may need a one-time UI toggle at **Settings → Code security and analysis → Dependency graph** (no API surface for that switch). The `dependabot-repo-prereqs-disabled` advisory in `bkit install` / `bkit check` probes this state and flags it if the file is present but the prereqs are off.
 
 Dependabot scans every `uses:` line in `.github/workflows/*.yml` weekly and opens one PR per outdated action with release notes attached; CVE-driven PRs fire immediately regardless of schedule. Dependabot PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-ci-router` will not dispatch on them by design.
 

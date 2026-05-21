@@ -24,6 +24,7 @@ import {
   detectDependabotConfigMissing,
   detectDependabotTargetBranchMissing,
   detectDependabotConfigInvalid,
+  detectDependabotRepoPrereqs,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -907,6 +908,71 @@ describe("detectDependabotConfigInvalid", () => {
     const result = detectDependabotConfigInvalid(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toMatch(/tab/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDependabotRepoPrereqs
+// ---------------------------------------------------------------------------
+
+describe("detectDependabotRepoPrereqs", () => {
+  it("returns null when no dependabot.yml exists (nothing to gate)", () => {
+    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
+  });
+
+  it("returns null when gh reports vulnerability-alerts enabled (204)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    // gh api with 204 No Content returns empty stdout; execFileSync resolves normally.
+    execFileSync.mockReturnValue(Buffer.from(""));
+    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
+  });
+
+  it("fires when gh stderr contains 'Dependabot alerts are disabled'", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockImplementation(() => {
+      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from(
+        "gh: Dependabot alerts are disabled for this repository. (HTTP 403)\n",
+      );
+      throw err;
+    });
+    const result = detectDependabotRepoPrereqs(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dependabot-repo-prereqs-disabled");
+    expect(result!.action).toMatch(/bkit-set-dependabot\.sh/);
+  });
+
+  it("fires when gh stderr contains a generic 404", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockImplementation(() => {
+      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("HTTP 404: Not Found\n");
+      throw err;
+    });
+    expect(detectDependabotRepoPrereqs(tmpDir)).not.toBeNull();
+  });
+
+  it("returns null on gh transport error (auth missing / not a github repo) — no false positives", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockImplementation(() => {
+      const err = new Error("auth required") as Error & { stderr?: Buffer };
+      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
+      throw err;
+    });
+    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
+  });
+
+  it("returns null when gh is not installed (no stderr property on the thrown error)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockImplementation(() => {
+      throw new Error("ENOENT — gh not found");
+    });
+    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
   });
 });
 

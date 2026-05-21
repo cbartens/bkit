@@ -147,6 +147,6 @@ Composition guidance:
 
 ## GitHub Actions pinning
 
-Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/dependabot.yml` (ecosystem `github-actions`, weekly, `target-branch: dev`). Pinning without Dependabot is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` seeds the canonical config; remember Dependabot reads it ONLY from the default branch (`main`), so the file must reach `main` before any PR fires. Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
+Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/dependabot.yml` (ecosystem `github-actions`, weekly, `target-branch: dev`). Pinning without Dependabot is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` seeds the canonical config; remember Dependabot reads it ONLY from the default branch (`main`) AND only when repo-level Dependabot alerts are enabled (run `bash scripts/ci/bkit-set-dependabot.sh` once per repo). Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
 
 <!-- bkit:end -->
