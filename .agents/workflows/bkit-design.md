@@ -18,7 +18,7 @@ description: "Design Feature — Autonomous design phase"
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
@@ -27,9 +27,13 @@ description: "Design Feature — Autonomous design phase"
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — phase label persists.
-> - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
+
+<!-- bkit:tracker rule-block start -->
+
+> _Tracker not wired — skip._
+
+<!-- bkit:tracker rule-block end -->
+
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
 ---
@@ -50,8 +54,13 @@ description: "Design Feature — Autonomous design phase"
    git -C "$REPO_ROOT" commit -m "chore({FID}): design FAILED [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+2. <!-- bkit:tracker issue-update-failed start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-update-failed end -->
+3. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
@@ -91,14 +100,27 @@ description: "Design Feature — Autonomous design phase"
    ```
    **If** divergence check or lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
-2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
+2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Design"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
+4. <!-- bkit:tracker issue-id-extraction start -->
+   _Tracker not wired — skip ISSUE_ID resolution._
+   <!-- bkit:tracker issue-id-extraction end -->
+5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+   <!-- bkit:tracker issue-read start -->
+   _Tracker not wired — skip issue read._
+   <!-- bkit:tracker issue-read end -->
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
-7. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-8. Add `Design` phase to `{LABELS}` and drop old phase → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-9. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
+   <!-- bkit:tracker fid-format start -->
+   _Tracker not wired — skip FID regex assert._
+   <!-- bkit:tracker fid-format end -->
+8. <!-- bkit:tracker issue-update-phase start -->
+   _Tracker not wired — skip phase label update._
+   <!-- bkit:tracker issue-update-phase end -->
+9. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ## Design Workflow
    ### Step 1 — Start Workflow
@@ -107,10 +129,10 @@ description: "Design Feature — Autonomous design phase"
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] Issue update attempted (state `In Progress`, label `Design`)
+- [ ] Issue update attempted (phase label `bkit:design`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -173,7 +195,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -216,7 +241,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
    ```
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+4. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Brainstorm & Ideate
    ```
@@ -247,7 +275,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-generate"
    ```
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+4. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Generate Design
    [design-v1-draft.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md)
@@ -287,7 +318,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-review"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Design Review - Verdict: {REVIEW_VERDICT}
    ```
@@ -323,7 +357,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [design-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md)
@@ -359,7 +396,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-organise"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Design Organise - Verdict: {ORGANISE_VERDICT}
    [design-v3-organised.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md)
@@ -399,7 +439,10 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    git push origin $(git branch --show-current)
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
@@ -427,42 +470,60 @@ description: "Design Feature — Autonomous design phase"
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. Read `design-v3-organised.md` section `Design Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
-2. `list_issues({ parentId: "{ISSUE_ID}", limit: 250 })` → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
+2. <!-- bkit:tracker list-sub-issues start -->
+   _Tracker not wired — sub-issues list empty._
+   <!-- bkit:tracker list-sub-issues end -->
+   → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
 3. Per workstream `WS-{N}` in `WORKSTREAMS`:
-   - **If** `EXISTING[WS-{N}]` present → `save_comment({ issueId: "{EXISTING[WS-{N}].id}", body: "{BODY}"})` — `{BODY}` = fenced block below:
-   ```comment
-   ## Workstream Update — {FID}
-   **Parent issue:** {ISSUE_ID}
-   **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
-   **Workstream:** WS-{N} — {NAME}
-   **Requires:** {REQUIRES}
-   ### Scope
-   {SCOPE}
-   ### Rationale
-   {RATIONALE}
-   ```
-   Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
-   - **Else** → `save_issue({ parentId: "{ISSUE_ID}", team: "Bartens", title: "WS-{N}: {NAME}", description: "{DESCRIPTION}"})` — `{DESCRIPTION}` = fenced block below:
-   ```description
-   ## Workstream Create — {FID}
-   **Parent issue:** {ISSUE_ID}
-   **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
-   **Workstream:** WS-{N} — {NAME}
-   **Requires:** {REQUIRES}
-   ### Scope
-   {SCOPE}
-   ### Rationale
-   {RATIONALE}
-   ```
-   Capture returned `id` as `WORKSTREAM_ISSUE_ID[WS-{N}]`. **If** `id` empty → **Failure Path**.
-4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → `save_comment({ issueId: "{EXISTING[WS-{K}].id}", body: "{BODY}"})` — `{BODY}` = fenced block below:
+   - **If** `EXISTING[WS-{N}]` present → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{N}].id`.
+     <!-- bkit:tracker comment-on-issue start -->
+     _Tracker not wired — skip._
+     <!-- bkit:tracker comment-on-issue end -->
+     `{BODY}` = fenced block below:
+     ```comment
+     ## Workstream Update — {FID}
+     **Parent issue:** {ISSUE_ID}
+     **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
+     **Workstream:** WS-{N} — {NAME}
+     **Requires:** {REQUIRES}
+     ### Scope
+     {SCOPE}
+     ### Rationale
+     {RATIONALE}
+     ```
+     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
+   - **Else** → set `{SUB_TITLE}` = `WS-{N}: {NAME}`, `{SUB_BODY}` = description block below.
+     <!-- bkit:tracker create-sub-issue start -->
+     _Tracker not wired — skip sub-issue creation._
+     <!-- bkit:tracker create-sub-issue end -->
+     Description block:
+     ```description
+     ## Workstream Create — {FID}
+     **Parent issue:** {ISSUE_ID}
+     **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
+     **Workstream:** WS-{N} — {NAME}
+     **Requires:** {REQUIRES}
+     ### Scope
+     {SCOPE}
+     ### Rationale
+     {RATIONALE}
+     ```
+     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `{SUB_ISSUE_NUMBER}`. **If** `{SUB_ISSUE_NUMBER}` empty → **Failure Path**.
+4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{K}].id`.
+   <!-- bkit:tracker comment-on-issue start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker comment-on-issue end -->
+   `{BODY}` = fenced block below:
    ```comment
    ## Workstream Delete — {FID}
    **Parent issue:** {ISSUE_ID}
    **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
    No longer in current design. Body left unchanged.
    ```
-5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `BLOCKED_BY` = `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. `save_issue({ id: "{WORKSTREAM_ISSUE_ID[WS-{N}]}", blockedBy: BLOCKED_BY })`.
+5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `{BLOCKED_BY_LIST}` from `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. Set `{ISSUE_ID}` = `{WORKSTREAM_ISSUE_ID[WS-{N}]}` for this call.
+   <!-- bkit:tracker set-blocked-by start -->
+   _Tracker not wired — skip blocked-by._
+   <!-- bkit:tracker set-blocked-by end -->
 6. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -473,7 +534,10 @@ description: "Design Feature — Autonomous design phase"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues [skip build]"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Design Workstream Issues
    ```
@@ -481,10 +545,10 @@ description: "Design Feature — Autonomous design phase"
 ### 🔒 Gate 9 — Design Workstream Issues
 
 - [ ] Workstreams parsed (`WORKSTREAMS` non-empty)
-- [ ] Existing children listed (`list_issues` attempted)
+- [ ] Existing children listed (sub-issues read attempted)
 - [ ] Per workstream resolved (`WORKSTREAM_ISSUE_ID` populated, no empty ids)
 - [ ] Stale children commented (orphaned workstreams notified)
-- [ ] Issues BlockedBy edges attempted (per `Requires`)
+- [ ] Blocked-by edges attempted (per `Requires`)
 - [ ] Workflow status updated (step `design-workstream-issues` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 9` section)
 
@@ -533,8 +597,13 @@ description: "Design Feature — Autonomous design phase"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    ```
-5. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker issue-update-review start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-update-review end -->
+6. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Close Workflow
    ```
@@ -549,5 +618,5 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Changes merged to `dev` and pushed with `[skip ci]`
 - [ ] Worktree removed and feature branch deleted
-- [ ] Issue update attempted (state `In Review`; phase label `Design` preserved)
+- [ ] Issue update attempted (hand-off state via `issue-update-review`; phase label `bkit:design` preserved)
 - [ ] Issue comment attempted (`Step 10` section)
