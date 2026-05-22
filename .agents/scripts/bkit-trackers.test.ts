@@ -290,10 +290,15 @@ describe("loadTrackers (real file)", () => {
       "fid-format",
       "issue-read",
       "issue-update-phase",
+      "issue-update-review",
       "issue-update-failed",
       "issue-update-debug",
       "issue-update-merged",
       "comment-post-step",
+      "comment-on-issue",
+      "list-sub-issues",
+      "create-sub-issue",
+      "set-blocked-by",
       "phase-labels",
       "kill-switch-check",
       "pr-body-metadata",
@@ -315,8 +320,9 @@ describe("loadTrackers (real file)", () => {
     const none = trackers.get("none")!;
     // Most `none` stubs are single-line; allow a small margin for prose
     for (const [id, body] of none.entries()) {
-      // Skip `pr-body-metadata` and `fid-format` which carry useful no-tracker prose
-      if (id === "pr-body-metadata" || id === "fid-format") continue;
+      // Skip snippets that legitimately carry no-tracker prose (more than a single-line stub)
+      if (id === "pr-body-metadata" || id === "fid-format" || id === "issue-id-extraction")
+        continue;
       expect(body.split("\n").length, `${id} body too long for 'none'`).toBeLessThanOrEqual(3);
     }
   });

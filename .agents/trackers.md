@@ -38,20 +38,25 @@ Re-runnable: source `.agents/workflows/*.md` always has the no-tracker fallback 
 
 Every tracker section MUST define these sub-sections (snippet IDs):
 
-| Snippet ID            | What it provides                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------ |
-| `rule-block`          | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block     |
-| `issue-id-extraction` | Step 1 ISSUE_ID extraction patterns + fallback create-issue call                     |
-| `fid-format`          | FID slug format regex and example                                                    |
-| `issue-read`          | Read issue state + labels + body + comments                                          |
-| `issue-update-phase`  | Set phase label + state for current workflow                                         |
-| `issue-update-failed` | Failure Path label + state update                                                    |
-| `issue-update-debug`  | Debug additive label + state update                                                  |
-| `issue-update-merged` | Ship terminal state update                                                           |
-| `comment-post-step`   | Per-step comment post (NEW comment, MCP-only, no edit)                               |
-| `phase-labels`        | Mapping of workflow names to phase labels                                            |
-| `kill-switch-check`   | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label |
-| `pr-body-metadata`    | PR body marker for cross-workflow issue/FID resolution                               |
+| Snippet ID            | What it provides                                                                          |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `rule-block`          | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block          |
+| `issue-id-extraction` | Step 1 ISSUE_ID extraction patterns + fallback create-issue call                          |
+| `fid-format`          | FID slug format regex and example                                                         |
+| `issue-read`          | Read issue state + labels + body + comments                                               |
+| `issue-update-phase`  | Set phase label + tracker-specific "active" state for current workflow                    |
+| `issue-update-review` | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition         |
+| `issue-update-failed` | Failure Path additive label + state update                                                |
+| `issue-update-debug`  | Debug additive label + state update                                                       |
+| `issue-update-merged` | Ship terminal state update (`bkit:merged`, close issue if tracker supports)               |
+| `comment-post-step`   | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}`             |
+| `comment-on-issue`    | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
+| `list-sub-issues`     | Enumerate sub-issues of a parent (design Step 9 workstream sync)                          |
+| `create-sub-issue`    | Create a new sub-issue attached to a parent                                               |
+| `set-blocked-by`      | Set `blockedBy` edges on an issue (workstream `Requires` propagation)                     |
+| `phase-labels`        | Mapping of workflow names to phase labels                                                 |
+| `kill-switch-check`   | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label      |
+| `pr-body-metadata`    | PR body marker for cross-workflow issue/FID resolution                                    |
 
 `none` defines the same snippet IDs, but every body is a single-line stub.
 
@@ -85,6 +90,10 @@ GitHub Issues + Projects v2. Default tracker.
 
 Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
 
+### issue-update-review
+
+GitHub no-op. Issue stays `open`; phase label set in `issue-update-phase` carries the completion signal until the next phase or terminal ship close (`issue-update-merged`).
+
 ### issue-update-failed
 
 Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
@@ -100,6 +109,31 @@ Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present
 ### comment-post-step
 
 `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+
+### comment-on-issue
+
+`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
+
+### list-sub-issues
+
+`mcp__github__issue_read({ method: "get_sub_issues", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract sub-issues array. Each entry has `number` (user-facing #N), `id` (internal node ID for sub-issue attach calls), `title`, `state`.
+
+### create-sub-issue
+
+Two-step (GitHub has no `parentId` field on issue create):
+
+1. `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}`.
+2. `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
+
+### set-blocked-by
+
+GitHub Issues have no native `blockedBy` field. Encode via issue body marker block:
+
+1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `body` as `{CURRENT_BODY}`.
+2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
+3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
+
+`/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body.
 
 ### phase-labels
 
@@ -159,6 +193,10 @@ Linear (opt-in). Keep available for consumers who prefer Linear as the canonical
 
 Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
 
+### issue-update-review
+
+Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
+
 ### issue-update-failed
 
 Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
@@ -174,6 +212,22 @@ Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present
 ### comment-post-step
 
 `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+
+### comment-on-issue
+
+`mcp__linear__save_comment({ issueId: "{TARGET_ISSUE_ID}", body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
+
+### list-sub-issues
+
+`mcp__linear__list_issues({ parentId: "{ISSUE_ID}", limit: 250 })` → extract sub-issues array. Each entry has `id` (Linear team-prefixed e.g. `BAR-124`), `title`, `state.name`.
+
+### create-sub-issue
+
+`mcp__linear__save_issue({ parentId: "{ISSUE_ID}", team: "{LINEAR_TEAM}", title: "{SUB_TITLE}", description: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `id` as `{SUB_ISSUE_NUMBER}`. Linear handles parent attachment via `parentId` in the create call (no second call needed).
+
+### set-blocked-by
+
+`mcp__linear__save_issue({ id: "{ISSUE_ID}", blockedBy: [{BLOCKED_BY_LIST}] })` — `{BLOCKED_BY_LIST}` is an array of Linear issue IDs (e.g. `["BAR-123", "BAR-124"]`). Linear treats `blockedBy` as append-only; re-runs with unchanged edges are no-ops.
 
 ### phase-labels
 
@@ -229,6 +283,10 @@ _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/
 
 _Tracker not wired — skip._
 
+### issue-update-review
+
+_Tracker not wired — skip._
+
 ### issue-update-failed
 
 _Tracker not wired — skip._
@@ -244,6 +302,22 @@ _Tracker not wired — skip._
 ### comment-post-step
 
 _Tracker not wired — skip comment post._
+
+### comment-on-issue
+
+_Tracker not wired — skip._
+
+### list-sub-issues
+
+_Tracker not wired — sub-issues list empty._
+
+### create-sub-issue
+
+_Tracker not wired — skip sub-issue creation._
+
+### set-blocked-by
+
+_Tracker not wired — skip blocked-by._
 
 ### phase-labels
 
