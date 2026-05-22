@@ -6,6 +6,7 @@
 //   deepContains          — from bkit-tiers.ts (JSON containment primitive)
 //   extractManagedBlock   — from bkit-install.ts (marker block extraction)
 //   getPkgRoot            — from bkit-paths.ts (package root resolver, no cycle)
+//   parseIssueTracker     — from bkit-manifest.ts (pure data, no cycle)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -13,6 +14,7 @@ import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
 import { extractManagedBlock } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
+import { parseIssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
 // Internal helper
 // ---------------------------------------------------------------------------
@@ -199,8 +201,8 @@ export function detectBkitVersionPinStale(cwd) {
  */
 const BKIT_GITIGNORE_LINES = [
     ".worktrees/",
-    "docs/plans/logs/**/raw/",
-    "docs/plans/logs/**/.lock",
+    "docs/plans/*/logs/**/raw/",
+    "docs/plans/*/logs/**/.lock",
     ".husky/_",
     ".agents/advisories.md",
     ".agents/.env",
@@ -578,8 +580,24 @@ function semverGt(a, b) {
 /**
  * The set of MCP server keys that bkit considers required in any mcpServers object.
  * Exported so tests can reference it without duplication.
+ *
+ * For tracker-aware checks use `requiredMcpServersForTracker(tracker)` instead.
  */
 export const REQUIRED_MCP_SERVERS = ["linear", "github"];
+/**
+ * Return the MCP server keys required for a given issue tracker.
+ *
+ * - `github`  → only `github` MCP server required (Linear gate is a no-op on GitHub tracker).
+ * - `linear`  → both `linear` and `github` required (Linear tracker still dispatches via GitHub PR).
+ * - `none`    → `github` only (tracker calls are no-ops; GitHub surface still needed for PR ops).
+ */
+export function requiredMcpServersForTracker(tracker) {
+    if (tracker === "github")
+        return ["github"];
+    if (tracker === "linear")
+        return ["linear", "github"];
+    return ["github"]; // none — only GitHub for PR surface
+}
 /**
  * Advisory: one finding per missing required MCP server key in a given mcp.json file.
  *
@@ -589,9 +607,12 @@ export const REQUIRED_MCP_SERVERS = ["linear", "github"];
  *   - File present, mcpServers missing a required key → one advisory per missing key
  *   - File present, all required keys present → return []
  *
+ * Pass `issueTracker` to narrow which MCP servers are required. Defaults to checking
+ * `REQUIRED_MCP_SERVERS` (all servers) for backward compatibility.
+ *
  * Follows `[context] Message` advisory format.
  */
-export function detectMissingMcpServers(cwd, relPath) {
+export function detectMissingMcpServers(cwd, relPath, issueTracker) {
     const absPath = path.join(cwd, relPath);
     if (!fs.existsSync(absPath))
         return [];
@@ -605,8 +626,9 @@ export function detectMissingMcpServers(cwd, relPath) {
     const mcpServers = doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
         ? doc.mcpServers
         : null;
+    const requiredServers = issueTracker !== undefined ? requiredMcpServersForTracker(issueTracker) : REQUIRED_MCP_SERVERS;
     const findings = [];
-    for (const key of REQUIRED_MCP_SERVERS) {
+    for (const key of requiredServers) {
         if (mcpServers && Object.prototype.hasOwnProperty.call(mcpServers, key))
             continue;
         const urlHint = key === "linear"
@@ -777,6 +799,25 @@ export function detectDirenvNotAllowed(cwd) {
 // runPreflight — main Phase 1 entry point
 // ---------------------------------------------------------------------------
 /**
+ * Read `bkit.issueTracker` from the consumer's package.json.
+ * Returns the tracker value or the default ("none") when absent / unreadable.
+ * Internal helper — not exported; use runPreflight's `issueTracker` param.
+ */
+function readConsumerIssueTrackerForPreflight(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return DEFAULT_ISSUE_TRACKER;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const bkitField = pkg.bkit;
+        const parsed = parseIssueTracker(bkitField?.issueTracker);
+        return parsed ?? DEFAULT_ISSUE_TRACKER;
+    }
+    catch {
+        return DEFAULT_ISSUE_TRACKER;
+    }
+}
+/**
  * Run all Phase 1 (read-only) detectors.
  * Returns deduplicated { blockers, advisories } — intra-phase dedup by id,
  * first occurrence wins.
@@ -784,8 +825,13 @@ export function detectDirenvNotAllowed(cwd) {
  * cwd defaults to process.cwd(). Pass explicitly in tests.
  * installingVersion: used by detectBkitVersionMajorDowngrade; defaults to the
  * package's own version read from its package.json at runtime.
+ * issueTracker: when provided, narrows tracker-specific checks (e.g. MCP server
+ * requirements). When omitted, read from consumer's `bkit.issueTracker` in package.json.
+ *
+ * GitHub tracker gate: when `issueTracker === "github"`, the Linear preflight
+ * gate is a no-op — the GitHub gate is enforced by workflow Step 1 via MCP.
  */
-export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
+export function runPreflight(modules, cwd = process.cwd(), installingVersion, issueTracker) {
     // Resolve installing version if not provided
     let version = installingVersion;
     if (!version) {
@@ -805,6 +851,10 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
             version = "0.0.0";
         }
     }
+    // Resolve issueTracker: use provided value or read from consumer package.json.
+    // GitHub tracker gate: when issueTracker === "github", Linear preflight is a no-op
+    // (the GitHub gate is enforced by workflow Step 1 via MCP — hook is no-op).
+    const resolvedTracker = issueTracker ?? readConsumerIssueTrackerForPreflight(cwd);
     const blockers = [];
     const advisories = [];
     // --- Blocker detectors ---
@@ -881,8 +931,10 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion) {
     if (observabilityDebugFetch)
         advisories.push(observabilityDebugFetch);
     // Missing MCP server advisory — one finding per missing required key, per file.
+    // Tracker-aware: when issueTracker === "github", only github MCP server is required
+    // (Linear gate is a no-op on GitHub tracker — gate moved into workflow Step 1 via MCP).
     for (const relPath of [".mcp.json", ".cursor/mcp.json"]) {
-        advisories.push(...detectMissingMcpServers(cwd, relPath));
+        advisories.push(...detectMissingMcpServers(cwd, relPath, resolvedTracker));
     }
     // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),
     // not here — Phase 1 cannot see the scaffolds (.agents/.env.example, .envrc) on

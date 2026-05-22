@@ -14,7 +14,12 @@ import {
 } from "./bkit-postinstall.js";
 import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade.js";
-import type { ModuleName } from "./bkit-manifest.js";
+import {
+  type ModuleName,
+  type IssueTracker,
+  DEFAULT_ISSUE_TRACKER,
+  parseIssueTracker,
+} from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
 // Staging helpers (P4.T1 / P4.T2)
@@ -760,7 +765,7 @@ function getInstallingVersion(): string {
 }
 
 async function main() {
-  const { verb, modules, uninstallFlags, upgradeFlags } = parseArgs(process.argv.slice(2));
+  const { verb, modules, uninstallFlags, upgradeFlags, tracker } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
@@ -924,6 +929,51 @@ async function main() {
   const ws: WriteSet = { writes: [] };
   const postDispatch: Array<() => void> = [];
 
+  // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
+  // package.json; else default to "none".
+  let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
+  {
+    const consumerPkgPath = path.join(process.cwd(), "package.json");
+    if (fs.existsSync(consumerPkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+        const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+        const stored = parseIssueTracker(bkitField?.issueTracker);
+        if (stored !== null) issueTracker = stored;
+      } catch {
+        // non-fatal — keep default
+      }
+    }
+    if (tracker !== null) {
+      issueTracker = tracker;
+      // Persist to consumer package.json so subsequent installs (without --tracker=) reuse it.
+      const consumerPkgPath2 = path.join(process.cwd(), "package.json");
+      if (fs.existsSync(consumerPkgPath2) && !dryRun) {
+        try {
+          const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
+          const pkg = JSON.parse(raw) as Record<string, unknown>;
+          const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
+          bkit.issueTracker = tracker;
+          pkg.bkit = bkit;
+          const indentMatch = raw.match(/\n([ \t]+)"/);
+          const indent = indentMatch ? indentMatch[1] : "  ";
+          const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+          fs.writeFileSync(
+            consumerPkgPath2,
+            JSON.stringify(pkg, null, indent) + trailingNewline,
+            "utf-8",
+          );
+          console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+        } catch {
+          // non-fatal
+        }
+      }
+    }
+  }
+
   const ctx: ModuleContext = {
     dryRun,
     tokens,
@@ -932,6 +982,7 @@ async function main() {
     ws,
     logPrefix: LOG_PREFIX,
     postDispatch,
+    issueTracker,
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---

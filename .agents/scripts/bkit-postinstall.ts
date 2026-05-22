@@ -13,6 +13,7 @@ import {
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
+import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
 
 export type { PreflightFinding };
 
@@ -796,6 +797,71 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
 }
 
 /**
+ * Read `bkit.issueTracker` from the consumer's package.json.
+ * Returns the tracker value or the default ("none") when absent / unreadable.
+ */
+function readConsumerIssueTracker(cwd: string): IssueTracker {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return DEFAULT_ISSUE_TRACKER;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    const parsed = parseIssueTracker(bkitField?.issueTracker);
+    return parsed ?? DEFAULT_ISSUE_TRACKER;
+  } catch {
+    return DEFAULT_ISSUE_TRACKER;
+  }
+}
+
+/**
+ * Emit a tracker-specific setup advisory.
+ *
+ * - `github`  → GitHub tracker: MCP auth is browser OAuth — no PAT needed for tracker calls.
+ * - `linear`  → existing Linear setup message (LINEAR_API_KEY + LINEAR_ISSUE_ID).
+ * - `none`    → prompt to run `bkit install --tracker=github` or `--tracker=linear`.
+ *
+ * Only fires when bkit workflows are installed (.claude/ or .cursor/ present).
+ */
+export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null {
+  const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
+  const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
+  if (!hasClaude && !hasCursor) return null;
+
+  const tracker = readConsumerIssueTracker(cwd);
+
+  if (tracker === "github") {
+    return {
+      id: "tracker-setup-github",
+      severity: "advisory",
+      detect:
+        "bkit tracker is configured as `github`. GitHub Issues + Projects v2 is the active tracker.",
+      action:
+        "GitHub tracker: MCP auth is browser OAuth — run `gh auth login` once for CLI surface. No PAT needed for tracker calls. The GitHub MCP server uses OAuth automatically on first tool call. Ensure the `github` MCP server is configured in `.mcp.json` and `.cursor/mcp.json`.",
+    };
+  }
+
+  if (tracker === "linear") {
+    return {
+      id: "tracker-setup-linear",
+      severity: "advisory",
+      detect: "bkit tracker is configured as `linear`. Linear is the active tracker.",
+      action:
+        "Linear tracker: set `LINEAR_API_KEY` in `.agents/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
+    };
+  }
+
+  // tracker === "none"
+  return {
+    id: "tracker-setup-none",
+    severity: "advisory",
+    detect:
+      "bkit tracker is not configured (`bkit.issueTracker` = `none` or absent). Workflows run but every tracker call is a no-op.",
+    action:
+      "Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`.",
+  };
+}
+
+/**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
  * the consumer's repo has at least one bkit-ci-router workflow installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
@@ -1250,6 +1316,10 @@ export function runPostInstallCheck(
       });
     }
   }
+
+  // Tracker-specific setup advisory — branch on bkit.issueTracker.
+  const trackerSetup = buildTrackerSetupAdvisory(cwd);
+  if (trackerSetup) phase3.push(trackerSetup);
 
   // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);

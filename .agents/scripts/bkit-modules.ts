@@ -24,7 +24,8 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import { getPkgRoot } from "./bkit-paths.js";
-import { getInstallManifest } from "./bkit-manifest.js";
+import { getInstallManifest, type IssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
+import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,6 +110,8 @@ export interface ModuleContext {
    * (e.g. writing .bkit-version after all modules return cleanly).
    */
   postDispatch: Array<() => void>;
+  /** Issue tracker for workflow mirror substitution. Default: "none". */
+  issueTracker: IssueTracker;
 }
 
 export type ModuleFn = (ctx: ModuleContext) => void;
@@ -260,7 +263,7 @@ const COPY_EXCLUDE = new Set([
 // BAR-165: every path here MUST also be listed in .agents/templates/.prettierignore
 // (the bkit:start/end block) so consumer prettier — which may resolve a different
 // printWidth than bkit's 100 — does not lint canonical content that the consumer
-// cannot edit. The invariant is asserted by templates.test.ts.
+// cannot edit. The invariant is asserted by bkit-templates.content.test.ts.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([
   ".agents/prompts.md",
   ".agents/workflows.md",
@@ -484,6 +487,10 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
+  // Load tracker snippets once for this module run (reads from bkit package root).
+  const trackers = loadTrackers(getPkgRoot());
+  const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+
   const pairs: Array<[string, string]> = [
     [".agents/workflows", ".claude/commands"],
     [".agents/prompts", ".claude/agents"],
@@ -495,7 +502,12 @@ export function runClaudeModule(ctx: ModuleContext): void {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      if (installFile(path.join(src, f), path.join(dest, f), null, dryRun)) {
+      // Apply tracker substitution for workflow files; prompts are byte-identical.
+      const transform: ((c: string) => string) | null =
+        src === ".agents/workflows"
+          ? (c: string) => substituteWorkflow(c, issueTracker, trackers).output
+          : null;
+      if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
       }
     }
@@ -583,6 +595,13 @@ export function runClaudeModule(ctx: ModuleContext): void {
       // Background Agents setup. The repo hooks are half the picture; the
       // cloud-side setup script (Claude) + Dockerfile (Cursor) are the other
       // half. Both clouds are now aligned on vale 3.9.1 + pnpm 10.33.0 + gh.
+      // Tracker-aware: env var list differs by issueTracker.
+      const trackerEnvNote =
+        issueTracker === "github"
+          ? "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n"
+          : issueTracker === "linear"
+            ? "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n"
+            : "  - Tracker env vars: tracker not wired (`bkit.issueTracker` = `none`). Run `bkit install --tracker=github` to enable. GitHub tracker uses browser OAuth — no PAT required.\n";
       advisories.push({
         id: "cloud-env-customize",
         severity: "advisory",
@@ -597,37 +616,36 @@ export function runClaudeModule(ctx: ModuleContext): void {
           "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
           "  - Name: `bkit-shared` (or per-repo).\n" +
           "  - Setup script: paste from `.agents/cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
-          "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+          "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+          trackerEnvNote +
           "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.\n\n" +
           "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
-          "  - `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — don't hardcode.\n" +
+          "  - `GH_TOKEN`, `GH_BKIT_TOKEN`.\n" +
+          trackerEnvNote +
           "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.",
       });
     }
   }
 
-  // Byte-equal-text — manifest format: "byte-equal-text" — .mcp.json root-level MCP config.
-  // Tier 3 seed-or-print: write on first install, emit advisory if consumer has modified it.
-  // File is consumer-configurable (consumers add project-specific MCP servers); bkit seeds
-  // the canonical linear + github entries and defers future edits to consumer.
+  // Byte-equal-text — .mcp.json root-level MCP config — Tier 3 seed-or-print.
+  // Content is filtered by issueTracker: only the selected tracker's mcpServers entry is seeded.
   {
     const mcpSrc = path.join(PKG_ROOT, ".agents", "templates", ".mcp.json");
     const mcpDst = ".mcp.json";
-    if (fs.existsSync(mcpSrc)) {
-      const prevLen = ws.writes.length;
-      const result = writeTier3(
-        mcpSrc,
-        mcpDst,
-        dryRun,
-        advisories,
-        ws,
-        MCP_ROOT_MERGE_INSTRUCTIONS,
-      );
-      if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
-      } else if (result.suggested) {
-        console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
-      }
+    const prevLen = ws.writes.length;
+    const result = seedMcpJson(
+      mcpSrc,
+      mcpDst,
+      issueTracker,
+      MCP_ROOT_MERGE_INSTRUCTIONS,
+      dryRun,
+      advisories,
+      ws,
+    );
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}claude: ${mcpDst}`);
+    } else if (result.suggested) {
+      console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
     }
   }
 
@@ -693,7 +711,11 @@ export function runCursorModule(ctx: ModuleContext): void {
   const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
-  // Commands: T1 + T2
+  // Load tracker snippets once for this module run.
+  const trackers = loadTrackers(getPkgRoot());
+  const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+
+  // Commands: tracker substitution → T1 → T2
   {
     const src = ".agents/workflows";
     const dest = ".cursor/commands";
@@ -702,7 +724,8 @@ export function runCursorModule(ctx: ModuleContext): void {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      const transform = (c: string) => applyT2(applyT1(c));
+      const transform = (c: string) =>
+        applyT2(applyT1(substituteWorkflow(c, issueTracker, trackers).output));
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
       }
@@ -816,7 +839,6 @@ export function runCursorModule(ctx: ModuleContext): void {
       ".cursor/environment.json",
       CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS,
     ],
-    [path.join(cursorTemplates, "mcp.json"), ".cursor/mcp.json", CURSOR_MCP_MERGE_INSTRUCTIONS],
   ];
   for (const [src, dst, msg] of tier3Files) {
     if (!fs.existsSync(src)) continue;
@@ -826,6 +848,29 @@ export function runCursorModule(ctx: ModuleContext): void {
       console.log(`${logPrefix} ${tag}cursor: ${dst}`);
     } else if (result.suggested) {
       console.log(`${logPrefix} ${tag}cursor: ${dst} (exists; AI merge instructions printed)`);
+    }
+  }
+
+  // .cursor/mcp.json — Tier 3 seed-or-print, filtered by issueTracker (same as .mcp.json).
+  {
+    const cursorMcpSrc = path.join(cursorTemplates, "mcp.json");
+    const cursorMcpDst = ".cursor/mcp.json";
+    const prevLen = ws.writes.length;
+    const result = seedMcpJson(
+      cursorMcpSrc,
+      cursorMcpDst,
+      issueTracker,
+      CURSOR_MCP_MERGE_INSTRUCTIONS,
+      dryRun,
+      advisories,
+      ws,
+    );
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst}`);
+    } else if (result.suggested) {
+      console.log(
+        `${logPrefix} ${tag}cursor: ${cursorMcpDst} (exists; AI merge instructions printed)`,
+      );
     }
   }
 }
@@ -1123,6 +1168,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Open .envrc. Compare against the bkit reference below.
   Ensure the file contains \`dotenv_if_exists .agents/.env\` so direnv
   auto-exports the tokens into your shell. Keep any existing lines.
+  You can append more \`dotenv_if_exists <path>\` lines to expose additional
+  env files (e.g. .env.local, infra/secrets.env); run \`direnv allow\` after.
 
   --- begin bkit reference .envrc ---
 {{TEMPLATE_CONTENT}}
@@ -1134,13 +1181,67 @@ const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not o
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .mcp.json. Compare against the bkit reference below.
-  Ensure the mcpServers object contains entries for both "linear" and "github".
   Keep any project-specific server entries you have added.
 
   --- begin bkit reference .mcp.json ---
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .mcp.json ---
 `;
+
+/**
+ * Build filtered `.mcp.json` content for the given tracker.
+ * - "github"  → keep only the `github` mcpServers entry.
+ * - "linear"  → keep only the `linear` mcpServers entry.
+ * - "none"    → empty mcpServers object (tracker not wired).
+ */
+function buildMcpJson(templatePath: string, tracker: IssueTracker): string {
+  const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
+    mcpServers?: Record<string, unknown>;
+  };
+  const all = template.mcpServers ?? {};
+  const filtered: Record<string, unknown> = {};
+  if (tracker !== "none" && Object.prototype.hasOwnProperty.call(all, tracker)) {
+    filtered[tracker] = all[tracker];
+  }
+  return JSON.stringify({ mcpServers: filtered }, null, 2) + "\n";
+}
+
+/**
+ * Seed-or-suggest a tracker-filtered MCP JSON file (Tier 3 semantics).
+ * Absent → seed with filtered content. Present+different → push advisory.
+ */
+function seedMcpJson(
+  templatePath: string,
+  dstPath: string,
+  tracker: IssueTracker,
+  mergeInstructions: string,
+  dryRun: boolean,
+  advisories: PreflightFinding[],
+  ws: WriteSet,
+): { suggested: boolean } {
+  if (!fs.existsSync(templatePath)) return { suggested: false };
+  const content = buildMcpJson(templatePath, tracker);
+  const basename = path.basename(dstPath);
+  if (fs.existsSync(dstPath)) {
+    const existing = fs.readFileSync(dstPath, "utf-8");
+    if (existing !== content) {
+      advisories.push({
+        id: `tier3-merge-suggested-${basename}`,
+        severity: "advisory",
+        detect: `${dstPath} exists and differs from the bkit reference. Manual merge required.`,
+        action: mergeInstructions.replace(/\{\{TEMPLATE_CONTENT\}\}/g, () => content.trimEnd()),
+      });
+      return { suggested: true };
+    }
+    return { suggested: false };
+  }
+  ws.writes.push({ path: dstPath, action: "write" });
+  if (!dryRun) {
+    ensureDir(path.dirname(dstPath));
+    fs.writeFileSync(dstPath, content, "utf-8");
+  }
+  return { suggested: false };
+}
 
 const CURSOR_MCP_MERGE_INSTRUCTIONS = `[bkit] .cursor/mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
 

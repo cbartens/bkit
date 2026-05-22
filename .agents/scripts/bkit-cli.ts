@@ -1,7 +1,10 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
 
+import { ISSUE_TRACKERS, type IssueTracker, parseIssueTracker } from "./bkit-manifest.js";
+
 export type ModuleFlag = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks" | "full";
+export type { IssueTracker };
 
 export type Verb = "install" | "check" | "doctor" | "uninstall" | "upgrade" | "help";
 
@@ -12,6 +15,8 @@ export interface ParsedArgs {
   uninstallFlags: UninstallFlags;
   /** Upgrade-specific flags (only populated when verb === "upgrade"). */
   upgradeFlags: UpgradeFlags;
+  /** Issue tracker selected via `--tracker=<name>`. null = not specified (use manifest field or default). */
+  tracker: IssueTracker | null;
 }
 
 export interface UninstallFlags {
@@ -121,10 +126,25 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const moduleFlags = new Set<ModuleFlag>();
   const uninstallFlags = defaultUninstallFlags();
   const upgradeFlags = defaultUpgradeFlags();
+  let tracker: IssueTracker | null = null;
 
   for (const arg of args) {
     if (arg.startsWith("--")) {
       const flag = arg.slice(2);
+
+      // Value-bearing flag: --tracker=<github|linear|none>
+      if (flag.startsWith("tracker=")) {
+        const value = flag.slice("tracker=".length);
+        const parsed = parseIssueTracker(value);
+        if (parsed === null) {
+          console.error(
+            `[bkit] Unknown tracker: "${value}". Valid values: ${ISSUE_TRACKERS.join(", ")}`,
+          );
+          process.exit(1);
+        }
+        tracker = parsed;
+        continue;
+      }
 
       // Uninstall-specific flags (accepted for all verbs that use them)
       if (flag === "dry-run") {
@@ -183,7 +203,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   const modules = resolveModules(moduleFlags);
 
-  return { verb, modules, uninstallFlags, upgradeFlags };
+  return { verb, modules, uninstallFlags, upgradeFlags, tracker };
 }
 
 export function printUsage(): void {
@@ -221,7 +241,10 @@ Uninstall flags:
   --keep-tooling  Preserve tooling devDependencies (prettier/slop-scan/husky).
 
 Install flags:
-  --auto-revert   On Phase 3 blocker, automatically run uninstall and exit 1.
+  --auto-revert         On Phase 3 blocker, automatically run uninstall and exit 1.
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none (default).
+                        Writes bkit.issueTracker to package.json and substitutes tracker snippets
+                        into workflow mirrors (.claude/commands/, .cursor/commands/).
 
 Upgrade flags:
   --non-interactive  Auto-apply non-conflicting changes; emit conflict list to stderr;

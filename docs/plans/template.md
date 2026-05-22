@@ -1,4 +1,4 @@
-<\!-- Note: Save draft plans in `docs/plans/drafts/`. Move to `docs/plans/active/` when approved for execution. -->
+<\!-- Note: Plans live at `docs/plans/{YYYYMM}/{FID}-plan.md` (canonical month bucket). `{YYYYMM}` = creation month, set once at design start. Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/` and are delete-eligible. -->
 
 # [Plan Title] Implementation Plan
 

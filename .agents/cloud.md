@@ -18,7 +18,7 @@
 <!-- prettier-ignore -->
 | Configuration | Lives in the repo (bkit-managed) | Lives in the online dashboard (manual, one-time) |
 | --- | --- | --- |
-| **Claude Code on the web** | `.claude/hooks/preflight.sh` (Linear guard) + `.claude/hooks/cloud-bootstrap.sh` (per-session install — Tier 2 markered, customise outside markers) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`), **network access** (`Trusted`) |
+| **Claude Code on the web** | `.claude/hooks/preflight.sh` (tracker opt-in guard) + `.claude/hooks/cloud-bootstrap.sh` (per-session install — Tier 2 markered, customise outside markers) | `claude.ai/code` → environment selector → **+ Add environment**: name, **setup script** (paste from § Setup script), **environment variables** (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY` if using Linear tracker, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`), **network access** (`Trusted`) |
 | **Cursor Background Agents** | `.cursor/Dockerfile` (Tier 2 markered toolchain block + consumer extensions) + `.cursor/environment.json` (consumer-owned `install` / `start` / `terminals[]` / `env`) + `.cursor/hooks.json` (wires preflight `failClosed: true`) + `.cursor/hooks/preflight.sh` (Linear guard) | Cursor → **Settings → Background Agents → Environment Variables**: `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. (`LINEAR_ISSUE_ID` injected per-session by the integration — don't hardcode.) |
 
 **Rule of thumb:** if it's an env var or auth token, it goes in the online dashboard (out of git). If it's a script / Dockerfile / install hook, it lives in the repo.
@@ -28,7 +28,7 @@
 - Same vale version (3.9.1) pre-installed on both clouds.
 - Same pinned pnpm (`10.33.0`, matching `packageManager`) on both.
 - Same gh CLI install path (apt repo on Ubuntu 24.04).
-- Same Linear guard semantics — Auto label + non-terminal status — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` so it stays bkit-managed in consumer repos.
+- Same tracker opt-in guard semantics — Auto label + non-terminal status — wrapped in `<!-- bkit:start --> ... <!-- bkit:end -->` so it stays bkit-managed in consumer repos.
 
 ## Background
 
@@ -60,7 +60,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. The th
 
 ## In-repo side
 
-- `.claude/hooks/preflight.sh` — Linear guard. Skips silently when `LINEAR_ISSUE_ID` is unset (i.e. IDE sessions). Non-zero exit is informational only on Claude (`SessionStart` cannot block); the agent reads the `HARD STOP` text from `additionalContext`.
+- `.claude/hooks/preflight.sh` — Tracker opt-in guard. Skips silently when the tracker issue ID env var is unset (i.e. IDE sessions). Non-zero exit is informational only on Claude (`SessionStart` cannot block); the agent reads the `HARD STOP` text from `additionalContext`.
 - `.claude/hooks/cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally.
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
@@ -221,11 +221,35 @@ Everything sits **in the repo** under `.cursor/`. bkit ships canonical content f
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 22 + pnpm `10.33.0` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
-| `.cursor/hooks/preflight.sh` | Linear guard — Auto label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
+| `.cursor/hooks/preflight.sh` | Tracker opt-in guard — Auto label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
+
+## How GitHub dispatch works
+
+GitHub dispatch uses Cursor Automations "Pull request label changed" trigger — no Linear webhook needed.
+
+**Prerequisites:** Cursor GitHub App installed on the consumer's repo or org.
+
+**Trigger flow:**
+
+1. `bkit-build` writes `bkit:auto` as a static label on the PR (opt-in marker). The corresponding GitHub issue must also carry the `bkit:auto` label (runtime kill switch — remove to stop dispatch).
+2. A phase label (`bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`) is added to the PR by the workflow. Cursor reads this label to determine which workflow to dispatch.
+3. Cursor Automations fires on "Pull request label changed" → spawns a Background Agent session against the repo.
+4. `sessionStart` fires `preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent.
+5. `GITHUB_ISSUE_ID` is injected from the PR body metadata marker `<!-- bkit:issue=#NNN -->` — the router extracts it at dispatch time.
+
+**Constraint:** `/bkit-design` and `/bkit-plan` have no PR, so they are local-IDE-only on Cursor cloud when using the GitHub tracker. Run them locally via Claude Code or Cursor IDE.
+
+**Required env vars (GitHub tracker):**
+
+```
+GH_TOKEN=<fine-grained PAT — same permissions as the Claude side>
+```
+
+`GITHUB_ISSUE_ID` is injected per-session — do not hardcode. No `LINEAR_API_KEY`, `LINEAR_ISSUE_ID`, or `GH_BKIT_TOKEN` needed for tracker calls (MCP auth is browser OAuth; `gh auth login` covers the CLI surface and is satisfied by `GH_TOKEN`).
 
 ## How Linear dispatch works
 
-1. You assign a Linear issue to **Cursor** (the integration user) or comment `@cursor /design BAR-NNN`.
+1. You assign a Linear issue to **Cursor** (the integration user) or comment `@cursor /design ISSUE-NNN`.
 2. Cursor receives a webhook, opens a background agent against your repo with `is_background_agent: true` and `LINEAR_ISSUE_ID` set.
 3. `sessionStart` fires `preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent before it can do work.
 4. Preflight skips on IDE sessions (`is_background_agent !== true`), so local Cursor IDE work is unaffected.

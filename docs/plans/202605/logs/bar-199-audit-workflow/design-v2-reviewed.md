@@ -117,28 +117,30 @@ Two-layer separation per `.agents/workflows.md` § Two-Layer Separation Rules �
 
 **What each step outputs:**
 
-**Orchestrator-side post-Step-3 assertion gate** (review-2 operability CRITICAL — required-in-design):
+- **Step 3** — Each lens writes its own file with: header `Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`, followed by N fenced `finding` blocks (per-finding schema below). Lens output cap: 30 findings (top by severity); per `design-brainstorm-ideate-3.md` §Risk-mitigation row 2 — prevents synthesizer OOM at scale.
 
-Before Step 4 fires, the orchestrator MUST run an assertion loop over the 11 expected lens output files. Pseudocode (literal bash for build agent reference):
+  **Orchestrator-side post-Step-3 assertion gate** (review-2 operability CRITICAL — required-in-design):
 
-```bash
-MISSING=()
-EMPTY=()
-NO_VERDICT=()
-for slug in architecture hotpath config reliability observability debt dead-code deps security tests docs-drift; do
-  F="docs/plans/logs/{FID}/audit-lens-${slug}.md"
-  [ -e "$F" ] || { MISSING+=("$slug"); continue; }
-  [ -s "$F" ] || { EMPTY+=("$slug"); continue; }
-  head -3 "$F" | grep -qE '^Verdict: (PASS|CONCERNS|FAIL)$' || NO_VERDICT+=("$slug")
-done
-```
+  Before Step 4 fires, the orchestrator MUST run an assertion loop over the 11 expected lens output files. Pseudocode (literal bash for build agent reference):
 
-- If `MISSING` or `EMPTY` non-empty → Step 3 verdict = `CONCERNS`; orchestrator appends `## Missing Lenses` annotation to the synthesizer input context naming each missing/empty slug; Step 4 proceeds (degraded synthesis is preferable to halting).
-- If `NO_VERDICT` non-empty AND any file is non-empty → Step 3 verdict = `FAIL`; trigger Failure Path. A lens that wrote content but no verdict header is a contract violation, not a degradation.
-- The Step 3 Linear comment's 11-row verdict table renders `MISSING`/`EMPTY`/`NO_VERDICT` rows explicitly (instead of "—") so the comment trail surfaces the gap.
-- `LENS_VERDICT_WORST` (review-1 OPTIONAL #8) = worst-of-11 across surviving lens verdicts (`FAIL > CONCERNS > PASS`); when `MISSING`/`EMPTY` present, treated as `CONCERNS`-equivalent for `LENS_VERDICT_WORST` computation; when `NO_VERDICT` present, treated as `FAIL`-equivalent. `status.json` Step 3 entry carries `verdict: {LENS_VERDICT_WORST}`.
+  ```bash
+  MISSING=()
+  EMPTY=()
+  NO_VERDICT=()
+  for slug in architecture hotpath config reliability observability debt dead-code deps security tests docs-drift; do
+    F="docs/plans/logs/{FID}/audit-lens-${slug}.md"
+    [ -e "$F" ] || { MISSING+=("$slug"); continue; }
+    [ -s "$F" ] || { EMPTY+=("$slug"); continue; }
+    head -3 "$F" | grep -qE '^Verdict: (PASS|CONCERNS|FAIL)$' || NO_VERDICT+=("$slug")
+  done
+  ```
 
-This gate closes review-2 §1 "Step 3 — Lens subagent crash / timeout / empty output" — silent holes in the synthesis are detectable at the orchestrator BEFORE handoff to Step 4.
+  - If `MISSING` or `EMPTY` non-empty → Step 3 verdict = `CONCERNS`; orchestrator appends `## Missing Lenses` annotation to the synthesizer input context naming each missing/empty slug; Step 4 proceeds (degraded synthesis is preferable to halting).
+  - If `NO_VERDICT` non-empty AND any file is non-empty → Step 3 verdict = `FAIL`; trigger Failure Path. A lens that wrote content but no verdict header is a contract violation, not a degradation.
+  - The Step 3 Linear comment's 11-row verdict table renders `MISSING`/`EMPTY`/`NO_VERDICT` rows explicitly (instead of "—") so the comment trail surfaces the gap.
+  - `LENS_VERDICT_WORST` (review-1 OPTIONAL #8) = worst-of-11 across surviving lens verdicts (`FAIL > CONCERNS > PASS`); when `MISSING`/`EMPTY` present, treated as `CONCERNS`-equivalent for `LENS_VERDICT_WORST` computation; when `NO_VERDICT` present, treated as `FAIL`-equivalent. `status.json` Step 3 entry carries `verdict: {LENS_VERDICT_WORST}`.
+
+  This gate closes review-2 §1 "Step 3 — Lens subagent crash / timeout / empty output" — silent holes in the synthesis are detectable at the orchestrator BEFORE handoff to Step 4.
 
 - **Step 4** — `audit-v1-synthesis.md` = single flat list of deduped findings (each finding's `lenses:` field cites all source lenses), severity-sorted. Verdict.
 - **Step 5** — `audit-v2-ranked.md` = Severity × Class matrix (header table) → ranked list (CRITICAL → HIGH → MEDIUM → LOW, secondary sort by class weight per §Synthesis below) → per-class appendix. Self-verify gate: every input finding appears in output. Verdict.
@@ -178,7 +180,7 @@ Per `design-brainstorm-ideate-1.md` Decisions row 6.
 | 3 | `config` | compatibility | Build/runtime/deploy config vs actual code shape; manifest divergence; env assumptions in shared modules. Carries BAR-197 `next.config.*` catch-all probe. |
 | 4 | `reliability` | reliability | Silent swallows; broad catches; unhandled rejections; unclosed handles; unbounded queues/caches; races; missing transactional boundaries. (Merged: brief Lens 4 + Lens 6.) |
 | 5 | `observability` | operability | Failure surfaces with no logs/metrics; missing context tags; PII in logs; absent tracing on critical paths. |
-| 6 | `debt` | maintainability | `TODO|FIXME|HACK|XXX|workaround|band-aid|recovery` + ticket-ID grep; markers vs closed tickets; workarounds without exit conditions. |
+| 6 | `debt` | maintainability | `TODO | FIXME | HACK | XXX | workaround | band-aid | recovery` + ticket-ID grep; markers vs closed tickets; workarounds without exit conditions. |
 | 7 | `dead-code` | maintainability | Unreferenced exports; orphan files; dupe utilities; single-caller wrappers; speculative generality. |
 | 8 | `deps` | compatibility | Manifest-driven dep hygiene; workspace cross-version drift; ESM/CJS interop traps; unmaintained packages; types out of sync. Stack-conditional: `IF IS_PNPM` → run `pnpm outdated --json` + `pnpm audit --json`; `IF IS_NPM` → `npm outdated --json`; `IF IS_YARN` → `yarn outdated --json`; `IF IS_BUN` → `bun outdated`; else manifest-only diff. (Review-1 OPTIONAL #11 — pnpm gating; portability §6.) |
 | 9 | `security` | security | Auth holes; input validation; secrets handling; API exposure; data leakage; dep CVE surface; shell injection (`execSync.*${`). |
@@ -764,7 +766,7 @@ NONE in v1. Standalone `bkit-utility-audit-*` deletion deferred to follow-up iss
 | All-Opus lens-subagents (no Sonnet diversity in v1) | Mix Opus/Sonnet across 11 lenses (parallel to `bkit-design-brainstorm-ideate-2`) | Brief decision §4; revisit if cost binds. Lens-1's note to flag this for the synthesiser is layered onto Risks below. |
 | Lens output cap = 30 findings (top by severity) per lens | No cap; cap by class | Prevents synthesizer truncation at scale (11 × 30 = 330 ceiling). Per `design-brainstorm-ideate-3.md` Risk-mitigation row 2. |
 | No cross-workflow hooks in v1; `bkit-design-review-*` MAY cite lens-charter for deps/hotpath (non-coupling reference, not invocation) | Wire `bkit-debug-summary` audit-queue; wire `bkit-build-install-skills` audit-INDEX gate | Brief Open Q 1 resolved; surprises and side-effects compound risk in v1. Per `design-brainstorm-ideate-3.md` Decisions row 7. |
-| Portability gate: synthesizer greps lens-output text for `Next\.js|Vercel|pnpm|esbuild` stack-pinning words; CONCERNS + `## Portability Drift` if found | No mechanical enforcement (today's state) | Brief portability decision §6 lacks teeth; mechanical gate enforces. Per `design-brainstorm-ideate-3.md` Risk-mitigation row 6. |
+| Portability gate: synthesizer greps lens-output text for `Next\.js | Vercel | pnpm | esbuild` stack-pinning words; CONCERNS + `## Portability Drift` if found | No mechanical enforcement (today's state) | Brief portability decision §6 lacks teeth; mechanical gate enforces. Per `design-brainstorm-ideate-3.md` Risk-mitigation row 6. |
 | `.agents/skills.md` NOT modified in v1 | Add workflow row to skills.md | User memory `project_skills_md_manual.md` — `.agents/skills.md` is curated manually. Brief Acceptance line 97 is reinterpreted as workflow registration in `.agents/workflows.md` § Workflows registry. Treated as brief erratum (review-1 CRITICAL #3 resolution). |
 | `Audit` label canonical definition lives in `.agents/workflows.md` § Labels; rationale block lives in `.agents/prompts.md` § Audit Phase | Definition duplicated in both; definition in prompts.md only | Single source of truth prevents drift; rationale (BAR-197 retro narrative) belongs adjacent to the prompts since prompts encode the "why". Per review-2 — Audit label semantic ambiguity resolution. |
 | Smoke-test ref = current `dev` HEAD + seed file `tests/golden/seeds/bar-197-known-debt.seed.ts`; optional `BKIT_AUDIT_SMOKE_BASE_REF` env-var override | Pre-BAR-197 dev tip SHA (brief literal); manual SHA checkout (lens-1 fallback) | BAR-197 has zero SHA-addressable commits in bkit history (`git log --all --grep` returns empty). Replace historical-SHA dependency with self-contained seed file + current HEAD. Per review-1 CRITICAL #1. |
@@ -827,153 +829,17 @@ NONE in v1. Standalone `bkit-utility-audit-*` deletion deferred to follow-up iss
 
 **Open Questions:**
 
-| Question                                                                                                                                               | Status                  | Resolution / Defer                                                                                                                                                                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Brief Open Q 1 — Cross-workflow hooks (`bkit-debug-summary` audit-queue; `bkit-design-review-*` lens-checklist)                                        | **Resolved-in-design**  | No hooks in v1; non-coupling lens-charter citation in `bkit-design-review-*` allowed (optional). Per `design-brainstorm-ideate-3.md` Decisions row 7.                                                                                                                                           |
-| Brief Open Q 2 — CI integration / scheduled audits                                                                                                     | **Defer-to-build** (v2) | Manual `/bkit-audit` only in v1. Brief decision.                                                                                                                                                                                                                                                |
-| Brief Open Q 3 — Downstream consumers of `docs/audits/{FID}-audit.md`                                                                                  | **Resolved-in-design**  | Static artifact for v1; `docs/audits/INDEX.md` is the discovery surface; v2 may add `bkit-build-install-skills` consultation.                                                                                                                                                                   |
-| Lens-3 Cross-Approach Risk 5 — `BASE_REF` override for smoke-test                                                                                      | **Resolved-in-design**  | Build phase runs `/bkit-audit --smoke-test` from a sibling worktree manually checked out to pre-BAR-197 SHA; no workflow argument added in v1.                                                                                                                                                  |
-| Lens-3 Cross-Approach Risk 8 — Audit FID lineage tie when re-auditing tracked issue                                                                    | **Resolved-in-design**  | FID format extended to `{ISSUE_ID-slug}-audit-{YYYYMMDD-HHmm}` for re-audits; lineage preserved via prefix; locks decoupled via timestamp suffix.                                                                                                                                               |
-| Lens-3 Cross-Approach Risk 4 — `Audit` label canonical semantics                                                                                       | **Resolved-in-design**  | "Audit" = workflow ran/is running, NOT "needs audit". Document in `.agents/workflows.md` § Labels block (modify line in Files list).                                                                                                                                                            |
-| Brief decision §4 — Model strategy revisit (all-Opus vs cross-tier diversity)                                                                          | **Defer-to-build**      | Lens-1 flags this for synthesiser attention; not blocking v1 ship. Revisit after first 10 audit runs if cost binds.                                                                                                                                                                             |
-| Where in `.agents/prompts.md` does the new "Audit Phase" Agent table go? Between `## Plan Phase` and `## Build Phase`, OR after `## Utility (Ad-hoc)`? | **Defer-to-build**      | Either position works; build agent picks based on grep/section-ordering convention. Lean toward "between Plan and Build" for chronological workflow ordering (`/bkit-design` → `/bkit-plan` → `/bkit-audit` → `/bkit-build`) — but audits can run at any time, so ordering is partly arbitrary. |
-| Will `.agents/docs.md` Workflow Matrix add a new `Audit` column, or extend existing `Design`/`Plan` columns?                                           | **Defer-to-build**      | Add `Audit` column (cleanest); 7 doc rows need `●`/`○` assignments. Build agent picks per-doc relevance.                                                                                                                                                                                        |
-| Should the `--smoke-test` flag be exposed in v1 or v2?                                                                                                 | **Resolved-in-design**  | v1 — needed for BAR-199 acceptance criterion to be verifiable; otherwise the workflow ships without a self-validation path. Default off; opt-in via flag.                                                                                                                                       |
-| Does the workflow ship with `bar-199-audit-workflow` already audited (i.e., is BAR-199's own `/bkit-audit` smoke run the seed of `docs/audits/`)?      | **Defer-to-build**      | Yes — first audit run during build phase against pre-BAR-197 SHA creates the first `docs/audits/` artifact + first INDEX row. Documented in `docs/plans/logs/{FID}/smoke-test.md`.                                                                                                              |
-
-## Design Workstreams
-
-Five workstreams. Edges form a DAG rooted at WS-1 (orchestrator contract) which defines the file-path and verdict-line contract every subagent must honour. WS-2 and WS-3 fan out from WS-1; WS-3 also reads WS-2 contract surface (lens output schema). WS-4 (deprecation) is independent — pure header injection + registry annotation. WS-5 (smoke-test + history infra) depends on WS-1 (FID + worktree shape) and WS-3 (summary verdict semantics for the `CONCERNS — golden file absent` path), but does NOT depend on lens prompts themselves.
-
-### WS-1: Orchestrator & Workflow Registry
-
-**Requires:** []
-
-#### Scope
-
-- **Create** `.agents/workflows/bkit-audit.md` — 7-step orchestrator. Steps 1, 2, 7 cloned from `bkit-design.md` Steps 1-2, 10 (replace `design-` → `audit-`; drop `pnpm install --frozen-lockfile`; drop `bkit-design-review` ceremony). Steps 3-6 are new but copy fan-out / verdict-extract / status-commit / comment-append ceremony from `bkit-design.md` Steps 3 + 7. Includes:
-  - FID-format invariant assertion regex (`^[a-z]+-[0-9]+-[a-z0-9-]+$` OR `^[a-z]+-[0-9]+-[a-z0-9-]+-audit-[0-9]{8}-[0-9]{4}$`) in Step 1.
-  - `--smoke-test` argv flag parser (Step 1) gating Step 7 attestation sub-step.
-  - `/bkit-audit [target?]` argv resolution (no-arg / glob / `BAR-NNN` Linear-ID / `--smoke-test` flag).
-  - Post-Step-3 assertion gate (loop over 11 expected `audit-lens-{slug}.md` files; verdict header check; `MISSING`/`EMPTY`/`NO_VERDICT` annotation into synthesizer context; `LENS_VERDICT_WORST` computation).
-  - Failure Path (read-only adaptation; no PR cleanup; no canonical artifact on failure; `git rebase --abort` line verbatim).
-  - Resume path (mirrors `bkit-debug.md` caution block inline).
-  - Hard-stop sentence after Step 7 ("Audit requires human review. Do NOT invoke `/bkit-plan` or `/bkit-build`. Findings are advisory; act on them via separate Linear issues.").
-  - Step 7 sub-steps: `cp audit-v2-ranked.md docs/audits/{FID}-audit.md`; append row to `docs/audits/INDEX.md`; squash-merge dev.
-  - Linear lifecycle (Step 1 `Todo`→`In Progress`; Step 7 `In Progress`→`In Review`; phase label `Audit`; comment-per-step with Step 3 11-row table consolidation; `save_comment`/`save_issue` best-effort with retry-once + `WARN` status.json entry on second failure).
-- **Modify** `.agents/workflows.md`:
-  - Add row to § File Layout: `/bkit-audit | yes | yes | docs/audits/{FID}-audit.md`.
-  - Add `bkit-audit.md         # Workflow 6/6 — 7 steps; hard stop after summary` to file-tree ASCII.
-  - Add canonical `Audit` label definition to § Labels block (mutually exclusive with Design/Plan/Build/Ship/Merged; additive to Failed/Debug/Auto; semantics = "workflow ran/is running", NOT "needs audit").
-  - Add § Audit Phase rationale section (11 lenses, BAR-197 anchor).
-  - Extend status.json `workflow` enum row to include `audit`.
-- **Modify** `.agents/templates/gitattributes` — append `docs/audits/INDEX.md merge=union`.
-- **Linear prerequisite gate** — document one-time `Audit` label creation step (parent group `workflow`) in workflow prelude.
-
-#### Rationale
-
-Root of the DAG: the orchestrator file defines the input/output contract (file paths under `docs/plans/logs/{FID}/`, verdict-line format `Verdict: PASS|CONCERNS|FAIL` + `<!-- verdict:end -->`, fenced `finding` block schema reference) that every downstream subagent (WS-2, WS-3) must honour. Building lens or pipeline prompts before this contract is locked = rework risk on field names, file paths, fenced-block grammar. Also carries the only registry edits that affect workflow-level discoverability (`.agents/workflows.md`, status.json enum, gitattributes) — coupled because they all describe the same first-class workflow object. Splitting registry edits into a separate WS would create a circular dependency (orchestrator references workflow row; workflow row references orchestrator file). User memory `project_skills_md_manual.md` blocks `.agents/skills.md` edits — registration lives here, not there.
-
-### WS-2: Lens-Subagent Prompts (11) + Charter Doc + Prompts Registry Audit-Phase Section
-
-**Requires:** [WS-1]
-
-#### Scope
-
-- **Create** `.agents/prompts/bkit-audit-lens-charter.md` — passive index mirroring the 11 inlined probe rows; self-test note at top noting prompt-inlined rows are source of truth; rendered as the developer-facing one-table cross-reference.
-- **Create** 11 lens-subagent prompts (each forked from `bkit-design-brainstorm-ideate-1.md` skeleton; `Read, Grep, Glob, Write, Bash`; effort `high`; opus; `**Role:** Senior auditor — {slug} lens.`):
-  - `bkit-audit-lens-architecture.md`
-  - `bkit-audit-lens-hotpath.md` (carries BAR-197 `serverExternalPackages` ESM-trap probe)
-  - `bkit-audit-lens-config.md` (carries BAR-197 `next.config.*` catch-all probe)
-  - `bkit-audit-lens-reliability.md` (merged brief Lens 4 Error-handling + Lens 6 Resource-lifecycle)
-  - `bkit-audit-lens-observability.md`
-  - `bkit-audit-lens-debt.md`
-  - `bkit-audit-lens-dead-code.md`
-  - `bkit-audit-lens-deps.md` (stack-conditional `pnpm/npm/yarn/bun outdated|audit` blocks)
-  - `bkit-audit-lens-security.md`
-  - `bkit-audit-lens-tests.md`
-  - `bkit-audit-lens-docs-drift.md`
-- Each lens prompt contains: (a) stack-signal detection block (sets `STACK_FLAGS`); (b) inlined universal probes; (c) inlined stack-conditional probes; (d) finding-emission instructions (YAML-frontmatter fenced `finding` blocks; field constraints — single-line, ≤200 chars, no triple-backticks); (e) 30-finding cap; (f) output H1 `# Audit Lens — {slug}` + `Lens: {slug} — {probe summary}.` subtitle; (g) verdict line; (h) `<!-- xref: bkit-audit-lens-charter.md row {slug} -->` documentation comment.
-- **Modify** `.agents/prompts.md`:
-  - Add new `## Audit Phase` Agent table section (between Plan and Build OR after Utility — orchestrator decides at build).
-  - Add 11 lens rows + 1 charter row to § Models table.
-  - Rationale block linking BAR-197 retro narrative ("why this workflow exists").
-
-#### Rationale
-
-Lens prompts are sibling artifacts emitting structurally identical outputs (YAML-frontmatter `finding` blocks). They're tightly coupled to the orchestrator's post-Step-3 assertion gate (verdict header format + expected file paths) — must build after WS-1's contract is locked. Charter doc is bundled here because it mirrors the 11 inlined rows and is logically a derivative artifact of the 11 prompts (passive index, not load-bearing — per resolved review-1 CRITICAL #2 standalone-runnable rule). Splitting charter into its own WS would create a writer-shared file (drift risk). Registry edits limited to the new Audit Phase section and the 11+1 model rows — the prompts.md Utility-section annotations (deprecation `⚠️`) go in WS-4 to keep deprecation surface area in one place. Each lens is independently buildable in parallel within the WS once the skeleton-pattern is established.
-
-### WS-3: Pipeline Subagents (Synthesize / Prioritize / Summary) + Pipeline Registry Rows
-
-**Requires:** [WS-1, WS-2]
-
-#### Scope
-
-- **Create** `.agents/prompts/bkit-audit-synthesize.md` — `xhigh` effort, opus, `Read, Grep, Glob, Write, Edit`. Clone of `bkit-design-generate.md` shape. Contains:
-  - `awk` state-machine extraction skeleton (pattern `/^\`\`\`finding$/,/^\`\`\`$/`).
-  - YAML key:value parsing rules (split on FIRST `:`; trim; assert 7 required fields; permitted optional fields `lenses_expected`, `lenses`, `correlation_id`).
-  - Parse-error collection into `## Parse Errors` section; threshold `≥ 5%` OR `≥ 5` absolute → `CONCERNS`.
-  - Dedup algorithm: `findings_by_key` map keyed `(class, normalized_location)` with 5-line bucket; severity max-wins; cross-lens confidence upgrade one tier; correlation_id for cross-class same-location.
-  - `## Portability Drift` gate: grep lens-output text for `Next\.js|Vercel|pnpm|esbuild`; emit `CONCERNS` if found.
-  - `lenses:` array field on output blocks.
-  - Verdict line.
-- **Create** `.agents/prompts/bkit-audit-prioritize.md` — `high` effort, opus, `Read, Grep, Glob, Write, Edit, Bash`. Clone of `bkit-design-organise.md` shape. Contains:
-  - Severity × Class matrix table render.
-  - Ranking algorithm (Severity → Class weight → Confidence → cross-lens → file path lexical).
-  - Brief's heading format render `## [SEV][class][lenses: ...] {location} — {title}` with `Why it matters` / `Direction of fix` / `Confidence` body.
-  - Per-class appendix render.
-  - Self-verify gate: every `correlation_id` from synthesis present in matrix totals AND ranked list.
-  - Verdict line.
-- **Create** `.agents/prompts/bkit-audit-summary.md` — `low` effort, haiku, `Read, Write, Edit`. Clone of `bkit-design-summary.md`. 500-token Linear-paste cap. Contains:
-  - Exec summary, top-3 CRITICAL, total counts per class, Coverage Check.
-  - `## Smoke-Test Attestation` section render (`PASSED`/`FAILED`/`CONCERNS`/`N/A`) including the `CONCERNS — golden file absent or empty` branch.
-  - Verdict line.
-- **Modify** `.agents/prompts.md` — add 3 pipeline rows to § Models table; place under the `## Audit Phase` section established by WS-2.
-
-#### Rationale
-
-Pipeline agents read the contract surface produced by lens agents (YAML fenced `finding` blocks; 30-cap; verdict header). Their internal algorithms (dedup, parse-error threshold, ranking, smoke-test attestation render) are coupled to WS-2's emission grammar; building pipeline prompts before lens prompts means coding to a hypothesised schema. Three pipeline prompts are bundled because they form a strict sequential reader chain (synth → prioritize → summary) and share a verdict-propagation contract — split would smear ownership of the `CONCERNS` propagation rules. Pipeline-row insertions in prompts.md ride this WS for the same reason as the lens-row insertions ride WS-2: the `## Audit Phase` table is a single registry section, and contiguous edits avoid merge churn.
-
-### WS-4: Standalone Prompt Deprecation + Decisions/Pending Records
-
-**Requires:** []
-
-#### Scope
-
-- **Modify** 4 standalone prompt files — prepend deprecation block (3 lines: deprecation pointer + `Deprecated since: v2.2.0 (BAR-199)` + `Deletion target: v2.3.0`) under frontmatter, before first `**Role:**` line. Build agent verifies `package.json#version` at build time and bumps `Deprecated since` if a release lands first:
-  - `.agents/prompts/bkit-utility-audit-codebase.md`
-  - `.agents/prompts/bkit-utility-audit-security.md`
-  - `.agents/prompts/bkit-utility-audit-tests.md`
-  - `.agents/prompts/bkit-utility-audit-logs.md`
-- **Modify** `.agents/prompts.md` § Utility (Ad-hoc) — prepend `⚠️ ` to each of the 4 deprecated rows; suffix Scope cell with `(deprecated — see /bkit-audit; deletion target v2.3.0)`; add new sub-section header `### Deprecated Utility Audits` listing the 4 files with canonical pointer to `/bkit-audit`.
-- **Modify (optional, non-coupling)** `.agents/prompts/bkit-design-review-1.md` and `bkit-design-review-2.md` — append 2 bullets to § Process Step 5 referencing `bkit-audit-lens-charter.md` § deps and § hotpath probes. Documented as reference-only (NOT invocation).
-- **Modify** `docs/decisions.md` — append 5 ADRs: (a) 11-lens taxonomy + merge rationale, (b) Audit label semantics, (c) FID format extension `audit-{timestamp}` suffix, (d) `docs/audits/` canonical location, (e) YAML-frontmatter `finding` block schema.
-- **Modify** `docs/pending.md` — append entry: standalone `bkit-utility-audit-*` deletion follow-up (target v2.3.0); v2 cross-workflow hooks; v2 scheduled audits; v2 live-runtime lens. (Monthly archival row goes in WS-5.)
-
-#### Rationale
-
-Pure documentation/annotation work that touches no workflow contract surface. The 4 deprecated files' frontmatter and tooling remain unchanged — standalone invocation (`@bkit-utility-audit-codebase`) keeps working for muscle-memory users. Decisions/pending modifications are session-end artifacts and don't gate any other workstream. No dependency edge to WS-1/2/3 because (a) deprecation headers reference `/bkit-audit` by command name (string-stable; established in WS-1), (b) decisions.md entries describe taxonomy/semantics decided in this design doc itself, not produced by WS-1/2/3 work. Buildable in parallel with everything else. Cross-workflow hook bullets on `bkit-design-review-*` are explicitly non-coupling per design — they cite the charter doc text (created in WS-2) by file path only, so even if WS-2 lands after WS-4 they remain valid reference (build agent verifies file existence at workflow ship time).
-
-### WS-5: Smoke-Test Infrastructure + Audit History Surface + docs.md Catalog
-
-**Requires:** [WS-1, WS-3]
-
-#### Scope
-
-- **Create** `tests/golden/seeds/bar-197-known-debt.seed.ts` — inert TypeScript file containing the three BAR-197-class debt patterns:
-  1. catch-all/wildcard `serverExternalPackages` against every `@aws-sdk` subpackage.
-  2. ESM-only externalised package without CJS fallback.
-  3. ESM/CJS interop trap (`"type": "module"` + no exports CJS path).
-- **Create** `tests/golden/bar-197-known-debt.finding.md` — 3 fenced `finding` blocks (HIGH-compatibility @ seed.ts serverExternalPackages; HIGH-performance @ seed.ts serverExternalPackages; MEDIUM-compatibility @ seed.ts ESM/CJS interop) per design §Smoke-Test Acceptance exact content block, with `lenses_expected:` arrays naming `[config]`, `[hotpath]`, `[deps]`.
-- **Create** directory `docs/audits/` with:
-  - `docs/audits/INDEX.md` — append-only audit index (header + table; documented columns `FID | Date | Verdict | CRITICAL | HIGH | MEDIUM | LOW | Linear`; "Older audits: see archive/" header link).
-  - `docs/audits/{FID}-audit.md` — placeholder for canonical artifact (populated by build-phase smoke-test run; will be `bar-199-audit-workflow-audit.md`).
-- **Modify** `docs/pending.md` — append monthly archival operational task (mirror `docs/plans/completed/{YYYYMM}/` pattern; trigger = month-end OR >24 live INDEX rows; manual cadence).
-- **Modify** `.agents/docs.md`:
-  - Workflow Matrix — add `Audit` column (or extend existing columns per build-agent judgement); assign `●`/`○` markers for `docs/audits/*.md`, `docs/knowledge.md`, `docs/architecture.md`, `docs/technology.md`, `docs/security.md`.
-  - Full Catalog § Audits — new sub-section listing `docs/audits/INDEX.md`, `tests/golden/bar-197-known-debt.finding.md`, `tests/golden/seeds/bar-197-known-debt.seed.ts`.
-- **Build-phase smoke run** — once WS-1/WS-2/WS-3 land, execute `/bkit-audit --smoke-test BAR-199` to seed the first `docs/audits/{FID}-audit.md` artifact + first INDEX row; record reproducibility manifest at `docs/plans/logs/{FID}/smoke-test.md` (resolved ref SHA, seed path + line count, matched/unmatched golden findings, attestation verdict).
-
-#### Rationale
-
-Smoke-test infrastructure is the design's acceptance-gate apparatus and must land alongside (not before) the executable parts of the workflow. Depends on WS-1 because the smoke-test attestation lives in Step 7 of the orchestrator (orchestrator parses `--smoke-test`, gates the attestation sub-step). Depends on WS-3 because `bkit-audit-summary.md` carries the `CONCERNS — golden file absent or empty` branch logic and the `## Smoke-Test Attestation` section render — golden-file-absent semantics are encoded in that prompt. Does NOT depend on WS-2 directly because the smoke-test reads the synthesizer's deduped output and the prioritizer's matrix, not individual lens outputs (it's a verification of end-to-end pipeline behaviour, not lens-by-lens). `docs/audits/INDEX.md` setup is bundled here because the INDEX is read by the smoke-test attestation triage flow and seeded by the first build-phase audit run; `.agents/docs.md` catalog update is bundled to keep audit-discovery edits (Workflow Matrix + Full Catalog) on the same axis as the audit-history artifacts they describe. Monthly archival row in pending.md sits here (not WS-4) because it describes ops cadence for `docs/audits/INDEX.md` and `docs/audits/archive/{YYYYMM}/`, whose existence is established by this workstream.
+<!-- prettier-ignore -->
+| Question | Status | Resolution / Defer |
+| --- | --- | --- |
+| Brief Open Q 1 — Cross-workflow hooks (`bkit-debug-summary` audit-queue; `bkit-design-review-*` lens-checklist) | **Resolved-in-design** | No hooks in v1; non-coupling lens-charter citation in `bkit-design-review-*` allowed (optional). Per `design-brainstorm-ideate-3.md` Decisions row 7. |
+| Brief Open Q 2 — CI integration / scheduled audits | **Defer-to-build** (v2) | Manual `/bkit-audit` only in v1. Brief decision. |
+| Brief Open Q 3 — Downstream consumers of `docs/audits/{FID}-audit.md` | **Resolved-in-design** | Static artifact for v1; `docs/audits/INDEX.md` is the discovery surface; v2 may add `bkit-build-install-skills` consultation. |
+| Lens-3 Cross-Approach Risk 5 — `BASE_REF` override for smoke-test | **Resolved-in-design** | Build phase runs `/bkit-audit --smoke-test` from a sibling worktree manually checked out to pre-BAR-197 SHA; no workflow argument added in v1. |
+| Lens-3 Cross-Approach Risk 8 — Audit FID lineage tie when re-auditing tracked issue | **Resolved-in-design** | FID format extended to `{ISSUE_ID-slug}-audit-{YYYYMMDD-HHmm}` for re-audits; lineage preserved via prefix; locks decoupled via timestamp suffix. |
+| Lens-3 Cross-Approach Risk 4 — `Audit` label canonical semantics | **Resolved-in-design** | "Audit" = workflow ran/is running, NOT "needs audit". Document in `.agents/workflows.md` § Labels block (modify line in Files list). |
+| Brief decision §4 — Model strategy revisit (all-Opus vs cross-tier diversity) | **Defer-to-build** | Lens-1 flags this for synthesiser attention; not blocking v1 ship. Revisit after first 10 audit runs if cost binds. |
+| Where in `.agents/prompts.md` does the new "Audit Phase" Agent table go? Between `## Plan Phase` and `## Build Phase`, OR after `## Utility (Ad-hoc)`? | **Defer-to-build** | Either position works; build agent picks based on grep/section-ordering convention. Lean toward "between Plan and Build" for chronological workflow ordering (`/bkit-design` → `/bkit-plan` → `/bkit-audit` → `/bkit-build`) — but audits can run at any time, so ordering is partly arbitrary. |
+| Will `.agents/docs.md` Workflow Matrix add a new `Audit` column, or extend existing `Design`/`Plan` columns? | **Defer-to-build** | Add `Audit` column (cleanest); 7 doc rows need `●`/`○` assignments. Build agent picks per-doc relevance. |
+| Should the `--smoke-test` flag be exposed in v1 or v2? | **Resolved-in-design** | v1 — needed for BAR-199 acceptance criterion to be verifiable; otherwise the workflow ships without a self-validation path. Default off; opt-in via flag. |
+| Does the workflow ship with `bar-199-audit-workflow` already audited (i.e., is BAR-199's own `/bkit-audit` smoke run the seed of `docs/audits/`)? | **Defer-to-build** | Yes — first audit run during build phase against pre-BAR-197 SHA creates the first `docs/audits/` artifact + first INDEX row. Documented in `docs/plans/logs/{FID}/smoke-test.md`. |

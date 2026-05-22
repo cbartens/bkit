@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # Check out `dev` at the workspace root so the router's
-          # `$REPO_ROOT/docs/plans/logs/{FID}/status.json` resolves to dev's
+          # `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` resolves to dev's
           # working copy — matches the BAR-187 invariant that status.json
           # always lives on dev. The dispatched /bkit-ship or /bkit-debug
           # creates its own `feat/{FID}` worktree under `.worktrees/`.

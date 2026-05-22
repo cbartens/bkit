@@ -14,18 +14,18 @@
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
-> - **Status:** `$REPO_ROOT/docs/plans/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
-> - **Locks:** Acquire `$REPO_ROOT/docs/plans/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): build DONE [skip ci]`; Failure Path → `chore({FID}): build FAILED [skip ci]`.
+> - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
+> - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): build DONE bkit [skip ci]`; Failure Path → `chore({FID}): build FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — phase label persists.
-> - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
+
+> - **Tracker:** not configured. Run `bkit install --tracker=github` (or `--tracker=linear`) to enable tracker integration. Workflows will continue to run without tracker comments / state updates.
+
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_VERIFY_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When Read line passes `git diff origin/dev..HEAD` to subagents, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
@@ -37,20 +37,21 @@
 1. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    [ -f "$STATUS" ] && { t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"; }
    git rebase --abort 2>/dev/null || true
-   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
+   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   rm -f "$REPO_ROOT/docs/plans/logs/{FID}/.rebase-failed"
+   rm -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): build FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+2. _Tracker not wired — skip._
+3. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
@@ -60,17 +61,18 @@
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, glob `docs/plans/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
-   Create: `docs/plans/logs/{FID}/build-handover.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.json`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-handover.md`.
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): build aborted [skip build] [skip ci]"`.
+9. `git commit -m "docs({FID}): build aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
-11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+11. _Tracker not wired — skip comment post._
+    `{BODY}` = fenced block below:
     ```comment
     ### Workflow Handover
-    [build-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/build-handover.md)
+    [build-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-handover.md)
     {build-handover.md content verbatim}
     ```
 12. **STOP**, no further downstream steps.
@@ -85,9 +87,11 @@
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
-   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
-   STATUS_REL="docs/plans/logs/{FID}/status.json"
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before build" >&2; exit 1; }
+   mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
+   LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
+   STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.json"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
      STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
@@ -104,7 +108,7 @@
    printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
    **If** divergence check or lock acquisition exits non-zero → **Failure Path**.
-   `FID` hint (interrupted): `ls docs/plans/active/ | grep -oE '^[a-z0-9-]+(?=-plan)' | head -1`.
+   `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. Emit long-branch advisory:
    ```bash
    behind=$(git rev-list --count HEAD..origin/dev 2>/dev/null || echo 0)
@@ -112,15 +116,20 @@
    age=$([ -n "$mb" ] && git show -s --format=%ar "$mb" 2>/dev/null || echo "unknown")
    echo "[bkit-build] feature branch is ${behind} commits behind dev / ${age} since divergence"
    ```
-3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
+3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 4. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-5. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Build"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
-6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
-7. `get_issue({ id: "{ISSUE_ID}", includeRelations: true })` → extract `relations` where `type` = `blocked_by` → for each entry extract `id` as `{BLOCKER_ID}` and `state` as `{BLOCKER_STATE}`. **If** any `{BLOCKER_STATE}` NOT IN `Done | Cancelled` → **Failure Path**.
-8. **If** existing `docs/plans/drafts/{FID}-plan.md` or `docs/plans/active/{FID}-plan.md` → reuse `FID`. **Else** → **Failure Path**.
-9. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-10. Add `Build` phase to `{LABELS}` and drop old phase → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-11. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+5. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** scan prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
+6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+   _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
+7. _Tracker not wired — skip blocker check._
+8. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID`. **Else** → **Failure Path**.
+9. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set.
+   **Format:** `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug ≤3 tokens, kebab, lowercase. No strict regex assert.
+   **Else** → **Failure Path**.
+10. Add `Build` phase to `{LABELS}` and drop old phase.
+    _Tracker not wired — skip._
+11. _Tracker not wired — skip comment post._
+    `{BODY}` = fenced block below:
     ```comment
     ## Build Workflow
     ### Step 1 — Start Workflow
@@ -129,12 +138,12 @@
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
-- [ ] Lock acquired (`$REPO_ROOT/docs/plans/logs/{FID}/.lock` exists)
+- [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Not blocked by any related issues
 - [ ] Long-branch advisory emitted
-- [ ] Issue update attempted (state `In Progress`, label `Build`)
+- [ ] Issue update attempted (phase label `bkit:build`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -146,7 +155,7 @@
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build]"
    fi
    ```
 2. Create/resume the worktree:
@@ -156,7 +165,7 @@
    WORKTREE_PATH="$REPO_ROOT/.worktrees/{FID}"
    if [ -d "$WORKTREE_PATH" ]; then
      cd "$WORKTREE_PATH"
-     rm -f "docs/plans/logs/{FID}/.rebase-failed"
+     rm -f "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
      git fetch origin dev
      if ! git rebase --rebase-merges origin/dev; then
        CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
@@ -166,14 +175,14 @@
          git add pnpm-lock.yaml
          if ! git rebase --continue; then
            git rebase --abort 2>/dev/null || true
-           mkdir -p "docs/plans/logs/{FID}/"
-           touch "docs/plans/logs/{FID}/.rebase-failed"
+           mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
+           touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
          fi
        else
          git rebase --abort 2>/dev/null || true
          echo "Rebase conflict" >&2
-         mkdir -p "docs/plans/logs/{FID}/"
-         touch "docs/plans/logs/{FID}/.rebase-failed"
+         mkdir -p "docs/plans/{YYYYMM}/logs/{FID}/"
+         touch "docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
        fi
      fi
    else
@@ -188,7 +197,7 @@
      fi
      cd "$WORKTREE_PATH"
    fi
-   mkdir -p docs/plans/logs/{FID}/
+   mkdir -p docs/plans/{YYYYMM}/logs/{FID}/
    for f in .env .env.local apps/web/.env.preview apps/web/.env.production; do
      [ -f "$REPO_ROOT/$f" ] && cp "$REPO_ROOT/$f" "$WORKTREE_PATH/$f"
    done
@@ -196,19 +205,18 @@
    pnpm install --frozen-lockfile
    ```
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
-4. **If** sentinel `docs/plans/logs/{FID}/.rebase-failed` exists → **Failure Path**.
-5. Move plans to active: `mv docs/plans/drafts/{FID}-*.md docs/plans/active/ 2>/dev/null || true`. Update internal path refs.
-6. Sub-plan count:
+4. **If** sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` exists → **Failure Path**.
+5. Sub-plan count:
    ```bash
-   SUB_COUNT=$(ls docs/plans/active/{FID}-plan-*.md 2>/dev/null | wc -l)
+   SUB_COUNT=$(ls docs/plans/{YYYYMM}/{FID}-plan-*.md 2>/dev/null | wc -l)
    [ "$SUB_COUNT" -eq 0 ] && SUB_COUNT=1 && SINGLE_PLAN=true
    ```
-7. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
-8. Create: `docs/plans/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/active/{FID}-plan.md`.
-9. Update status and commit:
+6. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
+7. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
+8. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
      t=$(mktemp); jq '. + [{workflow:"build", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
@@ -218,22 +226,23 @@
      '.[-1].steps += [{step:"build-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"build-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-input.md"]}]' \
+     '.[-1].steps += [{step:"build-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-    ```comment
-    ### Step 2 — Worktree Setup
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    [docs/plans/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/status.json)
-    ```
+9. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Step 2 — Worktree Setup
+   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+   [docs/plans/{YYYYMM}/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.json)
+   ```
 
 ### 🔒 Gate 2 — Worktree Setup
 
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
 - [ ] `BRANCH` non-empty (updated to worktree branch)
-- [ ] Plan files in `docs/plans/active/`
+- [ ] Plan files in `docs/plans/{YYYYMM}/` (canonical bucket)
 - [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
 - [ ] Artifact written (`build-input.md`, non-empty)
 - [ ] Workflow status updated (`build` `IN_PROGRESS`, steps `build-start-workflow` and `build-worktree-setup` recorded with `parentSha`)
@@ -248,14 +257,15 @@
 3. `git branch --show-current` → confirm `BRANCH`. Assert non-empty.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"build-branch-sync", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): branch-sync"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Branch Sync
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -276,19 +286,20 @@
 
 1. **Subagent:** Invoke `@bkit-build-install-skills` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `.agents/skills.md`.
-   Create: `docs/plans/logs/{FID}/build-install-skills.md`, `.agents/skills/` (skill installs via Bash).
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `.agents/skills.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-install-skills.md`, `.agents/skills/` (skill installs via Bash).
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '.[-1].steps += [{step:"build-install-skills", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-install-skills.md"]}]' \
+     '.[-1].steps += [{step:"build-install-skills", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-install-skills.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): install-skills"
    ```
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+4. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Install Skills
    ```
@@ -316,21 +327,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 3. **Subagent:** Invoke `@bkit-build-plan-execute` using `Task` tool:
    Context: You are a subagent in the Build phase. Execute sub-plan `{SUB_PLAN}`/`{SUB_COUNT}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/build-input.md`, `docs/plans/active/{FID}-plan.md`, `docs/plans/active/{FID}-plan-{SUB_PLAN}.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
    Update: Source files.
-   Create: `docs/plans/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 5. Read `build-plan-execute-{SUB_PLAN}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `EXECUTE_VERDICT`.
 6. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$EXECUTE_VERDICT" --argjson sp "$SUB_PLAN" \
-     '.[-1].steps += [{step:"build-plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'-log.md"]}]' \
+     '.[-1].steps += [{step:"build-plan-execute", status:"DONE", verdict:$v, attempt:1, subPlan:$sp, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-'"${SUB_PLAN}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): plan-execute sub-plan ${SUB_PLAN}"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Plan Execute - Verdict: {EXECUTE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT}
    ```
@@ -351,21 +363,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 8. Increment `VERIFY_ATTEMPT` + 1.
 9. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Single plan verification. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/active/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
-   Update:`docs/plans/active/{FID}-plan-{SUB_PLAN}.md`.
-   Create: `docs/plans/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
+   Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-execute-{SUB_PLAN}-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`, `git diff origin/dev..HEAD`(apply **Large Diff Guard**; filter to changes relevant to this sub-plan's checklist; ignore changes outside scope).
+   Update:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`.
 10. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 11. Read `build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `VERIFY_VERDICT` and `Failures` as `VERIFY_FAILURES`.
 12. Update status and commit:
     ```bash
-    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
     PARENT_SHA=$(git rev-parse HEAD)
     t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --argjson f "$VERIFY_FAILURES" \
-      '.[-1].steps += [{step:"build-plan-verify", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-verify-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}]' \
+      '.[-1].steps += [{step:"build-plan-verify", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'.md"]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
     git add -A && git commit --allow-empty -m "chore({FID}): plan-verify sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
-13. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+13. _Tracker not wired — skip comment post._
+    `{BODY}` = fenced block below:
     ```comment
     ### Step 6 — Plan Verify - Verdict: {VERIFY_VERDICT} - Failures: {VERIFY_FAILURES} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT}
     ```
@@ -398,7 +411,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     ```bash
     PRIOR_STRATEGY=$(jq -r --arg s "plan-gaps-remediate" --argjson sp "$SUB_PLAN" \
       '[.[] | .steps[] | select(.step==$s and .subPlan==$sp and .status=="DONE")] | last.strategy // ""' \
-      docs/plans/logs/{FID}/status.json)
+      docs/plans/{YYYYMM}/logs/{FID}/status.json)
     ```
 18. Set next `STRATEGY`:
     - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
@@ -407,21 +420,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     - **Else** → **Failure Path**.
 19. **Subagent:** Invoke `@bkit-build-plan-gaps-remediate` using `Task` tool:
     Context: You are a subagent in the Build phase. Sub-plan `{SUB_PLAN}`, attempt `{VERIFY_ATTEMPT}`. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-    Read:`docs/plans/active/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
+    Read:`docs/plans/{YYYYMM}/{FID}-plan-{SUB_PLAN}.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.json`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-*-log.md`.
     Update: Source files.
-    Create:`docs/plans/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
+    Create:`docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`.
 20. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 21. Read `build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`, and `Strategy` as `STRATEGY`.
 22. Update status and commit:
     ```bash
-    STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
     PARENT_SHA=$(git rev-parse HEAD)
     t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$VERIFY_ATTEMPT" --argjson sp "$SUB_PLAN" --arg strat "$STRATEGY" \
-      '.[-1].steps += [{step:"build-plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}]' \
+      '.[-1].steps += [{step:"build-plan-gaps-remediate", status:"DONE", verdict:$v, attempt:$a, subPlan:$sp, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-'"${SUB_PLAN}"'-'"${VERIFY_ATTEMPT}"'-log.md"]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
     git add -A && git commit --allow-empty -m "chore({FID}): plan-gaps-remediate sub-plan ${SUB_PLAN} attempt ${VERIFY_ATTEMPT}"
     ```
-23. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+23. _Tracker not wired — skip comment post._
+    `{BODY}` = fenced block below:
     ```comment
     ### Step 7 — Plan Gaps Remediate - Verdict: {REMEDIATE_VERDICT} - Sub-plan: {SUB_PLAN}/{SUB_COUNT} - Attempt: {VERIFY_ATTEMPT} - Strategy: {STRATEGY}
     ```
@@ -444,20 +458,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-plan-verify` using `Task` tool:
    Context: You are a subagent in the Build phase. Holistic plan verification (master and sub-plans). Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, all `docs/plans/active/{FID}-plan-N.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
-   Create: `docs/plans/logs/{FID}/build-plan-verify-holistic.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, all `docs/plans/{YYYYMM}/{FID}-plan-N.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-gaps-remediate-*-log.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**; review full feature diff for cross-sub-plan integration).
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-plan-verify-holistic.md` until `<!-- verdict:end -->` → extract `Verdict` as `HOLISTIC_VERDICT` and `Failures` as `HOLISTIC_FAILURES`.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$HOLISTIC_VERDICT" --argjson f "$HOLISTIC_FAILURES" \
-     '.[-1].steps += [{step:"build-plan-verify-holistic", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-plan-verify-holistic.md"]}]' \
+     '.[-1].steps += [{step:"build-plan-verify-holistic", status:"DONE", verdict:$v, attempt:1, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): plan-verify-holistic"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Plan Verify Holistic - Verdict: {HOLISTIC_VERDICT} - Failures: {HOLISTIC_FAILURES}
    ```
@@ -482,24 +497,25 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 1. Launch both subagents in parallel using `Task` tool:
    - **Subagent:** Invoke `@bkit-build-challenge-1`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
-     Create: `docs/plans/logs/{FID}/build-challenge-1.md`.
+     Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+     Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`.
    - **Subagent:** Invoke `@bkit-build-challenge-2`
      Context: You are a subagent in the Build phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-     Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
-     Create: `docs/plans/logs/{FID}/build-challenge-2.md`.
+     Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, `git diff origin/dev..HEAD` (apply **Large Diff Guard**).
+     Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
 2. Wait for all subagents to complete. Assert both files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-challenge-1.md` and `build-challenge-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` and `Failures` from each → compute `CHALLENGE_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`) and `CHALLENGE_FAILURES` = sum of failures from each.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --arg v "$CHALLENGE_VERDICT" --argjson f "$CHALLENGE_FAILURES" \
-     '.[-1].steps += [{step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-1.md","docs/plans/logs/{FID}/build-challenge-2.md"]}]' \
+     '.[-1].steps += [{step:"build-challenge", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md","docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): build-challenge attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
@@ -518,20 +534,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-challenge-reconcile` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/build-challenge-1.md`, `docs/plans/logs/{FID}/build-challenge-2.md`.
-   Create: `docs/plans/logs/{FID}/build-challenge.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-2.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-challenge.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_VERDICT` and `Failures` as `CHALLENGE_FAILURES`. `CHALLENGE_VERDICT` must be in `PASS|CONCERNS|FAIL` (canonical challenge verdict; NO `BLOCK`/`WARN`).
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" --argjson f "$CHALLENGE_FAILURES" \
-     '.[-1].steps += [{step:"build-challenge-reconcile", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge.md"]}]' \
+     '.[-1].steps += [{step:"build-challenge-reconcile", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-reconcile attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Reconcile Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
@@ -561,21 +578,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 1. Increment `CHALLENGE_REMEDIATE_ATTEMPT` + 1.
 2. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-challenge.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`.
    Update: Source files.
-   Create: `docs/plans/logs/{FID}/build-challenge-remediate-log.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `build-challenge-remediate-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_CHALLENGE_VERDICT`.
 5. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_CHALLENGE_VERDICT" --argjson a "$CHALLENGE_REMEDIATE_ATTEMPT" \
-     '.[-1].steps += [{step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-remediate-log.md"]}]' \
+     '.[-1].steps += [{step:"build-challenge-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-remediate attempt ${CHALLENGE_REMEDIATE_ATTEMPT}"
    ```
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Build Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
@@ -600,20 +618,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-challenge-tests` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/logs/{FID}/build-challenge.md`, `docs/plans/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/logs/{FID}/build-plan-verify-*.md`.
-   Create: `docs/plans/logs/{FID}/build-challenge-tests.md`, test files.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-holistic.md` (if exists), `docs/plans/{YYYYMM}/logs/{FID}/build-challenge.md`, `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-remediate-log.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-plan-verify-*.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-challenge-tests.md`, test files.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-challenge-tests.md` until `<!-- verdict:end -->` → extract `Verdict` as `CHALLENGE_TESTS_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$CHALLENGE_TESTS_VERDICT" \
-     '.[-1].steps += [{step:"build-challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-challenge-tests.md"]}]' \
+     '.[-1].steps += [{step:"build-challenge-tests", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-challenge-tests.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): build-challenge-tests"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 12 — Build Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
    ```
@@ -648,14 +667,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (≥1).
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
      '.[-1].steps += [{step:"build-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 13 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
@@ -683,7 +703,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```bash
    PRIOR_STRATEGY=$(jq -r --arg s "failure-diagnose" \
      '[.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
-     docs/plans/logs/{FID}/status.json)
+     docs/plans/{YYYYMM}/logs/{FID}/status.json)
    ```
 2. Set next `STRATEGY`:
    - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
@@ -692,20 +712,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    - **Else** → **Failure Path**.
 3. **Subagent:** Invoke `@bkit-debug-failure-diagnose` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Strategy: `{STRATEGY}`. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read:`docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`.
-   Create:`docs/plans/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
+   Read:`docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.json`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`.
+   Create:`docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
 4. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 5. Read `build-failure-diagnose-{TEST_ATTEMPT}.md` until `<!-- verdict:end -->` → extract `Verdict` as `DIAGNOSE_VERDICT`.
 6. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$DIAGNOSE_VERDICT" --argjson a "$TEST_ATTEMPT" --arg strat "$STRATEGY" \
-     '.[-1].steps += [{step:"build-failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
+     '.[-1].steps += [{step:"build-failure-diagnose", status:"DONE", verdict:$v, attempt:$a, strategy:$strat, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-'"${TEST_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 14 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
@@ -729,21 +750,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-debug-failure-remediate` using `Task` tool:
    Context: You are a subagent in the Build Debug phase. Test failure during Build workflow. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.json`, `docs/plans/{YYYYMM}/logs/{FID}/build-failure-diagnose-{TEST_ATTEMPT}.md`.
    Update: Source and test files.
-   Create: `docs/plans/logs/{FID}/build-failure-remediate-{TEST_ATTEMPT}-log.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-failure-remediate-{TEST_ATTEMPT}-log.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-failure-remediate-{TEST_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `REMEDIATE_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REMEDIATE_VERDICT" --argjson a "$TEST_ATTEMPT" \
-     '.[-1].steps += [{step:"build-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
+     '.[-1].steps += [{step:"build-failure-remediate", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-failure-remediate-'"${TEST_ATTEMPT}"'-log.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${TEST_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 15 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
@@ -766,24 +788,25 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 1. **Subagent:** Invoke `@bkit-build-summary` using `Task` tool:
    Context: You are a subagent in the Build phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/active/{FID}-plan.md`, `docs/plans/logs/{FID}/status.json`, `docs/plans/logs/{FID}/build-input.md`, glob `docs/plans/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
-   Create: `docs/plans/logs/{FID}/build-summary.md`.
+   Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.json`, `docs/plans/{YYYYMM}/logs/{FID}/build-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/build-*.md`, `git log --oneline origin/dev..HEAD` (commit subjects only).
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `build-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 4. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
-     '.[-1].steps += [{step:"build-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/logs/{FID}/build-summary.md"]}]' \
+     '.[-1].steps += [{step:"build-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): summary"
    ```
 5. Assert `{BRANCH}` non-empty. `git push -u origin $(git branch --show-current)`.
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 16 — Summary - Verdict: {SUMMARY_VERDICT}
-   [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/logs/{FID}/build-summary.md)
+   [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
    ```
 7. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
@@ -807,12 +830,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. `git fetch origin dev`.
-2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `[force build]` → `git push`.
+2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → `git push`.
 3. Create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
+   <!-- bkit:fid={FID} -->
    <!-- bkit:start -->
-   https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/active/{FID}-plan.md
+   https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-plan.md
    <!-- bkit:end -->
    EOF
    )"
@@ -822,14 +846,15 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
 7. Update status and commit:
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      '.[-1].steps += [{step:"build-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
    ```
-8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+8. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 17 — Create PR
    [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
@@ -850,24 +875,29 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 2. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
-   LOCK="$REPO_ROOT/docs/plans/logs/{FID}/.lock"
+   LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE [skip ci]"
+   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-3. `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`— `{LABELS}` unchanged.
-4. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+3. _Tracker not wired — skip._
+4. Re-read issue labels to check kill-switch:
+   _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
+   **If** `bkit:auto` NOT in `{LABELS}`:
+   _Tracker not wired — kill switch inactive (workflow proceeds unconditionally)._
+5. _Tracker not wired — skip comment post._
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 18 — Close Workflow
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -877,9 +907,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] HEAD on remote does NOT contain `[skip ci]`
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `feat/{FID}`
-- [ ] Workflow status pushed to `dev` with `[skip ci]`
-- [ ] Issue update attempted (state `In Review`, phase label `Build` preserved)
-- [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)
+- [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
+- [ ] Issue update attempted via `issue-update-review` (state `In Review`)
+- [ ] Kill-switch propagation checked (`bkit:auto` label presence verified on issue)
+- [ ] Issue comment attempted (`Step 18` section)

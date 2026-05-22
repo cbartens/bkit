@@ -37,7 +37,7 @@ tools:
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Verify plan reflects source — no drift, no omissions, no silent expansion.
-   - Design-coverage: If design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design section maps to a plan task or explicit out-of-scope note. Missing → CRITICAL.
+   - Design-coverage: If design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), every design section maps to a plan task or explicit out-of-scope note. Missing → CRITICAL.
    - Sub-plans: If produced by `bkit-plan-complexity-split`, respect declared coverage scope — flag only items inside its slice.
    - Expansion: Plan task with no source justification → CRITICAL.
 6. Verify strict adherence to `docs/plans/template.md` — all template-mandated sections present and populated.
