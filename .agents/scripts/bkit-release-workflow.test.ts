@@ -1,4 +1,4 @@
-// release-workflow.test.ts — Structural assertions for .github/workflows/release.yml
+// bkit-release-workflow.test.ts — Structural assertions for .github/workflows/release.yml
 // (BAR-138: GH Packages distribution pipeline validation).
 //
 // No YAML parser available in devDependencies — uses string-based structural

@@ -193,7 +193,7 @@
 - **Category:** agentic
 - **Symptom:** Four assertions in `templates.test.ts` and `bkit-install.test.ts` fail — substring `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` not found in seeded `ci.yml` template.
 - **Root cause:** Sub-plan P4.T8 added `cbartens/bkit/.github/actions/setup-auth@v1` to `.agents/templates/.github/workflows/ci.yml` but simultaneously deleted the inline `env: GH_BKIT_TOKEN` block under `Install Dependencies`. The plan marked that block RETAIN-WITH-REASON (kill-date v1.1.0). The implementer treated the composite action as a replacement, not an addition.
-- **Fix or rule:** When a sub-plan adds a composite GitHub Action alongside an existing inline auth pattern marked RETAIN-WITH-REASON in the Supersession Inventory, the inline pattern MUST be preserved verbatim until its declared kill-date. The addition is strictly additive. After editing any seeded `.agents/templates/.github/workflows/*.yml` file, re-run `pnpm vitest run .agents/scripts/templates.test.ts .agents/scripts/bkit-install.test.ts` and regenerate the snapshot with `-u`.
+- **Fix or rule:** When a sub-plan adds a composite GitHub Action alongside an existing inline auth pattern marked RETAIN-WITH-REASON in the Supersession Inventory, the inline pattern MUST be preserved verbatim until its declared kill-date. The addition is strictly additive. After editing any seeded `.agents/templates/.github/workflows/*.yml` file, re-run `pnpm vitest run .agents/scripts/bkit-templates.content.test.ts .agents/scripts/bkit-install.test.ts` and regenerate the snapshot with `-u`.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical

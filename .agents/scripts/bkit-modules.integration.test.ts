@@ -42,6 +42,7 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
     ws: makeWriteSet(),
     logPrefix: "[bkit-install]",
     postDispatch: [],
+    issueTracker: "none",
     ...overrides,
   };
 }

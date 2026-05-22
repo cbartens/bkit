@@ -1,5 +1,7 @@
-// templates.test.ts — Snapshot/diff tests for seeded template files.
+// bkit-templates.content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template has been updated for registry-based auth)
+// Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
+// enforces template CONTENT (GH_BKIT_TOKEN, dependabot target-branch, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";

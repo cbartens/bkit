@@ -23,6 +23,8 @@ jobs:
     # bkit:start verbose-ci-env
     # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
     # [force build] / [force cache] / [skip ci] (independent contains() per marker).
+    # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
+    # (e.g. `bkit [verbose ci]`); substring match honours both forms.
     # See docs/deployments.md § "Commit-message force tags" for where to put the marker
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
@@ -223,7 +225,7 @@ jobs:
       #     exit 1
 
       # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
-      # Under [verbose ci]: appends --trace=on so Playwright writes per-test trace.zip
+      # Under bkit [verbose ci]: appends --trace=on so Playwright writes per-test trace.zip
       # (snapshots + network + console + source) — the canonical e2e debug artifact.
       # `--video` and `--screenshot` are NOT Playwright CLI flags — they're `use:` keys in
       # playwright.config.ts. Enabling standalone video / screenshot files requires editing
@@ -245,7 +247,7 @@ jobs:
       # `if: always()` captures both failure AND job-timeout cancel: Playwright's HTML reporter
       # only finalises `playwright-report/index.html` at suite onEnd, but per-test trace.zip files
       # in `test-results/` write incrementally and survive mid-suite SIGTERM. Without `always()`,
-      # cancelled runs lose all per-test traces. Under [verbose ci]: per-test trace.zip lands in
+      # cancelled runs lose all per-test traces. Under bkit [verbose ci]: per-test trace.zip lands in
       # test-results/; sharded runs additionally write blob-report/ intermediate.
       # - name: Upload Playwright Artifacts
       #   if: always()

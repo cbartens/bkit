@@ -28,34 +28,36 @@ On reflection the multi-lens-then-synthesize pattern from `bkit-design` and `bki
 
 Full orchestrator ceremony — worktree, FID, status.json, lock, Linear issue lifecycle, comment-per-step. Read-only: no plan, no PR, no code changes.
 
-| Step                     | Subagents                    | Output                                         |
-| ------------------------ | ---------------------------- | ---------------------------------------------- |
-| 1 Start Workflow         | —                            | FID, lock, Linear comment seed                 |
-| 2 Worktree Setup         | —                            | `.worktrees/{FID}/`, `audit-input.md`          |
-| 3 Lens audits (parallel) | ~12 `bkit-audit-lens-{slug}` | `audit-lens-{slug}.md` per lens                |
-| 4 Synthesize             | `bkit-audit-synthesize`      | `audit-v1-synthesis.md` — cross-lens dedup     |
-| 5 Prioritize             | `bkit-audit-prioritize`      | `audit-v2-ranked.md` — Severity × Class matrix |
-| 6 Summary                | `bkit-audit-summary`         | `audit-summary.md` — exec summary + verdict    |
-| 7 Close Workflow         | —                            | `docs/audits/{FID}-audit.md`, merge to dev     |
+<!-- prettier-ignore -->
+| Step | Subagents | Output |
+| --- | --- | --- |
+| 1 Start Workflow | — | FID, lock, Linear comment seed |
+| 2 Worktree Setup | — | `.worktrees/{FID}/`, `audit-input.md` |
+| 3 Lens audits (parallel) | ~12 `bkit-audit-lens-{slug}` | `audit-lens-{slug}.md` per lens |
+| 4 Synthesize | `bkit-audit-synthesize` | `audit-v1-synthesis.md` — cross-lens dedup |
+| 5 Prioritize | `bkit-audit-prioritize` | `audit-v2-ranked.md` — Severity × Class matrix |
+| 6 Summary | `bkit-audit-summary` | `audit-summary.md` — exec summary + verdict |
+| 7 Close Workflow | — | `docs/audits/{FID}-audit.md`, merge to dev |
 
 ## Lens charter (~12 lenses, generic + stack-agnostic)
 
 Each lens emits findings tagged `severity` (CRITICAL/HIGH/MEDIUM/LOW), `class` (lens slug), `location` (file:line or pattern), `what`, `why-it-matters`, `direction-of-fix`, `confidence`.
 
-| #   | Lens                                    | Class           | Universal probe                                                                                                                                                                     |
-| --- | --------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Architecture & coupling                 | maintainability | Import-graph shape; fan-in/out hotspots; layering breaks; circular deps; chokepoint entrypoints.                                                                                    |
-| 2   | Hot-path / cold-path discipline         | performance     | Top-level static imports in entrypoints; sync I/O in async paths; heavy init eagerly loaded.                                                                                        |
-| 3   | Configuration & runtime-shape alignment | compatibility   | Build/runtime/deploy config matches actual code shape; manifest/code divergence; env assumptions in shared modules.                                                                 |
-| 4   | Error handling & failure modes          | reliability     | Silent swallows; broad catches; missing retries on idempotent ops; fallbacks that hide failures; unhandled rejections.                                                              |
-| 5   | Observability gaps (structural)         | operability     | Failure surfaces with no logs/metrics; missing context tags; PII in logs; absent tracing on critical paths.                                                                         |
-| 6   | Resource lifecycle & concurrency        | reliability     | Unclosed handles; unbounded queues/caches; races on shared state; missing transactional boundaries.                                                                                 |
-| 7   | Debt markers & expired workarounds      | maintainability | `TODO\|FIXME\|HACK\|XXX\|workaround\|band-aid\|recovery` + ticket-ID grep; markers pointing at closed/rolled-back tickets; workarounds without exit conditions; commented-out code. |
-| 8   | Dead / duplicate / over-abstracted code | maintainability | Unreferenced exports; orphan files; dupe utilities; single-caller wrappers; speculative generality.                                                                                 |
-| 9   | Dependency hygiene                      | compatibility   | `pnpm outdated/audit`; workspace cross-version drift; ESM/CJS interop traps; unmaintained packages; types out of sync.                                                              |
-| 10  | Security posture                        | security        | Auth holes; input validation; secrets handling; API exposure; data leakage; dep CVE surface. (Adapts `bkit-utility-audit-security`.)                                                |
-| 11  | Test coverage & signal quality          | testability     | Mocked-only critical paths; missing integration tests; flakes/skips without exit conditions; assertion strength. (Adapts `bkit-utility-audit-tests`.)                               |
-| 12  | Documentation drift                     | maintainability | `.agents/docs.md` and project docs vs actual code domains; stale invariants; broken refs.                                                                                           |
+<!-- prettier-ignore -->
+| # | Lens | Class | Universal probe |
+| --- | --- | --- | --- |
+| 1 | Architecture & coupling | maintainability | Import-graph shape; fan-in/out hotspots; layering breaks; circular deps; chokepoint entrypoints. |
+| 2 | Hot-path / cold-path discipline | performance | Top-level static imports in entrypoints; sync I/O in async paths; heavy init eagerly loaded. |
+| 3 | Configuration & runtime-shape alignment | compatibility | Build/runtime/deploy config matches actual code shape; manifest/code divergence; env assumptions in shared modules. |
+| 4 | Error handling & failure modes | reliability | Silent swallows; broad catches; missing retries on idempotent ops; fallbacks that hide failures; unhandled rejections. |
+| 5 | Observability gaps (structural) | operability | Failure surfaces with no logs/metrics; missing context tags; PII in logs; absent tracing on critical paths. |
+| 6 | Resource lifecycle & concurrency | reliability | Unclosed handles; unbounded queues/caches; races on shared state; missing transactional boundaries. |
+| 7 | Debt markers & expired workarounds | maintainability | `TODO\ | FIXME\ | HACK\ | XXX\ | workaround\ | band-aid\ | recovery` + ticket-ID grep; markers pointing at closed/rolled-back tickets; workarounds without exit conditions; commented-out code. |
+| 8 | Dead / duplicate / over-abstracted code | maintainability | Unreferenced exports; orphan files; dupe utilities; single-caller wrappers; speculative generality. |
+| 9 | Dependency hygiene | compatibility | `pnpm outdated/audit`; workspace cross-version drift; ESM/CJS interop traps; unmaintained packages; types out of sync. |
+| 10 | Security posture | security | Auth holes; input validation; secrets handling; API exposure; data leakage; dep CVE surface. (Adapts `bkit-utility-audit-security`.) |
+| 11 | Test coverage & signal quality | testability | Mocked-only critical paths; missing integration tests; flakes/skips without exit conditions; assertion strength. (Adapts `bkit-utility-audit-tests`.) |
+| 12 | Documentation drift | maintainability | `.agents/docs.md` and project docs vs actual code domains; stale invariants; broken refs. |
 
 Optional 13th: **Live runtime signal** — pulls last N days of error signatures (adapts `bkit-utility-audit-logs`). Gated on log infra; defer to v2 if absent.
 

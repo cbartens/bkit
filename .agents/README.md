@@ -1,28 +1,28 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into a five-phase Linear-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
+**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
-This README covers what bkit does, how to install it, and what env / Linear setup it expects. Workflow internals live in `.agents/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.agents/prompts.md`.
+This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.agents/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.agents/prompts.md`.
 
 ---
 
 ## How a workflow runs (end-to-end example)
 
-Typical cycle for issue `BAR-123` "Add feature X":
+Typical cycle for issue `ISSUE-123` "Add feature X":
 
-1. **Linear issue** is created with the **`Auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
-2. **Trigger** — Linear comment (`@curspr /bkit-plan BAR-123`) or slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
-3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
-4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
-5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket, set at design start) and appends one fenced section to the Linear comment.
-6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(bar-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(bar-123-…): summary` (build / debug / ship) → push.
-7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/bar-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
+1. **Tracker issue** is created with the **`Auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
+2. **Trigger** — tracker comment (`@curspr /bkit-plan ISSUE-123`) or slash command in Claude Code / Cursor (`/bkit-plan ISSUE-123`).
+3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets tracker label `Plan` + state `In Progress`, creates one workflow comment.
+4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on branch `feat/issue-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
+5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket, set at design start) and appends one fenced section to the tracker comment.
+6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(issue-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(issue-123-…): summary` (build / debug / ship) → push.
+7. **Close Workflow** — transitions tracker state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/issue-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/{YYYYMM}/{FID}-{design,plan}.md` (canonical, durable). Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
 10. **CI** — runs on the PR. Red CI? Trigger `/bkit-debug` (PR debug mode pulls failed run logs via `gh run view --log-failed`). Green? Trigger `/bkit-ship`.
 11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, prunes worktree, closes issue (`Done`). Plans stay at canonical `docs/plans/{YYYYMM}/` — no archive move (files never move under the new layout).
 
-Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and own all Linear MCP calls — subagents are leaves with read-only Linear access (none) and write access scoped by their `tools:` allowlist.
+Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and own all tracker MCP calls — subagents are leaves with read-only tracker access (none) and write access scoped by their `tools:` allowlist.
 
 ---
 
@@ -61,7 +61,20 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 
 ### Environment variables
 
-Add to your shell, the Cursor Cloud Agent dashboard, and `apps/web/.env.example` so contributors know what's needed:
+Add to your shell, the Cursor Cloud Agent dashboard, and `apps/web/.env.example` so contributors know what's needed. The exact set depends on which issue tracker you configure via `bkit install --tracker=<name>`:
+
+**GitHub tracker (default — `bkit install --tracker=github`):**
+
+```env
+# ==========================================
+# BKIT: CURSOR CLAUDE GITHUB INTEGRATION
+# ==========================================
+CURSOR_API_KEY=""
+ANTHROPIC_API_KEY=""
+GH_TOKEN=""
+```
+
+**Linear tracker (`bkit install --tracker=linear`):**
 
 ```env
 # ==========================================
@@ -75,25 +88,32 @@ GH_TOKEN=""
 ```
 
 <!-- prettier-ignore -->
-| Variable | Where read | Purpose |
-| --- | --- | --- |
-| `LINEAR_API_KEY` | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for the `Auto` gate; fail-fast if absent. |
-| `LINEAR_WEBHOOK_SECRET` | Linear → Cursor integration backend | Verifies webhook signatures on `@curspr` mentions. Set in the Linear ↔ Cursor integration config. |
-| `CURSOR_API_KEY` | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
-| `ANTHROPIC_API_KEY` | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (e.g. cloud automation, CI runs). |
-| `GH_TOKEN` | `gh` CLI inside workflow Bash | PR create/view/merge, run-log fetch. Use a fine-grained PAT with `repo` + `workflow` scopes. |
+| Variable | Tracker | Where read | Purpose |
+| --- | --- | --- | --- |
+| `GH_TOKEN` | all | `gh` CLI inside workflow Bash; GitHub MCP server (`Authorization: Bearer`) | PR create/view/merge, run-log fetch, issue/label writes via MCP. Use a fine-grained PAT with `repo` + `workflow` scopes. |
+| `GITHUB_ISSUE_ID` | github | Injected from PR body metadata marker `<!-- bkit:issue=#NNN -->` | Identifies the linked GitHub issue. Injected automatically — do not set manually. |
+| `ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (e.g. cloud automation, CI runs). |
+| `CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
+| `LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for the `Auto` gate; fail-fast if absent. |
+| `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@curspr` mentions. Set in the Linear ↔ Cursor integration config. |
 
-`LINEAR_ISSUE_ID` is set automatically by the workflow context (Cursor Cloud Agent / Linear webhook); it doubles as the Claude IDE-vs-cloud detection signal in preflight. Don't set it manually.
+`LINEAR_ISSUE_ID` (Linear tracker) and `GITHUB_ISSUE_ID` (GitHub tracker) are set automatically by the workflow context — do not set them manually.
 
-### Linear workspace setup
+### Tracker workspace setup
 
-Bkit uses one custom Linear label, plus the standard Linear ↔ Cursor integration label families.
+Bkit uses one custom label (`Auto`), plus integration label families. The setup depends on your configured tracker.
 
-#### Bkit custom label
+#### Bkit custom label (`Auto`)
 
-- **`Auto`** — present on issues approved for agent work. Preflight hooks call the Linear GraphQL API and refuse the session if the label is absent or the issue is in `Done` / `Cancelled`. Add this label to your Linear workspace before running any cloud / automation session.
+- **`Auto`** — present on issues approved for agent work. Preflight hooks check this label and refuse the session if it is absent or the issue is in a terminal state (`Done` / `Cancelled` / closed). Add this label to your tracker workspace before running any cloud / automation session.
+  - **GitHub:** the label is a GitHub issue label named `bkit:auto`. `bkit install --tracker=github` seeds the label via the GitHub MCP on first run.
+  - **Linear:** the label is a Linear label named `Auto`. Add it manually to your Linear workspace.
 
-#### Linear ↔ Cursor integration labels (standard, not bkit-specific)
+#### Phase labels (GitHub tracker)
+
+When `bkit.issueTracker = "github"`, Cursor reads the phase label on the PR to know which workflow to dispatch. Labels: `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`. The Cursor GitHub App must be installed on the consumer's repo or org (prerequisite for GitHub dispatch). `/bkit-design` and `/bkit-plan` have no PR — they are local-IDE-only on Cursor cloud.
+
+#### Linear ↔ Cursor integration labels (Linear tracker only)
 
 Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each set context for the Cursor Cloud Agent session. If a sub-label is present on the issue, Cursor follows it; otherwise the integration's defaults apply.
 
@@ -182,7 +202,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. Dependabot scans only the actual workflow path (`.github/workflows/`), not the template path. When a Dependabot PR opens against bkit's own workflows:
 
 1. Before merging, manually edit the matching `.agents/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
-2. Run `pnpm test` (the `templates.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/templates.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
+2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
 3. Push the template-side change to the Dependabot PR's branch (or land both in a single follow-up commit on `dev` if the Dependabot branch is read-only).
 
 This dance only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so Dependabot bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`.
@@ -193,47 +213,51 @@ This dance only applies to the bkit repo itself — consumers don't have the tem
 
 Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). All execute the same workflow file from `.agents/workflows/` — differences are compute source and orchestrator model.
 
-### From Linear (cloud — Cursor Cloud Agent)
+### From a tracker comment (cloud — Cursor Cloud Agent)
 
-Mention `@curspr` in any Linear comment with a slash command and the issue ID:
+**Linear tracker:** Mention `@curspr` in any Linear comment with a slash command and the issue ID:
 
 ```
-@curspr /bkit-plan BAR-123
-@curspr /bkit-build BAR-123
-@curspr /bkit-ship BAR-123
+@curspr /bkit-plan ISSUE-123
+@curspr /bkit-build ISSUE-123
+@curspr /bkit-ship ISSUE-123
 ```
 
 The Linear ↔ Cursor integration spawns a Cloud Agent session, posts the session URL back as a Linear comment, and the workflow runs unattended. Progress lands in subsequent comments as each step completes.
 
-**Requirements:** issue must carry the `Auto` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
+**GitHub tracker:** Dispatch is via PR-label trigger — Cursor Automations "Pull request label changed" event. The `bkit:auto` label on the PR (written by `bkit-build`) triggers the dispatch; the phase label (`bkit:plan`, `bkit:build`, etc.) tells Cursor which workflow to run. Issue comments are posted via the GitHub MCP. `/bkit-design` and `/bkit-plan` have no PR so they are local-IDE-only on Cursor cloud for the GitHub tracker.
+
+**Requirements (Linear):** issue must carry the `Auto` label and a non-terminal state (preflight refuses otherwise). `LINEAR_API_KEY`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY`, and `GH_TOKEN` must all be set in the Cursor Cloud Agent dashboard env.
+
+**Requirements (GitHub):** `GH_TOKEN`, `CURSOR_API_KEY`, `ANTHROPIC_API_KEY` in the dashboard env. Cursor GitHub App must be installed on the repo/org. `GITHUB_ISSUE_ID` is injected from the PR body metadata marker `<!-- bkit:issue=#NNN -->` — no manual setup.
 
 ### From Claude Code (interactive — local)
 
 Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 ```
-/bkit-design BAR-123        # produce a design doc
-/bkit-plan BAR-123          # produce an implementation plan
-/bkit-build BAR-123         # execute the plan in a worktree, open a PR
-/bkit-debug BAR-123         # diagnose and remediate CI failures
-/bkit-ship BAR-123          # merge the PR for the current branch, archive, close the issue
+/bkit-design ISSUE-123      # produce a design doc
+/bkit-plan ISSUE-123        # produce an implementation plan
+/bkit-build ISSUE-123       # execute the plan in a worktree, open a PR
+/bkit-debug ISSUE-123       # diagnose and remediate CI failures
+/bkit-ship ISSUE-123        # merge the PR for the current branch, archive, close the issue
 ```
 
-Claude reads issue details, comments, and plan files automatically via the Linear MCP (`mcp__claude_ai_Linear__*`).
+Claude reads issue details, comments, and plan files automatically via the tracker MCP.
 
-**Requirements:** `LINEAR_API_KEY`, `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). Session model should match the orchestrator pin in `.agents/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.agents/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 
 Cursor 2.4+ honours `.cursor/commands/bkit-*.md` and `.cursor/agents/bkit-*.md`. Trigger the same way:
 
 ```
-/bkit-plan BAR-123
+/bkit-plan ISSUE-123
 ```
 
 Orchestrator session reads workflow file from `.cursor/commands/`. Subagents are dispatched via `Task` and run with whatever `model:` value is pinned in their frontmatter (no host-side override).
 
-**Requirements:** `LINEAR_API_KEY`, `GH_TOKEN`. Cursor account in good standing.
+**Requirements:** `GH_TOKEN` (GitHub tracker, default) or `LINEAR_API_KEY` (Linear tracker). Cursor account in good standing.
 
 ---
 

@@ -5,6 +5,30 @@
 // Design: pure data — no fs access, no side effects. Re-exported as a public
 // contract consumed by uninstall and package.json strippers.
 // ---------------------------------------------------------------------------
+// Issue tracker (#39)
+// ---------------------------------------------------------------------------
+/**
+ * Issue-tracker providers supported by `bkit install --tracker=<name>`.
+ * - `github` — GitHub Issues + Projects v2 (default).
+ * - `linear` — Linear (opt-in).
+ * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
+ *
+ * Add a new value here when adding a provider section to `.agents/trackers.md`.
+ * See `.agents/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ */
+export const ISSUE_TRACKERS = ["github", "linear", "none"];
+/** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
+export const DEFAULT_ISSUE_TRACKER = "none";
+/**
+ * Narrow an unknown string to `IssueTracker` or return `null` if invalid.
+ * Used by CLI flag parsing and consumer-manifest reads.
+ */
+export function parseIssueTracker(value) {
+    return typeof value === "string" && ISSUE_TRACKERS.includes(value)
+        ? value
+        : null;
+}
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 const CORE_MANIFEST = [

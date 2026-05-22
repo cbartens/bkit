@@ -1,5 +1,6 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
+import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
 const MODULE_FLAGS = new Set([
     "core",
     "claude",
@@ -79,9 +80,21 @@ export function parseArgs(argv) {
     const moduleFlags = new Set();
     const uninstallFlags = defaultUninstallFlags();
     const upgradeFlags = defaultUpgradeFlags();
+    let tracker = null;
     for (const arg of args) {
         if (arg.startsWith("--")) {
             const flag = arg.slice(2);
+            // Value-bearing flag: --tracker=<github|linear|none>
+            if (flag.startsWith("tracker=")) {
+                const value = flag.slice("tracker=".length);
+                const parsed = parseIssueTracker(value);
+                if (parsed === null) {
+                    console.error(`[bkit] Unknown tracker: "${value}". Valid values: ${ISSUE_TRACKERS.join(", ")}`);
+                    process.exit(1);
+                }
+                tracker = parsed;
+                continue;
+            }
             // Uninstall-specific flags (accepted for all verbs that use them)
             if (flag === "dry-run") {
                 uninstallFlags.dryRun = true;
@@ -135,7 +148,7 @@ export function parseArgs(argv) {
         process.exit(1);
     }
     const modules = resolveModules(moduleFlags);
-    return { verb, modules, uninstallFlags, upgradeFlags };
+    return { verb, modules, uninstallFlags, upgradeFlags, tracker };
 }
 export function printUsage() {
     console.log(`bkit — agent-stack consolidation CLI
@@ -172,7 +185,10 @@ Uninstall flags:
   --keep-tooling  Preserve tooling devDependencies (prettier/slop-scan/husky).
 
 Install flags:
-  --auto-revert   On Phase 3 blocker, automatically run uninstall and exit 1.
+  --auto-revert         On Phase 3 blocker, automatically run uninstall and exit 1.
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none (default).
+                        Writes bkit.issueTracker to package.json and substitutes tracker snippets
+                        into workflow mirrors (.claude/commands/, .cursor/commands/).
 
 Upgrade flags:
   --non-interactive  Auto-apply non-conflicting changes; emit conflict list to stderr;

@@ -205,17 +205,17 @@ The bkit repo's `.husky/pre-push` runs `pnpm bkit check` AFTER the templated `# 
 
 ### CI trigger on final workflow push
 
-GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` (or `[skip actions]`). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
+GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `bkit [skip ci]` (matched via GitHub substring check on `[skip ci]`) or `bkit [skip actions]`. When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `[skip ci]`.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `bkit [skip ci]`.
 
 <!-- prettier-ignore -->
 | Surface | Mechanic |
 | --- | --- |
-| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `[skip build] [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `[skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
+| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `bkit [skip build] bkit [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
 
-All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `[skip build] [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
+All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
 
 ### Manual CI trigger on feat branches (`workflow_dispatch`)
 

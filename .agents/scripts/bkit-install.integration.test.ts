@@ -717,7 +717,7 @@ describe("Scenario 9 — P4.T3: mid-failure rollback, consumer files untouched",
 // ---------------------------------------------------------------------------
 
 describe("MCP config Tier 3 scaffold — fresh install and consumer-modified idempotency", () => {
-  it("fresh install via bkit install --full scaffolds .mcp.json with linear and github keys", () => {
+  it("fresh install via bkit install --full (no --tracker) scaffolds .mcp.json with empty mcpServers", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
@@ -744,7 +744,7 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
 
-    // .mcp.json must exist and contain both required MCP server entries
+    // Default tracker is "none" → .mcp.json seeded with empty mcpServers (no tracker wired)
     const mcpJsonPath = path.join(tmpDir, ".mcp.json");
     expect(fs.existsSync(mcpJsonPath), ".mcp.json must be scaffolded by bkit install --full").toBe(
       true,
@@ -752,11 +752,13 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     const mcpJson = JSON.parse(fs.readFileSync(mcpJsonPath, "utf-8")) as {
       mcpServers?: Record<string, unknown>;
     };
-    expect(mcpJson.mcpServers, ".mcp.json must have mcpServers").toBeDefined();
-    expect(mcpJson.mcpServers!["linear"], ".mcp.json must have linear server").toBeDefined();
-    expect(mcpJson.mcpServers!["github"], ".mcp.json must have github server").toBeDefined();
+    expect(mcpJson.mcpServers, ".mcp.json must have mcpServers key").toBeDefined();
+    expect(
+      Object.keys(mcpJson.mcpServers!),
+      ".mcp.json must have no tracker servers for default 'none' tracker",
+    ).toHaveLength(0);
 
-    // .cursor/mcp.json must also be scaffolded
+    // .cursor/mcp.json must also be scaffolded with empty mcpServers
     const cursorMcpPath = path.join(tmpDir, ".cursor", "mcp.json");
     expect(
       fs.existsSync(cursorMcpPath),
@@ -765,14 +767,56 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     const cursorMcp = JSON.parse(fs.readFileSync(cursorMcpPath, "utf-8")) as {
       mcpServers?: Record<string, unknown>;
     };
-    expect(
-      cursorMcp.mcpServers!["linear"],
-      ".cursor/mcp.json must have linear server",
-    ).toBeDefined();
-    expect(
-      cursorMcp.mcpServers!["github"],
-      ".cursor/mcp.json must have github server",
-    ).toBeDefined();
+    expect(Object.keys(cursorMcp.mcpServers ?? {})).toHaveLength(0);
+  });
+
+  it("bkit install --tracker=github seeds .mcp.json with only the github entry", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "scratch-consumer", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full", "--tracker=github"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(result.status, `install crashed:\n${combined}`).toBe(0);
+
+    // --tracker=github → only the github entry present in .mcp.json
+    const mcpJson = JSON.parse(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")) as {
+      mcpServers?: Record<string, unknown>;
+    };
+    expect(mcpJson.mcpServers!["github"], ".mcp.json must have github server").toBeDefined();
+    expect(mcpJson.mcpServers!["linear"], ".mcp.json must NOT have linear server").toBeUndefined();
+
+    // bkit.issueTracker persisted to package.json
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { issueTracker?: string };
+    };
+    expect(pkg.bkit?.issueTracker).toBe("github");
+
+    // workflow mirror must have no remaining bkit:tracker markers
+    const claudeCmd = path.join(tmpDir, ".claude", "commands", "bkit-build.md");
+    if (fs.existsSync(claudeCmd)) {
+      const content = fs.readFileSync(claudeCmd, "utf-8");
+      expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
+      expect(content).toContain("mcp__github__");
+    }
   });
 
   it("re-install over a consumer-modified .mcp.json leaves the file byte-for-byte unchanged", () => {
