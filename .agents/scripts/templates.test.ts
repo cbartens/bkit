@@ -122,8 +122,17 @@ describe("consumer bkit-set-dependabot.sh template (.agents/templates/scripts/ci
     expect(content).toMatch(/gh api -X PUT\s+"?repos\/\$OWNER_REPO\/vulnerability-alerts"?/);
   });
 
-  it("enables automated-security-fixes via gh api PUT", () => {
-    expect(content).toMatch(/gh api -X PUT\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/);
+  it("DISABLES automated-security-fixes via gh api DELETE (bkit policy: never auto-PR to main)", () => {
+    expect(content).toMatch(/gh api -X DELETE\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/);
+    // Sanity-check the reverse: must NOT enable automated-security-fixes
+    expect(content).not.toMatch(
+      /gh api -X PUT\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/,
+    );
+  });
+
+  it("documents the never-auto-on-main policy", () => {
+    expect(content).toMatch(/never auto/i);
+    expect(content).toMatch(/main/);
   });
 
   it("supports --dry-run flag", () => {

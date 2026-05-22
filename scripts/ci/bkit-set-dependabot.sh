@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
-# bkit-set-dependabot.sh — Enable repo-level prerequisites that Dependabot
-# version updates (`.github/dependabot.yml`) silently depend on. Without
-# these, GitHub will not read the config file and no PRs will fire.
+# bkit-set-dependabot.sh — Enable / sanity-check the repo-level state that
+# Dependabot version updates (.github/dependabot.yml) silently depend on.
 #
-# What this enables (idempotent):
-#   - Dependabot alerts (PUT /repos/{o}/{r}/vulnerability-alerts) — surfaces
-#     CVE matches against your dependency graph; also implicitly enables the
-#     Dependency graph for the repo on personal/private plans.
-#   - Dependabot security updates (PUT /repos/{o}/{r}/automated-security-fixes) —
-#     auto-PRs for known CVEs in pinned dependencies. Requires alerts to be on.
+# Policy: bkit consumers NEVER want Dependabot auto-PRs against `main`. Bkit
+# branch protection only accepts PRs from `dev`, so any security-update PR
+# routed to the default branch (which is what `automated-security-fixes`
+# produces) is dead-on-arrival at best and a policy violation at worst.
+# This script therefore:
+#   ✓ ENABLES  vulnerability-alerts          — required for dependabot.yml to fire;
+#                                              alerts are visibility-only (no auto-PRs).
+#   ✗ DISABLES automated-security-fixes     — defensively turned OFF so the auto-PRs
+#                                              to `main` never appear. CVE handling stays
+#                                              human: read the Security tab, open a PR
+#                                              against `dev` yourself if needed.
 #
-# What this does NOT enable:
-#   - Dependency graph itself for some private-repo / org configurations may
-#     require a manual toggle at Settings → Code security and analysis. The
-#     `vulnerability-alerts` PUT covers most personal/private setups; if your
-#     repo still does not show dependabot.yml as "Active" under Insights →
-#     Dependency graph → Dependabot, flip the Dependency graph toggle in the
-#     UI and re-run this script.
+# Dependabot version updates (the .github/dependabot.yml file) still fire
+# normally — they honour `target-branch: dev` and land on dev as expected.
 #
-# Why this exists: GitHub requires THREE conditions for Dependabot version
-# updates to fire — (a) dependabot.yml on the default branch, (b) Dependency
-# graph enabled, (c) Dependabot recognising the repo. Bkit's `bkit install --ci`
-# handles (a) by seeding the file. This script handles (b)/(c) for the common
-# personal/private-repo case.
+# What this does NOT toggle:
+#   - Dependency graph (UI-only on private repos; no API surface). Verify at
+#     Settings → Code security and analysis if the config still isn't recognised.
 #
 # Usage:
 #   bash scripts/ci/bkit-set-dependabot.sh             # apply (idempotent)
@@ -41,7 +38,7 @@ for arg in "$@"; do
     --dry-run) DRY_RUN=1 ;;
     --print) PRINT_ONLY=1 ;;
     -h|--help)
-      sed -n '2,30p' "$0"
+      sed -n '2,32p' "$0"
       exit 0
       ;;
     *)
@@ -67,17 +64,22 @@ probe_alerts() {
 }
 
 probe_security_fixes() {
-  if gh api "repos/$OWNER_REPO/automated-security-fixes" --silent 2>/dev/null; then
+  # Endpoint returns 200 with {"enabled": bool, "paused": bool}
+  local body
+  body=$(gh api "repos/$OWNER_REPO/automated-security-fixes" 2>/dev/null || echo '{"enabled":null}')
+  if echo "$body" | grep -q '"enabled":true'; then
     echo enabled
-  else
+  elif echo "$body" | grep -q '"enabled":false'; then
     echo disabled
+  else
+    echo unknown
   fi
 }
 
 if [ "$PRINT_ONLY" = "1" ]; then
   echo "[bkit-set-dependabot] Repo: $OWNER_REPO"
-  echo "  Dependabot alerts (vulnerability-alerts):     $(probe_alerts)"
-  echo "  Dependabot security updates (automated-fixes): $(probe_security_fixes)"
+  echo "  Dependabot alerts (vulnerability-alerts):              $(probe_alerts)        (target: enabled)"
+  echo "  Dependabot security updates (automated-security-fixes): $(probe_security_fixes)       (target: disabled — never auto-PR to main)"
   echo ""
   echo "  Note: This script cannot probe whether Dependency graph itself is enabled."
   echo "  Verify at: https://github.com/$OWNER_REPO/network/updates"
@@ -86,21 +88,20 @@ fi
 
 if [ "$DRY_RUN" = "1" ]; then
   echo "[bkit-set-dependabot] DRY RUN — no changes applied"
-  echo "  Would PUT repos/$OWNER_REPO/vulnerability-alerts"
-  echo "  Would PUT repos/$OWNER_REPO/automated-security-fixes"
+  echo "  Would PUT    repos/$OWNER_REPO/vulnerability-alerts          (enable)"
+  echo "  Would DELETE repos/$OWNER_REPO/automated-security-fixes      (disable — bkit policy: never auto on main)"
   exit 0
 fi
 
-echo "[bkit-set-dependabot] Enabling Dependabot prerequisites on $OWNER_REPO"
+echo "[bkit-set-dependabot] Applying bkit policy on $OWNER_REPO"
 
-# Both PUT endpoints return 204 No Content on success; idempotent (no-op if already on).
 gh api -X PUT "repos/$OWNER_REPO/vulnerability-alerts" --silent \
-  && echo "  ✓ Dependabot alerts enabled" \
+  && echo "  ✓ Dependabot alerts enabled (visibility only)" \
   || { echo "  ✗ Failed to enable Dependabot alerts (check token scopes: needs admin:repo or repo)" >&2; exit 1; }
 
-gh api -X PUT "repos/$OWNER_REPO/automated-security-fixes" --silent \
-  && echo "  ✓ Dependabot security updates enabled" \
-  || { echo "  ✗ Failed to enable Dependabot security updates" >&2; exit 1; }
+gh api -X DELETE "repos/$OWNER_REPO/automated-security-fixes" --silent \
+  && echo "  ✓ Dependabot automated security fixes disabled (no auto-PRs to main)" \
+  || { echo "  ✗ Failed to disable Dependabot automated security fixes (the endpoint returns 204 on success and 404 if already off — re-run with --print to verify)" >&2; exit 1; }
 
 echo ""
 echo "[bkit-set-dependabot] Done."
@@ -111,3 +112,7 @@ echo "  2. Open https://github.com/$OWNER_REPO/network/updates and verify the co
 echo "  3. If the page reports 'Dependency graph is disabled', toggle it on at"
 echo "     https://github.com/$OWNER_REPO/settings/security_analysis"
 echo "     (this script cannot do it for you — GitHub does not expose an API for the toggle)."
+echo ""
+echo "  4. CVE alerts will still appear in the Security tab — handle them by opening"
+echo "     a PR against 'dev' yourself when needed. Dependabot version updates"
+echo "     (weekly .github/dependabot.yml schedule) continue to fire normally against dev."

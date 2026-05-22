@@ -796,17 +796,20 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
      merged all the way through dev → main before Dependabot opens any PR.
      A config on a feature branch or on dev alone is silently inert.
 
-  4. Enable repo-level prerequisites (Dependabot alerts + automated security
-     fixes). Without these, GitHub silently ignores dependabot.yml regardless
-     of how clean the config is. bkit ships a helper script — run from repo
-     root:
+  4. Enable Dependabot alerts (required) and ensure automated-security-fixes
+     is DISABLED. Bkit policy: never let Dependabot auto-PR to \`main\`. The
+     auto-fixes feature opens CVE PRs against the default branch, which bkit
+     branch protection rejects (main only accepts PRs from \`dev\`). Run the
+     bkit-shipped helper from repo root:
 
          bash scripts/ci/bkit-set-dependabot.sh
 
-     Idempotent; calls \`gh api -X PUT\` against \`vulnerability-alerts\` and
-     \`automated-security-fixes\`. For private repos the Dependency graph
-     itself may also need a one-time UI toggle at Settings → Code security
-     and analysis (GitHub does not expose an API for that toggle).
+     Idempotent; PUTs \`vulnerability-alerts\` (enable) and DELETEs
+     \`automated-security-fixes\` (defensive disable). CVE alerts remain
+     visible in the repo Security tab — open a PR against \`dev\` manually
+     when needed. For private repos the Dependency graph itself may also
+     need a one-time UI toggle at Settings → Code security and analysis
+     (GitHub does not expose an API for that toggle).
 
   Do NOT remove or rename existing \`updates[]\` entries unless you know the
   ecosystem is unused — losing an ecosystem means CVE-driven PRs stop firing

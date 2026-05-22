@@ -25,6 +25,7 @@ import {
   detectDependabotTargetBranchMissing,
   detectDependabotConfigInvalid,
   detectDependabotRepoPrereqs,
+  detectDependabotAutoFixesEnabled,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -973,6 +974,50 @@ describe("detectDependabotRepoPrereqs", () => {
       throw new Error("ENOENT — gh not found");
     });
     expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDependabotAutoFixesEnabled — bkit policy: never auto-PR to main
+// ---------------------------------------------------------------------------
+
+describe("detectDependabotAutoFixesEnabled", () => {
+  it("returns null when no dependabot.yml exists (nothing to gate)", () => {
+    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
+  });
+
+  it("fires when API reports {enabled: true}", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockReturnValue('{"enabled":true,"paused":false}');
+    const result = detectDependabotAutoFixesEnabled(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dependabot-auto-security-fixes-enabled");
+    expect(result!.detect).toMatch(/policy/i);
+    expect(result!.action).toMatch(/bkit-set-dependabot\.sh/);
+  });
+
+  it("returns null when API reports {enabled: false}", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockReturnValue('{"enabled":false,"paused":false}');
+    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
+  });
+
+  it("returns null on gh transport error (no false positives)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockImplementation(() => {
+      throw new Error("ENOENT — gh not found");
+    });
+    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
+  });
+
+  it("returns null when API returns unexpected body (no false positives)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    execFileSync.mockReturnValue('{"unrelated":"body"}');
+    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
   });
 });
 

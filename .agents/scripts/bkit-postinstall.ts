@@ -555,9 +555,9 @@ export function detectDependabotConfigMissing(cwd: string): PreflightFinding | n
       "Run `pnpm bkit install --ci` to seed the bkit-shipped `.github/dependabot.yml` (Tier 3 seed-or-print). The shipped template covers the `github-actions` ecosystem with `target-branch: dev` (required for bkit branch-protection conventions) and a `chore(deps)` commit-message prefix.\n\n" +
       "After seeding, two more steps are required for Dependabot to actually start opening PRs:\n\n" +
       "  1. Merge the config all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on dev alone is silently inert.\n" +
-      "  2. Enable repo-level prerequisites (Dependabot alerts + automated security fixes). bkit ships a helper:\n\n" +
+      "  2. Enable Dependabot alerts (required) and DISABLE automated-security-fixes (bkit policy — never auto-PR to main). bkit ships a helper:\n\n" +
       "         bash scripts/ci/bkit-set-dependabot.sh\n\n" +
-      "     Idempotent; calls `gh api -X PUT` against `vulnerability-alerts` + `automated-security-fixes`. For private repos, the Dependency graph itself may also need a one-time UI toggle at Settings → Code security and analysis (no API surface for that one).\n\n" +
+      "     Idempotent; PUTs `vulnerability-alerts` (enable) and DELETEs `automated-security-fixes` (defensive — keeps CVE auto-PRs off main, since they would target the default branch and bkit protects main against non-dev PRs). For private repos, the Dependency graph itself may also need a one-time UI toggle at Settings → Code security and analysis (no API surface for that one).\n\n" +
       "Verify under repo Insights → Dependency graph → Dependabot that the config is recognised as Active after both steps.\n\n" +
       "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and the canonical snippet (single source of truth: `.agents/templates/.github/dependabot.yml`).",
   };
@@ -646,10 +646,10 @@ export function detectDependabotConfigInvalid(cwd: string): PreflightFinding | n
 }
 
 /**
- * Detect whether repo-level Dependabot prerequisites (Dependabot alerts +
- * automated security fixes) are enabled. Without them, GitHub silently
- * ignores `.github/dependabot.yml` — version updates never fire even with
- * a perfectly valid config on the default branch.
+ * Detect whether `vulnerability-alerts` is enabled — the repo-level
+ * prerequisite GitHub silently requires before reading
+ * `.github/dependabot.yml`. Without it, version updates never fire even
+ * with a perfectly valid config on the default branch.
  *
  * Probe semantics:
  *   - GET /repos/{o}/{r}/vulnerability-alerts → 204 = enabled, 404 = disabled
@@ -690,15 +690,59 @@ export function detectDependabotRepoPrereqs(cwd: string): PreflightFinding | nul
     detect:
       ".github/dependabot.yml exists but Dependabot alerts are disabled on this repo — GitHub will silently ignore the config and no PRs will fire.",
     action:
-      "Enable repo-level prerequisites (idempotent). bkit ships a helper:\n\n" +
+      "Enable Dependabot alerts (idempotent). bkit ships a helper:\n\n" +
       "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
       "Or call the GitHub API directly:\n\n" +
-      "    gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts\n" +
-      "    gh api -X PUT repos/{owner}/{repo}/automated-security-fixes\n\n" +
+      "    gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts\n\n" +
+      "Note: bkit policy is to leave `automated-security-fixes` DISABLED. Auto-PRs from that feature route to the default branch (`main`), which bkit-managed repos protect against non-`dev` PRs. The helper script disables it defensively; CVE handling stays manual (read the Security tab, open a PR against `dev` if needed).\n\n" +
       "For private repos, the Dependency graph itself may also need a manual toggle at\n" +
       "Settings → Code security and analysis → Dependency graph (GitHub does not expose\n" +
       "an API for this toggle). After enabling, verify under repo Insights → Dependency\n" +
       "graph → Dependabot that `.github/dependabot.yml` is listed as Active.",
+  };
+}
+
+/**
+ * Detect whether `automated-security-fixes` is enabled on the repo. Bkit
+ * policy: NEVER want this on — the feature opens auto-PRs against the
+ * default branch (typically `main`), which bkit branch protection only
+ * accepts from `dev`. Result: dead PRs piling up against `main`.
+ *
+ * Probe semantics:
+ *   - GET /repos/{o}/{r}/automated-security-fixes → 200 with body `{"enabled": true/false}`
+ *   - gh unavailable or unauthenticated → return null
+ *
+ * Fires only when the value is explicitly `true`. Skips on transport error.
+ */
+export function detectDependabotAutoFixesEnabled(cwd: string): PreflightFinding | null {
+  const yml = path.join(cwd, ".github", "dependabot.yml");
+  const yaml = path.join(cwd, ".github", "dependabot.yaml");
+  if (!fs.existsSync(yml) && !fs.existsSync(yaml)) return null;
+
+  let body: string;
+  try {
+    body = execFileSync("gh", ["api", "repos/{owner}/{repo}/automated-security-fixes"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5000,
+      encoding: "utf-8",
+    });
+  } catch {
+    // gh unavailable, unauthenticated, or endpoint 404 — silent-skip.
+    return null;
+  }
+  if (!/"enabled"\s*:\s*true/.test(body)) return null;
+
+  return {
+    id: "dependabot-auto-security-fixes-enabled",
+    severity: "advisory",
+    detect:
+      "Dependabot `automated-security-fixes` is ENABLED on this repo — bkit policy is to keep it OFF. Security-update PRs route to the default branch (`main`); bkit branch protection rejects non-`dev` PRs to `main`, so these PRs are dead-on-arrival.",
+    action:
+      "Disable the auto-fixes feature (idempotent). bkit ships a helper:\n\n" +
+      "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+      "Or call the API directly:\n\n" +
+      "    gh api -X DELETE repos/{owner}/{repo}/automated-security-fixes\n\n" +
+      "Dependabot version updates (from `.github/dependabot.yml` with `target-branch: dev`) continue to fire — those land on `dev` as expected. CVE alerts remain visible in the repo Security tab; handle them by opening a PR against `dev` manually when needed.",
   };
 }
 
@@ -1233,6 +1277,9 @@ export function runPostInstallCheck(
   // dependabot.yml present but repo-level prerequisites (Dependabot alerts) disabled.
   const dependabotPrereqs = detectDependabotRepoPrereqs(cwd);
   if (dependabotPrereqs) phase3.push(dependabotPrereqs);
+  // dependabot.yml present + automated-security-fixes enabled (policy violation: PRs route to main).
+  const dependabotAutoFixes = detectDependabotAutoFixesEnabled(cwd);
+  if (dependabotAutoFixes) phase3.push(dependabotAutoFixes);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
