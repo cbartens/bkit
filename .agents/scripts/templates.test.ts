@@ -8,6 +8,9 @@ import { describe, expect, it } from "vitest";
 const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
 const CONSUMER_DEPENDABOT_TEMPLATE = path.resolve(".agents/templates/.github/dependabot.yml");
+const CONSUMER_DEPENDABOT_SCRIPT = path.resolve(
+  ".agents/templates/scripts/ci/bkit-set-dependabot.sh",
+);
 
 describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
   let content: string;
@@ -101,6 +104,57 @@ describe("consumer dependabot template (.agents/templates/.github/dependabot.yml
     expect(content).toMatch(/#\s*-\s*package-ecosystem:\s*npm/);
     // Sanity-check: no UNCOMMENTED npm entry by default.
     expect(content).not.toMatch(/^\s*-\s*package-ecosystem:\s*npm/m);
+  });
+});
+
+describe("consumer bkit-set-dependabot.sh template (.agents/templates/scripts/ci/)", () => {
+  const content = fs.readFileSync(CONSUMER_DEPENDABOT_SCRIPT, "utf-8");
+
+  it("template file exists", () => {
+    expect(fs.existsSync(CONSUMER_DEPENDABOT_SCRIPT)).toBe(true);
+  });
+
+  it("declares a bash shebang", () => {
+    expect(content.startsWith("#!/usr/bin/env bash")).toBe(true);
+  });
+
+  it("enables vulnerability-alerts via gh api PUT", () => {
+    expect(content).toMatch(/gh api -X PUT\s+"?repos\/\$OWNER_REPO\/vulnerability-alerts"?/);
+  });
+
+  it("DISABLES automated-security-fixes via gh api DELETE (bkit policy: never auto-PR to main)", () => {
+    expect(content).toMatch(/gh api -X DELETE\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/);
+    // Sanity-check the reverse: must NOT enable automated-security-fixes
+    expect(content).not.toMatch(
+      /gh api -X PUT\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/,
+    );
+  });
+
+  it("documents the never-auto-on-main policy", () => {
+    expect(content).toMatch(/never auto/i);
+    expect(content).toMatch(/main/);
+  });
+
+  it("supports --dry-run flag", () => {
+    expect(content).toMatch(/--dry-run/);
+  });
+
+  it("supports --print flag", () => {
+    expect(content).toMatch(/--print/);
+  });
+
+  it("guards on gh CLI availability", () => {
+    expect(content).toMatch(/command -v gh/);
+    expect(content).toMatch(/gh auth status/);
+  });
+
+  it("documents that Dependency graph UI toggle is not API-reachable", () => {
+    expect(content).toMatch(/Dependency graph/);
+    expect(content).toMatch(/settings\/security_analysis/);
+  });
+
+  it("uses strict bash mode (set -euo pipefail)", () => {
+    expect(content).toMatch(/^set -euo pipefail$/m);
   });
 });
 

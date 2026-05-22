@@ -39,6 +39,16 @@ updates:
 `target-branch: dev` is **mandatory**, not optional — bkit consumers gate `main` to PRs-from-dev-only, so Dependabot PRs without it hit `main` and are rejected by branch protection, silently breaking the update flow.
 
 > **Important:** GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`). The config must be merged all the way through `dev → main` before any PR fires. A new config on a feature branch or sitting on `dev` alone is silently inert — no PRs will open. Verify under repo **Insights → Dependency graph → Dependabot** that the config is recognised after pushing to `main`.
+>
+> **Repo-level prerequisites (silent breakage if skipped):** GitHub also requires Dependabot alerts to be **on at the repo level** before it reads `.github/dependabot.yml`. Run once per repo:
+>
+> ```bash
+> bash scripts/ci/bkit-set-dependabot.sh
+> ```
+>
+> Idempotent. Two actions: (1) PUT `vulnerability-alerts` (enable — required for the config to fire), (2) DELETE `automated-security-fixes` (defensive disable — **never** want this on). For private repos, the Dependency graph itself may need a one-time UI toggle at **Settings → Code security and analysis → Dependency graph** (no API surface for that switch).
+>
+> **Why `automated-security-fixes` stays disabled:** Bkit consumers gate `main` to PRs-from-`dev`-only. The auto-fixes feature opens CVE PRs against the default branch (`main`) — dead-on-arrival under bkit's protection contract. CVE alerts remain visible in the repo **Security tab**; handle them by opening a PR against `dev` manually when needed. Two advisories probe this state: `dependabot-repo-prereqs-disabled` (fires if alerts are off — silent-breakage signal) and `dependabot-auto-security-fixes-enabled` (fires if auto-fixes are on — policy violation signal).
 
 Dependabot scans every `uses:` line in `.github/workflows/*.yml` weekly and opens one PR per outdated action with release notes attached; CVE-driven PRs fire immediately regardless of schedule. Dependabot PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-ci-router` will not dispatch on them by design.
 

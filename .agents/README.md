@@ -162,6 +162,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
 | `.github/dependabot.yml` | ci | `.agents/templates/.github/dependabot.yml` | Tier 3 (seed-or-print); `target-branch: dev` required by bkit branch protection |
+| `scripts/ci/bkit-set-dependabot.sh` | ci | `.agents/templates/scripts/ci/bkit-set-dependabot.sh` | Core templates pass; consumer helper to enable repo-level Dependabot prereqs via `gh api` |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
