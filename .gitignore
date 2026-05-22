@@ -44,8 +44,8 @@ tmp/**
 
 # bkit workflows
 .worktrees/
-docs/plans/logs/**/raw/
-docs/plans/logs/**/.lock
+docs/plans/*/logs/**/raw/
+docs/plans/*/logs/**/.lock
 
 # Claude Code harness — /schedule daemon lock
 .claude/scheduled_tasks.lock

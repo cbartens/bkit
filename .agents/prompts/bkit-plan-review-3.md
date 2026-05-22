@@ -49,7 +49,7 @@ maxTurns: 50
    - Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → CRITICAL.
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → CRITICAL.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → CRITICAL.
-7. Design-coverage: If a design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design section identifying touched surfaces needs a plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing → CRITICAL.
+7. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), every design section identifying touched surfaces needs a plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing → CRITICAL.
 8. Knowledge cross-reference: Search `docs/knowledge.md` for `KN-*` entries describing past regressions in touched surfaces. Plan task re-entering a known-broken pattern without acknowledging the prior fix → CRITICAL.
 9. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
 10. Update **Create** output - set `Verdict` via `Edit`; mapping:
