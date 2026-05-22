@@ -24,11 +24,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
-<!-- bkit:tracker rule-block start -->
-
-> _Tracker not wired — skip._
-
-<!-- bkit:tracker rule-block end -->
+> - **Tracker:** not configured. Run `bkit install --tracker=github` (or `--tracker=linear`) to enable tracker integration. Workflows will continue to run without tracker comments / state updates.
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
 
@@ -48,9 +44,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    fi
    ```
-2. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+2. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -85,9 +79,13 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 9. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
-   <!-- bkit:tracker pr-body-metadata start -->
-   _Tracker not wired — fall back to FID parse._
-   <!-- bkit:tracker pr-body-metadata end -->
+   PR body still gets the marker, just without verified issue resolution:
+
+```html
+<!-- bkit:fid={FID} -->
+```
+
+(`bkit:issue=` omitted when `ISSUE_ID` is empty.) Downstream workflows read FID; tracker calls remain no-ops.
    **Fallback** (`bkit-build` was run pre-metadata, or metadata missing): parse `FID`:
    ```bash
    # tracker-specific — github FIDs are `{N}-{slug}`; linear FIDs are `{prefix}-{N}-{slug}`
@@ -110,9 +108,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
       '.[-1].steps += [{step:"ci-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
     ```
-11. <!-- bkit:tracker comment-post-step start -->
-    _Tracker not wired — skip comment post._
-    <!-- bkit:tracker comment-post-step end -->
+11. _Tracker not wired — skip comment post._
     `{BODY}` = fenced block below:
     ```comment
     ## CI Router
@@ -152,9 +148,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Stale-Run Guard - Verdict: {GUARD_VERDICT}
@@ -175,14 +169,10 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 
 **Run only if** Step 2 `GUARD_VERDICT` = PASS.
 
-1. <!-- bkit:tracker issue-read start -->
-   _Tracker not wired — skip issue read._
-   <!-- bkit:tracker issue-read end -->
+1. _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
    **If** call fails → retry once. **If** still fails → **Failure Path**.
 2. **If** `bkit:auto` not in `{LABELS}` → set `AUTO_VERDICT` = FAIL → run kill-switch propagation:
-   <!-- bkit:tracker kill-switch-check start -->
-   _Tracker not wired — kill switch inactive._
-   <!-- bkit:tracker kill-switch-check end -->
+   _Tracker not wired — kill switch inactive (workflow proceeds unconditionally)._
    **Else** → `AUTO_VERDICT` = PASS.
 3. Update status:
    ```bash
@@ -201,9 +191,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Opt-In Gate - Verdict: {AUTO_VERDICT}
@@ -240,9 +228,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 2. **If** `CI_STATUS` = PASS → `DISPATCH_TARGET` = SHIP.
 3. **If** `CI_STATUS` = FAIL → `DISPATCH_TARGET` = DEBUG.
 4. **If** `CI_STATUS` != PASS **and** `CI_STATUS` != FAIL → **Failure Path**.
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Dispatch Workflow - Target: {DISPATCH_TARGET}

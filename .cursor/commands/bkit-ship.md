@@ -24,11 +24,7 @@
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
-<!-- bkit:tracker rule-block start -->
-
-> _Tracker not wired — skip._
-
-<!-- bkit:tracker rule-block end -->
+> - **Tracker:** not configured. Run `bkit install --tracker=github` (or `--tracker=linear`) to enable tracker integration. Workflows will continue to run without tracker comments / state updates.
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constant `MAX_MERGE_ATTEMPT` = 3 in retry checks below.
@@ -53,12 +49,8 @@
    git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. <!-- bkit:tracker issue-update-failed start -->
-   _Tracker not wired — skip._
-   <!-- bkit:tracker issue-update-failed end -->
-3. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+2. _Tracker not wired — skip._
+3. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -76,9 +68,7 @@
 8. `git add -A`.
 9. `git commit -m "docs({FID}): ship aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
-11. <!-- bkit:tracker comment-post-step start -->
-    _Tracker not wired — skip comment post._
-    <!-- bkit:tracker comment-post-step end -->
+11. _Tracker not wired — skip comment post._
     `{BODY}` = fenced block below:
     ```comment
     ### Workflow Handover
@@ -121,24 +111,14 @@
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. <!-- bkit:tracker issue-id-extraction start -->
-   _Tracker not wired — skip ISSUE_ID resolution._
-   <!-- bkit:tracker issue-id-extraction end -->
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** scan prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker issue-read start -->
-   _Tracker not wired — skip issue read._
-   <!-- bkit:tracker issue-read end -->
+   _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
-   <!-- bkit:tracker fid-format start -->
-   _Tracker not wired — skip FID regex assert._
-   <!-- bkit:tracker fid-format end -->
-8. <!-- bkit:tracker issue-update-phase start -->
-   _Tracker not wired — skip phase label update._
-   <!-- bkit:tracker issue-update-phase end -->
-9. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+   **Format:** `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug ≤3 tokens, kebab, lowercase. No strict regex assert.
+8. _Tracker not wired — skip._
+9. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ## Ship Workflow
@@ -234,9 +214,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-9. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+9. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
@@ -294,9 +272,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): regression-guard"
    ```
-3. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+3. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Regression Guard - Verdict: {REGRESSION_VERDICT}
@@ -335,9 +311,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): conflict-resolve"
    ```
-6. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+6. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Conflict Resolve - Verdict: {RESOLVE_VERDICT}
@@ -393,9 +367,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
-7. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+7. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Merge PR - Verdict: {MERGE_VERDICT}
@@ -439,9 +411,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${MERGE_ATTEMPT}"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Attempt: {MERGE_ATTEMPT}
@@ -490,9 +460,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-remediate attempt ${MERGE_ATTEMPT}"
    ```
-7. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+7. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Strategy: {STRATEGY} - Attempt: {MERGE_ATTEMPT}
@@ -538,9 +506,7 @@
      '.[-1].steps += [{step:"ship-switch-to-dev", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-3. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+3. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Switch to Dev
@@ -591,9 +557,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "docs({FID}): update-docs-summary"
    ```
-7. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+7. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
@@ -640,9 +604,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): prune-skills"
    ```
-3. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+3. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Prune Skills
@@ -687,9 +649,7 @@
      '.[-1].steps += [{step:"ship-worktree-cleanup", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Worktree Cleanup
@@ -737,12 +697,8 @@
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-4. <!-- bkit:tracker issue-update-merged start -->
-   _Tracker not wired — skip._
-   <!-- bkit:tracker issue-update-merged end -->
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+4. _Tracker not wired — skip._
+5. _Tracker not wired — skip comment post._
    `{BODY}` = fenced block below:
    ```comment
    ### Step 12 — Close Workflow

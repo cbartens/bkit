@@ -6,7 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [2.3.0] — 2026-05-22
+
+### Added
+
+- **Tracker pluggability — github / linear / none provider abstraction. (issue [#39](https://github.com/cbartens/bkit/issues/39), PR [#120](https://github.com/cbartens/bkit/pull/120))** Workflows carry `<!-- bkit:tracker {id} start --> ... end -->` marker pairs at every tracker call site; `bkit install --tracker=<github|linear|none>` writes `bkit.issueTracker` to consumer manifest, merges `mcpServers.<name>` into `.mcp.json` (+ Cursor variant), and substitutes provider snippets into mirror output (zero markers in `.claude/commands/*` / `.cursor/commands/*`). Three providers ship: `github` (default — `mcp__github__issue_*` / `add_issue_comment`), `linear` (opt-in — `mcp__linear__save_*` / `get_issue`), `none` (no-tracker stub). Substitution counts verified across all 6 workflows × 3 trackers (build 31, design 23, plan 19, ship 21, debug 23, ci-router 9). **Uniform new-comment-per-step semantics** across providers — Linear loses edit-in-place rule for parity with GitHub-MCP capabilities. **Label vocabulary** rewritten to `bkit:design|plan|build|debug|ship|merged` (phase, mutually exclusive) + `bkit:auto|failed|debug` (additive). **AGENTS.md cross-host router** accepts `#NNN`, `[A-Z]+-\d+`, and bare `\d+` issue-ID patterns. **PR body metadata marker** `<!-- bkit:issue=#NNN bkit:fid=NNN-slug bkit:auto -->` resolves issue ID for downstream workflows. Foundational mechanism only; CI-router double-gate runtime + Cursor cloud dispatch docs + dogfood cycle land in follow-on issues.
+- **`bkit ` attribution prefix on bkit-emitted commit markers.** bkit-authored commits now prepend `bkit ` to `[skip ci]` / `[verbose ci]` / `[force build|cache|e2e]` / `[skip build]` for human-readable provenance (e.g. `bkit [skip ci]`, `bkit [verbose ci]`). Marker semantics unchanged — `ci.yml` and downstream check sites match the bare substring (`[skip ci]`), so both bkit-emitted and user-typed markers trigger.
+
+### Fixed
+
+- **Marker CHECK sites match bare substring, not `bkit ` prefix.** `.agents/templates/.github/workflows/ci.yml` `contains()` env-block + `case` direct-push detect now look for bare `[verbose ci]` / `[force cache]` / `[force build]` / `[force e2e]` substrings — fixes the regression where user-typed bare markers no-op'd because the check tightened to `bkit [...]`. Workflow CHECK sites in `.agents/workflows/bkit-debug.md` (PR-title idempotency `case` checks + Step 12 strip sed consumes optional `bkit ` prefix) and `.agents/workflows/bkit-build.md` (HEAD `[force build]` presence check) follow the same rule. bkit-emitted commits keep `bkit ` attribution prefix — substring match honours both forms.
 
 ### Changed
 
