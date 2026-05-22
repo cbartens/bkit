@@ -13,14 +13,20 @@
 
 ### Step 1 — Extract from prompt XML (NOT MCP)
 
-**If** prompt contains `<LINEAR_ISSUE>` XML block:
+**If** prompt contains `<LINEAR_ISSUE>` XML block (Linear integration):
 
-- `ISSUE_ID` ← `<id>` tag value
+- `ISSUE_ID` ← `<id>` tag value (e.g. `LIN-123` or team-specific prefix)
 - `DESCRIPTION` ← `<description>` tag content
 - `LABELS` ← all `<label name="...">` values in `<labels>` block
 - `COMMENTS` ← all `<comment>` entries from `<comment_thread>` + `<other_comment_threads>`, sorted newest-first by `created` attribute
 
-**Else** scan entire prompt for `[A-Z]+-\d+` pattern → `ISSUE_ID`. Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
+**Else** scan entire prompt for issue ID — try patterns in order, first match wins:
+
+1. `#\d+` → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
+2. `[A-Z]+-\d+` → prefixed issue ID (e.g. `LIN-123`, `ISSUE-123`, or team-specific prefix)
+3. bare `\d+` → numeric fallback (GitHub provider only; ambiguous — prefer `#\d+`)
+
+Set `LABELS`, `DESCRIPTION`, `COMMENTS` = empty.
 
 **If** no `ISSUE_ID` → **STOP** with `No issue ID provided.`
 
@@ -34,11 +40,11 @@ Scan `LABELS` for commands (Ship, Debug, Build, Plan, Design) → first match �
 
 ### Step 4 — MCP fallback (labels only)
 
-Only if Steps 2–3 yield no `COMMAND`: `get_issue({ id: "{ISSUE_ID}" })` → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
+Only if Steps 2–3 yield no `COMMAND`: read current issue labels via the configured tracker MCP (GitHub: `mcp__github__issue_read({ method: "get_labels", ... })`; Linear: `mcp__linear__get_issue({ id: "{ISSUE_ID}" })`) → scan returned labels → first match → `COMMAND`. Update `LABELS`, `DESCRIPTION`.
 
 ### Step 5 — No match
 
-`save_comment({ issueId: "{ISSUE_ID}", body: "Workflow not found. Reply: Design / Plan / Build / Debug / Ship." })` → **STOP**.
+Emit: `Workflow not found for issue {ISSUE_ID}. Valid commands: Design / Plan / Build / Debug / Ship.` → **STOP**. (Do not post a tracker comment — the router does not know which tracker MCP to call at this point.)
 
 ### Step 6 — Execute command
 

@@ -38,27 +38,28 @@ Re-runnable: source `.agents/workflows/*.md` always has the no-tracker fallback 
 
 Every tracker section MUST define these sub-sections (snippet IDs):
 
-| Snippet ID             | What it provides                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `rule-block`           | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block          |
-| `issue-id-extraction`  | Step 1 ISSUE_ID extraction patterns + fallback create-issue call                          |
-| `fid-format`           | FID slug format regex and example                                                         |
-| `issue-read`           | Read issue state + labels + body + comments                                               |
-| `issue-update-phase`   | Set phase label + tracker-specific "active" state for current workflow                    |
-| `issue-update-review`  | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition         |
-| `issue-update-failed`  | Failure Path additive label + state update                                                |
-| `issue-update-debug`   | Debug additive label + state update                                                       |
-| `issue-update-merged`  | Ship terminal state update (`bkit:merged`, close issue if tracker supports)               |
-| `comment-post-step`    | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}`             |
-| `comment-on-issue`     | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
-| `list-sub-issues`      | Enumerate sub-issues of a parent (design Step 9 workstream sync)                          |
-| `create-sub-issue`     | Create a new sub-issue attached to a parent                                               |
-| `set-blocked-by`       | Set `blockedBy` edges on an issue (workstream `Requires` propagation)                     |
-| `issue-blockers-check` | Read blocked-by relations/markers; gate workflow if any blocker still open                |
-| `phase-labels`         | Mapping of workflow names to phase labels                                                 |
-| `kill-switch-check`    | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label      |
-| `pr-body-metadata`     | PR body marker — parsing/read instructions for cross-workflow issue/FID resolution        |
-| `pr-body-marker`       | PR body marker — literal HTML comment line for inclusion in PR body during creation       |
+<!-- prettier-ignore -->
+| Snippet ID | What it provides |
+| --- | --- |
+| `rule-block` | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block |
+| `issue-id-extraction` | Step 1 ISSUE_ID extraction patterns + fallback create-issue call |
+| `fid-format` | FID slug format regex and example |
+| `issue-read` | Read issue state + labels + body + comments |
+| `issue-update-phase` | Set phase label + tracker-specific "active" state for current workflow |
+| `issue-update-review` | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition |
+| `issue-update-failed` | Failure Path additive label + state update |
+| `issue-update-debug` | Debug additive label + state update |
+| `issue-update-merged` | Ship terminal state update (`bkit:merged`, close issue if tracker supports) |
+| `comment-post-step` | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}` |
+| `comment-on-issue` | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
+| `list-sub-issues` | Enumerate sub-issues of a parent (design Step 9 workstream sync) |
+| `create-sub-issue` | Create a new sub-issue attached to a parent |
+| `set-blocked-by` | Set `blockedBy` edges on an issue (workstream `Requires` propagation) |
+| `issue-blockers-check` | Read blocked-by relations/markers; gate workflow if any blocker still open |
+| `phase-labels` | Mapping of workflow names to phase labels |
+| `kill-switch-check` | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label |
+| `pr-body-metadata` | PR body marker — parsing/read instructions for cross-workflow issue/FID resolution |
+| `pr-body-marker` | PR body marker — literal HTML comment line for inclusion in PR body during creation |
 
 `none` defines the same snippet IDs, but every body is a single-line stub.
 
@@ -141,13 +142,14 @@ Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked
 
 ### phase-labels
 
-| Workflow      | Phase label                                    |
-| ------------- | ---------------------------------------------- |
-| `bkit-design` | `bkit:design`                                  |
-| `bkit-plan`   | `bkit:plan`                                    |
-| `bkit-build`  | `bkit:build`                                   |
-| `bkit-debug`  | `bkit:debug` (additive — phase label persists) |
-| `bkit-ship`   | `bkit:ship` (→ `bkit:merged` on close)         |
+<!-- prettier-ignore -->
+| Workflow | Phase label |
+| --- | --- |
+| `bkit-design` | `bkit:design` |
+| `bkit-plan` | `bkit:plan` |
+| `bkit-build` | `bkit:build` |
+| `bkit-debug` | `bkit:debug` (additive — phase label persists) |
+| `bkit-ship` | `bkit:ship` (→ `bkit:merged` on close) |
 
 ### kill-switch-check
 
@@ -241,13 +243,14 @@ Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present
 
 ### phase-labels
 
-| Workflow      | Phase label                                    |
-| ------------- | ---------------------------------------------- |
-| `bkit-design` | `bkit:design`                                  |
-| `bkit-plan`   | `bkit:plan`                                    |
-| `bkit-build`  | `bkit:build`                                   |
-| `bkit-debug`  | `bkit:debug` (additive — phase label persists) |
-| `bkit-ship`   | `bkit:ship` (→ `bkit:merged` on close)         |
+<!-- prettier-ignore -->
+| Workflow | Phase label |
+| --- | --- |
+| `bkit-design` | `bkit:design` |
+| `bkit-plan` | `bkit:plan` |
+| `bkit-build` | `bkit:build` |
+| `bkit-debug` | `bkit:debug` (additive — phase label persists) |
+| `bkit-ship` | `bkit:ship` (→ `bkit:merged` on close) |
 
 ### kill-switch-check
 

@@ -24,11 +24,12 @@ Each lens prompt carries an explicit **probe catalogue** section — a compact t
 
 The brief's 12-lens charter has two overlap candidates and one clear defer:
 
-| Brief lenses                                                        | Proposed merge/change                          | Rationale                                                                                                                                                                                                                                                                                       |
-| ------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+<!-- prettier-ignore -->
+| Brief lenses | Proposed merge/change | Rationale |
+| --- | --- | --- |
 | Lens 4 (Error handling) + Lens 6 (Resource lifecycle & concurrency) | **Merge → "Failure modes & resource hygiene"** | Both probe for silent failures, missing cleanup, unhandled async. The probe overlap is high: `catch` blocks, unbounded queues, unhandled rejections appear in both. A single agent covers them without dedup burden. Splitting costs one extra subagent token budget for ~15% probe uniqueness. |
-| Lens 5 (Observability gaps) + Lens 12 (Documentation drift)         | **Keep split**                                 | Observation: Lens 5 is structural code analysis (missing log calls, PII in logs, absent tracing on paths). Lens 12 is doc/code coherence (`.agents/docs.md` vs actual domains). These are genuinely orthogonal — different tools, different readers of the output.                              |
-| Lens 13 (Live runtime signal)                                       | **Defer to v2**                                | Already flagged in brief. `bkit-utility-audit-logs.md` (line 38-44) depends on `audit-gcp-errors.sh` — a GCP-specific script absent from most consumer repos. Stack-agnostic portability goal conflicts with this lens without a capability-detection gate.                                     |
+| Lens 5 (Observability gaps) + Lens 12 (Documentation drift) | **Keep split** | Observation: Lens 5 is structural code analysis (missing log calls, PII in logs, absent tracing on paths). Lens 12 is doc/code coherence (`.agents/docs.md` vs actual domains). These are genuinely orthogonal — different tools, different readers of the output. |
+| Lens 13 (Live runtime signal) | **Defer to v2** | Already flagged in brief. `bkit-utility-audit-logs.md` (line 38-44) depends on `audit-gcp-errors.sh` — a GCP-specific script absent from most consumer repos. Stack-agnostic portability goal conflicts with this lens without a capability-detection gate. |
 
 Final 11-lens list (brief's 12 minus merge of 4+6, keep 13 deferred):
 
@@ -50,19 +51,20 @@ Against a/b/c (migrations, i18n, a11y): brief correctly defers them. Migrations 
 
 Each lens prompt includes a **Probe Catalogue** table with columns: `Tool`, `Pattern`, `What it finds`, `Stack-signal condition`. Stack signal detection block runs first — agent reads `package.json` / framework config to set `STACK_FLAGS` and conditional probes activate:
 
-| Lens            | Universal probes                                                                                                                                                       | Stack-conditional probes                                                                                    |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `arch`          | `Grep` for circular imports via `import.*from.*['"]\.\.` fan-out analysis; `Glob` for entrypoint files matching `{index,main,app}.*{ts,js}`                            | If `"next"` in deps: probe `app/` vs `pages/` coexistence; server-only imports in client components         |
-| `perf`          | `Grep` top-level `require(` / `import` for heavy modules (e.g., `moment`, `lodash`); `Grep` `fs.readFileSync\|execSync` inside async functions                         | If `"next"` in deps: `Grep serverExternalPackages` in `next.config.*` — this is the BAR-197 probe           |
-| `config`        | `Glob` `{tsconfig,package,next.config,vite.config,turbo}.{json,ts,mjs}` cross-check; `Grep` `"type": "module"` vs `.cjs` output targets                                | If monorepo: cross-package `tsconfig` `paths` divergence                                                    |
-| `reliability`   | `Grep` `catch\s*\([^)]*\)\s*\{[^}]*\}` for empty/log-only catches; `Grep` `setInterval\|setTimeout` without `clearInterval`/`clearTimeout`                             | If `"ioredis"\|"bullmq"` in deps: probe unbounded queue patterns                                            |
-| `observability` | `Grep` `console\.(log\|error\|warn)` vs structured-logging imports; `Grep` `password\|token\|secret\|key` inside log calls (PII probe)                                 | If `"@sentry/\|@opentelemetry/"` in deps: probe missing `span.end()` / untraced critical paths              |
-| `debt`          | `Grep` `TODO\|FIXME\|HACK\|XXX\|workaround\|band-aid` with line context; cross-ref against closed ticket IDs if `.agents/docs.md` present                              | None — universal                                                                                            |
-| `dead-code`     | `Grep` exported symbols; `Glob` all source files; `Grep` for imports of each exported symbol (orphan detection heuristic)                                              | If monorepo: cross-package export/import scanning                                                           |
-| `deps`          | `Bash pnpm outdated --json`; `Bash pnpm audit --json`; `Grep` `"resolution":` in `pnpm-lock.yaml` for dual-version same-package                                        | If `"esm"\|"type":"module"` detected: `Grep require(` in `.mjs`/`.mts` for CJS traps — direct BAR-197 class |
-| `security`      | `Grep execSync.*\$\{` for shell injection (KN-6 pattern); `Grep` `NEXT_PUBLIC_` for secrets leaked to client; `Grep` hardcoded tokens                                  | If `"@clerk/"\|"next-auth"` in deps: auth middleware coverage probe                                         |
-| `tests`         | `Glob` `*.test.ts` count vs source files; `Grep` `it.skip\|xit\|xdescribe` for persistent skips; `Grep` `expect(.*).toBeTruthy()` for weak assertions                  | If `"vitest"` in deps: probe for `vi.mock(` on every critical path (mocked-only critical paths per brief)   |
-| `docs-drift`    | `Grep` domains listed in `.agents/docs.md` vs source dirs; `Grep` file paths in docs that no longer exist; `Read .agents/docs.md` domain list vs actual source modules | None — universal                                                                                            |
+<!-- prettier-ignore -->
+| Lens | Universal probes | Stack-conditional probes |
+| --- | --- | --- |
+| `arch` | `Grep` for circular imports via `import.*from.*['"]\.\.` fan-out analysis; `Glob` for entrypoint files matching `{index,main,app}.*{ts,js}` | If `"next"` in deps: probe `app/` vs `pages/` coexistence; server-only imports in client components |
+| `perf` | `Grep` top-level `require(` / `import` for heavy modules (e.g., `moment`, `lodash`); `Grep` `fs.readFileSync\ | execSync` inside async functions | If `"next"` in deps: `Grep serverExternalPackages` in `next.config.*` — this is the BAR-197 probe |
+| `config` | `Glob` `{tsconfig,package,next.config,vite.config,turbo}.{json,ts,mjs}` cross-check; `Grep` `"type": "module"` vs `.cjs` output targets | If monorepo: cross-package `tsconfig` `paths` divergence |
+| `reliability` | `Grep` `catch\s*\([^)]*\)\s*\{[^}]*\}` for empty/log-only catches; `Grep` `setInterval\ | setTimeout` without `clearInterval`/`clearTimeout` | If `"ioredis"\ | "bullmq"` in deps: probe unbounded queue patterns |
+| `observability` | `Grep` `console\.(log\ | error\ | warn)` vs structured-logging imports; `Grep` `password\ | token\ | secret\ | key` inside log calls (PII probe) | If `"@sentry/\ | @opentelemetry/"` in deps: probe missing `span.end()` / untraced critical paths |
+| `debt` | `Grep` `TODO\ | FIXME\ | HACK\ | XXX\ | workaround\ | band-aid` with line context; cross-ref against closed ticket IDs if `.agents/docs.md` present | None — universal |
+| `dead-code` | `Grep` exported symbols; `Glob` all source files; `Grep` for imports of each exported symbol (orphan detection heuristic) | If monorepo: cross-package export/import scanning |
+| `deps` | `Bash pnpm outdated --json`; `Bash pnpm audit --json`; `Grep` `"resolution":` in `pnpm-lock.yaml` for dual-version same-package | If `"esm"\ | "type":"module"` detected: `Grep require(` in `.mjs`/`.mts` for CJS traps — direct BAR-197 class |
+| `security` | `Grep execSync.*\$\{` for shell injection (KN-6 pattern); `Grep` `NEXT_PUBLIC_` for secrets leaked to client; `Grep` hardcoded tokens | If `"@clerk/"\ | "next-auth"` in deps: auth middleware coverage probe |
+| `tests` | `Glob` `*.test.ts` count vs source files; `Grep` `it.skip\ | xit\ | xdescribe` for persistent skips; `Grep` `expect(.*).toBeTruthy()` for weak assertions | If `"vitest"` in deps: probe for `vi.mock(` on every critical path (mocked-only critical paths per brief) |
+| `docs-drift` | `Grep` domains listed in `.agents/docs.md` vs source dirs; `Grep` file paths in docs that no longer exist; `Read .agents/docs.md` domain list vs actual source modules | None — universal |
 
 ### Per-finding schema
 
@@ -113,11 +115,12 @@ Golden findings file: a `tests/golden/bar-197-known-debt.finding.md` checked int
 
 ### Cost/runtime: 11 vs 8 vs 18 lenses
 
-| Count                                                                                                                                   | Token cost (est.)   | Parallelism benefit  | Coverage gap                                                                               |
-| --------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | -------------------- | ------------------------------------------------------------------------------------------ |
-| 8 lenses (merge `arch`+`dead-code`, `observability`+`docs-drift`, drop `perf`)                                                          | ~40% cost reduction | Still parallelizable | Loses standalone `perf` probe — BAR-197 class debt goes to `config` only; higher miss risk |
-| **11 lenses (recommended)**                                                                                                             | **Baseline**        | **Full parallel**    | **Minimal; `reliability` merge reduces 5% unique findings**                                |
-| 18 lenses (split `reliability` back to 2, add `migrations`, `i18n`, `a11y`, `ci-pipeline`, `api-contracts`, `rate-limiting`, `caching`) | +64% cost           | Still parallelizable | Near-zero; catches many low-value findings                                                 |
+<!-- prettier-ignore -->
+| Count | Token cost (est.) | Parallelism benefit | Coverage gap |
+| --- | --- | --- | --- |
+| 8 lenses (merge `arch`+`dead-code`, `observability`+`docs-drift`, drop `perf`) | ~40% cost reduction | Still parallelizable | Loses standalone `perf` probe — BAR-197 class debt goes to `config` only; higher miss risk |
+| **11 lenses (recommended)** | **Baseline** | **Full parallel** | **Minimal; `reliability` merge reduces 5% unique findings** |
+| 18 lenses (split `reliability` back to 2, add `migrations`, `i18n`, `a11y`, `ci-pipeline`, `api-contracts`, `rate-limiting`, `caching`) | +64% cost | Still parallelizable | Near-zero; catches many low-value findings |
 
 8-lens configuration reduces Opus invocations by ~27% (3 fewer parallel subagents) but the coverage loss on `perf` means BAR-197 class issues are detected only by the `config` lens with lower confidence. The 11-lens recommendation is the minimal set where each lens has <30% probe overlap with any other.
 
@@ -165,15 +168,16 @@ N/A as primary recommendation — flagged only to argue against it explicitly. T
 
 ## Decisions
 
-| Decided                                                                                | Alternatives                                              | Why                                                                                                                                                                       |
-| -------------------------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 11 lenses (merge reliability lens covering both error-handling and resource-lifecycle) | 12 as in brief; 8 minimal set                             | Merge reduces ~5% unique findings for 1 fewer subagent; 8 loses the `perf` lens which is load-bearing for BAR-197 class detection                                         |
-| YAML frontmatter in fenced `finding` blocks for per-finding schema                     | Brief's markdown heading format; JSON objects; table rows | Only format that is both agent-writable without double-escaping AND structurally parseable by synthesize/prioritize prompts; heading format deferred to summary rendering |
-| Stack-signal detection block in each lens prompt                                       | Separate stack-detection step; no stack adaptation        | Keeps portability without a separate pre-step; agent reads `package.json` at probe-catalogue time and activates conditionals; no extra workflow step                      |
-| Golden findings file for BAR-197 debt checked into workflow tests                      | Ad-hoc smoke test in acceptance description only          | Structural check that specific debt class is always detectable; prevents regression if probe catalogue is weakened                                                        |
-| Core 11 lenses always run (no tier split)                                              | Tiered Core/Extended split (Approach B)                   | `config` lens is load-bearing for BAR-197 detection; moving it to Extended creates a coverage gap on the highest-value use case                                           |
-| Defer live runtime signal lens to v2 (no Lens 13)                                      | Include with capability-detection gate                    | `audit-gcp-errors.sh` is GCP-specific; stack-agnostic portability goal incompatible without a provider-abstraction sub-system that is out of scope for v1                 |
-| Migrations / i18n / a11y deferred (agree with brief)                                   | Include as optional Extended lenses                       | Migrations requires live DB introspection; i18n/a11y require UI rendering context; structural code probes have low signal-to-noise for these domains                      |
+<!-- prettier-ignore -->
+| Decided | Alternatives | Why |
+| --- | --- | --- |
+| 11 lenses (merge reliability lens covering both error-handling and resource-lifecycle) | 12 as in brief; 8 minimal set | Merge reduces ~5% unique findings for 1 fewer subagent; 8 loses the `perf` lens which is load-bearing for BAR-197 class detection |
+| YAML frontmatter in fenced `finding` blocks for per-finding schema | Brief's markdown heading format; JSON objects; table rows | Only format that is both agent-writable without double-escaping AND structurally parseable by synthesize/prioritize prompts; heading format deferred to summary rendering |
+| Stack-signal detection block in each lens prompt | Separate stack-detection step; no stack adaptation | Keeps portability without a separate pre-step; agent reads `package.json` at probe-catalogue time and activates conditionals; no extra workflow step |
+| Golden findings file for BAR-197 debt checked into workflow tests | Ad-hoc smoke test in acceptance description only | Structural check that specific debt class is always detectable; prevents regression if probe catalogue is weakened |
+| Core 11 lenses always run (no tier split) | Tiered Core/Extended split (Approach B) | `config` lens is load-bearing for BAR-197 detection; moving it to Extended creates a coverage gap on the highest-value use case |
+| Defer live runtime signal lens to v2 (no Lens 13) | Include with capability-detection gate | `audit-gcp-errors.sh` is GCP-specific; stack-agnostic portability goal incompatible without a provider-abstraction sub-system that is out of scope for v1 |
+| Migrations / i18n / a11y deferred (agree with brief) | Include as optional Extended lenses | Migrations requires live DB introspection; i18n/a11y require UI rendering context; structural code probes have low signal-to-noise for these domains |
 
 ---
 

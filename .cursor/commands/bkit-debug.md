@@ -14,18 +14,22 @@
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{COMMENT_ID}`, `{COMMENT_BODY}`, `{OWNER_REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE [skip ci]`; Failure Path → `chore({FID}): debug FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE bkit [skip ci]`; Failure Path → `chore({FID}): debug FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Task` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
-> - **Linear**: MCP tool names `get_issue`, `save_issue`, `save_comment`, `list_comments`, `list_issues`. Any `save_*` writes are best-effort; NEVER gate. **If** failure → retry once after 5s, then continue and apply edit with next scheduled write.
-> - **Labels:** Linear issue phase `{LABELS}` (`Design`, `Plan`, `Build`, `Ship`, `Merged`) mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — phase label persists.
-> - **Comments:** ONE Linear comment per workflow run; First step creates, all later steps ONLY append. NEVER rewrite, paraphrase, summarise, truncate, deduplicate, or reorder prior content.
+
+<!-- bkit:tracker rule-block start -->
+
+> _Tracker not wired — skip._
+
+<!-- bkit:tracker rule-block end -->
+
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
 > - **Large Diff Guard:** When a Read line passes `git diff origin/dev..HEAD` to a subagent, compute `DIFF_LINES=$(git diff origin/dev..HEAD | wc -l)`. **If** > 10000 → per-file budget mode (`--stat` → top 20 files by lines changed; `head -500` per file; cap 50 000 total lines; flag "partial diff coverage" in subagent verdict). **Else** → full diff.
@@ -46,11 +50,16 @@
    rm -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `Failed` to `{LABELS}` (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-3. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+2. <!-- bkit:tracker issue-update-failed start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-update-failed end -->
+3. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
@@ -65,9 +74,12 @@
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): debug aborted [skip build] [skip ci]"`.
+9. `git commit -m "docs({FID}): debug aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
-11. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+11. <!-- bkit:tracker comment-post-step start -->
+    _Tracker not wired — skip comment post._
+    <!-- bkit:tracker comment-post-step end -->
+    `{BODY}` = fenced block below:
     ```comment
     ### Workflow Handover
     [debug-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md)
@@ -107,10 +119,15 @@
    ```
    **If** divergence check or lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
-2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty.
+2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `linearIssueId: {ID}`, `Linear issue: {ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `save_issue({ title: "{task}", description: "{input}", team: "Bartens", assignee: "me", state: "In Progress", labels: ["Debug"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**.
-5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else** → `get_issue({ id: "{ISSUE_ID}" })` → extract `STATE`, `LABELS`, `DESCRIPTION` → `list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract `COMMENTS`.
+4. <!-- bkit:tracker issue-id-extraction start -->
+   _Tracker not wired — skip ISSUE_ID resolution._
+   <!-- bkit:tracker issue-id-extraction end -->
+5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
+   <!-- bkit:tracker issue-read start -->
+   _Tracker not wired — skip issue read._
+   <!-- bkit:tracker issue-read end -->
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` non-empty → `DEBUG_MODE` = pr. **Else** → `DEBUG_MODE` = local.
 7. Extract `DEBUG_ATTEMPT` and `PRIOR_OBSERVE_MODE` from most recent `workflow == "debug"` entry:
    ```bash
@@ -123,9 +140,17 @@
    - **If** `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `OBSERVE_MODE` = instrument.
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
-10. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, ≤3 tokens, lowercase (e.g. `bar-123-word1-word2-word3`); one `FID` for all artifacts once set. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-11. Add `Debug` to `{LABELS}` and drop `Failed` if present (prior phase label persists) → `save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-12. `save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}"})` — `{BODY}` = fenced block below; capture returned `id` as `{COMMENT_ID}` and `body` as `{COMMENT_BODY}`:
+10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
+    <!-- bkit:tracker fid-format start -->
+    _Tracker not wired — skip FID regex assert._
+    <!-- bkit:tracker fid-format end -->
+11. <!-- bkit:tracker issue-update-debug start -->
+    _Tracker not wired — skip._
+    <!-- bkit:tracker issue-update-debug end -->
+12. <!-- bkit:tracker comment-post-step start -->
+    _Tracker not wired — skip comment post._
+    <!-- bkit:tracker comment-post-step end -->
+    `{BODY}` = fenced block below:
     ```comment
     ## Debug Workflow
     ### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
@@ -134,7 +159,7 @@
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `BRANCH`, `ISSUE_ID`, `FID`, `COMMENT_ID`, `COMMENT_BODY`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] `DEBUG_MODE` decided
@@ -142,7 +167,7 @@
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
-- [ ] Issue update attempted (state `In Progress`, label `Debug` added and `Failed` dropped if present)
+- [ ] Issue update attempted (additive label `bkit:debug`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -218,7 +243,10 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+8. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -321,7 +349,10 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add artifact links if present; capture returned `body` as `{COMMENT_BODY}`:
+9. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below — ONLY add artifact links if present:
    ```comment
    ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
    [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
@@ -377,7 +408,10 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
@@ -419,10 +453,13 @@
      | sed -E 's/[[:space:]]+$//' \
      | cut -c1-72)
    [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt ${TEST_ATTEMPT}"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
@@ -463,7 +500,10 @@
      '.[-1].steps += [{step:"debug-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
@@ -498,18 +538,21 @@
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-3. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+3. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
        *"[verbose ci]"*) ;;
-       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
    ```
 4. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
    ```
@@ -542,11 +585,14 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '.[-1].steps += [{step:"debug-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-6. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+6. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [debug-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md)
@@ -597,21 +643,24 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_INSTRUMENT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
      '.[-1].steps += [{step:"debug-observe-instrument", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-observe-instrument-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}${VERBOSE_SUFFIX}"
    ```
-5. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+5. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
        *"[verbose ci]"*) ;;
-       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
    ```
 6. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Observe Instrument - Verdict: {OBSERVE_INSTRUMENT_VERDICT}
    [observe-instrument-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-observe-instrument-{DEBUG_ATTEMPT}.md)
@@ -626,7 +675,7 @@
 - [ ] `DEBUG_ATTEMPT` NOT incremented
 - [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
-- [ ] Commit pushed to branch (no `[skip ci]`)
+- [ ] Commit pushed to branch (no `bkit [skip ci]`)
 - [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
@@ -652,7 +701,10 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-analyse attempt ${DEBUG_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Observe Analyse - Verdict: {OBSERVE_ANALYSE_VERDICT}
    [observe-analyse-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md)
@@ -700,11 +752,14 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-revert attempt ${DEBUG_ATTEMPT}"
    ```
-5. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+5. <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
    ```
-6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `[skip ci]`, posts handover content to Linear, and terminates the workflow.
+6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `bkit [skip ci]`, posts handover content to Linear, and terminates the workflow.
 
 ### 🔒 Gate 11 — Observe Revert
 
@@ -723,11 +778,11 @@
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `[verbose ci]` in PR title → strip `[verbose ci]` from PR title:
+2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `[verbose ci]` in PR title → strip the marker (with optional `bkit ` attribution prefix) from PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ] && [ "$OBSERVE_MODE" = "off" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
-     NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?\[verbose ci\]//')
+     NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?(bkit )?\[verbose ci\]//')
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
@@ -740,7 +795,7 @@
      '.[-1].steps += [{step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
@@ -778,7 +833,7 @@
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}"
    git push origin "$(git branch --show-current)"
    ```
@@ -787,12 +842,26 @@
 ```bash
 git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
 git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE [skip ci]"
+git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE bkit [skip ci]"
 git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 ```
 
-11. **If** `OBSERVE_MODE` = off → `save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` — `{LABELS}` unchanged.
-12. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below - ONLY add PR link if `TRIGGER_PR` = 1; capture returned `body` as `{COMMENT_BODY}`:
+11. **If** `OBSERVE_MODE` = off:
+    <!-- bkit:tracker issue-update-review start -->
+    _Tracker not wired — skip._
+    <!-- bkit:tracker issue-update-review end -->
+12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
+    <!-- bkit:tracker issue-read start -->
+    _Tracker not wired — skip._
+    <!-- bkit:tracker issue-read end -->
+    **If** `bkit:auto` NOT in `{LABELS}`:
+    <!-- bkit:tracker kill-switch-check start -->
+    _Tracker not wired — kill switch inactive._
+    <!-- bkit:tracker kill-switch-check end -->
+13. <!-- bkit:tracker comment-post-step start -->
+    _Tracker not wired — skip comment post._
+    <!-- bkit:tracker comment-post-step end -->
+    `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
     ```comment
     ### Step 12 — Close Workflow
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -805,12 +874,13 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
-- [ ] HEAD on remote does NOT contain `[skip ci]`
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
-- [ ] Workflow status pushed to `dev` with `[skip ci]`
-- [ ] If `OBSERVE_MODE` = off issue update attempted (state `In Review`, `{LABELS}` unchanged)
-- [ ] Issue comment attempted (all step sections; single comment for the whole workflow run)
+- [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
+- [ ] If `OBSERVE_MODE` = off issue update attempted (hand-off state via `issue-update-review`)
+- [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
+- [ ] Issue comment attempted (`Step 12` section)

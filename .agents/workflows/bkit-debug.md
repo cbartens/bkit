@@ -542,12 +542,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-3. **If** `DEBUG_MODE` = pr **and** `bkit [verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
+3. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
-       *"bkit [verbose ci]"*) ;;
+       *"[verbose ci]"*) ;;
        *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
@@ -566,7 +566,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` incremented
 - [ ] Step 5 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push)
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
-- [ ] PR title contains `bkit [verbose ci]` (if `DEBUG_MODE` = pr)
+- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 7` section)
 
@@ -650,12 +650,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}${VERBOSE_SUFFIX}"
    ```
-5. **If** `DEBUG_MODE` = pr **and** `bkit [verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
+5. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
-       *"bkit [verbose ci]"*) ;;
+       *"[verbose ci]"*) ;;
        *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
@@ -680,7 +680,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
 - [ ] Commit pushed to branch (no `bkit [skip ci]`)
-- [ ] PR title contains `bkit [verbose ci]` (if `DEBUG_MODE` = pr)
+- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
@@ -782,11 +782,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `bkit [verbose ci]` in PR title → strip `bkit [verbose ci]` from PR title:
+2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `[verbose ci]` in PR title → strip the marker (with optional `bkit ` attribution prefix) from PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ] && [ "$OBSERVE_MODE" = "off" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
-     NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?\[verbose ci\]//')
+     NEW_TITLE=$(printf '%s' "$CURRENT_TITLE" | sed -E 's/ ?(bkit )?\[verbose ci\]//')
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
@@ -877,7 +877,7 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] PR title `bkit [verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
+- [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
 - [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)

@@ -886,7 +886,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. `git fetch origin dev`.
-2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF 'bkit [force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → `git push`.
+2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → `git push`.
 3. Create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'

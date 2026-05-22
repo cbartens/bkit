@@ -24,8 +24,10 @@ jobs:
   run-tests:
     runs-on: ubuntu-latest
     # bkit:start verbose-ci-env
-    # bkit [verbose ci] marker — escalates CI log detail for one run. Composes freely with
-    # bkit [force build] / bkit [force cache] / bkit [skip ci] (independent contains() per marker).
+    # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
+    # [force build] / [force cache] / [skip ci] (independent contains() per marker).
+    # Markers are bare substrings — bkit-emitted commits prepend \`bkit \` for attribution
+    # (e.g. \`bkit [verbose ci]\`); substring match honours both forms.
     # See docs/deployments.md § "Commit-message force tags" for where to put the marker
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
@@ -36,8 +38,8 @@ jobs:
     # every read after the install step. The install step keeps its own env: block
     # for explicitness and to satisfy the BAR-138 regression tests.
     env:
-      TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, 'bkit [verbose ci]') || contains(github.event.pull_request.title, 'bkit [verbose ci]')) && 'full' || 'errors-only' }}
-      VERBOSE_CI: \${{ (contains(github.event.head_commit.message, 'bkit [verbose ci]') || contains(github.event.pull_request.title, 'bkit [verbose ci]')) && '1' || '' }}
+      TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
     # bkit:end verbose-ci-env
     steps:
@@ -52,13 +54,13 @@ jobs:
       - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
 
       # bkit:start
-      # Under bkit [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
+      # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
       # $GITHUB_ENV. Note that steps with their own \`env:\` block override $GITHUB_ENV —
       # those steps must inline these vars in their env: declaration to stay verbose-aware.
       - name: Configure Verbose CI
         if: env.VERBOSE_CI == '1'
         run: |
-          echo "🔊 bkit [verbose ci] marker active — escalating log detail"
+          echo "🔊 [verbose ci] marker active — escalating log detail"
           echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
           echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
 
@@ -94,9 +96,9 @@ jobs:
           else
             MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
           fi
-          case "$MSG" in *"bkit [force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
-          case "$MSG" in *"bkit [force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
-          case "$MSG" in *"bkit [force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
           if [ "\${{ github.event_name }}" = "push" ] && [ "\${{ github.ref }}" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
