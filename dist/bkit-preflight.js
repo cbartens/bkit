@@ -199,8 +199,8 @@ export function detectBkitVersionPinStale(cwd) {
  */
 const BKIT_GITIGNORE_LINES = [
     ".worktrees/",
-    "docs/plans/logs/**/raw/",
-    "docs/plans/logs/**/.lock",
+    "docs/plans/*/logs/**/raw/",
+    "docs/plans/*/logs/**/.lock",
     ".husky/_",
     ".agents/advisories.md",
     ".agents/.env",
