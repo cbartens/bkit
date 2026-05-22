@@ -37,6 +37,35 @@ export interface ManifestEntry {
 export type ModuleName = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks";
 
 // ---------------------------------------------------------------------------
+// Issue tracker (#39)
+// ---------------------------------------------------------------------------
+
+/**
+ * Issue-tracker providers supported by `bkit install --tracker=<name>`.
+ * - `github` — GitHub Issues + Projects v2 (default).
+ * - `linear` — Linear (opt-in).
+ * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
+ *
+ * Add a new value here when adding a provider section to `.agents/trackers.md`.
+ * See `.agents/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ */
+export const ISSUE_TRACKERS = ["github", "linear", "none"] as const;
+export type IssueTracker = (typeof ISSUE_TRACKERS)[number];
+
+/** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
+export const DEFAULT_ISSUE_TRACKER: IssueTracker = "none";
+
+/**
+ * Narrow an unknown string to `IssueTracker` or return `null` if invalid.
+ * Used by CLI flag parsing and consumer-manifest reads.
+ */
+export function parseIssueTracker(value: unknown): IssueTracker | null {
+  return typeof value === "string" && (ISSUE_TRACKERS as readonly string[]).includes(value)
+    ? (value as IssueTracker)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 
