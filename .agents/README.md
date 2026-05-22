@@ -177,6 +177,16 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
+### bkit-repo dogfood rule — Dependabot PRs against workflows
+
+bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. Dependabot scans only the actual workflow path (`.github/workflows/`), not the template path. When a Dependabot PR opens against bkit's own workflows:
+
+1. Before merging, manually edit the matching `.agents/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
+2. Run `pnpm test` (the `templates.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/templates.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
+3. Push the template-side change to the Dependabot PR's branch (or land both in a single follow-up commit on `dev` if the Dependabot branch is read-only).
+
+This dance only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so Dependabot bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`.
+
 ---
 
 ## Triggering workflows
