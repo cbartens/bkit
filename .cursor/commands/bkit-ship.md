@@ -526,14 +526,14 @@
      Context: You are a subagent in the Ship phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/{FID}-plan.md`, `docs/plans/{YYYYMM}/logs/{FID}/status.json`, `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/ship-*.md` (excluding `ship-update-docs.md`), `gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,commits,mergedAt`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md`.
-5. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-6. Derive `UPDATE_DOCS_VERDICT`:
+4. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+5. Derive `UPDATE_DOCS_VERDICT`:
    ```bash
    COMPLETED_HIT=$(grep -c "docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/.*{FID}" docs/completed.md || echo 0)
    if [ "$COMPLETED_HIT" -gt 0 ]; then UPDATE_DOCS_VERDICT=PASS; else UPDATE_DOCS_VERDICT=FAIL; fi
    ```
    Read `ship-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
-7. Update status and commit:
+6. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -545,16 +545,16 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "docs({FID}): update-docs-summary"
    ```
-8. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+7. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
    ```comment
    ### Step 9 — Update Docs & Summary - Verdict: {SUMMARY_VERDICT} - Docs: {UPDATE_DOCS_VERDICT}
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-9. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
-10. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
-11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-12. **Else** → **Failure Path**.
+8. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
+9. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
+10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+11. **Else** → **Failure Path**.
 
 ### 🔒 Gate 9 — Update Docs & Summary
 

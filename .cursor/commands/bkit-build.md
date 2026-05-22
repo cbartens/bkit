@@ -206,7 +206,7 @@
    ```
 6. Init counters: `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0.
 7. Create: `docs/plans/{YYYYMM}/logs/{FID}/build-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
-9. Update status and commit:
+8. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
@@ -223,12 +223,12 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-10. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
-    ```comment
-    ### Step 2 — Worktree Setup
-    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
-    [docs/plans/{YYYYMM}/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.json)
-    ```
+9. `save_comment({ id: "{COMMENT_ID}", body: "{BODY}"})` — `{BODY}` = `COMMENT_BODY` + append fenced block below; capture returned `body` as `{COMMENT_BODY}`:
+   ```comment
+   ### Step 2 — Worktree Setup
+   [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+   [docs/plans/{YYYYMM}/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.json)
+   ```
 
 ### 🔒 Gate 2 — Worktree Setup
 
