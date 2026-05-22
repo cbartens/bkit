@@ -8,7 +8,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Subagents are leaves — never invoke other subagents.
-> - Subagents NEVER touch Linear. Linear MCP tools are orchestrator/workflow-layer exclusive.
+> - Subagents NEVER touch the tracker. Tracker MCP tools (GitHub Issues, Linear, etc.) are orchestrator/workflow-layer exclusive.
 > - When you change a workflow file (`.agents/workflows/bkit-*.md`), mirror change here.
 
 ## File Layout
@@ -55,21 +55,43 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
 - **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
 
+## Tracker Substitution (#39)
+
+`.agents/workflows/bkit-*.md` source files are tracker-agnostic. Tracker-specific MCP call shapes, label semantics, and state transitions live in `.agents/trackers.md` under per-tracker `## {github|linear|none}` sections.
+
+**Marker pair format:**
+
+```markdown
+<!-- bkit:tracker {snippet-id} start -->
+
+> _Tracker not wired — skip._
+
+<!-- bkit:tracker {snippet-id} end -->
+```
+
+Source files carry the no-tracker fallback content between markers. At `bkit install` time, the installer reads `bkit.issueTracker` from the consumer manifest, looks up `### {snippet-id}` in the chosen tracker's section of `.agents/trackers.md`, and substitutes the snippet body — markers AND fallback content stripped — into `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Mirrors are clean; LLM reads tracker-specific instructions verbatim.
+
+Re-runnable: source workflows always carry the fallback; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors.
+
+Missing snippet leaves a visible debug marker in the mirror (`<!-- bkit:tracker {id} MISSING in tracker '{name}' -->`) — silent regressions unacceptable.
+
+Snippet IDs catalogued in `.agents/trackers.md` § Snippet IDs. New tracker call site → add snippet ID to ALL tracker sections in lockstep, THEN insert marker pair in workflow source.
+
 ## Two-Layer Separation Rules
 
-> **Agents NEVER call Linear MCP tools.** Linear (`save_issue`, `save_comment`, `list_comments`, `get_issue`, `create_issue`, etc.) is exclusive to workflow layer. Agent that calls Linear is a protocol violation.
+> **Agents NEVER call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation.
 
 <!-- prettier-ignore -->
 | Capability | Workflow (`.agents/workflows/`) | Agent (`.agents/prompts/`) |
 | --- | --- | --- |
-| Invoke Linear MCP | ✅ | ❌ |
+| Invoke tracker MCP | ✅ | ❌ |
 | Read/write `docs/` | ✅ | ✅ |
 | Read/write source | via subagent delegation | ✅ (gated by tool surface) |
 | Run `git` | ✅ (`add`, `commit`, `push`, worktree ops) | read-only checks (`status`, `branch`, `log`) only |
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
 | Write `status.json` / hold `.lock` | ✅ | ❌ |
 
-**Why:** agent must be runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` works without live Linear issue). All inputs arrive via filesystem paths from orchestrator. All outputs land on disk under `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source files, or structured docs at `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs and decides what (if anything) to mirror to Linear.
+**Why:** agent must be runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` works without a live tracker issue). All inputs arrive via filesystem paths from orchestrator. All outputs land on disk under `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source files, or structured docs at `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs and decides what (if anything) to mirror to the tracker.
 
 ## Common Workflow Anatomy
 
@@ -77,17 +99,17 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 ```
 1. YAML frontmatter (description)
-2. Header (output, Linear MCP tool reference)
+2. Header (output)
 3. Execution Protocol caution block (canonical invariants — see below)
 4. Failure Path
-5. Step 1 — Start Workflow         (pre-flight divergence guard, lock acquire, Linear init, comment create — status init deferred to Step 2; ZERO commits on `dev`)
+5. Step 1 — Start Workflow         (pre-flight divergence guard, lock acquire, tracker init, first-step comment post — status init deferred to Step 2; ZERO commits on `dev`)
 6. Step 2 — Worktree Setup         (create/resume .worktrees/{FID}, copy env, pnpm install, save input, status init + `start-workflow` + `worktree-setup` step entries committed on `feat/{FID}`)
-7. Phase-specific steps            (subagent invocations, gates, save_comment append)
+7. Phase-specific steps            (subagent invocations, gates, per-step new comment post)
 8. Summary step                    (subagent → commit → push → verdict)
-9. Close Workflow                  (status done, lock release, state → In Review/Done; ship swaps label to `Merged`; non-ship phases preserve phase label)
+9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal close via `issue-update-merged`; non-ship phases preserve phase label)
 ```
 
-**Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and writes to same Linear comment by appending one fenced section.
+**Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and posts a NEW tracker comment with one fenced section (see § Comment Lifecycle).
 
 **Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/ .agents/friction.md` only; guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
 
@@ -103,7 +125,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | Invariant | Rule |
 | --- | --- |
 | **Order** | Execute sequentially unless step explicitly says "in parallel". |
-| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. |
+| **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. |
 | **Tools** | Verify every return; do NOT assume success. |
 | **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions ≠ compliance. |
 | **Artifacts** | `Write:` artifact IS the deliverable; always emit; assert non-empty; empty → **Failure Path**. |
@@ -114,8 +136,8 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
 | **Status** | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` is central state file (dev's working copy, all workflows); ONE entry per step with `parentSha` captured at step START (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
-| **Labels** | Phase labels (`Design`, `Plan`, `Build`, `Ship`, `Merged`) are mutually exclusive — drop old phase before adding new. `Failed` (Failure Path) and `Debug` (Debug Workflow) are additive — added without dropping phase (see § Linear Integration). |
-| **Comments** | ONE Linear comment per workflow run; Step 1 creates, all later steps append (see § Linear Comment Lifecycle). |
+| **Labels** | Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` mutually exclusive — drop old phase before adding new. `bkit:failed` (Failure Path), `bkit:debug` (Debug Workflow), `bkit:auto` (CI-router trigger gate) are additive — added without dropping phase (see § Tracker Integration). |
+| **Comments** | NEW comment per workflow step via tracker MCP. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content (see § Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
 | **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Lock path is **absolute** (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, anchored to main repo working tree via `git rev-parse --path-format=absolute --git-common-dir`) so acquire/release resolve to the same inode regardless of cwd. Existing lock → Step 1 cross-checks its owning workflow's `status.json`: `DONE`/`FAILED` → clean silently; `IN_PROGRESS` + last step <30min → Failure Path with `Workflow already running for {FID}`; `IN_PROGRESS` + last step ≥30min → stale, clean. Released in Close Workflow and Failure Path; **both must assert the lock file is absent before exiting** (else Failure Path with `Lock removal failed`). |
@@ -234,11 +256,11 @@ printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
 
 **Staleness rule (BAR-187):** all workflows read `status.json` via `cat "$REPO_ROOT/$STATUS_REL"` (single canonical location, no branch-dependent fallback). `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step ≥30min idle → orphaned, clean and proceed. Lock with no matching workflow entry in `status.json` is treated as stale and cleaned.
 
-### Linear Comment Lifecycle
+### Comment Lifecycle
 
-ONE Linear comment per workflow run. Step 1 creates it; every later step appends.
+Every workflow step posts a NEW tracker comment via the `comment-post-step` snippet (see `.agents/trackers.md`). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Each step's comment is independent — no comment-ID carry-forward, no body concatenation.
 
-**Step 1 (create) — `save_comment({ issueId, body })`:**
+**Step 1 (first comment):**
 
 ```comment
 ## {Phase} Workflow
@@ -246,11 +268,9 @@ ONE Linear comment per workflow run. Step 1 creates it; every later step appends
 [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
 ```
 
-Capture response: `id` → `{COMMENT_ID}`, `body` → `{COMMENT_BODY}`.
+**Steps 2..N (subsequent comments):**
 
-**Steps 2..N (append) — `save_comment({ id: {COMMENT_ID}, body: {COMMENT_BODY} + "\n" + new fenced section })`:**
-
-After each call, capture returned `body` as new `{COMMENT_BODY}` so next step appends on top of latest server-side state.
+Each step posts its own fenced section as a fresh comment.
 
 **Standard step section (no artifact link):**
 
@@ -296,17 +316,17 @@ Stderr: {last 20 lines if shell}
 {handover.md content verbatim}
 ```
 
-### Linear Writes Are Best-Effort
+### Tracker Writes Are Best-Effort
 
-`save_comment` / `save_issue` are observability, NOT gates. NEVER block, hang, or fail a workflow on Linear write failure. Reads (`get_issue`, `list_comments`) remain authoritative.
+Tracker write calls (issue update, comment post) are observability, NOT gates. NEVER block, hang, or fail a workflow on tracker write failure. Tracker reads (issue read, list comments) remain authoritative.
 
-**Wrapper semantics — every `save_*` call:**
+**Wrapper semantics — every tracker write call:**
 
 1. Attempt the call.
 2. On `rate_limited` / transient error → wait 5s, retry once.
-3. On second failure → set `LINEAR_DEFERRED` = true, append the literal token `LINEAR_DEFERRED=true reason={error}` to the next workflow commit message, proceed to next step.
+3. On second failure → set `TRACKER_DEFERRED` = true, append the literal token `TRACKER_DEFERRED=true reason={error}` to the next workflow commit message, proceed to next step.
 
-**Gate phrasing:** Linear-dependent gate items read as `Issue update attempted (state X, label Y)` and `Issue comment attempted (Step N section)`. Do NOT phrase as `Issue state X set` or `Issue comment created` — those imply the write succeeded.
+**Gate phrasing:** tracker-dependent gate items read as `Issue update attempted (label set X)` and `Issue comment attempted (Step N section)`. Do NOT phrase as `Issue state X set` or `Issue comment created` — those imply the write succeeded.
 
 ### Versioned Outputs
 
@@ -774,60 +794,54 @@ pnpm install --frozen-lockfile   # symlink-only ~5s; required because pnpm per-p
 
 `/bkit-worktree-sync` and `/bkit-worktree-prune` exist for ad-hoc manual sync; not invoked by any phase command.
 
-## Linear Integration
+## Tracker Integration
 
-MCP server: `https://mcp.linear.app/mcp` (OAuth — wired in `.mcp.json` as `mcpServers.linear`).
-
-Tool names (only these are used):
-
-<!-- prettier-ignore -->
-| Tool | Purpose |
-| --- | --- |
-| `get_issue` | `{ id: "XXX-123", includeRelations: true }` → `state`, `labels`, `description`, `relations` (`includeRelations: true` required when `relations` field is consumed — `/bkit-build` Step 1.6) |
-| `list_comments` | `{ issueId, orderBy: "createdAt desc", limit: 250 }` |
-| `list_issues` | `{ parentId: "XXX-123", limit: 250 }` (used by `/bkit-design` Step 9 to enumerate workstream sub-issues) |
-| `save_issue` | `{ id, state, labels, blockedBy, parentId }` (or `{ title, description, team, assignee, state, labels, parentId }` to create). `blockedBy` is append-only — re-runs are no-ops for unchanged edges. |
-| `save_comment` | `{ issueId, body }` to create, `{ id, body }` to edit |
+Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes live in `.agents/trackers.md` under `## github` / `## linear` / `## none`. Workflows reference call sites via marker pairs; installer substitutes the chosen tracker's snippets into `.claude/commands/` + `.cursor/commands/` mirrors (see § Tracker Substitution).
 
 ### Phase labels (mutually exclusive)
 
-In the Linear workspace these live under the `workflow` parent label group — Linear enforces mutual exclusion server-side, so `save_issue` with a new phase label auto-removes the prior one. Workflow code still drops the old phase from `{LABELS}` explicitly (idempotent; matches Linear's behaviour).
+Phase labels carry the `bkit:` namespace prefix so they never clash with consumer-defined labels. Mutual exclusion enforced by workflow code: drop prior phase label from `{LABELS}` explicitly before adding new.
 
 <!-- prettier-ignore -->
 | Label | Meaning |
 | --- | --- |
-| `Design` | `/bkit-design` running |
-| `Plan` | `/bkit-plan` running |
-| `Build` | `/bkit-build` running |
-| `Ship` | `/bkit-ship` running |
-| `Merged` | `/bkit-ship` completed; PR merged to `dev`; terminal |
+| `bkit:design` | `/bkit-design` running |
+| `bkit:plan` | `/bkit-plan` running |
+| `bkit:build` | `/bkit-build` running |
+| `bkit:ship` | `/bkit-ship` running |
+| `bkit:merged` | `/bkit-ship` completed; PR merged to `dev`; terminal |
 
-Phase label is preserved through Close Workflow exit — state column (`In Review` for non-ship, `Done` for ship) carries the completion signal, so the label tells reviewers which workflow just finished. Ship is the exception: Close Workflow swaps `Ship` → `Merged` and state → `Done`.
+Phase label is preserved through Close Workflow exit — tracker-specific state (e.g. Linear "In Review", GitHub `open`) carries the completion signal, so the label tells reviewers which workflow just finished. Ship is the exception: Close Workflow swaps `bkit:ship` → `bkit:merged`.
 
 ### Additive labels (do not drop phase)
 
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `Failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Lives outside the Linear `workflow` group — no server-side phase eviction. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior Failure marker) and when `/bkit-ship` Step 12 adds `Merged` (terminal success). |
-| `Debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `Build` or `Ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. Lives outside the Linear `workflow` group — no server-side phase eviction. |
+| `bkit:auto` | Human (via tracker UI) at issue creation; written by issue-id-extraction snippet's create-issue fallback | Opt-in gate for `/bkit-ci-router` PR-label trigger. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
+| `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior failure marker) and when `/bkit-ship` Step 12 adds `bkit:merged` (terminal success). |
+| `bkit:debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `bkit:build` or `bkit:ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. |
 
-### Statuses
+### Tracker-specific state
+
+Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed`) are encapsulated in `trackers.md` snippet IDs:
 
 <!-- prettier-ignore -->
-| Status | When |
+| Snippet | When |
 | --- | --- |
-| `In Progress` | Set by Step 1 of every phase. |
-| `In Review` | Set by Close Workflow of `/bkit-design`, `/bkit-plan`, `/bkit-build`, `/bkit-debug`. Also set by Failure Path. |
-| `Done` | Set by `/bkit-ship` Step 12. |
+| `issue-update-phase` | Step 1 of every phase. Sets phase label, tracker-specific "active" state. |
+| `issue-update-review` | Close Workflow of `/bkit-design`, `/bkit-plan`, `/bkit-build`, `/bkit-debug`. Hand-off state (Linear "In Review"; GitHub no-op — phase label carries signal). |
+| `issue-update-merged` | `/bkit-ship` Step 12. Terminal close (Linear "Done"; GitHub `state: closed`). |
+| `issue-update-failed` | Failure Path. Adds `bkit:failed` additive label. |
+| `issue-update-debug` | `/bkit-debug` Step 1. Adds `bkit:debug` additive label. |
 
 ### Comment lifecycle
 
-ONE comment per workflow run; Step 1 creates it, every later step appends. See § Linear Comment Lifecycle for templates and code path.
+NEW comment per workflow step via tracker MCP. Step 1 posts the first comment; every later step posts its own. NEVER edit, paraphrase, or carry forward prior comment IDs. See § Comment Lifecycle for templates.
 
 ### Issue blockers (`/bkit-build` Step 1)
 
-`/bkit-build` Step 1.6 calls `get_issue({ id, includeRelations: true })` and extracts `relations.blocked_by`. Any blocker whose state is not `Done` **and** not `Cancelled` → Failure Path with `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})` (the offending blocker's id, not the current issue's). Workstream sub-issues spawned by `/bkit-design` Step 9 set `blockedBy` per their `Requires` line, so this gate also enforces workstream ordering — no separate workstream-aware gate exists.
+`/bkit-build` Step 1 calls the tracker's `issue-read` snippet and parses tracker-native blocker relations (Linear: `relations.blocked_by` via `get_issue({ includeRelations: true })`; GitHub: issue body text scan for `Blocked by #N` references). Any blocker whose state is not closed/done → Failure Path with `Blocked by {BLOCKER_ID} (state: {BLOCKER_STATE})`. Workstream sub-issues spawned by `/bkit-design` Step 9 record their `Requires` edges via the `set-blocked-by` snippet, so this gate also enforces workstream ordering.
 
 ## GitHub Integration
 
