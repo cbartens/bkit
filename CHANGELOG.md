@@ -8,6 +8,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 ## [Unreleased]
 
+### Changed
+
+- **SHA-pinned all `uses:` lines across `.github/workflows/` and `.agents/templates/.github/workflows/`.** Replaces floating `@v4` / `@v1` tags with 40-char commit SHAs and `# vX.Y.Z` comments — closes the long-standing `gha-actions-floating-tags` advisory in bkit's own dogfood. Affects `actions/checkout` (v4.3.1), `actions/setup-node` (v4.4.0), `pnpm/action-setup` (v4.4.0), and `anthropics/claude-code-action` (v1.0.99). Going forward, Dependabot version updates will refresh these pins on each upstream release; the bkit-repo-specific template-sync dance is documented in `.agents/README.md` § "bkit-repo dogfood rule".
+
 ### Security
 
 - **CVE fixes via dependency bumps.** Bumped `vitest` `^2.1.0` → `^4.1.7` and added direct `vite` `^6.4.2` devDep + `pnpm.overrides` to force CVE-fixed transitives: closes GHSA-4w7w-66w2-5vf9 (vite path traversal in optimized-deps .map handling, CVE-2026-39365) and the esbuild dev-server-request CVE. Both were transitive dev-only deps coming through `vitest@2.x → vite@5.x → esbuild@0.21.x`. Side benefit: `vitest 4` adoption brings the new test runner to bkit's own suite (934 tests pass, no regressions). Snapshot-format compatibility preserved.

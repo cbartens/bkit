@@ -38,15 +38,15 @@ jobs:
       GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
     # bkit:end verbose-ci-env
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: {{NODE_VERSION}}
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
-      # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
-      - uses: pnpm/action-setup@v4
+      # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
 
       # bkit:start
       # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
