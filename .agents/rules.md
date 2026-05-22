@@ -44,9 +44,9 @@
 
 ### Plans & Process
 
-- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `status.json`, never dirs. Full spec: `.agents/workflows.md` § Versioned chain.
+- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.json`.
 - **Gates:** STOP at every gate. Verify all steps BEFORE proceeding.
-- **Tracker MCP:** Workflows touch GitHub/Linear via configured MCP only — no `gh api`/CLI/HTTP shell-outs.
+- **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
 
 ### Git, CI & Merges
 
