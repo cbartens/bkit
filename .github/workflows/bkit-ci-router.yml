@@ -76,7 +76,7 @@ jobs:
           jq '.permissions // {error: .message}' /tmp/repo.json || cat /tmp/repo.json
           echo "::endgroup::"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Check out `dev` at the workspace root so the router's
           # `$REPO_ROOT/docs/plans/logs/{FID}/status.json` resolves to dev's

@@ -21,15 +21,15 @@ jobs:
   run-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
 
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
-      # Do NOT add `with: version:` here — pnpm/action-setup@v4 errors when both are set.
-      - uses: pnpm/action-setup@v4
+      # Do NOT add `with: version:` here — pnpm/action-setup@v6 errors when both are set.
+      - uses: pnpm/action-setup@v6
 
       - name: Check SHA Cache
         # Skip the suite when this SHA already has a successful run for this
