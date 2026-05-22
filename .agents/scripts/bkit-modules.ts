@@ -260,7 +260,7 @@ const COPY_EXCLUDE = new Set([
 // BAR-165: every path here MUST also be listed in .agents/templates/.prettierignore
 // (the bkit:start/end block) so consumer prettier — which may resolve a different
 // printWidth than bkit's 100 — does not lint canonical content that the consumer
-// cannot edit. The invariant is asserted by templates.test.ts.
+// cannot edit. The invariant is asserted by bkit-templates.content.test.ts.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set<string>([
   ".agents/prompts.md",
   ".agents/workflows.md",
@@ -1123,6 +1123,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   Open .envrc. Compare against the bkit reference below.
   Ensure the file contains \`dotenv_if_exists .agents/.env\` so direnv
   auto-exports the tokens into your shell. Keep any existing lines.
+  You can append more \`dotenv_if_exists <path>\` lines to expose additional
+  env files (e.g. .env.local, infra/secrets.env); run \`direnv allow\` after.
 
   --- begin bkit reference .envrc ---
 {{TEMPLATE_CONTENT}}
