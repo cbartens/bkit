@@ -209,6 +209,20 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 
 **Install behaviour:** template drops, host-specific. No transform — these files have no canonical form.
 
+### MCP config asymmetry — GitHub tracker
+
+Both hosts use the same `mcpServers` key shape, but the files differ:
+
+<!-- prettier-ignore -->
+| Host | File | Written by |
+| --- | --- | --- |
+| Claude Code | `.mcp.json` at repo root | `bkit install --tracker=github` seeds the `github` entry |
+| Cursor | `.cursor/mcp.json` | `bkit install --tracker=github` seeds this file with the same `mcpServers.github` block |
+
+Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_TOKEN}" }`. The `${GH_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.agents/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
+
+> Note: `mcpServers` inside `.claude/settings.json` is silently ignored by Claude Code for server definitions — only `.mcp.json` (project) or `claude mcp add` (user scope) take effect. Tool-permission `allow` entries in `.claude/settings.json` (`mcp__github__*`) are separate and remain there.
+
 ---
 
 ## Runtime environment (cloud agents)

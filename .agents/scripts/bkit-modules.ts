@@ -595,6 +595,13 @@ export function runClaudeModule(ctx: ModuleContext): void {
       // Background Agents setup. The repo hooks are half the picture; the
       // cloud-side setup script (Claude) + Dockerfile (Cursor) are the other
       // half. Both clouds are now aligned on vale 3.9.1 + pnpm 10.33.0 + gh.
+      // Tracker-aware: env var list differs by issueTracker.
+      const trackerEnvNote =
+        issueTracker === "github"
+          ? "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n"
+          : issueTracker === "linear"
+            ? "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n"
+            : "  - Tracker env vars: tracker not wired (`bkit.issueTracker` = `none`). Run `bkit install --tracker=github` to enable. GitHub tracker uses browser OAuth — no PAT required.\n";
       advisories.push({
         id: "cloud-env-customize",
         severity: "advisory",
@@ -609,10 +616,12 @@ export function runClaudeModule(ctx: ModuleContext): void {
           "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
           "  - Name: `bkit-shared` (or per-repo).\n" +
           "  - Setup script: paste from `.agents/cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
-          "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `LINEAR_API_KEY`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+          "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+          trackerEnvNote +
           "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.\n\n" +
           "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
-          "  - `LINEAR_API_KEY`, `GH_TOKEN`, `GH_BKIT_TOKEN`. `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — don't hardcode.\n" +
+          "  - `GH_TOKEN`, `GH_BKIT_TOKEN`.\n" +
+          trackerEnvNote +
           "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.",
       });
     }
