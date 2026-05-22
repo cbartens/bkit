@@ -22,7 +22,7 @@ description: "Build Feature — Autonomous implementation"
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): build DONE [skip ci]`; Failure Path → `chore({FID}): build FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): build DONE bkit [skip ci]`; Failure Path → `chore({FID}): build FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -54,7 +54,7 @@ description: "Build Feature — Autonomous implementation"
    rm -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): build FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. <!-- bkit:tracker issue-update-failed start -->
@@ -78,7 +78,7 @@ description: "Build Feature — Autonomous implementation"
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): build aborted [skip build] [skip ci]"`.
+9. `git commit -m "docs({FID}): build aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
@@ -181,7 +181,7 @@ description: "Build Feature — Autonomous implementation"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build]"
    fi
    ```
 2. Create/resume the worktree:
@@ -886,7 +886,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. `git fetch origin dev`.
-2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `[force build]` → `git push`.
+2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF 'bkit [force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → `git push`.
 3. Create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): {summary}" --body "$(cat <<'EOF'
@@ -948,13 +948,21 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    git push origin "$(git branch --show-current)"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE [skip ci]"
+   git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 3. <!-- bkit:tracker issue-update-review start -->
    _Tracker not wired — skip issue update._
    <!-- bkit:tracker issue-update-review end -->
-4. <!-- bkit:tracker comment-post-step start -->
+4. Re-read issue labels to check kill-switch:
+   <!-- bkit:tracker issue-read start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-read end -->
+   **If** `bkit:auto` NOT in `{LABELS}`:
+   <!-- bkit:tracker kill-switch-check start -->
+   _Tracker not wired — kill switch inactive._
+   <!-- bkit:tracker kill-switch-check end -->
+5. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
    `{BODY}` = fenced block below:
@@ -967,9 +975,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] HEAD on remote does NOT contain `[skip ci]`
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `feat/{FID}`
-- [ ] Workflow status pushed to `dev` with `[skip ci]`
+- [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue update attempted via `issue-update-review` (state `In Review`)
+- [ ] Kill-switch propagation checked (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 18` section)

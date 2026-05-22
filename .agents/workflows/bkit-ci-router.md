@@ -20,7 +20,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): ci-router DONE [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): ci-router DONE bkit [skip ci]`; Failure Path → `chore({FID}): ci-router FAILED bkit [skip ci]`.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
@@ -44,7 +44,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
      t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
      git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
      git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
-     git -C "$REPO_ROOT" commit -m "chore({FID}): ci-router FAILED [skip ci]" 2>/dev/null || true
+     git -C "$REPO_ROOT" commit -m "chore({FID}): ci-router FAILED bkit [skip ci]" 2>/dev/null || true
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    fi
    ```
@@ -149,7 +149,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
+   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 5. <!-- bkit:tracker comment-post-step start -->
@@ -166,7 +166,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 - [ ] `LATEST_RUN_SHA` == `HEAD_SHA`
 - [ ] Verdict determined (`GUARD_VERDICT`)
 - [ ] Workflow status updated (step `ci-stale-run-guard` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
-- [ ] On FAIL, workflow status pushed to `dev` with `[skip ci]`
+- [ ] On FAIL, workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue comment attempted (`Step 2` section)
 
 ---
@@ -198,7 +198,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
+   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 5. <!-- bkit:tracker comment-post-step start -->
@@ -215,7 +215,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 - [ ] Label `bkit:auto` present in issue `{LABELS}` (else kill-switch propagated)
 - [ ] Verdict determined (`AUTO_VERDICT`)
 - [ ] Workflow status updated (step `ci-opt-in-gate` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
-- [ ] On FAIL, workflow status pushed to `dev` with `[skip ci]`
+- [ ] On FAIL, workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -234,7 +234,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
    t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE [skip ci]"
+   git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 2. **If** `CI_STATUS` = PASS → `DISPATCH_TARGET` = SHIP.
@@ -253,7 +253,7 @@ description: "CI Router — Auto-dispatch ship or debug after completion"
 ### 🔒 Gate 4 — Dispatch Workflow
 
 - [ ] Workflow status updated (`ci-router` `DONE`, step `ci-dispatch-workflow` recorded with `parentSha`, `ciStatus`)
-- [ ] Workflow status pushed to `dev` with `[skip ci]`
+- [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue comment attempted (`Step 4` section)
 - [ ] Slash command for ship or debug workflow invoked
 - [ ] Router exits and dispatched workflow owns session

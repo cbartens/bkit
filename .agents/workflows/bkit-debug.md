@@ -22,7 +22,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE [skip ci]`; Failure Path → `chore({FID}): debug FAILED [skip ci]`.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): debug DONE bkit [skip ci]`; Failure Path → `chore({FID}): debug FAILED bkit [skip ci]`.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -54,7 +54,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    rm -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. <!-- bkit:tracker issue-update-failed start -->
@@ -78,7 +78,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): debug aborted [skip build] [skip ci]"`.
+9. `git commit -m "docs({FID}): debug aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
@@ -457,7 +457,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      | sed -E 's/[[:space:]]+$//' \
      | cut -c1-72)
    [ -z "$FIX_DESC" ] && FIX_DESC="failure-remediate attempt ${TEST_ATTEMPT}"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
 5. <!-- bkit:tracker comment-post-step start -->
@@ -542,13 +542,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       | .[-1] |= (. + {debugAttempt:$da})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-3. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+3. **If** `DEBUG_MODE` = pr **and** `bkit [verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
-       *"[verbose ci]"*) ;;
-       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+       *"bkit [verbose ci]"*) ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
    ```
@@ -566,7 +566,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` incremented
 - [ ] Step 5 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push)
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
-- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
+- [ ] PR title contains `bkit [verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 7` section)
 
@@ -589,7 +589,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '.[-1].steps += [{step:"debug-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
@@ -647,16 +647,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$OBSERVE_INSTRUMENT_VERDICT" --argjson a "$DEBUG_ATTEMPT" \
      '.[-1].steps += [{step:"debug-observe-instrument", status:"DONE", verdict:$v, attempt:$a, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-observe-instrument-'"${DEBUG_ATTEMPT}"'.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-instrument attempt ${DEBUG_ATTEMPT}${VERBOSE_SUFFIX}"
    ```
-5. **If** `DEBUG_MODE` = pr **and** `[verbose ci]` NOT in pr title → append `[verbose ci]` to PR title:
+5. **If** `DEBUG_MODE` = pr **and** `bkit [verbose ci]` NOT in pr title → append `bkit [verbose ci]` to PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
      case "$CURRENT_TITLE" in
-       *"[verbose ci]"*) ;;
-       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} [verbose ci]" || true ;;
+       *"bkit [verbose ci]"*) ;;
+       *) [ -n "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "${CURRENT_TITLE} bkit [verbose ci]" || true ;;
      esac
    fi
    ```
@@ -679,8 +679,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` NOT incremented
 - [ ] Verdict extracted (`OBSERVE_INSTRUMENT_VERDICT`)
 - [ ] Verdict valid (`OBSERVE_INSTRUMENT_VERDICT` in `PASS|FAIL`)
-- [ ] Commit pushed to branch (no `[skip ci]`)
-- [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
+- [ ] Commit pushed to branch (no `bkit [skip ci]`)
+- [ ] PR title contains `bkit [verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
 
@@ -763,7 +763,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```comment
    ### Step 11 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
    ```
-6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `[skip ci]`, posts handover content to Linear, and terminates the workflow.
+6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `bkit [skip ci]`, posts handover content to Linear, and terminates the workflow.
 
 ### 🔒 Gate 11 — Observe Revert
 
@@ -782,7 +782,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `OBSERVE_MODE` = off **or** `OBSERVE_MODE` = instrument. **Skip if** `OBSERVE_MODE` = analyse.
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `[verbose ci]` in PR title → strip `[verbose ci]` from PR title:
+2. **If** `DEBUG_MODE` = pr **and** `OBSERVE_MODE` = off **and** `bkit [verbose ci]` in PR title → strip `bkit [verbose ci]` from PR title:
    ```bash
    if [ "$DEBUG_MODE" = "pr" ] && [ -n "$PR_NUMBER" ] && [ "$OBSERVE_MODE" = "off" ]; then
      CURRENT_TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title 2>/dev/null || echo "")
@@ -799,7 +799,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      '.[-1].steps += [{step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
@@ -837,7 +837,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" [verbose ci]"
+   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}"
    git push origin "$(git branch --show-current)"
    ```
@@ -846,7 +846,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ```bash
 git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
 git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE [skip ci]"
+git -C "$REPO_ROOT" commit -m "chore({FID}): debug DONE bkit [skip ci]"
 git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 ```
 
@@ -854,7 +854,15 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
     <!-- bkit:tracker issue-update-review start -->
     _Tracker not wired — skip._
     <!-- bkit:tracker issue-update-review end -->
-12. <!-- bkit:tracker comment-post-step start -->
+12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
+    <!-- bkit:tracker issue-read start -->
+    _Tracker not wired — skip._
+    <!-- bkit:tracker issue-read end -->
+    **If** `bkit:auto` NOT in `{LABELS}`:
+    <!-- bkit:tracker kill-switch-check start -->
+    _Tracker not wired — kill switch inactive._
+    <!-- bkit:tracker kill-switch-check end -->
+13. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
     <!-- bkit:tracker comment-post-step end -->
     `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
@@ -869,13 +877,14 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
-- [ ] HEAD on remote does NOT contain `[skip ci]`
+- [ ] PR title `bkit [verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
-- [ ] Workflow status pushed to `dev` with `[skip ci]`
+- [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] If `OBSERVE_MODE` = off issue update attempted (hand-off state via `issue-update-review`)
+- [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 12` section)

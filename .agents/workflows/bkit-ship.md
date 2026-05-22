@@ -22,7 +22,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step Steps 1-7: file-only write on dev working copy + commit on `feat/{FID}`. Steps 8-12 on `dev`: per-step file-only status write; per-step commit on `dev` for substantial-work steps (Step 9 update-docs-summary, Step 10 prune-skills); push deferred to Close Workflow. `dev` push ONCE per run: Close Workflow → final commit `docs({FID}): ship DONE [skip ci]` + push; Failure Path → `chore({FID}): ship FAILED [skip ci]` + push.
+> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step Steps 1-7: file-only write on dev working copy + commit on `feat/{FID}`. Steps 8-12 on `dev`: per-step file-only status write; per-step commit on `dev` for substantial-work steps (Step 9 update-docs-summary, Step 10 prune-skills); push deferred to Close Workflow. `dev` push ONCE per run: Close Workflow → final commit `docs({FID}): ship DONE bkit [skip ci]` + push; Failure Path → `chore({FID}): ship FAILED bkit [skip ci]` + push.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -54,7 +54,7 @@ description: "Ship Feature — Autonomous merge and archive"
    rm -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed"
    git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
    git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED [skip ci]" 2>/dev/null || true
+   git -C "$REPO_ROOT" commit -m "chore({FID}): ship FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. <!-- bkit:tracker issue-update-failed start -->
@@ -78,7 +78,7 @@ description: "Ship Feature — Autonomous merge and archive"
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): ship aborted [skip build] [skip ci]"`.
+9. `git commit -m "docs({FID}): ship aborted bkit [skip build] bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
 11. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
@@ -167,7 +167,7 @@ description: "Ship Feature — Autonomous merge and archive"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/ .agents/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes [skip build] [skip ci]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build] bkit [skip ci]"
    fi
    ```
 2. Create/resume the worktree:
@@ -368,7 +368,7 @@ description: "Ship Feature — Autonomous merge and archive"
    if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
      git -C "$REPO_ROOT" status --short
      git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-     git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes [skip build] [skip ci]"
+     git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
    fi
    ```
 3. Merge with empty body:
@@ -418,7 +418,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] CI run triggered on dev (`RUN_ID` captured)
 - [ ] Verdicts extracted (`MERGE_VERDICT`, `MERGE_FAILURES`)
 - [ ] Verdict valid (`MERGE_VERDICT` in `PASS|FAIL`)
-- [ ] HEAD on remote does NOT contain `[skip ci]`
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
 
@@ -735,7 +735,7 @@ description: "Ship Feature — Autonomous merge and archive"
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git -C "$REPO_ROOT" add -A
-   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE [skip ci]"
+   git -C "$REPO_ROOT" commit --allow-empty -m "docs({FID}): ship DONE bkit [skip ci]"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
@@ -760,6 +760,6 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
-- [ ] Changes pushed to `dev` with `[skip ci]`
+- [ ] Changes pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue update attempted (terminal state via `issue-update-merged`; phase label `bkit:merged`)
 - [ ] Issue comment attempted (`Step 12` section)
