@@ -1,4 +1,7 @@
 #!/usr/bin/env sh
+# pre-push hook shipped by bkit. Tier 3 (seed-or-print): bkit writes this file
+# once if absent; if present bkit will not overwrite — modify freely.
+#
 # Revert-branch bypass: when rolling back, the source tree is intentionally
 # inconsistent (deleted files referenced by surviving tests). Skip the test
 # suite so the recovery push can land; lint + typecheck still run.

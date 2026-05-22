@@ -2,7 +2,7 @@
 # bkit-set-dependabot.sh — Enable / sanity-check the repo-level state that
 # Dependabot version updates (.github/dependabot.yml) silently depend on.
 #
-# Policy: bkit consumers NEVER want Dependabot auto-PRs against `main`. Bkit
+# Policy: bkit consumers NEVER want Dependabot auto-PRs against `main`. bkit
 # branch protection only accepts PRs from `dev`, so any security-update PR
 # routed to the default branch (which is what `automated-security-fixes`
 # produces) is dead-on-arrival at best and a policy violation at worst.
