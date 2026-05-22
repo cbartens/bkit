@@ -423,8 +423,8 @@ Canonical patterns:
 - `[ ] {VARIABLE} extracted` — verdict / value capture
 - `[ ] Verdict valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})` — verdict-bearing-step validation
 - `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with parentSha[, verdict, attempt, …])` — status.json mutation
-- `[ ] Issue update attempted (state X, label Y)` — Linear `save_issue`
-- `[ ] Issue comment attempted (Step {N} section)` — Linear `save_comment`
+- `[ ] Issue update attempted (state X, label Y)` — tracker `issue-update-*` snippet
+- `[ ] Issue comment attempted (Step {N} section)` — tracker `comment-post-step` snippet
 
 Skipped gate = invalid work. Workflow MUST verify every checkbox before advancing.
 
@@ -492,7 +492,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 **Standard failure (always run):**
 
 1. Mark `status.json` last entry `status: "FAILED"`; remove `.lock` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute path); **assert lock file is absent** (else exit non-zero with `Lock removal failed`). For `plan`/`design`, the failed-status commit additionally pushes to `dev` (best-effort — `2>/dev/null || true`).
-2. Add `Failed` to `{LABELS}` (additive — phase label persists) → `save_issue({ id, state: "In Review", labels })`.
+2. Add `Failed` to `{LABELS}` (additive — phase label persists) → update issue via `issue-update-failed` tracker snippet.
 3. Append `### Workflow Failure` block to workflow comment with step number, error, and last 20 lines of stderr.
 
 **Conditional handover** — runs ONLY if failure was triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded):
@@ -561,7 +561,7 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Read | Write | Notes |
 | --- | --- | --- | --- | --- |
-| 1 — Start Workflow | — | Linear issue | `.lock`, Linear comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve / create `{ISSUE_ID}`, set label `Design`, state `In Progress`. NO commits on `dev` — `status.json` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve / create `{ISSUE_ID}`, set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.json` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, env files, `design-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). `pnpm install --frozen-lockfile`. |
 | 3 — Brainstorm & Ideate | `@bkit-design-brainstorm-ideate-1` ‖ `-2` ‖ `-3` (parallel triplet) | `design-input.md` | `design-brainstorm-ideate-1.md`, `-2.md`, `-3.md` | Pragmatic / optimal-tradeoff / risk-premortem lenses; effort-tier diversity (`high`/`medium`/`high`); sibling-blind. `BRAINSTORM_VERDICT` = worst of three. |
 | 4 — Generate Design | `@bkit-design-generate` | both brainstorms | `design-v1-draft.md` (versioned draft) | First write of deliverable design doc. |
@@ -569,12 +569,12 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary [skip build] [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 9 — Design Workstream Issues | — | `design-v3-organised.md` | Linear sub-issues + `blockedBy` edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: `list_issues({ parentId })` → existing match → `save_comment` sync (body untouched); else `save_issue({ parentId, title: "WS-N: …", description: … })` with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: `save_issue({ blockedBy })` per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
+| 9 — Design Workstream Issues | — | `design-v3-organised.md` | tracker sub-issues + block-by edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: list existing sub-issues → existing match → sync comment (body untouched); else create sub-issue with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
 | 10 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. |
 
 **Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
 
-**Step 9 contract:** sub-issue body carries everything `/bkit-plan` needs — no Linear labels, no `WS_ID` parameter, no parent-shape detection. The two markdown markers (`**Parent design:**`, `**Workstream:**`) are load-bearing and parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract (workstream scope). The `**Parent design:**` value is wrapped as a markdown link (`[docs/plans/{YYYYMM}/{FID}-design.md](URL)`) — display text is the canonical bare path so plan's parser can extract the slug. `Requires:` translates 1:1 to Linear `blockedBy` edges so `/bkit-build` Step 1.6's existing `relations.blocked_by` gate enforces ordering — no new build-side gate needed. Re-runs are non-destructive: existing sub-issue bodies/titles are never rewritten (only sync comments appended); orphaned sub-issues stay open with a `## Workstream Delete` notification comment. Even single-workstream designs spawn one sub-issue; design and plan never share an FID.
+**Step 9 contract:** sub-issue body carries everything `/bkit-plan` needs — no tracker-specific labels, no `WS_ID` parameter, no parent-shape detection. The two markdown markers (`**Parent design:**`, `**Workstream:**`) are load-bearing and parsed by `/bkit-plan` Step 1 (`PARENT_FID`) and `bkit-plan-generate` Contract (workstream scope). The `**Parent design:**` value is wrapped as a markdown link (`[docs/plans/{YYYYMM}/{FID}-design.md](URL)`) — display text is the canonical bare path so plan's parser can extract the slug. `Requires:` translates 1:1 to tracker block-by edges so `/bkit-build` Step 1's `issue-blockers-check` tracker snippet enforces ordering — no new build-side gate needed. Re-runs are non-destructive: existing sub-issue bodies/titles are never rewritten (only sync comments appended); orphaned sub-issues stay open with a `## Workstream Delete` notification comment. Even single-workstream designs spawn one sub-issue; design and plan never share an FID.
 
 ### `/bkit-plan` — 11 steps
 
@@ -584,7 +584,7 @@ Each subsection below documents what command actually does — step list, subage
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
 | 1 — Start Workflow | — | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Set label `Plan`, `In Progress`. Parse `**Parent design:**` from `DESCRIPTION` → set `PARENT_FID` (sub-issue case); **else** leave empty (standalone plan run on issue input alone). NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
-| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + Linear description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. |
+| 2 — Worktree Setup | — | Worktree on `feat/{FID}`; `plan-input.md` = session prompt + tracker issue description + comments. **If** `PARENT_FID` set → also concatenates `{PARENT_FID}-design.md` (missing file → Failure Path). Standalone plans skip the design append. |
 | 3 — Generate Plan | `@bkit-plan-generate` | Reads `docs/plans/template.md` (canonical plan template). Writes `plan-generate.md` log + `docs/plans/{YYYYMM}/{FID}-plan.md`. |
 | 4 — Review Plan | `@bkit-plan-review-1` ‖ `-2` ‖ `-3` (parallel triplet) | Tightness / dependency-correctness / regression-risk lenses. All three write critique logs. Missing or vague `**Done when:**` on any task → CRITICAL. |
 | 5 — Apply Review | `@bkit-plan-update` | In-place edits to `{FID}-plan.md`; writes `plan-apply-review.md` log. Preserves every task's `**Done when:**` line (may tighten, never remove/weaken). |
@@ -727,12 +727,12 @@ Human-triggered. Removes a Claude worktree (and optionally its feature branch). 
 <!-- prettier-ignore -->
 | Step | Notes |
 | --- | --- |
-| 1 — Start Workflow | Resolve `{FID}` from `gh pr view $PR_NUMBER --json headRefName` (`feat/{FID}` convention). Resolve `{ISSUE_ID}` from branch slug. Create fresh Linear comment header. |
+| 1 — Start Workflow | Resolve `{FID}` from `gh pr view $PR_NUMBER --json headRefName` (`feat/{FID}` convention). Resolve `{ISSUE_ID}` from branch slug. Create fresh tracker comment header. |
 | 2 — Stale-Run Guard | Compare CI run `headSha` to PR `headRefOid`. Mismatch → `GUARD_VERDICT` = FAIL (newer commit in flight) → exit 0 with no-op comment line. |
 | 3 — Opt-In Gate | Require Linear `Auto` label on issue. Absent → `AUTO_VERDICT` = FAIL → exit 0 with no-op comment line. |
 | 4 — Dispatch Workflow | `DISPATCH_TARGET` = `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail). Invoke via `Skill` (Claude) / `Task` (Cursor); dispatched workflow owns its session from there. The regression-gate-verification gate that catches Vercel-ignore / `decide`-step demotion lives in `/bkit-ship` Step 3 — Regression Guard (universal — also applies to manual `/bkit-ship` invocations that bypass the router). |
 
-**Skip conditions emit one Linear no-op line and exit 0.** Only real failures (missing args, Linear unreachable, malformed state) take the Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; router never counts attempts.
+**Skip conditions emit one tracker no-op line and exit 0.** Only real failures (missing args, tracker unreachable, malformed state) take the Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; router never counts attempts.
 
 ## Worktree Model
 
@@ -949,13 +949,13 @@ Inline definitions for tokens used in workflow files. Keep this section in sync 
 
 ```text
 # Phase label (mutually exclusive — drop old before adding new):
-Add `X` phase to {LABELS}, drop old → save_issue({ id: "{ISSUE_ID}", state: "...", labels: [{LABELS}] })
+Add `X` phase to {LABELS}, drop old → update issue via `issue-update-phase` tracker snippet
 
 # Additive label (phase label persists alongside):
-Add `X` to {LABELS} (additive — phase label persists) → save_issue({ id: "{ISSUE_ID}", state: "...", labels: [{LABELS}] })
+Add `X` to {LABELS} (additive — phase label persists) → update issue via `issue-update-failed` tracker snippet
 ```
 
-Phase labels (`Design`/`Plan`/`Build`/`Ship`/`Merged`) are mutually exclusive — drop old before adding new. Additive labels (`Failed`, `Debug`) skip the drop and live alongside the phase label. `Failed` is additionally cleared by `/bkit-debug` Step 1 (debug entry) and `/bkit-ship` Step 12 (`Merged`) so a successfully-recovered or shipped issue does not carry a stale Failure Path marker.
+Phase labels (`bkit:design`/`bkit:plan`/`bkit:build`/`bkit:ship`/`bkit:merged`) are mutually exclusive — drop old before adding new. Additive labels (`Failed`, `Debug`) skip the drop and live alongside the phase label. `Failed` is additionally cleared by `/bkit-debug` Step 1 (debug entry) and `/bkit-ship` Step 12 (`bkit:merged`) so a successfully-recovered or shipped issue does not carry a stale Failure Path marker.
 
 ### Sub-plan loop discovery
 
@@ -973,9 +973,9 @@ pnpm turbo lint typecheck test --filter='...[origin/dev]'
 
 No quote / filter / glob edits. Pre-PR is lint+typecheck+unit only; debug normal-mode adds `test:integration test:e2e`.
 
-### `save_issue` create-mode return guard
+### Tracker issue-create return guard
 
-Create-mode `save_issue(...)` MUST return non-empty `id`. Empty/null → Failure Path with `save_issue returned no id`.
+When a tracker call creates a new issue, it MUST return a non-empty `id`. Empty/null → Failure Path with `Tracker issue create returned no id`.
 
 ### Pre-worktree carry-over commit (Steps 2 of design / plan / build / ship)
 
@@ -1033,7 +1033,7 @@ Pipeline writes to five structured docs at `docs/` root. Each has strict sole-wr
 | `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 9 |
 | `docs/pending.md` | — | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 7), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 7, Failure Path handover |
 
-All other agents document blockers and out-of-scope items in their own log file (Plan Execution / Challenge Remediation / etc — see each subagent's H1 for the canonical output name) — workflow reads those at step boundaries and decides what (if anything) to mirror to Linear.
+All other agents document blockers and out-of-scope items in their own log file (Plan Execution / Challenge Remediation / etc — see each subagent's H1 for the canonical output name) — workflow reads those at step boundaries and decides what (if anything) to mirror to the issue tracker.
 
 Append-only. Cross-doc grep by ID: `grep -rE 'KN-\d+|DE-\d+' docs/`. See `.agents/docs.md` for doc index and read-by-phase matrix.
 
@@ -1042,13 +1042,13 @@ Append-only. Cross-doc grep by ID: `grep -rE 'KN-\d+|DE-\d+' docs/`. See `.agent
 When writing or editing `.agents/workflows/bkit-*.md` (canonical source — `bkit install` regenerates `.claude/commands/` and `.cursor/commands/`):
 
 - [ ] YAML frontmatter with `description`.
-- [ ] Header with `Output:` and `Linear:` lines.
+- [ ] Header with `Output:` and `Tracker:` lines.
 - [ ] Caution block with all Execution Protocol invariants (§ Common Workflow Anatomy → Execution Protocol).
 - [ ] **Failure Path** before Step 1; conditional handover branch when phase has retry loops.
-- [ ] **Step 1 — Start Workflow:** status init + lock acquire + Linear init + comment create + label set + state `In Progress`.
+- [ ] **Step 1 — Start Workflow:** status init + lock acquire + tracker init + comment create + label set + state `In Progress`.
 - [ ] **Step 2 — Worktree Setup:** worktree create/resume + env file copy + `pnpm install --frozen-lockfile` + save phase input + status step + comment append.
 - [ ] Every step ends with `### 🔒 Gate N` and a checklist.
-- [ ] Every step appends one fenced section to workflow comment via `save_comment({ id: {COMMENT_ID}, body })`.
+- [ ] Every step appends one fenced section to the workflow comment via the `comment-post-step` tracker snippet (one new comment per step — no COMMENT_ID threading).
 - [ ] Subagent invocations use `@name` + `Context:` / `Read:` / `Update:` / `Create:` block (Update/Create as applicable); assert non-empty Update/Create artifacts.
 - [ ] Verdict-bearing steps extract `{*_VERDICT}` and route per § Verdict vocabulary.
 - [ ] Loops cap at `MAX_*_ATTEMPT` constants; exhaustion → Failure Path; per-attempt logs use `-{N}` filename suffix.
