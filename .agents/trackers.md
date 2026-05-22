@@ -38,25 +38,27 @@ Re-runnable: source `.agents/workflows/*.md` always has the no-tracker fallback 
 
 Every tracker section MUST define these sub-sections (snippet IDs):
 
-| Snippet ID            | What it provides                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------- |
-| `rule-block`          | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block          |
-| `issue-id-extraction` | Step 1 ISSUE_ID extraction patterns + fallback create-issue call                          |
-| `fid-format`          | FID slug format regex and example                                                         |
-| `issue-read`          | Read issue state + labels + body + comments                                               |
-| `issue-update-phase`  | Set phase label + tracker-specific "active" state for current workflow                    |
-| `issue-update-review` | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition         |
-| `issue-update-failed` | Failure Path additive label + state update                                                |
-| `issue-update-debug`  | Debug additive label + state update                                                       |
-| `issue-update-merged` | Ship terminal state update (`bkit:merged`, close issue if tracker supports)               |
-| `comment-post-step`   | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}`             |
-| `comment-on-issue`    | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
-| `list-sub-issues`     | Enumerate sub-issues of a parent (design Step 9 workstream sync)                          |
-| `create-sub-issue`    | Create a new sub-issue attached to a parent                                               |
-| `set-blocked-by`      | Set `blockedBy` edges on an issue (workstream `Requires` propagation)                     |
-| `phase-labels`        | Mapping of workflow names to phase labels                                                 |
-| `kill-switch-check`   | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label      |
-| `pr-body-metadata`    | PR body marker for cross-workflow issue/FID resolution                                    |
+| Snippet ID             | What it provides                                                                          |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `rule-block`           | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block          |
+| `issue-id-extraction`  | Step 1 ISSUE_ID extraction patterns + fallback create-issue call                          |
+| `fid-format`           | FID slug format regex and example                                                         |
+| `issue-read`           | Read issue state + labels + body + comments                                               |
+| `issue-update-phase`   | Set phase label + tracker-specific "active" state for current workflow                    |
+| `issue-update-review`  | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition         |
+| `issue-update-failed`  | Failure Path additive label + state update                                                |
+| `issue-update-debug`   | Debug additive label + state update                                                       |
+| `issue-update-merged`  | Ship terminal state update (`bkit:merged`, close issue if tracker supports)               |
+| `comment-post-step`    | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}`             |
+| `comment-on-issue`     | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
+| `list-sub-issues`      | Enumerate sub-issues of a parent (design Step 9 workstream sync)                          |
+| `create-sub-issue`     | Create a new sub-issue attached to a parent                                               |
+| `set-blocked-by`       | Set `blockedBy` edges on an issue (workstream `Requires` propagation)                     |
+| `issue-blockers-check` | Read blocked-by relations/markers; gate workflow if any blocker still open                |
+| `phase-labels`         | Mapping of workflow names to phase labels                                                 |
+| `kill-switch-check`    | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label      |
+| `pr-body-metadata`     | PR body marker — parsing/read instructions for cross-workflow issue/FID resolution        |
+| `pr-body-marker`       | PR body marker — literal HTML comment line for inclusion in PR body during creation       |
 
 `none` defines the same snippet IDs, but every body is a single-line stub.
 
@@ -131,7 +133,11 @@ GitHub Issues have no native `blockedBy` field. Encode via issue body marker blo
 2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
 3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
 
-`/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body.
+`/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body via `issue-blockers-check`.
+
+### issue-blockers-check
+
+Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
 
 ### phase-labels
 
@@ -158,6 +164,10 @@ When `bkit-build` opens the PR, the body template includes a metadata marker:
 HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, ci-router) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
 
 **Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
+
+### pr-body-marker
+
+<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
 
 ---
 
@@ -225,6 +235,10 @@ Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present
 
 `mcp__linear__save_issue({ id: "{ISSUE_ID}", blockedBy: [{BLOCKED_BY_LIST}] })` — `{BLOCKED_BY_LIST}` is an array of Linear issue IDs (e.g. `["BAR-123", "BAR-124"]`). Linear treats `blockedBy` as append-only; re-runs with unchanged edges are no-ops.
 
+### issue-blockers-check
+
+`mcp__linear__get_issue({ id: "{ISSUE_ID}", includeRelations: true })` → extract `relations` where `type` = `"blocked_by"` → for each entry extract `state.name` as `{BLOCKER_STATE}`. **If** any `{BLOCKER_STATE}` NOT IN `Done | Cancelled` → **Failure Path**.
+
 ### phase-labels
 
 | Workflow      | Phase label                                    |
@@ -252,6 +266,10 @@ When `bkit-build` opens the GitHub PR, the body template includes a metadata mar
 (Linear ISSUE_ID like `BAR-123` — no `#` prefix since it's not a GitHub issue number.) HTML comment, invisible in rendered PR body. Downstream workflows resolve via `mcp__github__pull_request_read` + marker parsing.
 
 **Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
+
+### pr-body-marker
+
+<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
 
 ---
 
@@ -315,6 +333,10 @@ _Tracker not wired — skip sub-issue creation._
 
 _Tracker not wired — skip blocked-by._
 
+### issue-blockers-check
+
+_Tracker not wired — skip blocker check._
+
 ### phase-labels
 
 _Tracker not wired — phase labels not applied._
@@ -332,3 +354,7 @@ PR body still gets the marker, just without verified issue resolution:
 ```
 
 (`bkit:issue=` omitted when `ISSUE_ID` is empty.) Downstream workflows read FID; tracker calls remain no-ops.
+
+### pr-body-marker
+
+<!-- bkit:fid={FID} -->
