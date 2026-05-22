@@ -14,7 +14,7 @@
 
 ## Debug Fetch
 
-`/bkit-debug` scans for **first** `bash` fenced block between `<!-- debug-fetch:start -->` / `<!-- debug-fetch:end -->` **after** `<!-- bkit:end -->`. Agent customises (severity / freshness / limit), executes, writes stdout to `docs/plans/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md`.
+`/bkit-debug` scans for **first** `bash` fenced block between `<!-- debug-fetch:start -->` / `<!-- debug-fetch:end -->` **after** `<!-- bkit:end -->`. Agent customises (severity / freshness / limit), executes, writes stdout to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md`.
 
 **Authoring:**
 

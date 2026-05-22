@@ -44,9 +44,9 @@
 
 ### Plans & Process
 
-- **Plans:** Follow `docs/plans/template.md`.
+- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.json`.
 - **Gates:** STOP at every gate. Verify all steps BEFORE proceeding.
-- **Process:** `plans/drafts/` design/plan → `active/` build/debug → `completed/YYYYMM/` post-ship archive (immutable).
+- **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
 
 ### Git, CI & Merges
 

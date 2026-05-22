@@ -41,7 +41,7 @@
 - **Note:** `publishConfig.access: restricted` in `package.json` is silently ignored by GitHub Packages — package visibility tracks the linked repository's visibility (private repo = private package), not the npm `access` field. The field is kept for documentation intent but has no enforcement effect. If `cbartens/bkit` is ever made public the package becomes public regardless of this setting.
 - **Note:** The `release.yml` publish job has no `environment:` protection by design (single-maintainer; no secondary approval needed). If a second maintainer is onboarded, gate the publish step behind `environment: production` with required-reviewer protection in GitHub repo settings.
 - **Source:** phase
-- **Related:** BAR-138, BAR-130, `docs/plans/completed/202605/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
+- **Related:** BAR-138, BAR-130, `docs/plans/202605/bar-138-gh-packages-distribution-design.md`, `package.json`, `.github/workflows/release.yml`, KN-1
 
 ## DE-5: BAR-139 — .bkit-version schema extension: tier3Hashes (2026-05-07)
 
@@ -71,7 +71,7 @@
 - **Why:** `printSink: string[]` was unparseable by downstream tooling, emitted advisory strings during module execution (before post-install state was accurate), and had no structured `id` for deduplication. Structured shape enables: (1) stable `id` registry for downstream automation; (2) blocker short-circuit before any writes; (3) accurate post-install re-detection; (4) unified banner formatter reusable by BAR-139 (`bkit uninstall`).
 - **Discarded:** (1) Keep `printSink` + add parallel `findings: PreflightFinding[]` — two sinks → drift risk; downstream tooling has to merge two shapes. (2) `--strict` flag promoting advisories to blockers — out of scope; consumer can use `bkit check` (exit-1-on-drift). (3) Auto-apply advisory fixes — violates consumer-value-wins principle.
 - **Source:** phase
-- **Related:** BAR-141, `docs/plans/active/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4
+- **Related:** BAR-141, `docs/plans/202605/bar-141-preflight-checklist-plan.md`, `.agents/scripts/bkit-preflight.ts`, `.agents/scripts/bkit-postinstall.ts`, `.agents/scripts/bkit-install.ts`, `.agents/scripts/bkit-modules.ts`, `.agents/scripts/bkit-tiers.ts`, DE-3, KN-4
 
 ## DE-7: BAR-142 §A1 — Cursor v1 hooks.json schema spike outcome (2026-05-07) (superseded by DE-18, 2026-05-11)
 

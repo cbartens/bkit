@@ -19,7 +19,7 @@
 > ## Title (YYYY-MM-DD)
 >
 > - **Category:** {one of above}
-> - **Artifacts:** `docs/plans/completed/YYYYMM/{plan}.md`
+> - **Artifacts:** `docs/plans/{YYYYMM}/{plan}.md`
 > - **Summary:** what shipped (2–4 dense sentences)
 > - **Related:** Linear IDs BAR-{N}, PRs PR-{N}, Commits {SHA}, Decisions DE-{N}, Knowledge KN-{N}, paths, etc
 > ```

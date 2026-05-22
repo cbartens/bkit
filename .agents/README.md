@@ -14,13 +14,13 @@ Typical cycle for issue `BAR-123` "Add feature X":
 2. **Trigger** — Linear comment (`@curspr /bkit-plan BAR-123`) or slash command in Claude Code / Cursor (`/bkit-plan BAR-123`).
 3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets Linear label `Plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/bar-123-add-feature/` on branch `feat/bar-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
-5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/logs/{FID}/` and appends one fenced section to the Linear comment.
+5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket, set at design start) and appends one fenced section to the Linear comment.
 6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(bar-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(bar-123-…): summary` (build / debug / ship) → push.
 7. **Close Workflow** — transitions Linear state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/bar-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
-8. **Human review** — design / plan doc lives at `docs/plans/drafts/{FID}-{design,plan}.md`. Reviewer can re-trigger or progress to `/bkit-build`.
+8. **Human review** — design / plan doc lives at `docs/plans/{YYYYMM}/{FID}-{design,plan}.md` (canonical, durable). Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
 10. **CI** — runs on the PR. Red CI? Trigger `/bkit-debug` (PR debug mode pulls failed run logs via `gh run view --log-failed`). Green? Trigger `/bkit-ship`.
-11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, archives plans to `docs/plans/completed/{YYYYMM}/`, prunes worktree, closes issue (`Done`).
+11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, prunes worktree, closes issue (`Done`). Plans stay at canonical `docs/plans/{YYYYMM}/` — no archive move (files never move under the new layout).
 
 Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and own all Linear MCP calls — subagents are leaves with read-only Linear access (none) and write access scoped by their `tools:` allowlist.
 
@@ -31,11 +31,11 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 <!-- prettier-ignore -->
 | Phase | Command | Steps | Output | Hard stop? |
 | --- | --- | --- | --- | --- |
-| Design | `/bkit-design` | 10 | `docs/plans/drafts/{FID}-design.md` | Yes — review before plan |
-| Plan | `/bkit-plan` | 11 | `docs/plans/drafts/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
+| Design | `/bkit-design` | 10 | `docs/plans/{YYYYMM}/{FID}-design.md` | Yes — review before plan |
+| Plan | `/bkit-plan` | 11 | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
 | Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
 | Debug | `/bkit-debug` | 12 | Remediation commit on feature branch | No |
-| Ship | `/bkit-ship` | 11 | Squash-merged PR, plans archived, issue `Done` | Yes |
+| Ship | `/bkit-ship` | 11 | Squash-merged PR, issue `Done` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
 
@@ -269,10 +269,8 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.agents/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
 | `.agents/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
 | `.agents/scripts/bkit-install.ts` | Install script — regenerates host outputs and applies templates |
-| `docs/plans/drafts/` | In-progress design and plan docs |
-| `docs/plans/active/` | Approved plans (cleared for `/bkit-build`) |
-| `docs/plans/completed/YYYYMM/` | Archived plans post-ship |
-| `docs/plans/logs/{FID}/` | Per-run workflow logs (status, subagent outputs) |
+| `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month, set once at design start. |
+| `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup is `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts above are not affected. |
 | `docs/audits/` | Audit reports written/updated by `bkit-utility-audit-*` agents |
 | `docs/completed.md` | Shipped features index |
 | `docs/pending.md` | Deferred items |

@@ -42,7 +42,7 @@ maxTurns: 50
 5. Build the task dependency graph from `Agent Execution Runbook` declared dependencies (`Requires:` / `Blocked by:` / `After:` fields).
 6. For each declared edge `A → B`: verify B actually consumes A's artefact (file produced, schema migrated, function exported). Fabricated edges (declared but unused) → CRITICAL.
 7. For each task: Identify what it reads/depends on (files, schemas, prior tasks' outputs). Cross-check against declared deps; any missing prereq → CRITICAL.
-8. Design-coverage: If a design artifact exists (`docs/plans/drafts/{FID}-design.md`, `docs/plans/active/{FID}-design.md`, or referenced), every design-implied dependency (e.g. "X depends on the migration in §Y") is reflected as a task dep. Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing dep → CRITICAL.
+8. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), every design-implied dependency (e.g. "X depends on the migration in §Y") is reflected as a task dep. Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing dep → CRITICAL.
 9. Cycle detection: Any cyclic dep → CRITICAL.
 10. Verify strict adherence to `docs/plans/template.md` — `Done when` criteria and template structure intact.
 11. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).
