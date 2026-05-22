@@ -1,4 +1,4 @@
-// lint-no-tier-terms.ts — Phase 3 regression guard (BAR-167 sub-plan C Task 28)
+// bkit-lint-no-tier-terms.ts — Phase 3 regression guard (BAR-167 sub-plan C Task 28)
 //
 // Searches docs/ and .agents/scripts/*.ts for "Tier [123]" / "Tier-[123]" strings.
 // Exits 0 when no non-excluded matches found. Exits 1 with a diagnostic when any
@@ -15,7 +15,7 @@
 //   docs/completed.md   — entire file (historical ship summaries describe past design)
 //   docs/plans/         — entire subtree (plan/archive artifacts, immutable post-ship)
 //
-// Usage: npx tsx .agents/scripts/lint-no-tier-terms.ts
+// Usage: npx tsx .agents/scripts/bkit-lint-no-tier-terms.ts
 // Or via package.json: pnpm lint:no-tier-terms
 import * as fs from "node:fs";
 import * as path from "node:path";
