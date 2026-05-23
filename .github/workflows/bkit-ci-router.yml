@@ -76,7 +76,12 @@ jobs:
           jq '.permissions // {error: .message}' /tmp/repo.json || cat /tmp/repo.json
           echo "::endgroup::"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # Tag-only pin (no SHA) — consumer-side Dependabot's `github-actions`
+      # ecosystem has no per-file scoping and would rewrite a SHA pin here,
+      # breaking the bkit-canonical hash in `.agents/.bkit-version`. Major
+      # version bumps still surface as a Dependabot PR and deserve review.
+      # See issue #124.
+      - uses: actions/checkout@v4
         with:
           # Check out `dev` at the workspace root so the router's
           # `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` resolves to dev's
@@ -114,7 +119,7 @@ jobs:
 
       - name: Dispatch /bkit-ci-router on Claude Code runner
         if: steps.pr.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@12310e4417c3473095c957cb311b3cf59a38d659 # v1.0.99
+        uses: anthropics/claude-code-action@v1
         with:
           prompt: "/bkit-ci-router ${{ github.event.workflow_run.conclusion }} ${{ steps.pr.outputs.number }}"
           # Lock the runner-side session to the same tool surface bkit grants

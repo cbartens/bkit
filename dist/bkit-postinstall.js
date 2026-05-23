@@ -5,6 +5,7 @@ import { execSync, execFileSync } from "node:child_process";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
+import { readBkitVersion } from "./bkit-version.js";
 /**
  * Detect whether GH_BKIT_TOKEN is set in the shell environment.
  * - "present"  → set and non-empty
@@ -445,16 +446,30 @@ export function detectDevBranchProtection() {
  * Detect whether `.github/workflows/<file>.yml` uses floating action tag
  * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
  * SHA pins for any workflow that runs with elevated permissions.
+ *
+ * bkit-canonical workflow files (those tracked in `.agents/.bkit-version`
+ * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
+ * ship tag-only pins to avoid consumer-side Dependabot rewriting the SHA and
+ * tripping the canonical-hash check (issue #124). Re-pinning them would
+ * defeat that design and resurface the collision on every Dependabot bump.
  */
 export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
         return null;
+    const bkitVersion = readBkitVersion(path.join(cwd, ".agents", ".bkit-version"));
+    const canonicalPaths = new Set([
+        ...Object.keys(bkitVersion?.canonicalHashes ?? {}),
+        ...Object.keys(bkitVersion?.tier3Hashes ?? {}),
+    ]);
     const floatingByFile = new Map();
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile())
             continue;
         if (!/\.ya?ml$/.test(entry.name))
+            continue;
+        const relPath = `.github/workflows/${entry.name}`;
+        if (canonicalPaths.has(relPath))
             continue;
         const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
         // Matches `uses: org/repo@v1`, `uses: org/repo@v1.2.3`, but NOT `uses: org/repo@<40-char-sha>`.

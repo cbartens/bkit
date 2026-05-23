@@ -742,6 +742,72 @@ describe("detectGhaFloatingTags", () => {
     expect(result!.detect).toContain("ci.yml");
     expect(result!.detect).toContain("release.yml");
   });
+
+  // Issue #124 — bkit-canonical workflow files (listed in `.bkit-version`)
+  // intentionally use tag-only pins so consumer Dependabot's SHA rewrites do
+  // not trip the canonical-hash check. The floating-tag advisory must skip
+  // them; otherwise consumers "remediate" the canonical file straight back
+  // into the collision the design is preventing.
+  it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "      - uses: actions/checkout@v4\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".bkit-version"),
+      JSON.stringify({
+        pinnedVersion: "2.3.1",
+        tier3Hashes: {},
+        canonicalHashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+      }),
+    );
+    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
+  });
+
+  it("skips workflow files listed in .bkit-version tier3Hashes (issue #124)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "      - uses: actions/checkout@v4\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".bkit-version"),
+      JSON.stringify({
+        pinnedVersion: "2.3.1",
+        tier3Hashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+        canonicalHashes: {},
+      }),
+    );
+    expect(detectGhaFloatingTags(tmpDir)).toBeNull();
+  });
+
+  it("still flags consumer-managed workflow files even when canonical files coexist", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "      - uses: actions/checkout@v4\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - uses: actions/checkout@v4\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".bkit-version"),
+      JSON.stringify({
+        pinnedVersion: "2.3.1",
+        tier3Hashes: {},
+        canonicalHashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+      }),
+    );
+    const result = detectGhaFloatingTags(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("ci.yml");
+    expect(result!.detect).not.toContain("bkit-ci-router.yml");
+  });
 });
 
 // ---------------------------------------------------------------------------
