@@ -20,7 +20,9 @@
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
-> - **Tracker:** not configured. Run `bkit install --tracker=github` (or `--tracker=linear`) to enable tracker integration. Workflows will continue to run without tracker comments / state updates.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
 
@@ -40,7 +42,7 @@
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    fi
    ```
-2. _Tracker not wired — skip comment post._
+2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -75,13 +77,15 @@
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 9. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
-   PR body still gets the marker, just without verified issue resolution:
+   When `bkit-build` opens the PR, the body template includes a metadata marker:
 
 ```html
-<!-- bkit:fid={FID} -->
+<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
 ```
 
-(`bkit:issue=` omitted when `ISSUE_ID` is empty.) Downstream workflows read FID; tracker calls remain no-ops.
+HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, ci-router) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
+
+**Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
    **Fallback** (`bkit-build` was run pre-metadata, or metadata missing): parse `FID`:
    ```bash
    # tracker-specific — github FIDs are `{N}-{slug}`; linear FIDs are `{prefix}-{N}-{slug}`
@@ -104,7 +108,7 @@
       '.[-1].steps += [{step:"ci-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
       "$STATUS" > "$t" && mv "$t" "$STATUS"
     ```
-11. _Tracker not wired — skip comment post._
+11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
     `{BODY}` = fenced block below:
     ```comment
     ## CI Router
@@ -144,7 +148,7 @@
    git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-5. _Tracker not wired — skip comment post._
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Stale-Run Guard - Verdict: {GUARD_VERDICT}
@@ -165,10 +169,10 @@
 
 **Run only if** Step 2 `GUARD_VERDICT` = PASS.
 
-1. _Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
+1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    **If** call fails → retry once. **If** still fails → **Failure Path**.
 2. **If** `bkit:auto` not in `{LABELS}` → set `AUTO_VERDICT` = FAIL → run kill-switch propagation:
-   _Tracker not wired — kill switch inactive (workflow proceeds unconditionally)._
+   After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → remove PR label `bkit:auto` if PR exists (`mcp__github__update_pull_request({ owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER}, labels: [labels minus bkit:auto] })`) → terminate workflow normally (current run finishes, no further automation).
    **Else** → `AUTO_VERDICT` = PASS.
 3. Update status:
    ```bash
@@ -187,7 +191,7 @@
    git -C "$REPO_ROOT" commit -m "docs({FID}): ci-router DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-5. _Tracker not wired — skip comment post._
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Opt-In Gate - Verdict: {AUTO_VERDICT}
@@ -224,7 +228,7 @@
 2. **If** `CI_STATUS` = PASS → `DISPATCH_TARGET` = SHIP.
 3. **If** `CI_STATUS` = FAIL → `DISPATCH_TARGET` = DEBUG.
 4. **If** `CI_STATUS` != PASS **and** `CI_STATUS` != FAIL → **Failure Path**.
-5. _Tracker not wired — skip comment post._
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Dispatch Workflow - Target: {DISPATCH_TARGET}
