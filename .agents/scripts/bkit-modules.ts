@@ -1107,11 +1107,14 @@ const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bki
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`.
-  Most consumers using turbo (e.g. \`npx turbo run lint typecheck format:check test\`)
-  already cover the equivalent — in that case, ignore this advisory and keep your
-  existing hook. If your hook does NOT already run those three gates, consider
-  adopting the reference, or merging the missing commands into yours.
+  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`
+  followed by \`pnpm bkit check\` (the same drift gate CI runs — catching it
+  locally saves a wasted CI cycle when someone bumps @cbartens/bkit without
+  re-running \`bkit install\`). Most consumers using turbo (e.g.
+  \`npx turbo run lint typecheck format:check test\`) already cover the first
+  three gates — in that case, just add \`pnpm bkit check\` after your existing
+  command. If your hook does NOT already run those gates, consider adopting the
+  reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
   # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships

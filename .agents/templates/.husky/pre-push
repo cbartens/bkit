@@ -20,3 +20,10 @@ if [ "$IS_REVERT" = "1" ]; then
 else
   pnpm typecheck && pnpm test && pnpm format:check
 fi
+
+# bkit mirror-drift gate — fails fast locally if `.agents/*` was edited without
+# `bkit install` regenerating the `.claude/*` / `.cursor/*` / `.husky/*` mirrors.
+# Same check CI runs (`.github/workflows/ci.yml`); catching it here saves a CI
+# round-trip. Fix on failure: `pnpm bkit install`, stage the regenerated files,
+# commit, push.
+pnpm bkit check < /dev/null
