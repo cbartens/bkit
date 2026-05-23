@@ -6,6 +6,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.5.3] — 2026-05-24
+
+### Fixed
+
+- **Renovate dashboard noise from bkit's own footprint in consumer repos (issue [#132](https://github.com/cbartens/bkit/issues/132)).** The shipped `renovate.json5` now fences Renovate off the bkit files that land in a consumer working tree: `ignorePaths` adds `.agents/templates/**` and `.agents/skills/**` (bkit-owned mirrors written by `bkit install`/`upgrade`), and a packageRule disables the `@cbartens/bkit` package itself. Without these, consumer Renovate enumerated the mirrored template workflows / Cursor Dockerfile / vendored skill manifests on every scan (recurring onboarding-PR noise — `github-actions` and `dockerfile` managers match on path substrings, so the leaked template copy of `bkit-ci-router.yml` slipped past the existing file-name exemption too), and logged `Failed to look up npm package @cbartens/bkit: no-result` (the package is restricted on GitHub Packages, unauthable from Mend's hosted runner). bkit is bumped via `pnpm bkit upgrade`, never a bare Renovate version bump. The bkit repo dogfoods the same config — its real CI workflows stay Renovate-covered; only the template seeds are exempt. Mirrors the existing `bkit-ci-router.yml` exemption.
+
+---
+
 ## [2.5.2] — 2026-05-23
 
 ### Fixed

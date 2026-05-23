@@ -204,6 +204,17 @@ Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be acc
 - The bkit-repo-only additions are plain lines at the bottom of the source-repo copy of the file; they are not in the consumer template and never reach consumer repos.
 - Fix on failure: run `pnpm bkit install` (for drift), or `pnpm build && git add dist/` (for dist staleness); stage and commit; then push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
 
+### Renovate — fencing bkit's own footprint
+
+The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that lands inside any repo using bkit. This repo dogfoods the **same** config (no divergence — `bkit check --renovate` enforces it). The fence has two parts:
+
+- `ignorePaths` includes `.agents/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install`/`upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
+- A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade` (which re-syncs templates + pin), never a bare Renovate version bump, and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-ci-router.yml` exemption.
+
+**Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.agents/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.agents/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
+
+See issue #132 (consumer-reported dashboard noise) and `security.md` § Renovate activation.
+
 ### CI trigger on final workflow push
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `bkit [skip ci]` (matched via GitHub substring check on `[skip ci]`) or `bkit [skip actions]`. When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
