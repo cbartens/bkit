@@ -51,7 +51,8 @@ export type ModuleName =
   | "lint"
   | "git-hooks"
   | "renovate"
-  | "dependabot";
+  | "dependabot"
+  | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -109,6 +110,34 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
+// ---------------------------------------------------------------------------
+
+/**
+ * Cloud-agent automation chosen by the consumer (opt-in).
+ * - `enabled` — `bkit install --cloud` installed `.github/workflows/bkit-ci-router.yml`
+ *               (the Claude half of post-CI auto-routing). Set by `runCloudModule`
+ *               on the success path only.
+ * - `none`    — explicit opt-out; silences the post-install nudge advisory.
+ *
+ * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
+ * (`bkit-ci-router.yml`) is the authoritative "active" signal; the package.json
+ * field only distinguishes a deliberate opt-out from an undecided install.
+ */
+export const CLOUD_MODES = ["enabled", "none"] as const;
+export type CloudAgents = (typeof CLOUD_MODES)[number];
+
+/** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
+export const DEFAULT_CLOUD_AGENTS: CloudAgents = "none";
+
+/** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
+export function parseCloudAgents(value: unknown): CloudAgents | null {
+  return typeof value === "string" && (CLOUD_MODES as readonly string[]).includes(value)
+    ? (value as CloudAgents)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 
@@ -154,8 +183,6 @@ const CI_MANIFEST: ManifestEntry[] = [
   // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
   // duplicate top-level keys, so consumers own it after the initial seed.
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-  // bkit-ci-router.yml is canonical (writeTier1) — bkit owns it end-to-end, auto-overwrites.
-  { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",
@@ -164,6 +191,17 @@ const CI_MANIFEST: ManifestEntry[] = [
       scripts: { typecheck: "tsc --noEmit" },
     },
   },
+];
+
+// Cloud agents (post-CI auto-routing) are opt-in via `bkit install --cloud` —
+// NOT included in --full. `bkit-ci-router.yml` is inert without ANTHROPIC_API_KEY
+// + LINEAR_API_KEY repo secrets, GitHub Actions write permissions, and (for the
+// Cursor half) a dashboard trigger. It also depends on the issue tracker, which
+// is itself opt-in — shipping the router by default while the tracker defaults to
+// `none` would wire an autonomous router to a tracker that isn't configured.
+// See issue #119 ("Managed Cloud Agents").
+const CLOUD_MANIFEST: ManifestEntry[] = [
+  { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "cloud" },
 ];
 
 // Renovate is opt-in via `bkit install --renovate` — phase-gated against the
@@ -239,6 +277,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   "git-hooks": GIT_HOOKS_MANIFEST,
   renovate: RENOVATE_MANIFEST,
   dependabot: DEPENDABOT_MANIFEST,
+  cloud: CLOUD_MANIFEST,
 };
 
 // ---------------------------------------------------------------------------

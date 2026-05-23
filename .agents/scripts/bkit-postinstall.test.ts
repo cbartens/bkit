@@ -25,6 +25,7 @@ import {
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
+  buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   formatChecklist,
   runPostInstallCheck,
@@ -879,6 +880,69 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-renovate");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildCloudSetupAdvisory — optional post-install decision (parity with the
+// tracker / dep-updater advisories). Cloud agents (post-CI auto-routing) are
+// opt-in via `bkit install --cloud`. See issue #119.
+// ---------------------------------------------------------------------------
+
+describe("buildCloudSetupAdvisory", () => {
+  it("bkit-ci-router.yml present → cloud-router (informational, active)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "name: bkit-ci-router\n",
+    );
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router");
+  });
+
+  it("nudges (cloud-router-none) when workflows exist but the router is absent", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router-none");
+    expect(result!.action).toMatch(/pnpm bkit install --cloud/);
+  });
+
+  it("returns null when no workflows dir exists (no CI to route on — no nudge)", () => {
+    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet when bkit.cloudAgents is explicitly 'none' (deliberate opt-out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+    );
+    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("still nudges when bkit.cloudAgents is absent (undecided, not opted out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router-none");
+  });
+
+  it("router presence wins over a stale bkit.cloudAgents=none field", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      "name: bkit-ci-router\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+    );
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router");
   });
 });
 

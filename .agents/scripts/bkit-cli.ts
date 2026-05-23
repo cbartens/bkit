@@ -12,6 +12,7 @@ export type ModuleFlag =
   | "git-hooks"
   | "renovate"
   | "dependabot"
+  | "cloud"
   | "full";
 export type { IssueTracker };
 
@@ -56,20 +57,25 @@ const MODULE_FLAGS = new Set<ModuleFlag>([
   "git-hooks",
   "renovate",
   "dependabot",
+  "cloud",
   "full",
 ]);
 
 // ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core.
-// `renovate` and `dependabot` are intentionally excluded — opt-in via explicit
-// `--renovate` / `--dependabot` and mutually exclusive. Rationale (renovate):
-// the Renovate App's first scan reads the default branch, so the config must
-// reach `main` BEFORE the App is installed. Rationale (dependabot): consumers
-// who pick this path explicitly opt out of bkit's Renovate recommendation;
-// installing both opens competing PRs against the same packages.
+// `renovate`, `dependabot` and `cloud` are intentionally excluded — opt-in via
+// explicit `--renovate` / `--dependabot` / `--cloud`. Rationale (renovate): the
+// Renovate App's first scan reads the default branch, so the config must reach
+// `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
+// this path explicitly opt out of bkit's Renovate recommendation; installing both
+// opens competing PRs against the same packages. Rationale (cloud): the
+// `bkit-ci-router.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
+// secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
+// and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
+// a default. See issue #119 ("Managed Cloud Agents").
 const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 
 /** Opt-in modules: not included in `--full` or default install; require explicit flag. */
-export const OPTIN_MODULES = new Set<ModuleFlag>(["renovate", "dependabot"]);
+export const OPTIN_MODULES = new Set<ModuleFlag>(["renovate", "dependabot", "cloud"]);
 
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
@@ -268,8 +274,8 @@ Usage:
                                  for CI (auto-apply non-conflicting; exit non-zero on conflicts).
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = --full — ALL modules incl. opt-in add-ons
-                                 (renovate/dependabot), so no bkit footprint remains.
-                                 Target one with its flag (e.g. uninstall --renovate).
+                                 (renovate/dependabot/cloud), so no bkit footprint remains.
+                                 Target one with its flag (e.g. uninstall --cloud).
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
   bkit help                     Print this message.
@@ -291,6 +297,12 @@ Module flags (composable — same for install and uninstall):
   --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
                   NOT in install --full; IS removed by uninstall --full). First-party
                   GitHub feature; no App install or phase gate. Mutually exclusive with --renovate.
+  --cloud         .github/workflows/bkit-ci-router.yml (opt-in — NOT in install --full;
+                  IS removed by uninstall --full). Post-CI auto-routing: dispatches
+                  bkit-ship on CI pass / bkit-debug on CI fail. Inert without
+                  ANTHROPIC_API_KEY + LINEAR_API_KEY repo secrets, GitHub Actions write
+                  permissions, and (Cursor half) a dashboard trigger. Records
+                  bkit.cloudAgents in package.json.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
@@ -318,6 +330,7 @@ Examples:
   bkit install --ci --lint      CI + lint stack + core; nothing else.
   bkit install --renovate       Renovate config only (phase-gated; opt-in).
   bkit install --dependabot     Dependabot config + helper script (opt-in; alternative to --renovate).
+  bkit install --cloud          Post-CI auto-routing workflow only (opt-in; cloud agents).
   bkit install --full --renovate  Full stack + Renovate opt-in.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).

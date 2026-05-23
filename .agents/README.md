@@ -198,9 +198,9 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
-### Optional post-install decisions (tracker + dependency updater)
+### Optional post-install decisions (tracker + dependency updater + cloud agents)
 
-Two capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`) and the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive). A default install wires neither; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`); setting either to `"none"` silences its nudge. Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
+Three capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`), the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive), and **cloud agents** (`--cloud`, ships `bkit-ci-router.yml` for post-CI auto-routing). A default install wires none; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); setting any to `"none"` silences its nudge. The cloud router is split out because it is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` secrets + GHA write permissions + (Cursor half) a dashboard trigger, and it depends on the opt-in tracker (see issue #119). Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 

@@ -15,6 +15,7 @@ import {
   runGitHooksModule,
   runRenovateModule,
   runDependabotModule,
+  runCloudModule,
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
@@ -574,6 +575,65 @@ describe("runRenovateModule — depUpdater persistence", () => {
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runCloudModule — opt-in post-CI auto-routing (issue #119)
+// ---------------------------------------------------------------------------
+
+describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => {
+  const routerRel = path.join(".github", "workflows", "bkit-ci-router.yml");
+
+  it("writes .github/workflows/bkit-ci-router.yml and emits the ci-router-setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runCloudModule(ctx);
+
+    const routerPath = path.join(tmpDir, routerRel);
+    expect(fs.existsSync(routerPath)).toBe(true);
+    expect(fs.readFileSync(routerPath, "utf-8").length).toBeGreaterThan(0);
+
+    const advisory = ctx.advisories.find((a) => a.id === "ci-router-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/ANTHROPIC_API_KEY/);
+  });
+
+  it("persists bkit.cloudAgents = 'enabled' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { cloudAgents?: string };
+    };
+    expect(pkg.bkit?.cloudAgents).toBe("enabled");
+  });
+
+  it("dry-run: writes nothing to disk but still emits the setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runCloudModule(ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    expect(ctx.advisories.find((a) => a.id === "ci-router-setup")).toBeDefined();
+  });
+
+  it("--ci alone does NOT ship bkit-ci-router.yml (split out of ci module per #119)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+  });
+
+  it("the default module set does NOT ship bkit-ci-router.yml", () => {
+    // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
+    // modelLookup in this harness (see the dispatch tests above). The router only
+    // ever shipped via `ci`, so this set still proves it's gone from --full.
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
   });
 });
 

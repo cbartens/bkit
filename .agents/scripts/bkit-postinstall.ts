@@ -20,6 +20,9 @@ import {
   parseDepUpdater,
   DEFAULT_DEP_UPDATER,
   type DepUpdater,
+  parseCloudAgents,
+  DEFAULT_CLOUD_AGENTS,
+  type CloudAgents,
 } from "./bkit-manifest.js";
 import { readBkitVersion } from "./bkit-version.js";
 
@@ -781,6 +784,84 @@ function hasExplicitDepUpdaterField(cwd: string): boolean {
 }
 
 /**
+ * Read `bkit.cloudAgents` from the consumer's package.json. Returns the value
+ * or the default ("none") when absent / unreadable.
+ */
+function readConsumerCloudAgents(cwd: string): CloudAgents {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return DEFAULT_CLOUD_AGENTS;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    const parsed = parseCloudAgents(bkitField?.cloudAgents);
+    return parsed ?? DEFAULT_CLOUD_AGENTS;
+  } catch {
+    return DEFAULT_CLOUD_AGENTS;
+  }
+}
+
+/** True when package.json has an explicit `bkit.cloudAgents` field (any value). */
+function hasExplicitCloudAgentsField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.cloudAgents !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
+ * advisories). Post-CI auto-routing (`bkit-ci-router.yml`) is opt-in via
+ * `bkit install --cloud`; it does NOT ship with `--full`. This nudges consumers
+ * to make the choice post-install.
+ *
+ * Resolution order (file presence is authoritative, package.json field is the
+ * "deliberate opt-out" escape hatch):
+ *   - `.github/workflows/bkit-ci-router.yml` present → `cloud-router` (informational; active)
+ *   - `bkit.cloudAgents === "none"`                  → null (deliberate opt-out — stay quiet)
+ *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
+ *
+ * Only fires when there is a `.github/workflows/` dir — without CI there is no
+ * completion event for the router to wake on, so nothing to route.
+ */
+export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
+  const routerPath = path.join(cwd, ".github", "workflows", "bkit-ci-router.yml");
+
+  if (fs.existsSync(routerPath)) {
+    return {
+      id: "cloud-router",
+      severity: "advisory",
+      detect:
+        "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-ci-router.yml` present).",
+      action:
+        "The router is inert until its dependencies are configured: `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets, GitHub Actions write permissions (org AND repo), and — for the Cursor half — a Cloud Agents dashboard trigger. See the `ci-router-setup` advisory (emitted by `bkit install --cloud`) and `.agents/cloud.md` § Post-CI auto-routing for the full checklist.",
+    };
+  }
+
+  // No router present — distinguish deliberate opt-out from undecided.
+  if (readConsumerCloudAgents(cwd) === "none" && hasExplicitCloudAgentsField(cwd)) {
+    return null; // consumer explicitly chose `none` — stay quiet
+  }
+
+  // Only nudge if there's a workflows dir for the router to wake on.
+  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
+
+  return {
+    id: "cloud-router-none",
+    severity: "advisory",
+    detect:
+      "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-ci-router.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
+    action:
+      "Optional post-install decision. Run `pnpm bkit install --cloud` to install the post-CI auto-routing workflow (dispatches bkit-ship on CI pass, bkit-debug on CI fail). It requires `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets, GitHub Actions write permissions, and (Cursor half) a dashboard trigger — the install prints the full checklist (`ci-router-setup`).\n\n" +
+      'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
+  };
+}
+
+/**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
  * the consumer's repo has at least one bkit-ci-router workflow installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
@@ -1239,12 +1320,15 @@ export function runPostInstallCheck(
   // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
   //   1. Issue tracker — branch on bkit.issueTracker.
   //   2. Dependency updater — branch on renovate/dependabot config presence.
-  // Both nudge the consumer to choose post-install; both silenceable via the
+  //   3. Cloud agents — branch on bkit-ci-router.yml presence (#119).
+  // Each nudges the consumer to choose post-install; each silenceable via the
   // respective package.json field set to `none`.
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
   const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
   if (depUpdaterSetup) phase3.push(depUpdaterSetup);
+  const cloudSetup = buildCloudSetupAdvisory(cwd);
+  if (cloudSetup) phase3.push(cloudSetup);
 
   // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);

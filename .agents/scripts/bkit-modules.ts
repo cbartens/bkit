@@ -25,12 +25,7 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import { getPkgRoot } from "./bkit-paths.js";
-import {
-  getInstallManifest,
-  type IssueTracker,
-  DEFAULT_ISSUE_TRACKER,
-  type DepUpdater,
-} from "./bkit-manifest.js";
+import { getInstallManifest, type IssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
 import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
 
 // ---------------------------------------------------------------------------
@@ -38,13 +33,14 @@ import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Persist `bkit.depUpdater` into the consumer's package.json so the post-install
- * advisory can tell "deliberately none" from "undecided". Mirrors the
- * `bkit.issueTracker` persist logic in bkit-install.ts. No-op on dry-run or when
- * package.json is absent/unparseable (non-fatal — the config file presence is
- * still the primary signal).
+ * Persist a `bkit.<field>` value into the consumer's package.json so the
+ * post-install advisory can tell "deliberately none" from "undecided". Mirrors
+ * the `bkit.issueTracker` persist logic in bkit-install.ts. Used for the opt-in
+ * decisions recorded by their owning modules (`depUpdater`, `cloudAgents`). No-op
+ * on dry-run or when package.json is absent/unparseable (non-fatal — the config
+ * file presence is still the primary signal).
  */
-function setConsumerDepUpdater(value: DepUpdater, dryRun: boolean): void {
+function setConsumerBkitField(field: string, value: string, dryRun: boolean): void {
   if (dryRun) return;
   const pkgPath = path.join(process.cwd(), "package.json");
   if (!fs.existsSync(pkgPath)) return;
@@ -52,8 +48,8 @@ function setConsumerDepUpdater(value: DepUpdater, dryRun: boolean): void {
     const raw = fs.readFileSync(pkgPath, "utf-8");
     const pkg = JSON.parse(raw) as Record<string, unknown>;
     const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-    if (bkit.depUpdater === value) return; // already set — avoid a no-op rewrite
-    bkit.depUpdater = value;
+    if (bkit[field] === value) return; // already set — avoid a no-op rewrite
+    bkit[field] = value;
     pkg.bkit = bkit;
     const indentMatch = raw.match(/\n([ \t]+)"/);
     const indent = indentMatch ? indentMatch[1] : "  ";
@@ -1336,54 +1332,13 @@ export function runCiModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
 
-  // bkit-ci-router.yml — Tier 1 canonical overwrite. Thin GHA plumbing that
-  // wakes on CI completion and dispatches the `/bkit-ci-router` orchestrator
-  // inside a fresh Claude Code session via claude-code-action. The routing
-  // logic lives in the mirrored `.claude/commands/bkit-ci-router.md` slash
-  // command (which evolves with bkit), so the YAML body itself is pure plumbing
-  // with no expected per-consumer customisation — auto-overwrite on every
-  // install keeps the mirror in lockstep with the canonical template. Cursor
-  // consumers configure an equivalent trigger in the Cursor cloud agents
-  // dashboard (see `.agents/cloud.md` § Post-CI auto-routing).
-  const ciRouterSrc = path.join(
-    PKG_ROOT,
-    ".agents",
-    "templates",
-    ".github",
-    "workflows",
-    "bkit-ci-router.yml",
-  );
-  if (fs.existsSync(ciRouterSrc)) {
-    const ciRouterDst = path.join(".github", "workflows", "bkit-ci-router.yml");
-    const ciRouterPrev = ws.writes.length;
-    writeTier1(ciRouterSrc, ciRouterDst, tokens, dryRun, ws);
-    if (ws.writes.length > ciRouterPrev) {
-      console.log(`${logPrefix} ${tag}ci: ${ciRouterDst}`);
-    }
-
-    // Always emit the dual-IDE setup advisory. The GHA workflow is the Claude
-    // half; the Cursor half (dashboard trigger + paste-once prompt) is manual.
-    advisories.push({
-      id: "ci-router-setup",
-      severity: "advisory",
-      detect:
-        "`.github/workflows/bkit-ci-router.yml` is in place (Claude half of post-CI auto-routing). The Cursor half is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
-      action:
-        "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
-        "IN GITHUB (Claude half):\n" +
-        "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first router fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
-        "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
-        "  - Confirm `LINEAR_API_KEY` is set (router reads the `Auto` opt-in label and appends comments).\n" +
-        "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
-        "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the router exits no-op.\n\n" +
-        "IN CURSOR DASHBOARD (Cursor half):\n" +
-        "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
-        "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
-        "  - Prompt (paste literally, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER` — Cursor substitutes the variables from the trigger payload.\n" +
-        "  - Allowed concurrency: latest-supersedes (newer CI completion cancels in-flight router runs).\n\n" +
-        "Both halves invoke the same `/bkit-ci-router` orchestrator (lives in `.cursor/commands/bkit-ci-router.md` + `.claude/commands/bkit-ci-router.md`, mirrored from `.agents/workflows/bkit-ci-router.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
-    });
-  }
+  // bkit-ci-router.yml is no longer shipped by `--ci`. Post-CI auto-routing is
+  // now opt-in via `bkit install --cloud` (see `runCloudModule` below). The
+  // router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
+  // Actions write permissions, and (Cursor half) a dashboard trigger — and it
+  // depends on the issue tracker, which is itself opt-in. Shipping it on every
+  // `--full` / `--ci` install wired an autonomous router to a tracker that may
+  // not be configured. See issue #119 ("Managed Cloud Agents").
 
   // renovate.json5 is no longer shipped by `--ci`. Renovate is now opt-in via
   // `bkit install --renovate` (phase-gated). See `runRenovateModule` below
@@ -1797,7 +1752,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
 
   // Record the choice so the post-install advisory stays quiet about
   // "undecided dep updater" and the mutual-exclusion check has a record.
-  setConsumerDepUpdater("renovate", dryRun);
+  setConsumerBkitField("depUpdater", "renovate", dryRun);
 
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const onDefault = isRenovateConfigOnDefaultBranch(defaultBranch, process.cwd());
@@ -1905,7 +1860,7 @@ export function runDependabotModule(ctx: ModuleContext): void {
   }
 
   // Record the choice (parity with renovate path).
-  setConsumerDepUpdater("dependabot", dryRun);
+  setConsumerBkitField("depUpdater", "dependabot", dryRun);
 
   advisories.push({
     id: "dependabot-setup-repo-state",
@@ -1917,6 +1872,75 @@ export function runDependabotModule(ctx: ModuleContext): void {
       "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
       "The script uses `gh api` to enable Dependabot security updates, vulnerability alerts, and the never-auto-merge-on-main policy. Re-run any time the policy needs sanity-checking; use `--dry-run` to preview, `--print` to inspect current state.\n\n" +
       "After commit + merge through to your default branch, Dependabot will start opening PRs on the next scheduled poll (per `schedule:` in dependabot.yml — default weekly).",
+  });
+}
+
+// ---------------------------------------------------------------------------
+// runCloudModule — opt-in `.github/workflows/bkit-ci-router.yml` (cloud agents)
+// ---------------------------------------------------------------------------
+//
+// Cloud agents (post-CI auto-routing) are NOT shipped by default install
+// (--full). They're opt-in via `bkit install --cloud`. The `bkit-ci-router.yml`
+// workflow wakes on CI completion and dispatches the `/bkit-ci-router`
+// orchestrator inside a fresh Claude Code session via claude-code-action;
+// Cursor consumers configure an equivalent trigger in the Cursor cloud agents
+// dashboard. The YAML body is pure plumbing (routing logic lives in the mirrored
+// slash command), so it ships Tier 1 — auto-overwrite keeps the mirror in
+// lockstep with the canonical template on every install.
+//
+// Why opt-in (issue #119, "Managed Cloud Agents"): the router is inert without
+// ANTHROPIC_API_KEY + LINEAR_API_KEY repo secrets, GitHub Actions write
+// permissions, and (Cursor half) a dashboard trigger — and it depends on the
+// issue tracker, which is itself opt-in. Auto-dispatching cloud agents on every
+// CI run is a deliberate decision, not a sensible default.
+
+export function runCloudModule(ctx: ModuleContext): void {
+  const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+  const PKG_ROOT = getPkgRoot();
+
+  const ciRouterSrc = path.join(
+    PKG_ROOT,
+    ".agents",
+    "templates",
+    ".github",
+    "workflows",
+    "bkit-ci-router.yml",
+  );
+  if (!fs.existsSync(ciRouterSrc)) return;
+
+  const ciRouterDst = path.join(".github", "workflows", "bkit-ci-router.yml");
+  const prevLen = ws.writes.length;
+  writeTier1(ciRouterSrc, ciRouterDst, tokens, dryRun, ws);
+  if (ws.writes.length > prevLen) {
+    console.log(`${logPrefix} ${tag}cloud: ${ciRouterDst}`);
+  }
+
+  // Record the choice so the post-install advisory stays quiet about
+  // "undecided cloud agents" — file presence is the primary signal.
+  setConsumerBkitField("cloudAgents", "enabled", dryRun);
+
+  // Emit the dual-IDE setup advisory. The GHA workflow is the Claude half; the
+  // Cursor half (dashboard trigger + paste-once prompt) is manual.
+  advisories.push({
+    id: "ci-router-setup",
+    severity: "advisory",
+    detect:
+      "`.github/workflows/bkit-ci-router.yml` is in place (Claude half of post-CI auto-routing). The Cursor half is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
+    action:
+      "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
+      "IN GITHUB (Claude half):\n" +
+      "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first router fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
+      "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
+      "  - Confirm `LINEAR_API_KEY` is set (router reads the `Auto` opt-in label and appends comments).\n" +
+      "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
+      "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the router exits no-op.\n\n" +
+      "IN CURSOR DASHBOARD (Cursor half):\n" +
+      "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
+      "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
+      "  - Prompt (paste literally, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER` — Cursor substitutes the variables from the trigger payload.\n" +
+      "  - Allowed concurrency: latest-supersedes (newer CI completion cancels in-flight router runs).\n\n" +
+      "Both halves invoke the same `/bkit-ci-router` orchestrator (lives in `.cursor/commands/bkit-ci-router.md` + `.claude/commands/bkit-ci-router.md`, mirrored from `.agents/workflows/bkit-ci-router.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
   });
 }
 
@@ -1933,6 +1957,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   "git-hooks": runGitHooksModule,
   renovate: runRenovateModule,
   dependabot: runDependabotModule,
+  cloud: runCloudModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
 
@@ -1946,6 +1971,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "git-hooks",
   "renovate",
   "dependabot",
+  "cloud",
 ];
 
 /**

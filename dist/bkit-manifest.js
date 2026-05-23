@@ -50,6 +50,29 @@ export function parseDepUpdater(value) {
         : null;
 }
 // ---------------------------------------------------------------------------
+// Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
+// ---------------------------------------------------------------------------
+/**
+ * Cloud-agent automation chosen by the consumer (opt-in).
+ * - `enabled` — `bkit install --cloud` installed `.github/workflows/bkit-ci-router.yml`
+ *               (the Claude half of post-CI auto-routing). Set by `runCloudModule`
+ *               on the success path only.
+ * - `none`    — explicit opt-out; silences the post-install nudge advisory.
+ *
+ * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
+ * (`bkit-ci-router.yml`) is the authoritative "active" signal; the package.json
+ * field only distinguishes a deliberate opt-out from an undecided install.
+ */
+export const CLOUD_MODES = ["enabled", "none"];
+/** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
+export const DEFAULT_CLOUD_AGENTS = "none";
+/** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
+export function parseCloudAgents(value) {
+    return typeof value === "string" && CLOUD_MODES.includes(value)
+        ? value
+        : null;
+}
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 const CORE_MANIFEST = [
@@ -65,9 +88,9 @@ const CLAUDE_MANIFEST = [
     { path: ".claude/settings.json", format: "json", module: "claude" },
     { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
     { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "claude" },
-    { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-    { path: ".agents/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-    { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+    { path: ".mcp.json", format: "byte-equal-text", module: "claude" },
+    { path: ".agents/.env.example", format: "byte-equal-text", module: "claude" },
+    { path: ".envrc", format: "byte-equal-text", module: "claude" },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -76,23 +99,14 @@ const CURSOR_MANIFEST = [
     { path: ".cursor/hooks.json", format: "json", module: "cursor" },
     { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
     { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
-    { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
+    { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
     { path: ".cursor/Dockerfile", format: "markered-text", module: "cursor" },
-    {
-        path: ".cursor/environment.json",
-        format: "byte-equal-text",
-        module: "cursor",
-        seedOrPrint: true,
-    },
-    { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
+    { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
+    { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor" },
     // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 const CI_MANIFEST = [
-    // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
-    // duplicate top-level keys, so consumers own it after the initial seed.
-    { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-    // bkit-ci-router.yml is canonical (writeTier1) — bkit owns it end-to-end, auto-overwrites.
-    { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
+    { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
     {
         path: "package.json",
         format: "markered-text",
@@ -101,6 +115,16 @@ const CI_MANIFEST = [
             scripts: { typecheck: "tsc --noEmit" },
         },
     },
+];
+// Cloud agents (post-CI auto-routing) are opt-in via `bkit install --cloud` —
+// NOT included in --full. `bkit-ci-router.yml` is inert without ANTHROPIC_API_KEY
+// + LINEAR_API_KEY repo secrets, GitHub Actions write permissions, and (for the
+// Cursor half) a dashboard trigger. It also depends on the issue tracker, which
+// is itself opt-in — shipping the router by default while the tracker defaults to
+// `none` would wire an autonomous router to a tracker that isn't configured.
+// See issue #119 ("Managed Cloud Agents").
+const CLOUD_MANIFEST = [
+    { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "cloud" },
 ];
 // Renovate is opt-in via `bkit install --renovate` — phase-gated against the
 // default branch. NOT included in --full. See issue #123 follow-up.
@@ -117,8 +141,8 @@ const DEPENDABOT_MANIFEST = [
     { path: "scripts/ci/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
 ];
 const LINT_MANIFEST = [
-    { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
-    { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
+    { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
+    { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint" },
     { path: ".prettierignore", format: "markered-text", module: "lint" },
     // .vale/styles/House/ — fully managed as a directory; individual files
     // are enumerated at uninstall time.
@@ -145,8 +169,8 @@ const LINT_MANIFEST = [
 // (delete only when consumer hasn't modified). See `runGitHooksModule` and
 // CHANGELOG 2.0.4 for the architecture rationale.
 const GIT_HOOKS_MANIFEST = [
-    { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
-    { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
+    { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks" },
+    { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks" },
     {
         path: "package.json",
         format: "markered-text",
@@ -169,6 +193,7 @@ const MODULE_MANIFESTS = {
     "git-hooks": GIT_HOOKS_MANIFEST,
     renovate: RENOVATE_MANIFEST,
     dependabot: DEPENDABOT_MANIFEST,
+    cloud: CLOUD_MANIFEST,
 };
 // ---------------------------------------------------------------------------
 // Public API
