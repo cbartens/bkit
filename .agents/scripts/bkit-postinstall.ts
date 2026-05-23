@@ -13,7 +13,14 @@ import {
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
-import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
+import {
+  parseIssueTracker,
+  DEFAULT_ISSUE_TRACKER,
+  type IssueTracker,
+  parseDepUpdater,
+  DEFAULT_DEP_UPDATER,
+  type DepUpdater,
+} from "./bkit-manifest.js";
 import { readBkitVersion } from "./bkit-version.js";
 
 export type { PreflightFinding };
@@ -651,15 +658,126 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     };
   }
 
-  // tracker === "none"
+  // tracker === "none". Distinguish deliberate opt-out (explicit
+  // `bkit.issueTracker: "none"`) from undecided (field absent). Symmetric with
+  // the dep-updater advisory — an explicit `none` silences the nudge.
+  if (hasExplicitIssueTrackerField(cwd)) return null;
+
   return {
     id: "tracker-setup-none",
     severity: "advisory",
     detect:
-      "bkit tracker is not configured (`bkit.issueTracker` = `none` or absent). Workflows run but every tracker call is a no-op.",
+      "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
     action:
-      "Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`.",
+      'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
   };
+}
+
+/** True when package.json has an explicit `bkit.issueTracker` field (any value). */
+function hasExplicitIssueTrackerField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.issueTracker !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read `bkit.depUpdater` from the consumer's package.json. Returns the value
+ * or the default ("none") when absent / unreadable.
+ */
+function readConsumerDepUpdater(cwd: string): DepUpdater {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return DEFAULT_DEP_UPDATER;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    const parsed = parseDepUpdater(bkitField?.depUpdater);
+    return parsed ?? DEFAULT_DEP_UPDATER;
+  } catch {
+    return DEFAULT_DEP_UPDATER;
+  }
+}
+
+/**
+ * Emit a dependency-updater setup advisory (parity with the tracker advisory).
+ * Renovate and Dependabot are both opt-in (mutually exclusive); neither ships
+ * with `--full`. This nudges consumers to make the choice post-install.
+ *
+ * Resolution order (file presence is authoritative, package.json field is the
+ * "deliberate opt-out" escape hatch):
+ *   - `.github/renovate.json5` present     → `dep-updater-renovate` (informational; active)
+ *   - `.github/dependabot.yml` present     → `dep-updater-dependabot` (informational; active)
+ *   - `bkit.depUpdater === "none"`         → null (deliberate opt-out — stay quiet)
+ *   - otherwise (undecided)                → `dep-updater-none` (nudge to choose)
+ *
+ * Only fires when there is a `.github/workflows/` dir (somewhere to apply
+ * github-actions updates) — a repo with no workflows has nothing to update.
+ */
+export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | null {
+  const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
+  const renovateJson = path.join(cwd, ".github", "renovate.json");
+  const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
+  const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
+
+  if (fs.existsSync(renovateJson5) || fs.existsSync(renovateJson)) {
+    return {
+      id: "dep-updater-renovate",
+      severity: "advisory",
+      detect:
+        "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
+      action:
+        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/security.md` § Renovate activation.",
+    };
+  }
+
+  if (fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml)) {
+    return {
+      id: "dep-updater-dependabot",
+      severity: "advisory",
+      detect:
+        "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
+      action:
+        "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/security.md` § Dependabot alternative.",
+    };
+  }
+
+  // No config present — distinguish deliberate opt-out from undecided.
+  if (readConsumerDepUpdater(cwd) === "none" && hasExplicitDepUpdaterField(cwd)) {
+    return null; // consumer explicitly chose `none` — stay quiet
+  }
+
+  // Only nudge if there's a workflows dir to update in the first place.
+  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
+
+  return {
+    id: "dep-updater-none",
+    severity: "advisory",
+    detect:
+      "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
+    action:
+      "Optional post-install decision — pick one (mutually exclusive):\n\n" +
+      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/security.md` § Renovate activation).\n" +
+      "  - `pnpm bkit install --dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
+      'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
+  };
+}
+
+/** True when package.json has an explicit `bkit.depUpdater` field (any value). */
+function hasExplicitDepUpdaterField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.depUpdater !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1118,9 +1236,15 @@ export function runPostInstallCheck(
     }
   }
 
-  // Tracker-specific setup advisory — branch on bkit.issueTracker.
+  // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
+  //   1. Issue tracker — branch on bkit.issueTracker.
+  //   2. Dependency updater — branch on renovate/dependabot config presence.
+  // Both nudge the consumer to choose post-install; both silenceable via the
+  // respective package.json field set to `none`.
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
+  const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
+  if (depUpdaterSetup) phase3.push(depUpdaterSetup);
 
   // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);

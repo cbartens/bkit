@@ -24,6 +24,8 @@ import {
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
+  buildDepUpdaterSetupAdvisory,
+  buildTrackerSetupAdvisory,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -812,6 +814,110 @@ describe("detectGhaFloatingTags", () => {
 // who run --dependabot intentionally write the config; consumers who skip
 // both opt-ins are silent. The mutual-exclusion blocker fires in the module
 // itself (runRenovateModule / runDependabotModule) when both configs exist.
+
+// ---------------------------------------------------------------------------
+// buildDepUpdaterSetupAdvisory — optional post-install decision (parity with
+// the tracker advisory). Renovate/Dependabot are both opt-in, mutually exclusive.
+// ---------------------------------------------------------------------------
+
+describe("buildDepUpdaterSetupAdvisory", () => {
+  it("renovate.json5 present → dep-updater-renovate (informational, active)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dep-updater-renovate");
+  });
+
+  it("dependabot.yml present → dep-updater-dependabot (informational, active)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dep-updater-dependabot");
+    expect(result!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+  });
+
+  it("nudges (dep-updater-none) when workflows exist but neither config is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dep-updater-none");
+    expect(result!.action).toMatch(/pnpm bkit install --renovate/);
+    expect(result!.action).toMatch(/pnpm bkit install --dependabot/);
+  });
+
+  it("returns null when no workflows dir exists (nothing to update — no nudge)", () => {
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet when bkit.depUpdater is explicitly 'none' (deliberate opt-out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
+    );
+    expect(buildDepUpdaterSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("still nudges when bkit.depUpdater is absent (undecided, not opted out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dep-updater-none");
+  });
+
+  it("config presence wins over a stale bkit.depUpdater=none field", () => {
+    // Edge case: field says none but renovate.json5 is actually present.
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { depUpdater: "none" } }),
+    );
+    const result = buildDepUpdaterSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("dep-updater-renovate");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildTrackerSetupAdvisory — symmetric opt-out (explicit `none` silences;
+// absent field nudges). Requires .claude/ or .cursor/ present to fire at all.
+// ---------------------------------------------------------------------------
+
+describe("buildTrackerSetupAdvisory — explicit-none opt-out symmetry", () => {
+  beforeEach(() => {
+    // The advisory only fires when workflows are installed.
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+  });
+
+  it("nudges (tracker-setup-none) when bkit.issueTracker is absent (undecided)", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const result = buildTrackerSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("tracker-setup-none");
+  });
+
+  it("stays quiet when bkit.issueTracker is explicitly 'none' (deliberate opt-out)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "none" } }),
+    );
+    expect(buildTrackerSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("informational when tracker is github", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "github" } }),
+    );
+    const result = buildTrackerSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("tracker-setup-github");
+  });
+});
 
 // ---------------------------------------------------------------------------
 // detectRunLevelsNotComposed

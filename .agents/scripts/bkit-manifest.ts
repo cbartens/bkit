@@ -74,6 +74,32 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
 }
 
 // ---------------------------------------------------------------------------
+// Dependency updater (#123 follow-up)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dependency-update tool chosen by the consumer (opt-in, mutually exclusive).
+ * - `renovate`   — `bkit install --renovate` (recommended).
+ * - `dependabot` — `bkit install --dependabot` (alternative).
+ * - `none`       — explicit opt-out; silences the post-install nudge advisory.
+ *
+ * Recorded in `package.json` `bkit.depUpdater` by the owning module so the
+ * post-install advisory can distinguish "deliberately none" from "undecided".
+ */
+export const DEP_UPDATERS = ["renovate", "dependabot", "none"] as const;
+export type DepUpdater = (typeof DEP_UPDATERS)[number];
+
+/** Default when consumer manifest has no `bkit.depUpdater` field (undecided). */
+export const DEFAULT_DEP_UPDATER: DepUpdater = "none";
+
+/** Narrow an unknown string to `DepUpdater` or return `null` if invalid. */
+export function parseDepUpdater(value: unknown): DepUpdater | null {
+  return typeof value === "string" && (DEP_UPDATERS as readonly string[]).includes(value)
+    ? (value as DepUpdater)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 

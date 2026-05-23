@@ -525,6 +525,48 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
     expect(ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state")).toBeDefined();
   });
 
+  it("persists bkit.depUpdater = 'dependabot' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runDependabotModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBe("dependabot");
+  });
+
+  it("does NOT persist bkit.depUpdater when refusing (renovate.json5 present)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    const ws = makeWriteSet();
+    runDependabotModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBeUndefined();
+  });
+});
+
+describe("runRenovateModule — depUpdater persistence", () => {
+  it("persists bkit.depUpdater = 'renovate' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runRenovateModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBe("renovate");
+  });
+
+  it("does NOT persist bkit.depUpdater when refusing (dependabot.yml present)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    const ws = makeWriteSet();
+    runRenovateModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBeUndefined();
+  });
+
   it("--ci alone does NOT ship dependabot files (separate opt-in module)", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });

@@ -25,12 +25,44 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import { getPkgRoot } from "./bkit-paths.js";
-import { getInstallManifest, type IssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
+import {
+  getInstallManifest,
+  type IssueTracker,
+  DEFAULT_ISSUE_TRACKER,
+  type DepUpdater,
+} from "./bkit-manifest.js";
 import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Persist `bkit.depUpdater` into the consumer's package.json so the post-install
+ * advisory can tell "deliberately none" from "undecided". Mirrors the
+ * `bkit.issueTracker` persist logic in bkit-install.ts. No-op on dry-run or when
+ * package.json is absent/unparseable (non-fatal — the config file presence is
+ * still the primary signal).
+ */
+function setConsumerDepUpdater(value: DepUpdater, dryRun: boolean): void {
+  if (dryRun) return;
+  const pkgPath = path.join(process.cwd(), "package.json");
+  if (!fs.existsSync(pkgPath)) return;
+  try {
+    const raw = fs.readFileSync(pkgPath, "utf-8");
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
+    if (bkit.depUpdater === value) return; // already set — avoid a no-op rewrite
+    bkit.depUpdater = value;
+    pkg.bkit = bkit;
+    const indentMatch = raw.match(/\n([ \t]+)"/);
+    const indent = indentMatch ? indentMatch[1] : "  ";
+    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+  } catch {
+    // non-fatal — file presence is the primary signal
+  }
+}
 
 function ensureDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true });
@@ -1762,6 +1794,10 @@ export function runRenovateModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}renovate: ${renovateDst}`);
   }
 
+  // Record the choice so the post-install advisory stays quiet about
+  // "undecided dep updater" and the mutual-exclusion check has a record.
+  setConsumerDepUpdater("renovate", dryRun);
+
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const onDefault = isRenovateConfigOnDefaultBranch(defaultBranch, process.cwd());
 
@@ -1866,6 +1902,9 @@ export function runDependabotModule(ctx: ModuleContext): void {
       }
     }
   }
+
+  // Record the choice (parity with renovate path).
+  setConsumerDepUpdater("dependabot", dryRun);
 
   advisories.push({
     id: "dependabot-setup-repo-state",
