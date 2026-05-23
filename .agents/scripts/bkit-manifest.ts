@@ -25,6 +25,15 @@ export interface ManifestEntry {
    */
   module: ModuleName;
   /**
+   * Seed-or-print (Tier 3): bkit writes the file once when absent, then NEVER
+   * overwrites it — the consumer owns it thereafter (install uses `writeTier3`).
+   * Only meaningful for `byte-equal-text`; distinguishes these from canonical
+   * (`writeTier1`) byte-equal files that bkit auto-overwrites. `bkit upgrade` must
+   * refuse to overwrite a present seed-or-print file (surface a conflict instead),
+   * mirroring install — otherwise it eats consumer-owned content (issue #129).
+   */
+  seedOrPrint?: boolean;
+  /**
    * Optional: package.json keys managed by this module (scripts / devDependencies).
    * Used by bkit-package-json.ts to strip default-only managed keys.
    */
@@ -117,9 +126,9 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
   { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "claude" },
-  { path: ".mcp.json", format: "byte-equal-text", module: "claude" },
-  { path: ".agents/.env.example", format: "byte-equal-text", module: "claude" },
-  { path: ".envrc", format: "byte-equal-text", module: "claude" },
+  { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+  { path: ".agents/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+  { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   // Mirrors from .agents/ — managed dynamically; not listed individually here
   // because the exact set depends on the bkit-prefix prompt/workflow files at
   // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -129,15 +138,23 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks.json", format: "json", module: "cursor" },
   { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
-  { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor" },
+  { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   { path: ".cursor/Dockerfile", format: "markered-text", module: "cursor" },
-  { path: ".cursor/environment.json", format: "byte-equal-text", module: "cursor" },
-  { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor" },
+  {
+    path: ".cursor/environment.json",
+    format: "byte-equal-text",
+    module: "cursor",
+    seedOrPrint: true,
+  },
+  { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
 
 const CI_MANIFEST: ManifestEntry[] = [
-  { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
+  // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
+  // duplicate top-level keys, so consumers own it after the initial seed.
+  { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
+  // bkit-ci-router.yml is canonical (writeTier1) — bkit owns it end-to-end, auto-overwrites.
   { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
@@ -166,8 +183,8 @@ const DEPENDABOT_MANIFEST: ManifestEntry[] = [
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
-  { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
-  { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint" },
+  { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
+  { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: ".prettierignore", format: "markered-text", module: "lint" },
   // .vale/styles/House/ — fully managed as a directory; individual files
   // are enumerated at uninstall time.
@@ -196,8 +213,8 @@ const LINT_MANIFEST: ManifestEntry[] = [
 // (delete only when consumer hasn't modified). See `runGitHooksModule` and
 // CHANGELOG 2.0.4 for the architecture rationale.
 const GIT_HOOKS_MANIFEST: ManifestEntry[] = [
-  { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks" },
-  { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks" },
+  { path: ".husky/pre-commit", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
+  { path: ".husky/pre-push", format: "byte-equal-text", module: "git-hooks", seedOrPrint: true },
   {
     path: "package.json",
     format: "markered-text",

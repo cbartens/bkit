@@ -311,3 +311,106 @@ describe("migrateStrayGitattributes", () => {
     expect(fs.existsSync(path.join(tmpDir, ".gitattributes"))).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// seed-or-print (Tier 3 byte-equal) — consumer owns it after seeding; upgrade
+// must never overwrite a present one, even when there is no whole-file drift.
+// ---------------------------------------------------------------------------
+
+describe("upgrade never overwrites a present seed-or-print file (#129 §1)", () => {
+  it(".husky/pre-commit — consumer steps preserved even when current == canonical", () => {
+    // Consumer's pre-commit: their steps + an old bkit block. At a prior install bkit
+    // recorded THIS as canonical (their customisation IS the baseline) → no whole-file
+    // drift, which previously licensed a silent overwrite.
+    const consumer =
+      "#!/usr/bin/env sh\n" +
+      "pnpm lint-staged\n" +
+      "pnpm run test:placeholders   # consumer step — MUST survive\n" +
+      "# bkit:start\npnpm lint:prose && pnpm lint:slop\n# bkit:end\n";
+    writeAbs(".husky/pre-commit", consumer);
+    seedVersion({ ".husky/pre-commit": sha256(consumer) }); // current == canonical
+
+    const templatePath = writeTemplate(
+      "pre-commit",
+      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
+    );
+
+    const result = upgrade([
+      { relPath: ".husky/pre-commit", templatePath, format: "byte-equal-text", seedOrPrint: true },
+    ]);
+
+    // File untouched — every consumer byte preserved.
+    expect(fs.readFileSync(path.join(tmpDir, ".husky/pre-commit"), "utf-8")).toBe(consumer);
+    // Surfaced as a conflict (for the consumer to review), never a silent update.
+    expect(result.conflicts.map((c) => c.relPath)).toContain(".husky/pre-commit");
+    expect(result.updated).not.toContain(".husky/pre-commit");
+  });
+
+  it("present seed-or-print already matching the template → skip (no spurious conflict)", () => {
+    const content = "#!/usr/bin/env sh\npnpm lint-staged\n";
+    writeAbs(".husky/pre-commit", content);
+    seedVersion({ ".husky/pre-commit": sha256(content) });
+    const templatePath = writeTemplate("pre-commit", content); // identical
+
+    const result = upgrade([
+      { relPath: ".husky/pre-commit", templatePath, format: "byte-equal-text", seedOrPrint: true },
+    ]);
+
+    expect(result.skipped).toContain(".husky/pre-commit");
+    expect(result.conflicts).toHaveLength(0);
+  });
+
+  it("canonical byte-equal (NOT seed-or-print) still auto-updates when no consumer drift", () => {
+    const old = "router v1\n";
+    writeAbs(".github/workflows/bkit-ci-router.yml", old);
+    seedVersion({ ".github/workflows/bkit-ci-router.yml": sha256(old) }); // current == canonical
+    const templatePath = writeTemplate("bkit-ci-router.yml", "router v2\n");
+
+    const result = upgrade([
+      // no seedOrPrint → canonical, bkit owns it end-to-end
+      { relPath: ".github/workflows/bkit-ci-router.yml", templatePath, format: "byte-equal-text" },
+    ]);
+
+    expect(result.updated).toContain(".github/workflows/bkit-ci-router.yml");
+    expect(
+      fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-ci-router.yml"), "utf-8"),
+    ).toBe("router v2\n");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// token substitution on upgrade (#129 §2) — upgrade must substitute {{TOKENS}}
+// like install (writeTier1/writeTier3), not write the literal placeholder.
+// ---------------------------------------------------------------------------
+
+describe("upgrade substitutes template tokens (#129 §2)", () => {
+  it("seeds an absent byte-equal file with {{DEFAULT_BRANCH}} resolved, not literal", () => {
+    seedVersion();
+    const templatePath = writeTemplate(
+      "pre-commit",
+      "#!/usr/bin/env sh\n# guard: dev|{{DEFAULT_BRANCH}}\npnpm lint-staged\n",
+    );
+
+    const result = runUpgrade(
+      [
+        {
+          relPath: ".husky/pre-commit",
+          templatePath,
+          format: "byte-equal-text",
+          seedOrPrint: true,
+        },
+      ],
+      {
+        nonInteractive: true,
+        dryRun: false,
+        cwd: tmpDir,
+        tokens: { NODE_VERSION: "22", DEFAULT_BRANCH: "main", PROJECT_NAME: "x" },
+      },
+    );
+
+    const after = fs.readFileSync(path.join(tmpDir, ".husky/pre-commit"), "utf-8");
+    expect(after).toContain("dev|main");
+    expect(after).not.toContain("{{DEFAULT_BRANCH}}");
+    expect(result.updated).toContain(".husky/pre-commit"); // seeded (new)
+  });
+});

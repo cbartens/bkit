@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.5.2] — 2026-05-23
+
+### Fixed
+
+- **`bkit upgrade` overwrote seed-or-print (Tier 3) files, dropping consumer content (issue [#129](https://github.com/cbartens/bkit/issues/129) follow-up).** Byte-equal files that install seeds once and never overwrites (`.husky/pre-commit`, `.husky/pre-push`, `.github/workflows/ci.yml`, `.vale.ini`, `slop-scan.config.json`, `.mcp.json`, `.cursor/{settings,environment,mcp}.json`, `.envrc`, `.agents/.env.example`) were whole-file-overwritten by upgrade when on-disk content matched the recorded canonical hash — which it does once a consumer's customisation has become the baseline at a prior install. A `.husky/pre-commit` carrying consumer steps (`pnpm lint-staged`, `pnpm run test:placeholders`) was replaced by the bkit stub. Manifest entries now carry a `seedOrPrint` flag; `bkit upgrade` refuses to overwrite a present seed-or-print file and surfaces a conflict instead — mirroring install's `writeTier3`. Canonical byte-equal files (`bkit-ci-router.yml`, `renovate.json5`, `dependabot.yml`) still auto-update.
+- **`bkit upgrade` wrote the literal `{{DEFAULT_BRANCH}}` token into seeded files.** Upgrade wrote raw template content, so a freshly-seeded `.husky/pre-commit` (or `ci.yml`) shipped the unsubstituted token — the `wrong-branch-guard` case arm `dev|{{DEFAULT_BRANCH}}` would never match the real default branch. Upgrade now applies token substitution before diff + write, matching install's `writeTier1`/`writeTier3`. (Install was already correct.)
+- **`bkit upgrade` left `pinnedVersion` stale, failing the next `bkit check`.** A clean upgrade refreshed `canonicalHashes` but never bumped `.agents/.bkit-version` `pinnedVersion`, so the immediately-following `bkit check` wanted to write the pin (1 write → exit 1) — leaving the repo CI-FAILING until a manual edit. `bkit upgrade` now bumps the pin to the upgraded-to version as part of a successful run, even when every file was a no-op skip.
+
+---
+
 ## [2.5.1] — 2026-05-23
 
 ### Fixed
