@@ -730,13 +730,14 @@ async function main() {
     const pkgRoot = getPkgRoot();
     const tplRoot = path.join(pkgRoot, ".agents", "templates");
 
-    // Manifest format drives the per-file write strategy in runUpgrade:
+    // Manifest entry drives the per-file write strategy in runUpgrade:
     //   markered-text → block-merge, json → deep-merge (both preserve consumer
     //   content outside the managed region), byte-equal-text / unmanaged →
-    //   whole-file write with drift detection.
-    const formatByPath = new Map<string, ManifestEntry["format"]>();
+    //   whole-file write with drift detection. `seedOrPrint` byte-equal files are
+    //   consumer-owned after seeding — upgrade must not overwrite a present one.
+    const entryByPath = new Map<string, ManifestEntry>();
     for (const entry of getInstallManifest()) {
-      formatByPath.set(entry.path, entry.format);
+      entryByPath.set(entry.path, entry);
     }
 
     // Files owned by OPT-IN modules (renovate, dependabot) must NEVER be
@@ -765,7 +766,13 @@ async function main() {
             if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
               continue;
             }
-            candidates.push({ relPath, templatePath: entAbs, format: formatByPath.get(relPath) });
+            const entry = entryByPath.get(relPath);
+            candidates.push({
+              relPath,
+              templatePath: entAbs,
+              format: entry?.format,
+              seedOrPrint: entry?.seedOrPrint,
+            });
           }
         }
       };
@@ -783,13 +790,18 @@ async function main() {
       tokens,
     });
 
-    // Update canonical hashes for upgraded + skipped files (non-dry-run only),
-    // recorded from the resulting on-disk content so block/scope-merged files
-    // (disk != template) get the correct hash for next-upgrade drift detection.
-    if (!upgradeFlags.dryRun && (result.updated.length > 0 || result.skipped.length > 0)) {
+    // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
+    // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
+    // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
+    // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
+    // bumps even when every file was a no-op skip.
+    if (!upgradeFlags.dryRun) {
+      const pkgVersion = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8"))
+        .version as string;
       updateCanonicalHashesAfterUpgrade(result, {
         dryRun: false,
         cwd: process.cwd(),
+        pinnedVersion: pkgVersion,
       });
     }
 

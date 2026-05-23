@@ -446,4 +446,35 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
     expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBeUndefined();
   });
+
+  it("bumps pinnedVersion to the upgraded-to version, even with no files processed (#129 §3)", () => {
+    writeBkitVersionInDir(makeVersion({})); // pinnedVersion "0.8.0"
+    const result = { updated: [], conflicts: [], skipped: [] };
+
+    // A clean upgrade where everything was a no-op skip must still bump the pin,
+    // otherwise the next `bkit check` wants to write it (1 write → exit 1).
+    updateCanonicalHashesAfterUpgrade(result, {
+      dryRun: false,
+      cwd: tmpDir,
+      pinnedVersion: "2.5.1",
+    });
+
+    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    expect(v!.pinnedVersion).toBe("2.5.1");
+  });
+
+  it("does not rewrite .bkit-version when the pin is already current and no files processed", () => {
+    writeBkitVersionInDir(makeVersion({ "x.md": sha256("x") }));
+    const result = { updated: [], conflicts: [], skipped: [] };
+
+    updateCanonicalHashesAfterUpgrade(result, {
+      dryRun: false,
+      cwd: tmpDir,
+      pinnedVersion: "0.8.0",
+    });
+
+    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    expect(v!.pinnedVersion).toBe("0.8.0");
+    expect(v!.canonicalHashes["x.md"]).toBe(sha256("x")); // untouched
+  });
 });

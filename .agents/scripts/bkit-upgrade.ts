@@ -32,7 +32,7 @@ import {
 } from "./bkit-version.js";
 import { writeTier2, writeTier2JsonContained, type WriteSet } from "./bkit-tiers.js";
 import type { MarkerStyle } from "./bkit-install.js";
-import type { TokenMap } from "./bkit-tokens.js";
+import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 
@@ -150,6 +150,12 @@ export interface UpgradeCandidate {
   relPath: string;
   templatePath: string;
   format?: ManifestEntry["format"];
+  /**
+   * Seed-or-print (Tier 3): bkit seeds it once, consumer owns it after. Upgrade must
+   * never overwrite it when present — surface a conflict instead (mirrors install's
+   * writeTier3). Only meaningful for whole-file (byte-equal-text) candidates.
+   */
+  seedOrPrint?: boolean;
 }
 
 export interface UpgradeOptions {
@@ -186,7 +192,7 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
   // formats; the tier writers push exactly one entry per file they actually change.
   const ws: WriteSet = { writes: [] };
 
-  for (const { relPath, templatePath, format } of candidates) {
+  for (const { relPath, templatePath, format, seedOrPrint } of candidates) {
     if (!fs.existsSync(templatePath)) {
       console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
       continue;
@@ -241,10 +247,29 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
       continue;
     }
 
-    // Whole-file formats (byte-equal-text, or unmanaged non-markered templates):
-    // drift-detect against canonicalHashes and refuse to clobber consumer edits
-    // (conflict). A whole-file overwrite is only safe when bkit owns the entire file.
-    const diffAction = diffFile(relPath, absolutePath, templateContent, canonicalHashes);
+    // Whole-file formats (byte-equal-text, or unmanaged non-markered templates).
+    // Token-substitute FIRST (matching install's writeTier1/writeTier3 tokens) so
+    // drift-detect compares like-for-like and a freshly-seeded file gets real values,
+    // not a literal `{{DEFAULT_BRANCH}}` (#129 §2). Token-free templates are unchanged.
+    const effectiveTemplate = applyTokens(templateContent, tokens);
+    const diffAction = diffFile(relPath, absolutePath, effectiveTemplate, canonicalHashes);
+
+    // Seed-or-print (Tier 3) files are consumer-owned after the initial seed: install's
+    // writeTier3 never overwrites a present one, so neither may upgrade. A present seed
+    // file with no whole-file drift would otherwise be an "update" (silent overwrite) —
+    // but the consumer's customisation may BE the recorded canonical baseline, so
+    // "no drift" must NOT license clobbering it. Downgrade to a conflict (#129 §1).
+    if (seedOrPrint && diffAction.action === "update") {
+      result.conflicts.push({
+        relPath,
+        templateContent: effectiveTemplate,
+        diskContent: fs.readFileSync(absolutePath, "utf-8"),
+      });
+      console.error(
+        `${LOG_PREFIX} conflict: ${relPath} — seed-or-print file is consumer-owned, NOT overwriting`,
+      );
+      continue;
+    }
 
     switch (diffAction.action) {
       case "skip":
@@ -294,28 +319,26 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
 // ---------------------------------------------------------------------------
 
 /**
- * After a successful upgrade, update `canonicalHashes` in `.agents/.bkit-version`
- * to reflect the ON-DISK content of every file bkit wrote or confirmed:
- *   - `result.updated` — bkit just wrote/merged this file; record the resulting
- *     on-disk hash. For block/scope-merge formats the disk content is NOT the
- *     template (it carries consumer content too), so the template hash would be
- *     wrong — the file must be hashed as it now sits on disk.
- *   - `result.skipped` — disk already matched (idempotent); record its hash so
- *     future upgrades stop flagging the file as unknown-state (the safe-by-default
- *     conflict path added when DE-12 flipped the missing-hash default in
- *     `isConsumerModified`).
- *
- * Conflicts are NEVER seeded — that would re-introduce the silent-overwrite bug.
+ * After a successful upgrade, update `.agents/.bkit-version`:
+ *   - `canonicalHashes`: refresh from the ON-DISK content of every file bkit wrote
+ *     or confirmed (`result.updated` ∪ `result.skipped`). For block/scope-merge
+ *     formats the disk content is NOT the template (it carries consumer content
+ *     too), so the file must be hashed as it now sits on disk. Conflicts are NEVER
+ *     seeded — that would re-introduce the silent-overwrite bug.
+ *   - `pinnedVersion`: bump to the version just upgraded TO (`options.pinnedVersion`).
+ *     `bkit upgrade` previously refreshed hashes but left the pin stale, so the very
+ *     next `bkit check` wanted to write the pin (1 write → exit 1), leaving a clean
+ *     upgrade in a CI-FAILING state until a manual edit (issue #129 §3). Writing the
+ *     pin here — exactly as `install`/`check` do — keeps upgrade drift-clean.
  *
  * Call this AFTER `runUpgrade` completes (P4.T4 integration: hashes must stay
  * in sync with the files bkit actually wrote so the next upgrade can detect drift).
  */
 export function updateCanonicalHashesAfterUpgrade(
   result: UpgradeResult,
-  options: { dryRun: boolean; cwd?: string },
+  options: { dryRun: boolean; cwd?: string; pinnedVersion?: string },
 ): void {
   if (options.dryRun) return;
-  if (result.updated.length === 0 && result.skipped.length === 0) return;
 
   const cwd = options.cwd ?? process.cwd();
   const versionFile = path.join(cwd, ".agents", ".bkit-version");
@@ -331,8 +354,14 @@ export function updateCanonicalHashesAfterUpgrade(
     newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
   }
 
+  const pinnedVersion = options.pinnedVersion ?? bkitVersion.pinnedVersion;
+
+  // Nothing to persist: no files processed AND the pin is already current.
+  if (seedablePaths.size === 0 && pinnedVersion === bkitVersion.pinnedVersion) return;
+
   const updated: BkitVersion = {
     ...bkitVersion,
+    pinnedVersion,
     canonicalHashes: newCanonicalHashes,
   };
   writeBkitVersion(versionFile, updated);
