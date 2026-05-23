@@ -30,7 +30,27 @@ import {
   isConsumerModified,
   type BkitVersion,
 } from "./bkit-version.js";
+import { writeTier2, writeTier2JsonContained, type WriteSet } from "./bkit-tiers.js";
+import type { MarkerStyle } from "./bkit-install.js";
+import type { TokenMap } from "./bkit-tokens.js";
+import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";
+
+/** Zero-value token map — markered-text templates managed on upgrade are token-free. */
+const EMPTY_TOKENS: TokenMap = { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "" };
+
+/**
+ * Detect a template's managed-block marker style from its content.
+ * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed in
+ * hash-comment files (`# <!-- bkit:start -->` in `.gitignore`/`.gitattributes`), so
+ * it is checked FIRST; only files using the bare `# bkit:start` marker are hash-comment.
+ * Returns null when the template carries NO bkit block (→ not a block-merge file).
+ */
+function detectMarkerStyle(templateContent: string): MarkerStyle | null {
+  if (templateContent.includes("<!-- bkit:start -->")) return "html-comment";
+  if (templateContent.includes("# bkit:start")) return "hash-comment";
+  return null;
+}
 
 export const LOG_PREFIX = "[bkit-upgrade]";
 
@@ -119,12 +139,27 @@ export function diffFile(
 // runUpgrade — orchestrator
 // ---------------------------------------------------------------------------
 
+/**
+ * A bkit-managed template the upgrade engine may write to the consumer repo.
+ *   - `relPath`: consumer-relative dest path (already dotfile-remapped).
+ *   - `templatePath`: absolute path to the new template file in the bkit package.
+ *   - `format`: manifest format that drives the write strategy. When omitted the
+ *     file is treated as whole-file byte-equal (drift-detected, conflict-aware).
+ */
+export interface UpgradeCandidate {
+  relPath: string;
+  templatePath: string;
+  format?: ManifestEntry["format"];
+}
+
 export interface UpgradeOptions {
   /** When true: auto-apply non-conflicting; emit conflicts to stderr; exit non-zero on conflict. */
   nonInteractive: boolean;
   /** When true: show what would change without writing. */
   dryRun: boolean;
   cwd?: string;
+  /** Tokens applied to markered-text templates (defaults to zero-value — those templates are token-free). */
+  tokens?: TokenMap;
 }
 
 /**
@@ -139,25 +174,76 @@ export interface UpgradeOptions {
  *
  * Returns an `UpgradeResult` describing what happened.
  */
-export function runUpgrade(
-  candidates: Array<{ relPath: string; templatePath: string }>,
-  options: UpgradeOptions,
-): UpgradeResult {
+export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptions): UpgradeResult {
   const cwd = options.cwd ?? process.cwd();
   const versionFile = path.join(cwd, ".agents", ".bkit-version");
   const bkitVersion = readBkitVersion(versionFile);
   const canonicalHashes = bkitVersion?.canonicalHashes ?? {};
+  const tokens = options.tokens ?? EMPTY_TOKENS;
 
   const result: UpgradeResult = { updated: [], conflicts: [], skipped: [] };
+  // Local WriteSet drives updated/skipped classification for the block/scope-merge
+  // formats; the tier writers push exactly one entry per file they actually change.
+  const ws: WriteSet = { writes: [] };
 
-  for (const { relPath, templatePath } of candidates) {
+  for (const { relPath, templatePath, format } of candidates) {
     if (!fs.existsSync(templatePath)) {
       console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
       continue;
     }
 
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
     const absolutePath = path.join(cwd, relPath);
+    const templateContent = fs.readFileSync(templatePath, "utf-8");
+
+    // Resolve the write strategy the SAME way `bkit install` would — so install and
+    // upgrade can never disagree on a file and fight each other across runs:
+    //
+    //   - manifest `format` is authoritative when present:
+    //       markered-text → block-merge (writeTier2, preserves content outside markers)
+    //       json          → deep-merge  (writeTier2JsonContained, preserves consumer keys)
+    //       byte-equal-text → whole-file/diff — even when the template carries markers
+    //                         (e.g. `.vale.ini`, which install writes verbatim via
+    //                         writeTier1; block-merging it would reformat the block and
+    //                         churn forever against install).
+    //   - NO manifest entry: the install core-templates pass block-merges markered
+    //       MARKDOWN it manages as a directory (`docs/*.md`, `.agents/*.md`) where the
+    //       consumer's prose lives after `bkit:end`; everything else (e.g. canonical
+    //       `.vale/styles/**.yml`) is whole-file. So: markered `.md` → block-merge.
+    //
+    // Block/scope-merge are ALWAYS safe (never a whole-file overwrite), so they have no
+    // conflict path; whole-file keeps the drift-detect/conflict guard.
+    const isMarkdown = relPath.endsWith(".md");
+    const markerStyle = detectMarkerStyle(templateContent);
+    const blockMerge =
+      format === "markered-text" || (format === undefined && isMarkdown && markerStyle !== null);
+    if (blockMerge || format === "json") {
+      const before = ws.writes.length;
+      if (format === "json") {
+        writeTier2JsonContained(templatePath, absolutePath, options.dryRun, ws);
+      } else {
+        writeTier2(
+          templatePath,
+          absolutePath,
+          tokens,
+          markerStyle ?? "html-comment",
+          options.dryRun,
+          ws,
+        );
+      }
+      if (ws.writes.length > before) {
+        result.updated.push(relPath);
+        console.log(
+          `${LOG_PREFIX}${options.dryRun ? " [dry-run]" : ""} upgrade (merge): ${relPath}`,
+        );
+      } else {
+        result.skipped.push(relPath);
+      }
+      continue;
+    }
+
+    // Whole-file formats (byte-equal-text, or unmanaged non-markered templates):
+    // drift-detect against canonicalHashes and refuse to clobber consumer edits
+    // (conflict). A whole-file overwrite is only safe when bkit owns the entire file.
     const diffAction = diffFile(relPath, absolutePath, templateContent, canonicalHashes);
 
     switch (diffAction.action) {
@@ -209,13 +295,15 @@ export function runUpgrade(
 
 /**
  * After a successful upgrade, update `canonicalHashes` in `.agents/.bkit-version`
- * to reflect the template content for files where bkit knows the on-disk content
- * matches the template:
- *   - `result.updated` — bkit just wrote the new template content; record its hash.
- *   - `result.skipped` — disk already matched template (idempotent); record the
- *     same template hash so future upgrades stop flagging the file as
- *     unknown-state (the safe-by-default conflict path added when DE-12 flipped
- *     the missing-hash default in `isConsumerModified`).
+ * to reflect the ON-DISK content of every file bkit wrote or confirmed:
+ *   - `result.updated` — bkit just wrote/merged this file; record the resulting
+ *     on-disk hash. For block/scope-merge formats the disk content is NOT the
+ *     template (it carries consumer content too), so the template hash would be
+ *     wrong — the file must be hashed as it now sits on disk.
+ *   - `result.skipped` — disk already matched (idempotent); record its hash so
+ *     future upgrades stop flagging the file as unknown-state (the safe-by-default
+ *     conflict path added when DE-12 flipped the missing-hash default in
+ *     `isConsumerModified`).
  *
  * Conflicts are NEVER seeded — that would re-introduce the silent-overwrite bug.
  *
@@ -224,7 +312,6 @@ export function runUpgrade(
  */
 export function updateCanonicalHashesAfterUpgrade(
   result: UpgradeResult,
-  candidates: Array<{ relPath: string; templatePath: string }>,
   options: { dryRun: boolean; cwd?: string },
 ): void {
   if (options.dryRun) return;
@@ -236,14 +323,12 @@ export function updateCanonicalHashesAfterUpgrade(
   if (!bkitVersion) return;
 
   const seedablePaths = new Set([...result.updated, ...result.skipped]);
-  const candidateMap = new Map(candidates.map((c) => [c.relPath, c.templatePath]));
 
   const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
   for (const relPath of seedablePaths) {
-    const templatePath = candidateMap.get(relPath);
-    if (!templatePath || !fs.existsSync(templatePath)) continue;
-    const content = fs.readFileSync(templatePath, "utf-8");
-    newCanonicalHashes[relPath] = sha256(content);
+    const absolutePath = path.join(cwd, relPath);
+    if (!fs.existsSync(absolutePath)) continue;
+    newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
   }
 
   const updated: BkitVersion = {
@@ -251,4 +336,52 @@ export function updateCanonicalHashesAfterUpgrade(
     canonicalHashes: newCanonicalHashes,
   };
   writeBkitVersion(versionFile, updated);
+}
+
+// ---------------------------------------------------------------------------
+// migrateStrayGitattributes — repair the 2.5.0 no-dot gitattributes regression
+// ---------------------------------------------------------------------------
+
+/**
+ * 2.5.0 wrote the `.gitattributes` template to a file literally named
+ * `gitattributes` (no leading dot) at the repo root. Git only reads
+ * `.gitattributes`, so the shipped union-merge rules for the append-only ledgers
+ * were inert, and `.agents/.bkit-version` recorded a bogus dot-less
+ * `gitattributes` canonicalHashes key.
+ *
+ * This migration:
+ *   1. Renames a stray dot-less `gitattributes` file → `.gitattributes` (only
+ *      when no real `.gitattributes` already exists — never clobbers one).
+ *   2. Drops the bogus dot-less `gitattributes` key from canonicalHashes (the
+ *      dotted `.gitattributes` key is reseeded by the upgrade walk that follows).
+ *
+ * Idempotent: a no-op on repos that never hit the 2.5.0 bug or already migrated.
+ */
+export function migrateStrayGitattributes(cwd: string, dryRun: boolean): void {
+  const stray = path.join(cwd, "gitattributes");
+  const dotted = path.join(cwd, ".gitattributes");
+
+  if (fs.existsSync(stray) && fs.statSync(stray).isFile()) {
+    if (!fs.existsSync(dotted)) {
+      console.log(
+        `${LOG_PREFIX}${dryRun ? " [dry-run]" : ""} migrate: rename stray 'gitattributes' → '.gitattributes'`,
+      );
+      if (!dryRun) fs.renameSync(stray, dotted);
+    } else {
+      console.warn(
+        `${LOG_PREFIX} stray dot-less 'gitattributes' found alongside '.gitattributes' — leaving the stray for manual removal`,
+      );
+    }
+  }
+
+  if (dryRun) return;
+
+  // Drop the bogus dot-less key 2.5.0 recorded; the dotted key is reseeded later.
+  const versionFile = path.join(cwd, ".agents", ".bkit-version");
+  const bkitVersion = readBkitVersion(versionFile);
+  if (bkitVersion?.canonicalHashes && "gitattributes" in bkitVersion.canonicalHashes) {
+    const canonicalHashes = { ...bkitVersion.canonicalHashes };
+    delete canonicalHashes.gitattributes;
+    writeBkitVersion(versionFile, { ...bkitVersion, canonicalHashes });
+  }
 }

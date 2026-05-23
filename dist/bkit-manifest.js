@@ -56,6 +56,9 @@ const CORE_MANIFEST = [
     { path: "AGENTS.md", format: "markered-text", module: "core" },
     { path: "CLAUDE.md", format: "markered-text", module: "core" },
     { path: ".gitignore", format: "markered-text", module: "core" },
+    // Append-only ledger union-merge rules live in a managed block; consumers may add
+    // their own attributes outside the block, so this is markered-text (not whole-file).
+    { path: ".gitattributes", format: "markered-text", module: "core" },
     { path: ".agents/.bkit-version", format: "byte-equal-text", module: "core" },
 ];
 const CLAUDE_MANIFEST = [

@@ -10,7 +10,7 @@ import {
   extractManagedBlock,
   parseModelLookup,
   parseFrontmatter,
-  runTemplates,
+  remapTemplateDest,
   updateManagedBlock,
   getStagingDir,
   initStagingDir,
@@ -485,124 +485,34 @@ describe("extractManagedBlock", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runTemplates — four rule branches
+// remapTemplateDest — the single shared dotfile remap used by BOTH the module
+// install pass and the `bkit upgrade` template walk. Only the names npm strips
+// from packed tarballs (.gitignore, .npmignore) are stored dot-less and remapped;
+// every other dotfile (.gitattributes, .prettierignore, …) is stored with its dot
+// and must pass through unchanged.
 // ---------------------------------------------------------------------------
 
-describe("runTemplates", () => {
-  let cwd: string;
-  let originalCwd: string;
-
-  beforeEach(() => {
-    originalCwd = process.cwd();
-    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-templates-"));
-    fs.mkdirSync(path.join(cwd, ".agents/templates"), { recursive: true });
-    process.chdir(cwd);
+describe("remapTemplateDest", () => {
+  it("maps npm-stripped basenames to their dotted dest", () => {
+    expect(remapTemplateDest("gitignore")).toBe(".gitignore");
+    expect(remapTemplateDest("npmignore")).toBe(".npmignore");
   });
 
-  afterEach(() => {
-    process.chdir(originalCwd);
-    fs.rmSync(cwd, { recursive: true, force: true });
-  });
-
-  it("rule 1 — dest missing → writes template verbatim", () => {
-    fs.writeFileSync(".agents/templates/AGENTS.md", "# Hello\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    expect(fs.readFileSync("AGENTS.md", "utf-8")).toBe("# Hello\n");
-  });
-
-  it("rule 2 — dest exists with markers → updates only the bkit block", () => {
-    fs.writeFileSync(
-      ".agents/templates/CLAUDE.md",
-      "# CLAUDE.md\n\n<!-- bkit:start -->\nNew block.\n<!-- bkit:end -->\n",
-    );
-    fs.writeFileSync(
-      "CLAUDE.md",
-      "# CLAUDE.md\n\n<!-- bkit:start -->\nOld\n<!-- bkit:end -->\nProject extras.\n",
-    );
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    const after = fs.readFileSync("CLAUDE.md", "utf-8");
-    expect(after).toContain("New block.");
-    expect(after).not.toContain("Old");
-    expect(after).toContain("Project extras.");
-  });
-
-  it("rule 3a — dest no markers, template has block → appends block at EOF, preserves existing content", () => {
-    fs.writeFileSync(
-      ".agents/templates/gitignore",
-      "# <!-- bkit:start -->\nnode_modules/\n# <!-- bkit:end -->\n",
-    );
-    fs.writeFileSync(".gitignore", "# Project entries\nlogs/\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    const after = fs.readFileSync(".gitignore", "utf-8");
-    expect(after.startsWith("# Project entries\nlogs/\n")).toBe(true);
-    expect(after).toContain("# <!-- bkit:start -->");
-    expect(after).toContain("node_modules/");
-    expect(after).toContain("# <!-- bkit:end -->");
-  });
-
-  it("npm-strip remap — `gitignore` source writes to `.gitignore` dest", () => {
-    fs.writeFileSync(".agents/templates/gitignore", "node_modules/\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    expect(fs.existsSync(".gitignore")).toBe(true);
-    expect(fs.existsSync("gitignore")).toBe(false);
-    expect(fs.readFileSync(".gitignore", "utf-8")).toBe("node_modules/\n");
-  });
-
-  it("npm-strip remap — `gitattributes` source writes to `.gitattributes` dest", () => {
-    fs.writeFileSync(".agents/templates/gitattributes", "docs/pending.md merge=union\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    expect(fs.existsSync(".gitattributes")).toBe(true);
-    expect(fs.existsSync("gitattributes")).toBe(false);
-    expect(fs.readFileSync(".gitattributes", "utf-8")).toBe("docs/pending.md merge=union\n");
-  });
-
-  it("rule 3b — dest no markers AND template has no block → no-op", () => {
-    fs.mkdirSync(".agents/templates/docs", { recursive: true });
-    fs.writeFileSync(".agents/templates/docs/setup.md", "# Setup\n");
-    fs.mkdirSync("docs", { recursive: true });
-    fs.writeFileSync("docs/setup.md", "# Existing project content with no markers.\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(0);
-    expect(fs.readFileSync("docs/setup.md", "utf-8")).toBe(
-      "# Existing project content with no markers.\n",
+  it("maps npm-stripped basenames in nested paths", () => {
+    expect(remapTemplateDest(path.join("packages", "app", "gitignore"))).toBe(
+      path.join("packages", "app", ".gitignore"),
     );
   });
 
-  it("creates intermediate directories for new dest paths", () => {
-    fs.mkdirSync(".agents/templates/.cursor/hooks", { recursive: true });
-    fs.writeFileSync(".agents/templates/.cursor/hooks/preflight.sh", "#!/usr/bin/env bash\n");
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(1);
-    expect(fs.existsSync(".cursor/hooks/preflight.sh")).toBe(true);
+  it("does NOT remap .gitattributes — npm does not strip it, so it is stored dotted", () => {
+    expect(remapTemplateDest(".gitattributes")).toBe(".gitattributes");
   });
 
-  it("preserves executable bit on copied scripts", () => {
-    const src = ".agents/templates/.cursor/hooks/preflight.sh";
-    fs.mkdirSync(".agents/templates/.cursor/hooks", { recursive: true });
-    fs.writeFileSync(src, "#!/usr/bin/env bash\n");
-    fs.chmodSync(src, 0o755);
-    runTemplates(false);
-    const mode = fs.statSync(".cursor/hooks/preflight.sh").mode & 0o777;
-    expect(mode & 0o100).toBe(0o100);
-  });
-
-  it("dry-run does not write to disk but reports the would-be writes", () => {
-    fs.writeFileSync(".agents/templates/AGENTS.md", "# Hello\n");
-    const { writes } = runTemplates(true);
-    expect(writes).toBe(1);
-    expect(fs.existsSync("AGENTS.md")).toBe(false);
-  });
-
-  it("idempotent — second run produces zero writes when nothing has changed", () => {
-    fs.writeFileSync(".agents/templates/AGENTS.md", "# Hello\n");
-    runTemplates(false);
-    const { writes } = runTemplates(false);
-    expect(writes).toBe(0);
+  it("passes through any other (already-dotted or plain) name unchanged", () => {
+    expect(remapTemplateDest(".prettierignore")).toBe(".prettierignore");
+    expect(remapTemplateDest(".mcp.json")).toBe(".mcp.json");
+    expect(remapTemplateDest("AGENTS.md")).toBe("AGENTS.md");
+    expect(remapTemplateDest(path.join("docs", "setup.md"))).toBe(path.join("docs", "setup.md"));
   });
 });
 

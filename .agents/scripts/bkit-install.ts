@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs, printUsage } from "./bkit-cli.js";
+import { parseArgs, printUsage, OPTIN_MODULES } from "./bkit-cli.js";
 import { dispatchModules, getPkgRoot, type ModuleContext } from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
@@ -13,12 +13,20 @@ import {
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall.js";
 import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
-import { runUpgrade, updateCanonicalHashesAfterUpgrade } from "./bkit-upgrade.js";
+import {
+  runUpgrade,
+  updateCanonicalHashesAfterUpgrade,
+  migrateStrayGitattributes,
+  type UpgradeCandidate,
+} from "./bkit-upgrade.js";
 import {
   type ModuleName,
   type IssueTracker,
+  type ManifestEntry,
   DEFAULT_ISSUE_TRACKER,
   parseIssueTracker,
+  getInstallManifest,
+  getModuleManifest,
 } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
@@ -549,120 +557,29 @@ function listFilesRecursive(dir: string): string[] {
   return out;
 }
 
-// npm strips files matching certain dotfile names from packed tarballs.
-// Templates targeting `<dest>/.gitignore` etc. are stored without the leading dot
-// in `.agents/templates/` and remapped at install time.
+// npm hard-excludes files literally named `.gitignore` and `.npmignore` from
+// packed tarballs (by basename, anywhere in the tree), regardless of the `files`
+// field. Those — and ONLY those — are stored without the leading dot in
+// `.agents/templates/` and remapped to their dotted dest at install/upgrade time.
+//
+// Any OTHER dotfile (`.gitattributes`, `.prettierignore`, `.mcp.json`, …) packs
+// fine with its dot, so it is stored dotted in the template tree and needs NO
+// remap. Do not add such names here — store the template with its real name.
+//
+// This is the single source of truth for the dotfile remap; the module install
+// pass (bkit-modules.ts) and the `bkit upgrade` template walk both call it, so
+// they can never disagree about how a template basename maps to its dest path.
 const NPM_STRIP_REMAP: Record<string, string> = {
   gitignore: ".gitignore",
-  gitattributes: ".gitattributes",
   npmignore: ".npmignore",
 };
 
-function remapDestPath(rel: string): string {
+export function remapTemplateDest(rel: string): string {
   const dir = path.dirname(rel);
   const base = path.basename(rel);
   const mapped = NPM_STRIP_REMAP[base];
   if (mapped === undefined) return rel;
   return dir === "." ? mapped : path.join(dir, mapped);
-}
-
-// Templates pass: walk .agents/templates/ and apply per-file rules:
-//   1.  Dest missing                                  → write template verbatim
-//   2.  Dest exists, has bkit markers                 → update only the managed block from template
-//   3a. Dest exists, no markers, template HAS block   → append managed block at EOF (preserve existing content)
-//   3b. Dest exists, no markers, template has no block → no-op (preserve project content)
-//
-// Returns both a count (`writes`) and a structured `writeSet` accumulator.
-// Both dry-run and live-run paths populate `writeSet` identically — parity by construction.
-export function runTemplates(
-  dryRun: boolean,
-  root = ".agents/templates",
-): { writes: number; writeSet: WriteEntry[] } {
-  if (!fs.existsSync(root)) return { writes: 0, writeSet: [] };
-  const repoRoot = path.resolve(".");
-  let writes = 0;
-  const writeSet: WriteEntry[] = [];
-  const tag = dryRun ? "[dry-run] " : "";
-
-  for (const srcPath of listFilesRecursive(root)) {
-    const destPath = remapDestPath(path.relative(root, srcPath));
-    const resolvedDest = path.resolve(destPath);
-    if (resolvedDest !== repoRoot && !resolvedDest.startsWith(repoRoot + path.sep)) {
-      console.error(`${LOG_PREFIX} Refusing to write outside repo root: ${destPath}`);
-      process.exit(1);
-    }
-
-    if (!fs.existsSync(destPath)) {
-      ensureDir(path.dirname(destPath));
-      if (!dryRun) {
-        fs.copyFileSync(srcPath, destPath);
-        fs.chmodSync(destPath, fs.statSync(srcPath).mode);
-      }
-      writes++;
-      writeSet.push({ path: destPath, action: "write" });
-      console.log(`${LOG_PREFIX} ${tag}write template: ${destPath}`);
-      continue;
-    }
-
-    const destContent = fs.readFileSync(destPath, "utf-8");
-    const srcContent = fs.readFileSync(srcPath, "utf-8");
-
-    // Check for both html-comment and hash-comment markers in dest
-    const hasHtmlMarkers = findAnchored(destContent, START_MARKER).length > 0;
-    const hasHashMarkers = findAnchored(destContent, HASH_START_MARKER).length > 0;
-
-    if (!hasHtmlMarkers && !hasHashMarkers) {
-      // case 3: dest has no markers — try both styles in template
-      const fullBlockHtml = extractFullManagedBlock(srcContent, "html-comment");
-      const fullBlockHash = extractFullManagedBlock(srcContent, "hash-comment");
-      const fullBlock = fullBlockHtml ?? fullBlockHash;
-      if (fullBlock === null) continue; // 3b — template also has no block; preserve dest as-is
-      // 3a — append the template's full block at EOF, preserve all existing dest content
-      const sep =
-        destContent.length === 0
-          ? ""
-          : destContent.endsWith("\n\n")
-            ? ""
-            : destContent.endsWith("\n")
-              ? "\n"
-              : "\n\n";
-      const tail = fullBlock.endsWith("\n") ? "" : "\n";
-      if (!dryRun) fs.writeFileSync(destPath, destContent + sep + fullBlock + tail, "utf-8");
-      writes++;
-      writeSet.push({ path: destPath, action: "append" });
-      console.log(`${LOG_PREFIX} ${tag}append block: ${destPath}`);
-      continue;
-    }
-
-    // case 2: dest has markers — determine which style and update
-    const style: MarkerStyle = hasHashMarkers ? "hash-comment" : "html-comment";
-    const blockContent = extractManagedBlock(srcContent, style);
-    if (blockContent === null) {
-      // Try the other style in case template uses different style than dest
-      const altStyle: MarkerStyle = style === "hash-comment" ? "html-comment" : "hash-comment";
-      const altBlock = extractManagedBlock(srcContent, altStyle);
-      if (altBlock === null) {
-        console.warn(
-          `${LOG_PREFIX} Template has no usable bkit block but dest does: ${srcPath} — skipping`,
-        );
-        continue;
-      }
-      if (updateManagedBlock(destPath, altBlock, dryRun, style)) {
-        writes++;
-        writeSet.push({ path: destPath, action: "update" });
-        console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
-      }
-      continue;
-    }
-
-    if (updateManagedBlock(destPath, blockContent, dryRun, style)) {
-      writes++;
-      writeSet.push({ path: destPath, action: "update" });
-      console.log(`${LOG_PREFIX} ${tag}update block: ${destPath}`);
-    }
-  }
-
-  return { writes, writeSet };
 }
 
 function mirrorDirAlways(
@@ -803,43 +720,74 @@ async function main() {
       `${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`,
     );
 
+    // 2.5.0 migration: that release wrote `.gitattributes` to a file literally
+    // named `gitattributes` (no dot), which git never reads. Rename it and drop
+    // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
+    migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
+
     // Collect bkit-managed template candidates from the package.
     // Templates live in .agents/templates/ — walk the directory for all files.
     const pkgRoot = getPkgRoot();
     const tplRoot = path.join(pkgRoot, ".agents", "templates");
-    const candidates: Array<{ relPath: string; templatePath: string }> = [];
 
+    // Manifest format drives the per-file write strategy in runUpgrade:
+    //   markered-text → block-merge, json → deep-merge (both preserve consumer
+    //   content outside the managed region), byte-equal-text / unmanaged →
+    //   whole-file write with drift detection.
+    const formatByPath = new Map<string, ManifestEntry["format"]>();
+    for (const entry of getInstallManifest()) {
+      formatByPath.set(entry.path, entry.format);
+    }
+
+    // Files owned by OPT-IN modules (renovate, dependabot) must NEVER be
+    // force-created by upgrade — they ship only via an explicit `bkit install
+    // --renovate`/`--dependabot`. Creating `.github/renovate.json5` on a consumer
+    // that already runs Dependabot opens competing dependency PRs (issue #129 §5).
+    // We still UPDATE such a file when the consumer has opted in (dest present).
+    const optInPaths = new Set<string>();
+    for (const mod of OPTIN_MODULES) {
+      // renovate/dependabot are both ModuleFlag and ModuleName.
+      for (const entry of getModuleManifest(mod as ModuleName)) optInPaths.add(entry.path);
+    }
+
+    const candidates: UpgradeCandidate[] = [];
     if (fs.existsSync(tplRoot)) {
-      function collectTemplates(dir: string, rel: string): void {
+      const collectTemplates = (dir: string, rel: string): void => {
         for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
           const entRel = rel ? path.join(rel, ent.name) : ent.name;
           const entAbs = path.join(dir, ent.name);
           if (ent.isDirectory()) {
             collectTemplates(entAbs, entRel);
           } else if (ent.isFile()) {
-            // Remap dotfile names (gitignore → .gitignore etc.)
-            const remapped = entRel
-              .replace(/(?:^|\/)gitignore(?:\/|$)/, (m) => m.replace("gitignore", ".gitignore"))
-              .replace(/(?:^|\/)npmignore(?:\/|$)/, (m) => m.replace("npmignore", ".npmignore"));
-            candidates.push({ relPath: remapped, templatePath: entAbs });
+            // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
+            const relPath = remapTemplateDest(entRel);
+            // Skip opt-in-module files the consumer hasn't opted into (dest absent).
+            if (optInPaths.has(relPath) && !fs.existsSync(path.join(process.cwd(), relPath))) {
+              continue;
+            }
+            candidates.push({ relPath, templatePath: entAbs, format: formatByPath.get(relPath) });
           }
         }
-      }
+      };
       collectTemplates(tplRoot, "");
     }
+
+    // Markered-text templates managed on upgrade are token-free, but resolve real
+    // tokens when possible so any future token-bearing block stays correct.
+    const tokens = await resolveTokens(process.cwd()).catch(() => undefined);
 
     const result = runUpgrade(candidates, {
       nonInteractive: upgradeFlags.nonInteractive,
       dryRun: upgradeFlags.dryRun,
       cwd: process.cwd(),
+      tokens,
     });
 
-    // Update canonical hashes for upgraded + skipped files (non-dry-run only).
-    // Seeding skipped files heals the missing-hash gap for consumers installed
-    // before BAR-142 / DE-12 — every disk==template file gets its canonical hash
-    // recorded so future upgrades can distinguish drift from no-drift cleanly.
+    // Update canonical hashes for upgraded + skipped files (non-dry-run only),
+    // recorded from the resulting on-disk content so block/scope-merged files
+    // (disk != template) get the correct hash for next-upgrade drift detection.
     if (!upgradeFlags.dryRun && (result.updated.length > 0 || result.skipped.length > 0)) {
-      updateCanonicalHashesAfterUpgrade(result, candidates, {
+      updateCanonicalHashesAfterUpgrade(result, {
         dryRun: false,
         cwd: process.cwd(),
       });

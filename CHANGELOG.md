@@ -6,6 +6,27 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.5.1] — 2026-05-23
+
+### Fixed
+
+- **`bkit upgrade` no longer destroys consumer content (issue [#129](https://github.com/cbartens/bkit/issues/129)).** The upgrade engine whole-file-overwrote every template; on a file the consumer had not hand-edited it replaced the entire file with just the bkit block, eating content OUTSIDE the markers (`.gitignore` secret-protection rules, `.husky/pre-commit` steps, `.prettierignore` entries) and consumer-owned JSON keys (`.claude/settings.json` `mcpServers`). Upgrade now uses the SAME tier-aware writers as install: markered-text → managed-block merge (preserves everything outside `bkit:start`/`bkit:end`), JSON → deep-merge (preserves consumer keys). `docs/*.md` and `.agents/*.md` (markered markdown with no manifest entry) are protected via content-detected block-merge; canonical byte-equal files (`.vale.ini`, `ci.yml`) stay whole-file with drift-detection so install and upgrade never fight.
+- **`.gitattributes` shipped without its leading dot (#129 §3).** 2.5.0 wrote the union-merge ledger rules to a file literally named `gitattributes`, which git never reads, and recorded a bogus dot-less `canonicalHashes` key. The template is renamed to `.gitattributes` (npm only strips `.gitignore`/`.npmignore`, not `.gitattributes`), it is now a managed core file written by `bkit install`, and `bkit upgrade` migrates a stray dot-less `gitattributes` → `.gitattributes` and drops the bad hash key.
+- **`bkit upgrade` force-created opt-in module files (#129 §5).** The upgrade walk wrote every template, so it created `.github/renovate.json5` on consumers that never opted in — duplicate dependency PRs alongside existing Dependabot. Upgrade now skips creating opt-in-module files (renovate, dependabot) unless the consumer already has them (it still updates an opted-in file).
+- **Stray trailing whitespace in the `.claude/settings.json` permissions template (#129 §2).**
+
+### Changed
+
+- **Single dotfile-remap mechanism.** The three divergent template-name remaps (module install pass, upgrade walk, dead `runTemplates`) collapse to one shared `remapTemplateDest()` covering only the names npm strips (`.gitignore`, `.npmignore`). Dead `runTemplates` removed; its tests repointed at the live mechanism.
+- **`bkit uninstall --full` now removes opt-in add-ons.** Opt-in modules (renovate, dependabot) are asymmetric: `install --full` excludes them (they require explicit setup), but `uninstall --full` removes ALL of them so no bkit footprint remains. Target one with its flag (e.g. `uninstall --renovate`). Safe — uninstall is manifest-driven and skips files that were never installed.
+- **`utility-new-release` preconditions tightened** — release gate now runs `check:dist` (no unbuilt `dist/`) + `bkit check` (no drift), and requires the `## [VERSION]` CHANGELOG block to carry actual notes.
+
+### Migration
+
+- After upgrading, if a stray dot-less `gitattributes` file exists at your repo root (created by 2.5.0), `bkit upgrade` renames it to `.gitattributes` automatically. Verify `.gitattributes` is committed so the append-only ledger union-merge rules take effect.
+
+---
+
 ## [2.5.0] — 2026-05-23
 
 ### Changed
@@ -289,7 +310,7 @@ Format: `## [version] — YYYY-MM-DD`
 ### Fixed
 
 - **Brew-bin preflight check is now Darwin-gated.** Previously `gh jq vale pnpm bun` were checked unconditionally and would hard-stop any Linux session (Cowork sandbox, CI, dev containers). (BAR-186)
-- **Linear label rename `Automated` → `Auto`** propagated through preflight hooks (Claude + Cursor), rules, README, and Dispatch docs. The previous gate would have refused every cloud / Cursor Cloud Agent session against Linear workspaces using the new label name. (BAR-186)
+- **Linear label rename `Automated` → `Auto`** propagated through preflight hooks (Claude + Cursor), rules, README, and Dispatch docs. **Breaking for Linear consumers — migration required:** the preflight automation gate now checks for an `Auto` label, so a workspace still using `Automated` will have approved issues refused at session start (`Auto label missing`). Before upgrading, rename your Linear `Automated` label to `Auto` (or add an `Auto` label and apply it to issues approved for automation). Sessions launched with `BKIT_PREFLIGHT_BYPASS=dispatch` skip the label gate entirely. (BAR-186)
 
 ---
 
