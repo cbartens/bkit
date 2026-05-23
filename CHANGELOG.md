@@ -6,6 +6,27 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.5.0] — 2026-05-23
+
+### Changed
+
+- **Renovate is now opt-in via `bkit install --renovate` (was shipped by `--full` in 2.4.0). (follow-up to issue [#123](https://github.com/cbartens/bkit/issues/123))** The Renovate App's first scan reads the default branch, so installing the App before `.github/renovate.json5` reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). `bkit install` cannot sequence the merge to `main`, so Renovate ships as a phase-gated opt-in module excluded from `--full`:
+  - **Phase A** (config not yet on `origin/<default-branch>`): writes `.github/renovate.json5`, prompts the consumer to commit + PR + merge to the default branch, withholds the App-install URL.
+  - **Phase B** (config detected on default branch): re-writes idempotently and prints the App-install URL + activation checklist.
+- **Tracker setup advisory is now silenceable.** Explicit `bkit.issueTracker: "none"` suppresses the `tracker-setup-none` nudge (was: always fired on none/absent). Absent field still nudges.
+
+### Added
+
+- **`bkit install --dependabot` — Dependabot as an opt-in alternative to Renovate (mutually exclusive).** First-party GitHub feature; no App install, no phase gate, no third-party trust surface. Ships `.github/dependabot.yml` (github-actions ecosystem) + `scripts/ci/bkit-set-dependabot.sh` (repo-level state helper: auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). Mutual exclusion enforced at the CLI (`--renovate --dependabot` rejected) and per-module (each refuses if the other's config is present, with a cleanup advisory).
+- **`bkit.depUpdater` package.json field** (`renovate` | `dependabot` | `none`) — records the dependency-updater choice, mirroring `bkit.issueTracker`. Set by the owning module on the success path. An explicit `none` silences the post-install nudge.
+- **`dep-updater-setup-*` post-install advisory** (parity with `tracker-setup-*`): nudges undecided consumers to pick `--renovate` or `--dependabot`; informational when either is active; quiet on explicit opt-out.
+- **"Optional post-install decisions" documentation** (`README.md` + `.agents/README.md`): documents the two opt-in add-ons (issue tracker, dependency updater), why neither ships with `--full`, and the decide/silence flow.
+
+### Removed
+
+- **`detectRenovateConfigMissing` / `detectOrphanedDependabotConfig` detectors** — Renovate/Dependabot are both opt-in now, so neither absence is an error. The mutual-exclusion blocker handles the conflict case (both configs present).
+- **bkit-repo dogfood configs removed then re-adopted via the opt-in flow** — `.github/renovate.json5` re-added through `bkit install --renovate`; the orphaned `scripts/ci/bkit-set-dependabot.sh` (missed by the 2.4.0 migration) deleted.
+
 ## [2.4.0] — 2026-05-23
 
 ### Changed
