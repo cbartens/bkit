@@ -6,6 +6,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.3.1] — 2026-05-23
+
+### Added
+
+- **`docs/bkit-comparison.md` — human-facing pipeline reference + Agentic Design Patterns comparison.** Documents the five-phase pipeline and every subagent it runs (in execution order), and maps bkit against the 22 patterns in Antonio Gulli's _Agentic Design Patterns_ (12 fully implemented, several beyond the book). For evaluation, onboarding, and outreach — bkit-repo-specific, not seeded to consumers.
+
+### Changed
+
+- **README "Why bkit" section.** New top-of-README narrative covering parallel-by-design (worktree isolation), tracker integration (GitHub Issues / Linear), and team consistency (Claude Code + Cursor). Points at `docs/bkit-comparison.md` for the full pipeline + subagent reference.
+
+---
+
 ## [2.3.0] — 2026-05-22
 
 ### Added
