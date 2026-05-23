@@ -61,7 +61,7 @@
 - **Category:** infra
 - **Symptom:** OpenSSF Scorecard flags floating action major-version refs (e.g. `actions/checkout@v4`) in publishing workflows. A compromised upstream action or malicious tag re-point executes attacker code in a job with `packages: write` on `GITHUB_TOKEN`.
 - **Root cause:** `@v4` resolves to whichever commit the upstream `v4` tag points to at run time. Tag re-pointing is possible for any action maintainer and is the primary supply-chain vector.
-- **Fix or rule:** Pin `uses:` to a full 40-character commit SHA with a `# vX.Y.Z` comment. Use `git ls-remote https://github.com/<org>/<action>.git 'refs/tags/vX.Y.Z'` to get the tag SHA. Re-pin when Dependabot opens a version bump PR. Apply to ALL jobs with elevated permissions (`packages: write`, `id-token: write`, etc.).
+- **Fix or rule:** Pin `uses:` to a full 40-character commit SHA with a `# vX.Y.Z` comment. Use `git ls-remote https://github.com/<org>/<action>.git 'refs/tags/vX.Y.Z'` to get the tag SHA. Re-pin when Renovate opens a version bump PR (the bkit-shipped `.github/renovate.json5` runs `github-actions` weekly with `pinDigests: true`). Apply to ALL jobs with elevated permissions (`packages: write`, `id-token: write`, etc.).
 - **Type:** pattern
 - **Confidence:** high
 - **Severity:** normal
@@ -374,3 +374,28 @@
 - **Severity:** normal
 - **Source:** phase
 - **Related:** BAR-201, KN-26 (sibling — same milestone, closes both ends of the e2e-debug loop), `.agents/workflows/bkit-debug.md` Step 3 sub-step 3 + Gate 3, `.agents/templates/.github/workflows/ci.yml` (`bkit-stub:e2e` + `bkit-stub:e2e-artifacts`), `.agents/workflows.md` §`/bkit-debug` Step 3
+
+## KN-28: `turbo query affected --exit-code` returns 0 in every path — affected-gates with `workflow_dispatch` "fall back to safe" comments don't actually fall back (2026-05-23)
+
+- **Category:** infra
+- **Symptom:** Consumer's `ci.yml` `Detect Web Affected` step ships with a comment promising `workflow_dispatch` will "fall back to running everything to be safe", but manual `gh workflow run ci.yml --ref main` invocations leave `WEB_AFFECTED=false`. Every downstream step gated on `env.WEB_AFFECTED == 'true'` (E2E, integration, Vercel-await, preview-URL validation) is skipped. CI conclusion is `success` because skipped is not failure (same shape as KN-26). Operator believes they ran full CI against `main`; they actually ran lint-only.
+- **Root cause:** `turbo query affected --packages <pkg> --exit-code` exits 0 in all observed paths — verified locally across (a) no `--base` flag → `GitRefNotFound` error, exit 0; (b) `--base=origin/main` with no affected packages → length 0, exit 0; (c) `--base=HEAD~10` with `DefaultGlobalFileChanged` → length >= 1, exit 0. The `--exit-code` flag's documented contract (exit 2 on error / fallback) does NOT apply to the `query affected` sub-command. The `case` statement in `Detect Web Affected` (`case "$EC" in 0) ... 2) WEB_AFFECTED=true ;; esac`) therefore ALWAYS hits the EC=0 branch, regardless of whether turbo could resolve a base ref. The "run to be safe" fallback never fires. `workflow_dispatch` is the only event without a usable git base ref (no `github.event.before`, no `pull_request.base.ref`), so it's the only event where the bug is observable — `pull_request` and `push` continue to work correctly because their `--base` resolves and the affected-graph query is meaningful.
+- **Fix or rule:** When a consumer `ci.yml` gates downstream steps on a turbo-affected env var, short-circuit `workflow_dispatch` BEFORE the turbo query:
+
+  ```yaml
+  - name: Detect Web Affected
+    run: |
+      if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+        echo "WEB_AFFECTED=true" >> "$GITHUB_ENV"
+        exit 0
+      fi
+      # ... existing turbo affected logic ...
+  ```
+
+  Trade-off: `workflow_dispatch` runs become slow (~3 min lint-only -> ~15 min full suite). Acceptable because manual dispatch is deliberate and infrequent, and reaches for "validate this ref end-to-end" — exactly the contract the short-circuit enforces. Do NOT rely on `--exit-code` semantics for any `turbo query` sub-command. Bug is consumer-shaped (specific to monorepos with turbo-affected gating + Vercel-preview-dependent steps); NOT generalised into the bkit `ci.yml` template because different consumers have different affected-detection schemes.
+
+- **Type:** gotcha
+- **Confidence:** high (turbo behaviour reproduced locally across three `--base` permutations on 2026-05-23)
+- **Severity:** normal
+- **Source:** consumer-friction
+- **Related:** KN-23 (server-side CI is the only quality gate — when manual dispatch silently demotes to lint-only, the gate is gone), KN-26 (skipped-step semantics — `success` despite empty E2E coverage; same false-confidence shape, different mechanism), turbo `query affected` sub-command

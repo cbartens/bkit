@@ -229,7 +229,7 @@ Module flags (composable — same for install and uninstall):
   --cursor        .cursor/commands/ + .cursor/agents/ (T1/T2/T3 transforms).
   --ci            .github/workflows/ci.yml (Tier 2 managed-block, tokens substituted).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
-  --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 2 managed-block).
+  --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.

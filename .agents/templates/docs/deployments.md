@@ -147,6 +147,8 @@ Composition guidance:
 
 ## GitHub Actions pinning
 
-Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/dependabot.yml` (ecosystem `github-actions`, weekly, `target-branch: dev`). Pinning without Dependabot is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` seeds the canonical config; remember Dependabot reads it ONLY from the default branch (`main`) AND only when repo-level Dependabot alerts are enabled (run `bash scripts/ci/bkit-set-dependabot.sh` once per repo). Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
+Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/renovate.json5` (manager `github-actions`, weekly, `baseBranches: ["dev"]`, `pinDigests: true`). Pinning without Renovate is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` writes the canonical config (bkit-managed, auto-overwrite); install the Renovate App at https://github.com/apps/renovate (one-click, free) and Renovate opens an onboarding PR within ~5 minutes. Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
+
+**Exemption — `bkit-ci-router.yml`:** The bkit-canonical `bkit-ci-router.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The bkit-shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false`, so consumer-side Renovate stays out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-ci-router.yml`.
 
 <!-- bkit:end -->

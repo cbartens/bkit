@@ -147,7 +147,9 @@ Composition guidance:
 
 ## GitHub Actions pinning
 
-Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/dependabot.yml` (ecosystem `github-actions`, weekly, `target-branch: dev`). Pinning without Dependabot is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` seeds the canonical config; remember Dependabot reads it ONLY from the default branch (`main`) AND only when repo-level Dependabot alerts are enabled (run `bash scripts/ci/bkit-set-dependabot.sh` once per repo). Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
+Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with `.github/renovate.json5` (manager `github-actions`, weekly, `baseBranches: ["dev"]`, `pinDigests: true`). Pinning without Renovate is worse than not pinning — CVEs in pinned actions are never patched. `bkit install --ci` writes the canonical config (bkit-managed, auto-overwrite); install the Renovate App at https://github.com/apps/renovate (one-click, free) and Renovate opens an onboarding PR within ~5 minutes. Full rule + canonical config: `security.md` § Supply-Chain (GitHub Actions).
+
+**Exemption — `bkit-ci-router.yml`:** The bkit-canonical `bkit-ci-router.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The bkit-shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false`, so consumer-side Renovate stays out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-ci-router.yml`.
 
 <!-- bkit:end -->
 
@@ -177,10 +179,10 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 | 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
 | 2 | Unit + integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
 | 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
-| 4 | bkit self-check | `pnpm bkit check` | source-repo only (outside bkit:start..bkit:end) | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. Consumers do not have this gate. |
-| 5 | Dist freshness | `pnpm check:dist` | source-repo only (outside bkit:start..bkit:end so `bkit install` does not strip it) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 4 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 5 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 
-**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` and runs only `pnpm typecheck && pnpm format:check`. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Gates 4 and 5 (`pnpm bkit check`, `pnpm check:dist`) still run. Non-revert branches always run all five gates.
+**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` and runs only `pnpm typecheck && pnpm format:check`. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Gate 4 (`pnpm bkit check`) still runs in both the consumer template and the source-repo variant. Gate 5 (`pnpm check:dist`) still runs in the source-repo variant (consumers do not have it). Non-revert branches always run all applicable gates.
 
 Pre-commit (`.husky/pre-commit`) runs `pnpm lint:prose && pnpm lint:slop` — those gates fire earlier in the cycle, not at push time. CI runs them again as steps 4 + 5 of the `run-tests` job for belt-and-braces.
 
@@ -190,18 +192,17 @@ When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-
 
 Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
 
-- Pre-commit and pre-push hooks run `typecheck` + `test` only — they do NOT run `pnpm build`. Run `pnpm build` manually (or `pnpm check:dist` to validate without committing) before pushing any TS source change.
+- Pre-commit and pre-push hooks run `typecheck` + `test` — they do NOT run `pnpm build`. The source-repo pre-push also runs `pnpm check:dist` (catches a stale `dist/` at push time), but this does NOT commit the freshened `dist/` — if stale, the push is blocked and you must run `pnpm build && git add dist/` manually before pushing.
 - CI's `run-tests` job has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
 - Consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
 - See KN-7 for failure-mode and recurrence history.
 
-### `.husky/pre-push` mirror-drift gate (bkit repo only)
+### `.husky/pre-push` bkit check gate
 
-The bkit repo's `.husky/pre-push` runs `pnpm bkit check` AFTER the templated `# bkit:end` marker, guarded by `set -e` above `# bkit:start`. Failing exit aborts the push when `.agents/*` was edited without `bkit install` regenerating `.claude/*` / `.cursor/*` / `.husky/*` mirrors.
+`.husky/pre-push` is **Tier 3 (seed-or-print)** — bkit writes the file once on first install and never overwrites it. There are no `# bkit:start` / `# bkit:end` markers. The consumer template (`.agents/templates/.husky/pre-push`) ships `pnpm bkit check < /dev/null` so consumers detect managed-file drift before push. The bkit source repo's `.husky/pre-push` additionally has `pnpm bkit check < /dev/null` and `pnpm check:dist < /dev/null` appended directly (not via markers) — those lines catch `.agents/*` edits that weren't mirrored via `bkit install` and verify `dist/` is not stale.
 
-- Lives **outside** the bkit:start/end block so markered-text re-install preserves it AND it does not leak into consumer repos via `.agents/templates/.husky/pre-push`.
-- Consumers don't get this gate — they don't typically edit `.agents/*` source, so adding it to the template is pure ~1s push overhead with no detected pain.
-- Fix on failure: run `pnpm bkit install`, stage the regenerated `.claude/*` / `.cursor/*` / `.husky/*` files, commit, push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
+- The bkit-repo-only additions are plain lines at the bottom of the source-repo copy of the file; they are not in the consumer template and never reach consumer repos.
+- Fix on failure: run `pnpm bkit install` (for drift), or `pnpm build && git add dist/` (for dist staleness); stage and commit; then push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
 
 ### CI trigger on final workflow push
 
@@ -239,9 +240,9 @@ bkit's installer runs in three phases:
 
 1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: `detectHooksConfigOverwriteRisk` was removed in v0.8.0 — deep-containment merge guarantees consumer-key survival without a preflight gate (see KN-8, DE-8).
 2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
-3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. Skipped in `bkit check` (dry-run) — only Phase 1 advisories render. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
+3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. In `bkit check` (v2.2.3+), Phase 3 runs in read-only mode — same advisory set as install, no writes. See KN-4 (historical design; prior to v2.2.3, Phase 3 was skipped entirely in check). **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 
-`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs only Phase 1; if any drift is detected, exits 1 with Phase 1 advisories rendered. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
+`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
 ### Consumer CI auth — env-var pattern (canonical)
 

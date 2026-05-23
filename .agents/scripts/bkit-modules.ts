@@ -960,59 +960,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // logic lives in the mirrored slash-command orchestrator. No consumer-side
 // customisation surface, so no merge instructions are needed.
 
-const DEPENDABOT_YML_MERGE_INSTRUCTIONS = `[bkit] .github/dependabot.yml exists — bkit will not overwrite. Review the reference defaults and merge if needed.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .github/dependabot.yml. Compare it to the bkit reference below and
-  apply ONLY the required merge actions. Preserve any consumer-specific
-  ecosystems (npm groupings, ignore rules, reviewers, etc.).
-
-  Required merge actions:
-
-  1. Ensure every \`updates[]\` entry has \`target-branch: dev\`. bkit consumers
-     gate \`main\` to PRs-from-dev-only — Dependabot PRs without target-branch:
-     dev will hit \`main\` and be rejected by branch protection, silently
-     breaking the entire update flow.
-
-  2. Ensure every \`updates[]\` entry has \`commit-message.prefix:\` set so
-     PR titles match the conventional-commit style used elsewhere in the
-     repo. For the \`github-actions\` ecosystem use \`prefix: "chore(deps)"\`;
-     for \`npm\` add \`prefix-development: "chore(deps-dev)"\` to distinguish
-     prod vs dev bumps.
-
-  3. Verify the file ships on the default branch. GitHub reads dependabot.yml
-     ONLY from the default branch (typically \`main\`). The file must be
-     merged all the way through dev → main before Dependabot opens any PR.
-     A config on a feature branch or on dev alone is silently inert.
-
-  4. Enable Dependabot alerts (required) and ensure automated-security-fixes
-     is DISABLED. Bkit policy: never let Dependabot auto-PR to \`main\`. The
-     auto-fixes feature opens CVE PRs against the default branch, which bkit
-     branch protection rejects (main only accepts PRs from \`dev\`). Run the
-     bkit-shipped helper from repo root:
-
-         bash scripts/ci/bkit-set-dependabot.sh
-
-     Idempotent; PUTs \`vulnerability-alerts\` (enable) and DELETEs
-     \`automated-security-fixes\` (defensive disable). CVE alerts remain
-     visible in the repo Security tab — open a PR against \`dev\` manually
-     when needed. For private repos the Dependency graph itself may also
-     need a one-time UI toggle at Settings → Code security and analysis
-     (GitHub does not expose an API for that toggle).
-
-  Do NOT remove or rename existing \`updates[]\` entries unless you know the
-  ecosystem is unused — losing an ecosystem means CVE-driven PRs stop firing
-  for it.
-
-  --- begin bkit reference dependabot.yml ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference dependabot.yml ---
-
-  After merging, push the change all the way to the default branch. Dependabot
-  validity is reported under repo Insights → Dependency graph → Dependabot;
-  check that tab if no PRs appear within ~24h of merge.
-`;
+// DEPENDABOT_YML_MERGE_INSTRUCTIONS removed — `.github/renovate.json5` is now
+// Tier 1 canonical-overwrite. bkit owns the config; consumers do not edit it.
+// Renovate's `extends: ["config:recommended"]` covers the customisation surface
+// that Dependabot required hand-editing for, so no merge advisory is needed.
 
 const VALE_INI_MERGE_INSTRUCTIONS = `[bkit] .vale.ini exists — bkit cannot safely INI-merge (core options must precede [glob] sections per Vale spec). Manual merge required.
 
@@ -1107,11 +1058,14 @@ const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bki
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`.
-  Most consumers using turbo (e.g. \`npx turbo run lint typecheck format:check test\`)
-  already cover the equivalent — in that case, ignore this advisory and keep your
-  existing hook. If your hook does NOT already run those three gates, consider
-  adopting the reference, or merging the missing commands into yours.
+  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`
+  followed by \`pnpm bkit check\` (the same drift gate CI runs — catching it
+  locally saves a wasted CI cycle when someone bumps @cbartens/bkit without
+  re-running \`bkit install\`). Most consumers using turbo (e.g.
+  \`npx turbo run lint typecheck format:check test\`) already cover the first
+  three gates — in that case, just add \`pnpm bkit check\` after your existing
+  command. If your hook does NOT already run those gates, consider adopting the
+  reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
   # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
@@ -1390,28 +1344,22 @@ export function runCiModule(ctx: ModuleContext): void {
     });
   }
 
-  // dependabot.yml — Tier 3 seed-or-print. Seeds a `target-branch: dev` config
-  // matching bkit's branch-protection convention (consumer PRs land on dev;
-  // main only accepts PRs from dev). If consumer already maintains their own
-  // dependabot.yml, the AI merge instruction is emitted as an advisory.
-  const dependabotSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "dependabot.yml");
-  if (fs.existsSync(dependabotSrc)) {
-    const dependabotDst = path.join(".github", "dependabot.yml");
-    const prevDepLen = ws.writes.length;
-    const dependabotResult = writeTier3(
-      dependabotSrc,
-      dependabotDst,
-      dryRun,
-      advisories,
-      ws,
-      DEPENDABOT_YML_MERGE_INSTRUCTIONS,
-    );
-    if (ws.writes.length > prevDepLen) {
-      console.log(`${logPrefix} ${tag}ci: ${dependabotDst}`);
-    } else if (dependabotResult.suggested) {
-      console.log(
-        `${logPrefix} ${tag}ci: ${dependabotDst} (exists; AI merge instructions printed)`,
-      );
+  // renovate.json5 — Tier 1 canonical overwrite. bkit owns the dependency-update
+  // config; consumers do not edit it. Ships `baseBranches: ["dev"]` (matches
+  // bkit branch-protection convention — PRs land on dev, not main), weekly
+  // grouped non-major bumps, lockfile maintenance, and packageRules that
+  // suppress consumer-side bumps on bkit-managed workflow files (router gets
+  // new SHAs/versions via `bkit install`, not via consumer Renovate).
+  //
+  // Renovate App install is one-click via https://github.com/apps/renovate —
+  // no `gh api` equivalent. See issue #123 for the consumer cleanup prompt.
+  const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
+  if (fs.existsSync(renovateSrc)) {
+    const renovateDst = path.join(".github", "renovate.json5");
+    const renovatePrev = ws.writes.length;
+    writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
+    if (ws.writes.length > renovatePrev) {
+      console.log(`${logPrefix} ${tag}ci: ${renovateDst}`);
     }
   }
 

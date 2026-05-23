@@ -76,7 +76,13 @@ jobs:
           jq '.permissions // {error: .message}' /tmp/repo.json || cat /tmp/repo.json
           echo "::endgroup::"
 
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` includes a
+      # packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]`
+      # + `enabled: false`, so consumer-side Renovate stays out of this file
+      # entirely. New SHAs/versions arrive via `bkit install` when consumers
+      # bump the bkit package; major version bumps in bkit's own repo still
+      # surface as a Renovate PR there and deserve review. See issue #124.
+      - uses: actions/checkout@v4
         with:
           # Check out `dev` at the workspace root so the router's
           # `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` resolves to dev's
@@ -114,7 +120,7 @@ jobs:
 
       - name: Dispatch /bkit-ci-router on Claude Code runner
         if: steps.pr.outputs.skip != 'true'
-        uses: anthropics/claude-code-action@12310e4417c3473095c957cb311b3cf59a38d659 # v1.0.99
+        uses: anthropics/claude-code-action@v1
         with:
           prompt: "/bkit-ci-router ${{ github.event.workflow_run.conclusion }} ${{ steps.pr.outputs.number }}"
           # Lock the runner-side session to the same tool surface bkit grants

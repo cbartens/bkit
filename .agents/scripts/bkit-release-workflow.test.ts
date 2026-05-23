@@ -256,6 +256,6 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
     expect(manifestFiles.some((p) => p === ".agents/templates/.github/workflows/ci.yml")).toBe(
       true,
     );
-    expect(manifestFiles.some((p) => p === ".agents/templates/.github/dependabot.yml")).toBe(true);
+    expect(manifestFiles.some((p) => p === ".agents/templates/.github/renovate.json5")).toBe(true);
   });
 });

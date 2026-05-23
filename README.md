@@ -302,17 +302,14 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
-| `dependabot-config-missing` | `.github/workflows/` present without `.github/dependabot.yml` (run `bkit install --ci` to seed) |
-| `dependabot-target-branch-missing` | `dependabot.yml` present but no `updates[]` entry declares `target-branch: dev` (Dependabot PRs will hit `main` and be rejected) |
-| `dependabot-config-invalid` | `dependabot.yml` exists but is malformed (no `version: 2`, no `updates:`, or tab-indented) |
-| `dependabot-repo-prereqs-disabled` | `dependabot.yml` present but repo-level Dependabot alerts are disabled (config silently ignored; run `scripts/ci/bkit-set-dependabot.sh`) |
-| `dependabot-auto-security-fixes-enabled` | `automated-security-fixes` is ON — bkit policy is OFF (it auto-PRs to `main`, which bkit branch protection rejects). Run `scripts/ci/bkit-set-dependabot.sh` to disable. |
+| `renovate-config-missing` | `.github/workflows/` present without `.github/renovate.json5` (run `bkit install --ci` to write the canonical config; install the Renovate App at github.com/apps/renovate) |
+| `renovate-config-missing-dependabot-orphan` | Stale `.github/dependabot.yml` present and no Renovate config yet — consumer mid-migration (issue #123). Advisory walks through the cleanup. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
 Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
 
-**`bkit check` (dry-run)** runs Phase 1 and renders any Phase 1 advisories via the same banner formatter. Phase 3 is skipped (check stays read-only). See `docs/knowledge.md` KN-4 for details.
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). Exits 1 if any Tier-1/Tier-2 drift is detected; does not write any files. See `docs/knowledge.md` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
 
 **`PreflightFinding` shape** — the stable contract for downstream tooling:
 
