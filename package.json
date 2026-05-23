@@ -66,6 +66,7 @@
     }
   },
   "bkit": {
-    "issueTracker": "github"
+    "issueTracker": "github",
+    "depUpdater": "renovate"
   }
 }

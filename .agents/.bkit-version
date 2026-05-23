@@ -3,7 +3,8 @@
   "tier3Hashes": {
     ".github/workflows/bkit-ci-router.yml": "9363cb01c3295924f49979d6b94cf01f46250d3629e8a62872cba66c7e81c290",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
-    ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb"
+    ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
+    ".github/renovate.json5": "0df84317f4c07b4c9471d1c69595af1b00a98a37e9b9f431ef28f6b947f4426d"
   },
   "canonicalHashes": {
     "docs/deployments.md": "922fe77d51c0fe69c5755a83ff473b4f6c4f112ccac212f1e32de2f68b08a61f",
@@ -49,6 +50,7 @@
     ".gitignore": "295872bb84dfd3d6dd28127b61a5e2678fff3000ecbf3e90328ae47867c608f4",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
-    "docs/security.md": "b3de5fad546ae0563f4c907f0c0c3b6cd2fcc5d1c52f85b3a8788a257e39ecd5"
+    "docs/security.md": "b3de5fad546ae0563f4c907f0c0c3b6cd2fcc5d1c52f85b3a8788a257e39ecd5",
+    ".github/renovate.json5": "0df84317f4c07b4c9471d1c69595af1b00a98a37e9b9f431ef28f6b947f4426d"
   }
 }
