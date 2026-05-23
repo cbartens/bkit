@@ -58,7 +58,7 @@ Post-install findings are rendered via `formatChecklist(ctx.advisories)` (export
 
 - Blockers (Phase 1) print to `stderr` and exit 1 before any writes.
 - Advisories (Phase 1 + Phase 3) print as a numbered checklist after install completes.
-- `bkit check` (dry-run) renders Phase 1 advisories only; exits 1 if any drift detected.
+- `bkit check` (dry-run) renders Phase 1 + Phase 3 advisories (read-only paths); exits 1 if any Tier-1/Tier-2 drift detected. No writes. (v2.2.3+; prior versions rendered Phase 1 only.)
 
 ## Phase 3 Token-Surface Detectors
 

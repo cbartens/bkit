@@ -79,7 +79,7 @@ pnpm bkit install [--module-flags] [--auto-revert]
 CLI verbs:
 
 - `pnpm bkit install` — runs all three phases.
-- `pnpm bkit check` — Phase 1 only (read-only); exits 1 on any drift without writes.
+- `pnpm bkit check` — Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 on any Tier-1/Tier-2 drift without writes.
 - `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exits 0.
 - `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
 - `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).

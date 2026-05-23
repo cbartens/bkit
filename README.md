@@ -312,7 +312,7 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 
 Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
 
-**`bkit check` (dry-run)** runs Phase 1 and renders any Phase 1 advisories via the same banner formatter. Phase 3 is skipped (check stays read-only). See `docs/knowledge.md` KN-4 for details.
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). Exits 1 if any Tier-1/Tier-2 drift is detected; does not write any files. See `docs/knowledge.md` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
 
 **`PreflightFinding` shape** — the stable contract for downstream tooling:
 

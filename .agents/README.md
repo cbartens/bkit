@@ -155,8 +155,8 @@ bkit uses a three-tier model to handle different file ownership scenarios withou
 | Tier | Semantics | Files |
 | --- | --- | --- |
 | **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
-| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.husky/pre-commit`, `.husky/pre-push`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
-| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml`, `.github/dependabot.yml` |
+| **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
+| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml`, `.github/dependabot.yml` |
 | **Managed package.json keys** (BAR-138, v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | `scripts.typecheck` (`--ci`), `scripts.format:check` / `lint:prose` / `lint:slop` (`--lint`), `scripts.prepare` (`--git-hooks`); `devDependencies.prettier` + `slop-scan` (`--lint`), `devDependencies.husky` (`--git-hooks`) |
 
 **Marker syntax** is format-specific:
@@ -190,8 +190,8 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.prettierignore` | lint | `.agents/templates/.prettierignore` | Tier 2 hash-comment |
 | `package.json#scripts.format:check` / `lint:prose` / `lint:slop` | lint | hardcoded defaults | Managed-key (add-if-missing) |
 | `package.json#devDependencies.prettier` / `slop-scan` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`) | Managed-key (add-if-missing) |
-| `.husky/pre-commit` | git-hooks | `.agents/templates/.husky/pre-commit` | Tier 2 hash-comment |
-| `.husky/pre-push` | git-hooks | `.agents/templates/.husky/pre-push` | Tier 2 hash-comment |
+| `.husky/pre-commit` | git-hooks | `.agents/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
+| `.husky/pre-push` | git-hooks | `.agents/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
 | `package.json#scripts.prepare` | git-hooks | hardcoded default (`husky install`) | Managed-key (add-if-missing) |
 | `package.json#devDependencies.husky` | git-hooks | hardcoded version-spec (`^9.1.7`) | Managed-key (add-if-missing) |
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |

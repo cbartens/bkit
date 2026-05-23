@@ -64,7 +64,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | Technology | Config | Usage |
 | --- | --- | --- |
 | husky | `^9.1`, `.husky/` | Pre-commit and pre-push hooks |
-| Pre-push hook | `.husky/pre-push` | Runs typecheck + unit tests before push (does NOT run `pnpm build`; `check:dist` is CI-only) |
+| Pre-push hook | `.husky/pre-push` | Runs typecheck + unit tests + `pnpm bkit check` before push. Source-repo copy additionally runs `pnpm check:dist` (dist freshness gate); consumer template does not include it. Neither copy runs `pnpm build`. |
 
 ## CI/CD
 
