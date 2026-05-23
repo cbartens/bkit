@@ -6,6 +6,33 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.4.0] — 2026-05-23
+
+### Changed
+
+- **Replace Dependabot with Renovate as the canonical dependency-update tool. (issue [#123](https://github.com/cbartens/bkit/issues/123))** bkit now ships `.github/renovate.json5` as a canonical (auto-overwrite) config in place of the prior `.github/dependabot.yml` (seed-or-print). Single canonical config encodes `baseBranches: ["dev"]`, weekly grouped non-major bumps, `lockFileMaintenance`, `automerge` for devDependencies + patches, `osvVulnerabilityAlerts` for CVE-driven PRs, and `pinDigests: true` for the `github-actions` manager. A `packageRule` with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false` keeps consumer-side Renovate out of bkit-managed workflow files entirely — new SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate.
+
+### Removed
+
+- **`.agents/templates/.github/dependabot.yml`** — replaced by `renovate.json5` above.
+- **`.agents/templates/scripts/ci/bkit-set-dependabot.sh`** — the GitHub repo-prereq helper. Renovate has no equivalent repo-level toggle; the Renovate App install is one-click via https://github.com/apps/renovate.
+- **`DEPENDABOT_YML_MERGE_INSTRUCTIONS`** advisory string (the AI merge instruction for the old seed-or-print Tier 3 flow). Renovate ships as canonical-overwrite, so no merge advisory exists.
+- **Four GH-API-based Dependabot detectors:** `detectDependabotTargetBranchMissing`, `detectDependabotConfigInvalid`, `detectDependabotRepoPrereqs`, `detectDependabotAutoFixesEnabled`. Renovate's config-shape and repo-prereq surfaces are simpler — these detectors are no longer load-bearing.
+
+### Added
+
+- **`detectRenovateConfigMissing`** — replaces `detectDependabotConfigMissing`. Emits one of two advisory IDs:
+  - `renovate-config-missing` — `.github/workflows/` exists but no `.github/renovate.json5` (or `renovate.json`). Recovery: run `pnpm bkit install --ci` and install the Renovate App.
+  - `renovate-config-missing-dependabot-orphan` — stale `.github/dependabot.yml` is still present and no Renovate config yet. Emits a 5-step cleanup script for consumers mid-migration (delete orphan, close open Dependabot PRs, disable Dependabot version updates in GitHub UI, install Renovate App, verify onboarding PR targets `dev`).
+
+### Migration
+
+- **bkit's own `.github/dependabot.yml` deleted; `.github/renovate.json5` added** as a byte-equal copy of the template (dogfood + manifest assertion).
+- **Per-consumer cleanup prompt** published in issue [#123](https://github.com/cbartens/bkit/issues/123) body. Paste into a Claude session inside each bkit-consumer repo after upgrading bkit to >=2.4.0. Steps: `git rm .github/dependabot.yml` + `git rm scripts/ci/bkit-set-dependabot.sh`; close open Dependabot PRs; disable Dependabot version updates in repo Settings (leave alerts on — Renovate uses them via `osvVulnerabilityAlerts`); install the Renovate App; verify onboarding PR targets `dev`.
+- **Docs updated:** `security.md` KN-3 § Supply-Chain pairs SHA-pinning with Renovate (drops the default-branch-only and `automated-security-fixes` Dependabot footguns); `deployments.md` KN-3 paragraph + `bkit-ci-router` exemption rewritten around `packageRules` instead of "Dependabot has no per-file scoping"; `knowledge.md` KN-3 references Renovate; `.agents/README.md` tier table + dogfood section updated; `README.md` advisory-ID table updated.
+
+---
+
 ## [2.3.1] — 2026-05-23
 
 ### Added
