@@ -97,6 +97,22 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
     expect(content).toMatch(/matchFileNames:[\s\S]*bkit-ci-router\.yml[\s\S]*enabled:\s*false/);
   });
 
+  it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
+    // `.agents/templates/**` and `.agents/skills/**` are mirrored into the consumer
+    // working tree by bkit; consumer Renovate must not enumerate their workflow
+    // SHAs / Dockerfile / vendored skill manifests.
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/templates\/\*\*"/);
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
+  });
+
+  it("disables Renovate for the @cbartens/bkit package itself (#132)", () => {
+    // bkit upgrades via `bkit upgrade`, not a bare version bump; the package is also
+    // restricted on GitHub Packages (unauthable from Mend → "no-result").
+    expect(content).toMatch(
+      /matchPackageNames:\s*\[\s*"@cbartens\/bkit"\s*\][\s\S]*enabled:\s*false/,
+    );
+  });
+
   it("uses pinDigests for the github-actions manager (KN-3 SHA-pinning)", () => {
     expect(content).toMatch(/matchManagers:\s*\[\s*"github-actions"\s*\][\s\S]*pinDigests:\s*true/);
   });

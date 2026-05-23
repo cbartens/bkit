@@ -38,7 +38,18 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  ignorePaths: ["**/node_modules/**", "**/dist/**", "**/build/**"],
+  // `.agents/templates/**` and `.agents/skills/**` are bkit-owned mirrors written
+  // into the consumer working tree by `bkit install`/`bkit upgrade` (not consumer
+  // source). Their workflow SHAs, Cursor Dockerfile, and vendored skill manifests
+  // are refreshed by bkit, NOT consumer Renovate — scanning them only produces
+  // onboarding noise (and an unauthable `@cbartens/bkit` lookup). See issue #132.
+  ignorePaths: [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    ".agents/templates/**",
+    ".agents/skills/**",
+  ],
 
   // Cap concurrent PRs so a major-version flood doesn't drown the repo.
   prConcurrentLimit: 10,
@@ -55,6 +66,19 @@
       matchFileNames: [
         ".github/workflows/bkit-ci-router.yml",
       ],
+      enabled: false,
+    },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // The bkit package itself — DO NOT BUMP via Renovate.
+    // bkit upgrades via `pnpm add -D @cbartens/bkit@latest && pnpm bkit upgrade`,
+    // which re-syncs templates, substitutes tokens, and bumps the pin. A bare
+    // version bump skips that and leaves the consumer split-brain. The package
+    // also lives on GitHub Packages (restricted), which Mend's hosted runner has
+    // no token for — so Renovate only ever logs a "no-result" lookup. See #132.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchPackageNames: ["@cbartens/bkit"],
       enabled: false,
     },
 
