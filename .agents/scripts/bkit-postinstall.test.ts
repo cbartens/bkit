@@ -21,7 +21,7 @@ import {
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
-  detectRenovateConfigMissing,
+  detectOrphanedDependabotConfig,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -809,57 +809,51 @@ describe("detectGhaFloatingTags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectRenovateConfigMissing
+// detectOrphanedDependabotConfig — only fires when a stale dependabot.yml
+// exists. Renovate config absence is no longer surfaced by default postinstall
+// (Renovate is opt-in via `bkit install --renovate` — see issue #123 follow-up).
 // ---------------------------------------------------------------------------
 
-describe("detectRenovateConfigMissing", () => {
-  it("returns null when no .github/workflows exists (nothing to update)", () => {
-    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
+describe("detectOrphanedDependabotConfig", () => {
+  it("returns null when no dependabot config exists", () => {
+    expect(detectOrphanedDependabotConfig(tmpDir)).toBeNull();
   });
 
-  it("flags absence when workflows exist but no renovate config", () => {
+  it("returns null when only a workflows dir exists (no orphan to clean up)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    const result = detectRenovateConfigMissing(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("renovate-config-missing");
+    expect(detectOrphanedDependabotConfig(tmpDir)).toBeNull();
   });
 
-  it("returns null when .github/renovate.json5 is present", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
-    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
-  });
-
-  it("returns null when .github/renovate.json (alternate ext) is present", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json"), "{}\n");
-    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
-  });
-
-  it("emits the orphan-Dependabot advisory when a stale dependabot.yml is present", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+  it("flags orphan when .github/dependabot.yml is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    const result = detectRenovateConfigMissing(tmpDir);
+    const result = detectOrphanedDependabotConfig(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.id).toBe("renovate-config-missing-dependabot-orphan");
+    expect(result!.id).toBe("dependabot-config-orphaned");
     expect(result!.action).toMatch(/git rm \.github\/dependabot\.yml/);
-    expect(result!.action).toMatch(/github\.com\/apps\/renovate/);
+    // Advisory points at `bkit install --renovate` — Phase B of that command
+    // is what prints the App-install URL, so we don't duplicate it here.
+    expect(result!.action).toMatch(/pnpm bkit install --renovate/);
+    // Provides both "switch to Renovate" and "keep Dependabot (self-managed)" paths.
+    expect(result!.action).toMatch(/Switch to Renovate/);
+    expect(result!.action).toMatch(/Keep Dependabot/);
   });
 
-  it("emits the orphan advisory for dependabot.yaml (alternate ext) too", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+  it("flags orphan for dependabot.yaml (alternate ext) too", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yaml"), "version: 2\n");
-    const result = detectRenovateConfigMissing(tmpDir);
+    const result = detectOrphanedDependabotConfig(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.id).toBe("renovate-config-missing-dependabot-orphan");
+    expect(result!.id).toBe("dependabot-config-orphaned");
   });
 
-  it("advisory action mentions bkit installer and Renovate App install", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    const result = detectRenovateConfigMissing(tmpDir);
+  it("fires even when renovate.json5 is also present (orphan is independent)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    const result = detectOrphanedDependabotConfig(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.action).toMatch(/pnpm bkit install --ci/);
-    expect(result!.action).toMatch(/github\.com\/apps\/renovate/);
+    expect(result!.id).toBe("dependabot-config-orphaned");
   });
 });
 

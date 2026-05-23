@@ -13,6 +13,7 @@ import {
   runCiModule,
   runLintModule,
   runGitHooksModule,
+  runRenovateModule,
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
@@ -389,6 +390,65 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
     // After flushing, it appears
     flushPostDispatch(ctx);
     expect(fs.existsSync(versionFile)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runRenovateModule — opt-in, phase-gated (issue #123 follow-up)
+// ---------------------------------------------------------------------------
+
+describe("runRenovateModule — opt-in, phase-gated against the default branch", () => {
+  it("Phase A: writes .github/renovate.json5 and emits the PR-to-default-branch advisory when no origin remote exists", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    // tmpDir is a fresh dir with no .git — the git cat-file check throws → Phase A.
+    runRenovateModule(ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(true);
+    expect(fs.readFileSync(renovatePath, "utf-8").length).toBeGreaterThan(0);
+
+    const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
+    expect(phaseA).toBeDefined();
+    expect(phaseA!.action).toMatch(/Phase A/);
+    expect(phaseA!.action).toMatch(/pnpm bkit install --renovate/);
+    // Must NOT print the App-install URL in Phase A.
+    expect(phaseA!.action).not.toMatch(/github\.com\/apps\/renovate/);
+
+    // Phase B advisory must not fire when in Phase A.
+    expect(ctx.advisories.find((a) => a.id === "renovate-phase-b-install-app")).toBeUndefined();
+  });
+
+  it("Phase A advisory references the resolved DEFAULT_BRANCH token", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, tokens: { ...makeCtx().tokens, DEFAULT_BRANCH: "trunk" } });
+    runRenovateModule(ctx);
+
+    const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
+    expect(phaseA).toBeDefined();
+    expect(phaseA!.detect).toMatch(/origin\/trunk/);
+    expect(phaseA!.action).toMatch(/`trunk`/);
+  });
+
+  it("dry-run: writes nothing to disk but still emits the Phase A advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runRenovateModule(ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
+    expect(
+      ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch"),
+    ).toBeDefined();
+  });
+
+  it("--ci alone does NOT ship renovate.json5 (split out of ci module per #123 follow-up)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
   });
 });
 

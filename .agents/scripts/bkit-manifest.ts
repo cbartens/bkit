@@ -34,7 +34,7 @@ export interface ManifestEntry {
   };
 }
 
-export type ModuleName = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks";
+export type ModuleName = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks" | "renovate";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -102,7 +102,6 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 const CI_MANIFEST: ManifestEntry[] = [
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
   { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".github/renovate.json5", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",
@@ -111,6 +110,12 @@ const CI_MANIFEST: ManifestEntry[] = [
       scripts: { typecheck: "tsc --noEmit" },
     },
   },
+];
+
+// Renovate is opt-in via `bkit install --renovate` — phase-gated against the
+// default branch. NOT included in --full. See issue #123 follow-up.
+const RENOVATE_MANIFEST: ManifestEntry[] = [
+  { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
@@ -168,6 +173,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
   "git-hooks": GIT_HOOKS_MANIFEST,
+  renovate: RENOVATE_MANIFEST,
 };
 
 // ---------------------------------------------------------------------------

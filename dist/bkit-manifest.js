@@ -61,7 +61,6 @@ const CURSOR_MANIFEST = [
 const CI_MANIFEST = [
     { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
     { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
-    { path: ".github/renovate.json5", format: "byte-equal-text", module: "ci" },
     {
         path: "package.json",
         format: "markered-text",
@@ -70,6 +69,11 @@ const CI_MANIFEST = [
             scripts: { typecheck: "tsc --noEmit" },
         },
     },
+];
+// Renovate is opt-in via `bkit install --renovate` — phase-gated against the
+// default branch. NOT included in --full. See issue #123 follow-up.
+const RENOVATE_MANIFEST = [
+    { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
 ];
 const LINT_MANIFEST = [
     { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
@@ -122,6 +126,7 @@ const MODULE_MANIFESTS = {
     ci: CI_MANIFEST,
     lint: LINT_MANIFEST,
     "git-hooks": GIT_HOOKS_MANIFEST,
+    renovate: RENOVATE_MANIFEST,
 };
 // ---------------------------------------------------------------------------
 // Public API

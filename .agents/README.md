@@ -181,7 +181,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/renovate.json5` | ci | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite); `baseBranches: ["dev"]` per bkit branch protection. Renovate App install is one-click via `github.com/apps/renovate` — no `gh api` equivalent |
+| `.github/renovate.json5` | renovate | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --renovate`** — NOT included in `--full`. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. See issue #123 for rationale (Renovate App's first scan reads default branch — installing the App before the config lands there produces a broken onboarding PR). |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |

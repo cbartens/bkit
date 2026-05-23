@@ -7,6 +7,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import {
   writeTier1,
   writeTier2,
@@ -1344,24 +1345,11 @@ export function runCiModule(ctx: ModuleContext): void {
     });
   }
 
-  // renovate.json5 — Tier 1 canonical overwrite. bkit owns the dependency-update
-  // config; consumers do not edit it. Ships `baseBranches: ["dev"]` (matches
-  // bkit branch-protection convention — PRs land on dev, not main), weekly
-  // grouped non-major bumps, lockfile maintenance, and packageRules that
-  // suppress consumer-side bumps on bkit-managed workflow files (router gets
-  // new SHAs/versions via `bkit install`, not via consumer Renovate).
-  //
-  // Renovate App install is one-click via https://github.com/apps/renovate —
-  // no `gh api` equivalent. See issue #123 for the consumer cleanup prompt.
-  const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
-  if (fs.existsSync(renovateSrc)) {
-    const renovateDst = path.join(".github", "renovate.json5");
-    const renovatePrev = ws.writes.length;
-    writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
-    if (ws.writes.length > renovatePrev) {
-      console.log(`${logPrefix} ${tag}ci: ${renovateDst}`);
-    }
-  }
+  // renovate.json5 is no longer shipped by `--ci`. Renovate is now opt-in via
+  // `bkit install --renovate` (phase-gated). See `runRenovateModule` below
+  // and issue #123 follow-up for rationale (Renovate App's first scan reads
+  // the default branch, so the file must reach `main` before App install —
+  // default install can't sequence that).
 
   // Ensure the typecheck script the workflow calls exists in package.json.
   // `test` is deliberately not managed — too opinionated for a default.
@@ -1701,6 +1689,85 @@ export function runGitHooksModule(ctx: ModuleContext): void {
 }
 
 // ---------------------------------------------------------------------------
+// runRenovateModule — opt-in `.github/renovate.json5` (phase-gated)
+// ---------------------------------------------------------------------------
+//
+// Renovate is NOT shipped by default install (--full). It's opt-in via
+// `bkit install --renovate` and runs a two-phase flow gated on whether the
+// config has reached the remote default branch:
+//
+//   Phase A — file NOT yet on origin/<DEFAULT_BRANCH>:
+//     Writes the file to the working tree and emits a "commit + PR to main,
+//     then re-run" advisory. Does NOT print the App-install URL — installing
+//     the App before the config reaches the default branch causes Renovate
+//     to fire its default onboarding flow (broken; ignores the shipped
+//     config). See issue #123 follow-up.
+//
+//   Phase B — file IS on origin/<DEFAULT_BRANCH>:
+//     Re-writes the file (idempotent byte-equal) and emits the App-install
+//     URL + activation checklist.
+
+function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): boolean {
+  try {
+    execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
+      cwd,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function runRenovateModule(ctx: ModuleContext): void {
+  const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+  const PKG_ROOT = getPkgRoot();
+
+  const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
+  if (!fs.existsSync(renovateSrc)) return;
+
+  const renovateDst = path.join(".github", "renovate.json5");
+  const prevLen = ws.writes.length;
+  writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
+  if (ws.writes.length > prevLen) {
+    console.log(`${logPrefix} ${tag}renovate: ${renovateDst}`);
+  }
+
+  const defaultBranch = tokens.DEFAULT_BRANCH;
+  const onDefault = isRenovateConfigOnDefaultBranch(defaultBranch, process.cwd());
+
+  if (!onDefault) {
+    advisories.push({
+      id: "renovate-phase-a-pr-to-default-branch",
+      severity: "advisory",
+      detect: `.github/renovate.json5 is in the working tree but not yet on origin/${defaultBranch}. The Renovate GitHub App's first scan reads the default branch — installing the App before the config lands there triggers a broken onboarding PR that ignores this config (issue #123).`,
+      action:
+        "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
+        "  1. Commit the newly-written `.github/renovate.json5`.\n" +
+        `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
+        `  3. Re-run \`pnpm bkit install --renovate\` once the file is on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
+        "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).",
+    });
+    return;
+  }
+
+  advisories.push({
+    id: "renovate-phase-b-install-app",
+    severity: "advisory",
+    detect: `.github/renovate.json5 is present on origin/${defaultBranch} — ready for Renovate GitHub App activation.`,
+    action:
+      "Phase B — activate Renovate by installing the GitHub App (one-time, manual, free; bkit cannot automate this — no `gh api` equivalent exists):\n\n" +
+      "  1. Open https://github.com/apps/renovate and click Install.\n" +
+      '  2. Choose "Only select repositories" → pick this repo.\n' +
+      '  3. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranches: ["dev"]`).\n' +
+      "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
+      "  4. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
+      "  5. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // MODULE_REGISTRY — maps ModuleFlag → ModuleFn
 // ---------------------------------------------------------------------------
 
@@ -1711,6 +1778,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   ci: runCiModule,
   lint: runLintModule,
   "git-hooks": runGitHooksModule,
+  renovate: runRenovateModule,
   // "full" is never directly in the registry — resolveModules expands it to all modules
 };
 
@@ -1722,6 +1790,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "ci",
   "lint",
   "git-hooks",
+  "renovate",
 ];
 
 /**

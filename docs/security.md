@@ -21,7 +21,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
 ```
 
-**Pair with `.github/renovate.json5`.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. `bkit install --ci` writes the canonical config (bkit-managed, auto-overwrite) — single source of truth is `.agents/templates/.github/renovate.json5`. The shipped config:
+**Pair with `.github/renovate.json5`.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Renovate is opt-in via `pnpm bkit install --renovate` (phase-gated against the default branch — see § Renovate activation below). The canonical config (bkit-managed, auto-overwrite when opted in) lives at `.agents/templates/.github/renovate.json5`. The shipped config:
 
 - Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional.
 - Runs weekly (`schedule: ["before 6am on Monday"]`) with grouped non-major bumps, lockfile maintenance, and `automerge: true` for devDependencies + patch updates.
@@ -29,7 +29,10 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
 - For bkit-managed workflow files (`bkit-ci-router.yml`): a packageRule with `matchFileNames` + `enabled: false` suppresses consumer-side bumps — new SHAs/versions arrive via `bkit install`, not consumer Renovate.
 
-The Renovate GitHub App must be installed once per repo (one-click at https://github.com/apps/renovate — Mend Community Cloud, free). No `gh api` equivalent exists; this is the one manual step. Within ~5 minutes of install, Renovate opens an onboarding PR pointing at `.github/renovate.json5`; merge it and the first batch of grouped update PRs follows on the next scheduled run.
+**Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
+
+1. **Phase A** (first run, config not yet on `origin/<default-branch>`): writes `.github/renovate.json5` to the working tree and prints a prompt to commit, open a PR to your integration branch, and merge through to the default branch. Do NOT install the Renovate App yet.
+2. **Phase B** (re-run after merge to default branch): bkit detects the file on `origin/<default-branch>` and prints the App install URL https://github.com/apps/renovate (Mend Community Cloud, one-click, free — no `gh api` equivalent) plus the activation checklist (verify onboarding PR base branch, disable Dependabot version updates, merge onboarding PR). Within ~5 minutes of install, Renovate opens its onboarding PR; merge it and the first batch of grouped update PRs follows on the next scheduled run.
 
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency.
 

@@ -84,7 +84,7 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("core")).toBe(true);
   });
 
-  it("--full flag parsed → all modules resolved", () => {
+  it("--full flag parsed → all modules resolved (renovate is opt-in, excluded)", () => {
     const result = parseArgs(["install", "--full"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -92,9 +92,10 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
   });
 
-  it("no module flags → resolves to all modules (--full equivalent)", () => {
+  it("no module flags → resolves to all modules (--full equivalent; renovate excluded)", () => {
     const result = parseArgs(["install"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -102,6 +103,28 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
+  });
+
+  it("--renovate alone → renovate + core only (not full stack)", () => {
+    const result = parseArgs(["install", "--renovate"]);
+    expect([...result.modules].sort()).toEqual(["core", "renovate"]);
+  });
+
+  it("--full --renovate → all modules + renovate (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--renovate"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("claude")).toBe(true);
+    expect(result.modules.has("cursor")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("lint")).toBe(true);
+    expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(true);
+  });
+
+  it("--ci --renovate → ci + core + renovate (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--renovate"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "renovate"]);
   });
 
   it("--full ≡ no flags (writeset equality)", () => {
@@ -210,7 +233,7 @@ describe("parseArgs — unknown flag rejection", () => {
 // ---------------------------------------------------------------------------
 
 describe("printUsage — help output", () => {
-  it("help output lists all module flags", () => {
+  it("help output lists all module flags (including opt-in --renovate)", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printUsage();
@@ -222,6 +245,7 @@ describe("printUsage — help output", () => {
       expect(output).toContain("--ci");
       expect(output).toContain("--lint");
       expect(output).toContain("--git-hooks");
+      expect(output).toContain("--renovate");
       expect(output).toContain("--full");
     } finally {
       logSpy.mockRestore();

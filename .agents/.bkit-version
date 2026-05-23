@@ -6,7 +6,7 @@
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "3358fb6e1e4c25787edea31da81a1246f03671d6b31fda94a8a5fced859e2b59",
+    "docs/deployments.md": "4de36f9ed37e7d2186b89f28da71840b13f99bb8218a2c3ccdd7106c86b2dab9",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -48,6 +48,7 @@
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
     ".gitignore": "295872bb84dfd3d6dd28127b61a5e2678fff3000ecbf3e90328ae47867c608f4",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
-    ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb"
+    ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
+    "docs/security.md": "0de7b28c18ccfa46a22608e0ee3457690af01aafeb237711a3603a36626ff778"
   }
 }

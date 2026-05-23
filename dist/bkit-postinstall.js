@@ -490,60 +490,38 @@ export function detectGhaFloatingTags(cwd) {
         detect: `.github/workflows/ uses floating-tag action refs (KN-3). Affected files:\n${lines}`,
         action: "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
             "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-            "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Pair with `.github/renovate.json5` (shipped by `bkit install --ci`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
+            "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
     };
 }
 /**
- * Detect whether `.github/renovate.json5` exists. Without it, GHA action SHA
- * pins never get refreshed on upstream releases or CVE disclosure, and npm
- * dependency bumps fall through the cracks entirely.
+ * Detect an orphaned `.github/dependabot.yml` left behind from before the
+ * bkit Renovate migration (issue #123). bkit no longer ships a Dependabot
+ * config; the file sits inert until the consumer either deletes it or
+ * migrates to Renovate via the opt-in `bkit install --renovate` flow.
  *
- * This only fires when `bkit install --ci` has NOT been run (the CI module
- * writes renovate.json5 as Tier 1 canonical). If the file is absent, point
- * at the canonical installer rather than duplicating the snippet here.
- *
- * Also detects legacy `.github/dependabot.yml` and prompts a one-time
- * cleanup (consumers migrating off the old bkit-shipped Dependabot config).
+ * Only fires when the orphan exists — silent otherwise. Independent of
+ * whether Renovate's own config is present, because the Dependabot orphan
+ * remains a problem (stale config, GitHub may still try to act on it) even
+ * when Renovate is configured.
  */
-export function detectRenovateConfigMissing(cwd) {
-    // Honour either `.github/renovate.json5` or `renovate.json` — Renovate
-    // reads both. We ship `.json5` to allow the comments in the canonical
-    // template, but consumers who hand-converted may have either extension.
-    const json5 = path.join(cwd, ".github", "renovate.json5");
-    const json = path.join(cwd, ".github", "renovate.json");
-    if (fs.existsSync(json5) || fs.existsSync(json))
-        return null;
-    // Only fire if there's a workflows dir to scan in the first place.
-    if (!fs.existsSync(path.join(cwd, ".github", "workflows")))
-        return null;
-    // Special-case: orphaned `.github/dependabot.yml` from before the bkit
-    // Renovate migration. Different recovery advice (one-time cleanup).
+export function detectOrphanedDependabotConfig(cwd) {
     const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
     const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
-    const orphanedDependabot = fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml);
-    if (orphanedDependabot) {
-        return {
-            id: "renovate-config-missing-dependabot-orphan",
-            severity: "advisory",
-            detect: ".github/renovate.json5 is absent and a stale `.github/dependabot.yml` is still present — bkit no longer ships a Dependabot config (issue #123). The orphaned file does nothing until you either delete it (recommended) or keep it without bkit support.",
-            action: "Migrate this repo from Dependabot to Renovate:\n\n" +
-                "  1. Run `pnpm bkit install --ci` to write the canonical `.github/renovate.json5` (Tier 1).\n" +
-                "  2. Delete the orphaned Dependabot config: `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
-                "  3. Close open Dependabot PRs: `gh pr list --author 'app/dependabot' --state open` then `gh pr close <n> --comment 'Migrating to Renovate'`.\n" +
-                "  4. GitHub UI → Settings → Code security → Dependabot version updates → Disable. (Leave Dependabot ALERTS on — Renovate uses them via `osvVulnerabilityAlerts`.)\n" +
-                "  5. Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, free, no `gh api` equivalent).\n" +
-                '  6. Verify Renovate\'s onboarding PR targets `dev` (bkit-shipped config sets `baseBranches: ["dev"]`).',
-        };
-    }
+    if (!fs.existsSync(dependabotYml) && !fs.existsSync(dependabotYaml))
+        return null;
     return {
-        id: "renovate-config-missing",
+        id: "dependabot-config-orphaned",
         severity: "advisory",
-        detect: ".github/renovate.json5 is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures, and npm dependency updates fall through the cracks entirely.",
-        action: 'Run `pnpm bkit install --ci` to write the bkit-shipped `.github/renovate.json5` (Tier 1 canonical). The shipped config covers github-actions (SHA-pin refresh, weekly grouped PRs) AND npm with monorepo workspace coverage, targets `dev` via `baseBranches: ["dev"]` (required for bkit branch-protection conventions), and uses `chore(deps):` commit-message prefix.\n\n' +
-            "After writing the config, one manual step is required to start opening PRs:\n\n" +
-            "  - Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, Mend Community Cloud, free). bkit cannot automate this — Renovate does not expose a `gh api` install endpoint.\n\n" +
-            "Renovate will open an onboarding PR within ~5 minutes pointing at `.github/renovate.json5`. Confirm it targets `dev`, merge it, and the first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
-            "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and canonical snippet (single source of truth: `.agents/templates/.github/renovate.json5`).",
+        detect: "`.github/dependabot.yml` is present — bkit no longer ships a Dependabot config (issue #123). The orphaned file does nothing under bkit support; if you want Dependabot you must maintain it yourself, otherwise switch to Renovate or remove the file.",
+        action: "Two options:\n\n" +
+            "  A. Switch to Renovate (recommended — bkit ships an opt-in canonical config):\n" +
+            "     1. Run `pnpm bkit install --renovate` to write `.github/renovate.json5` (Phase A).\n" +
+            "     2. Delete the orphaned Dependabot files: `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
+            "     3. Close open Dependabot PRs: `gh pr list --author 'app/dependabot' --state open` then `gh pr close <n> --comment 'Migrating to Renovate'`.\n" +
+            "     4. PR the change to your integration branch and merge through to the default branch.\n" +
+            "     5. Re-run `pnpm bkit install --renovate` — it will detect the file on the default branch (Phase B) and print the GitHub App install URL + activation checklist.\n" +
+            "     6. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n\n" +
+            "  B. Keep Dependabot (no bkit support): leave `.github/dependabot.yml` in place and maintain it yourself. bkit will continue to flag the orphan on every install until you delete it.",
     };
 }
 /**
@@ -1059,13 +1037,17 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const ciYml = detectCiYmlMissingTokenEnv(cwd);
     if (ciYml)
         phase3.push(ciYml);
-    // GHA action SHA pinning (KN-3) + renovate config.
+    // GHA action SHA pinning (KN-3). Renovate config absence is no longer
+    // surfaced by default postinstall — Renovate is opt-in via `bkit install
+    // --renovate` (phase-gated). See issue #123 follow-up.
     const gha = detectGhaFloatingTags(cwd);
     if (gha)
         phase3.push(gha);
-    const renovate = detectRenovateConfigMissing(cwd);
-    if (renovate)
-        phase3.push(renovate);
+    // Orphaned `.github/dependabot.yml` from before the Renovate migration.
+    // Silent unless the file exists.
+    const dependabotOrphan = detectOrphanedDependabotConfig(cwd);
+    if (dependabotOrphan)
+        phase3.push(dependabotOrphan);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);

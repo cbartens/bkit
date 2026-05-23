@@ -8,10 +8,17 @@ const MODULE_FLAGS = new Set([
     "ci",
     "lint",
     "git-hooks",
+    "renovate",
     "full",
 ]);
-// ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core
+// ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core.
+// `renovate` is intentionally excluded — opt-in only via explicit `--renovate`.
+// Rationale: Renovate App's first scan reads the default branch, so the config
+// must reach `main` BEFORE the App is installed. Default install can't sequence
+// that, so Renovate ships as a phase-gated separate flow. See issue #123.
 const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
+/** Opt-in modules: not included in `--full` or default install; require explicit flag. */
+const OPTIN_MODULES = new Set(["renovate"]);
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
     "dry-run",
@@ -26,9 +33,19 @@ const UNINSTALL_ONLY_FLAGS = new Set([
 // Install-specific flags (not module flags; not uninstall flags)
 const INSTALL_ONLY_FLAGS = new Set(["auto-revert"]);
 export function resolveModules(flags) {
-    // --full or empty flags → all modules
-    if (flags.has("full") || flags.size === 0) {
-        return new Set(ALL_MODULES);
+    // --full or empty flags → all modules (opt-in modules require explicit flag).
+    if (flags.has("full") || (flags.size === 1 && flags.has("renovate")) || flags.size === 0) {
+        // Special case: `--renovate` alone (without --full) = renovate + core, not full stack.
+        if (flags.size === 1 && flags.has("renovate")) {
+            return new Set(["core", "renovate"]);
+        }
+        const out = new Set(ALL_MODULES);
+        // Opt-in modules: preserve only when explicitly requested alongside --full.
+        for (const m of OPTIN_MODULES) {
+            if (flags.has(m))
+                out.add(m);
+        }
+        return out;
     }
     // core is always implicit
     const out = new Set(flags);
@@ -174,6 +191,10 @@ Module flags (composable — same for install and uninstall):
   --ci            .github/workflows/ci.yml (Tier 2 managed-block, tokens substituted).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
+  --renovate      .github/renovate.json5 (opt-in, phase-gated — NOT included in --full).
+                  Phase A: file not yet on origin/<default-branch> → writes file, prints
+                  prompt to PR → main, then re-run. Phase B: file detected on default
+                  branch → prints GitHub App install URL + activation checklist.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
@@ -199,6 +220,8 @@ Examples:
   bkit install                  Full stack install (all modules).
   bkit install --claude         Only .claude/** + core.
   bkit install --ci --lint      CI + lint stack + core; nothing else.
+  bkit install --renovate       Renovate config only (phase-gated; opt-in).
+  bkit install --full --renovate  Full stack + Renovate opt-in.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).
   bkit uninstall                Full stack uninstall (all modules).
