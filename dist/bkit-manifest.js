@@ -75,6 +75,15 @@ const CI_MANIFEST = [
 const RENOVATE_MANIFEST = [
     { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
 ];
+// Dependabot is opt-in via `bkit install --dependabot` — first-party GitHub
+// feature, no App install required. Mutually exclusive with --renovate. NOT
+// included in --full. See issue #109 (origin) + #123 follow-up. dependabot.yml
+// is Tier 3 (seed-or-print) because consumers commonly tune the npm section
+// per their monorepo shape; the helper script is Tier 1 (canonical).
+const DEPENDABOT_MANIFEST = [
+    { path: ".github/dependabot.yml", format: "byte-equal-text", module: "dependabot" },
+    { path: "scripts/ci/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
+];
 const LINT_MANIFEST = [
     { path: ".vale.ini", format: "byte-equal-text", module: "lint" },
     { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint" },
@@ -127,6 +136,7 @@ const MODULE_MANIFESTS = {
     lint: LINT_MANIFEST,
     "git-hooks": GIT_HOOKS_MANIFEST,
     renovate: RENOVATE_MANIFEST,
+    dependabot: DEPENDABOT_MANIFEST,
 };
 // ---------------------------------------------------------------------------
 // Public API

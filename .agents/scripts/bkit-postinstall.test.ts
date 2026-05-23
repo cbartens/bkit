@@ -21,7 +21,6 @@ import {
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
-  detectOrphanedDependabotConfig,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -808,54 +807,11 @@ describe("detectGhaFloatingTags", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// detectOrphanedDependabotConfig — only fires when a stale dependabot.yml
-// exists. Renovate config absence is no longer surfaced by default postinstall
-// (Renovate is opt-in via `bkit install --renovate` — see issue #123 follow-up).
-// ---------------------------------------------------------------------------
-
-describe("detectOrphanedDependabotConfig", () => {
-  it("returns null when no dependabot config exists", () => {
-    expect(detectOrphanedDependabotConfig(tmpDir)).toBeNull();
-  });
-
-  it("returns null when only a workflows dir exists (no orphan to clean up)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    expect(detectOrphanedDependabotConfig(tmpDir)).toBeNull();
-  });
-
-  it("flags orphan when .github/dependabot.yml is present", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    const result = detectOrphanedDependabotConfig(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-config-orphaned");
-    expect(result!.action).toMatch(/git rm \.github\/dependabot\.yml/);
-    // Advisory points at `bkit install --renovate` — Phase B of that command
-    // is what prints the App-install URL, so we don't duplicate it here.
-    expect(result!.action).toMatch(/pnpm bkit install --renovate/);
-    // Provides both "switch to Renovate" and "keep Dependabot (self-managed)" paths.
-    expect(result!.action).toMatch(/Switch to Renovate/);
-    expect(result!.action).toMatch(/Keep Dependabot/);
-  });
-
-  it("flags orphan for dependabot.yaml (alternate ext) too", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yaml"), "version: 2\n");
-    const result = detectOrphanedDependabotConfig(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-config-orphaned");
-  });
-
-  it("fires even when renovate.json5 is also present (orphan is independent)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
-    const result = detectOrphanedDependabotConfig(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-config-orphaned");
-  });
-});
+// detectOrphanedDependabotConfig was dropped — Dependabot is now opt-in via
+// `bkit install --dependabot` (mutually exclusive with --renovate). Consumers
+// who run --dependabot intentionally write the config; consumers who skip
+// both opt-ins are silent. The mutual-exclusion blocker fires in the module
+// itself (runRenovateModule / runDependabotModule) when both configs exist.
 
 // ---------------------------------------------------------------------------
 // detectRunLevelsNotComposed

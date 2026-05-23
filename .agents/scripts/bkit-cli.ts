@@ -11,6 +11,7 @@ export type ModuleFlag =
   | "lint"
   | "git-hooks"
   | "renovate"
+  | "dependabot"
   | "full";
 export type { IssueTracker };
 
@@ -54,18 +55,21 @@ const MODULE_FLAGS = new Set<ModuleFlag>([
   "lint",
   "git-hooks",
   "renovate",
+  "dependabot",
   "full",
 ]);
 
 // ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core.
-// `renovate` is intentionally excluded — opt-in only via explicit `--renovate`.
-// Rationale: Renovate App's first scan reads the default branch, so the config
-// must reach `main` BEFORE the App is installed. Default install can't sequence
-// that, so Renovate ships as a phase-gated separate flow. See issue #123.
+// `renovate` and `dependabot` are intentionally excluded — opt-in via explicit
+// `--renovate` / `--dependabot` and mutually exclusive. Rationale (renovate):
+// the Renovate App's first scan reads the default branch, so the config must
+// reach `main` BEFORE the App is installed. Rationale (dependabot): consumers
+// who pick this path explicitly opt out of bkit's Renovate recommendation;
+// installing both opens competing PRs against the same packages.
 const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 
 /** Opt-in modules: not included in `--full` or default install; require explicit flag. */
-const OPTIN_MODULES = new Set<ModuleFlag>(["renovate"]);
+const OPTIN_MODULES = new Set<ModuleFlag>(["renovate", "dependabot"]);
 
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
@@ -83,12 +87,16 @@ const UNINSTALL_ONLY_FLAGS = new Set([
 const INSTALL_ONLY_FLAGS = new Set(["auto-revert"]);
 
 export function resolveModules(flags: Set<ModuleFlag>): Set<ModuleFlag> {
-  // --full or empty flags → all modules (opt-in modules require explicit flag).
-  if (flags.has("full") || (flags.size === 1 && flags.has("renovate")) || flags.size === 0) {
-    // Special case: `--renovate` alone (without --full) = renovate + core, not full stack.
-    if (flags.size === 1 && flags.has("renovate")) {
-      return new Set<ModuleFlag>(["core", "renovate"]);
+  // Special case: a single opt-in module flag alone (without --full) resolves
+  // to core + that module — NOT the full stack. Matches the `--renovate` /
+  // `--dependabot` single-purpose install UX.
+  if (flags.size === 1) {
+    for (const m of OPTIN_MODULES) {
+      if (flags.has(m)) return new Set<ModuleFlag>(["core", m]);
     }
+  }
+  // --full or empty flags → all modules (opt-in modules require explicit flag).
+  if (flags.has("full") || flags.size === 0) {
     const out = new Set<ModuleFlag>(ALL_MODULES);
     // Opt-in modules: preserve only when explicitly requested alongside --full.
     for (const m of OPTIN_MODULES) {
@@ -226,6 +234,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
     process.exit(1);
   }
 
+  // Mutual exclusion: `--renovate` and `--dependabot` cannot be combined.
+  // Both open PRs against the same packages; running both creates competing
+  // update PRs (see issue #109 + #123 follow-up for rationale).
+  if (moduleFlags.has("renovate") && moduleFlags.has("dependabot")) {
+    console.error(
+      "[bkit] `--renovate` and `--dependabot` are mutually exclusive (running both opens competing PRs against the same packages). Pick one.",
+    );
+    process.exit(1);
+  }
+
   const modules = resolveModules(moduleFlags);
 
   return { verb, modules, uninstallFlags, upgradeFlags, tracker };
@@ -259,6 +277,10 @@ Module flags (composable — same for install and uninstall):
                   Phase A: file not yet on origin/<default-branch> → writes file, prints
                   prompt to PR → main, then re-run. Phase B: file detected on default
                   branch → prints GitHub App install URL + activation checklist.
+                  Mutually exclusive with --dependabot.
+  --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
+                  NOT included in --full). First-party GitHub feature; no App install or
+                  phase gate. Mutually exclusive with --renovate.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
@@ -285,6 +307,7 @@ Examples:
   bkit install --claude         Only .claude/** + core.
   bkit install --ci --lint      CI + lint stack + core; nothing else.
   bkit install --renovate       Renovate config only (phase-gated; opt-in).
+  bkit install --dependabot     Dependabot config + helper script (opt-in; alternative to --renovate).
   bkit install --full --renovate  Full stack + Renovate opt-in.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).

@@ -14,6 +14,7 @@ import {
   runLintModule,
   runGitHooksModule,
   runRenovateModule,
+  runDependabotModule,
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
@@ -449,6 +450,88 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
 
     const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
     expect(fs.existsSync(renovatePath)).toBe(false);
+  });
+
+  it("refuses to install when .github/dependabot.yml is present (mutually exclusive)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    // No renovate.json5 should be written
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
+
+    // Blocker advisory should fire
+    const blocker = ctx.advisories.find((a) => a.id === "renovate-dependabot-mutually-exclusive");
+    expect(blocker).toBeDefined();
+    expect(blocker!.severity).toBe("blocker");
+    expect(blocker!.action).toMatch(/git rm \.github\/dependabot\.yml/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDependabotModule — opt-in, mutually exclusive with Renovate (#109/#123)
+// ---------------------------------------------------------------------------
+
+describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () => {
+  it("writes .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh and emits setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runDependabotModule(ctx);
+
+    const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
+    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    expect(fs.existsSync(ymlPath)).toBe(true);
+    expect(fs.existsSync(scriptPath)).toBe(true);
+    // Helper script must be executable.
+    const mode = fs.statSync(scriptPath).mode & 0o777;
+    expect(mode & 0o100).toBe(0o100);
+
+    const advisory = ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+  });
+
+  it("refuses to install when .github/renovate.json5 is present (mutually exclusive)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runDependabotModule(ctx);
+
+    // No dependabot files should be written
+    const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
+    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    expect(fs.existsSync(ymlPath)).toBe(false);
+    expect(fs.existsSync(scriptPath)).toBe(false);
+
+    const blocker = ctx.advisories.find((a) => a.id === "dependabot-renovate-mutually-exclusive");
+    expect(blocker).toBeDefined();
+    expect(blocker!.severity).toBe("blocker");
+    expect(blocker!.action).toMatch(/git rm \.github\/renovate\.json5/);
+  });
+
+  it("dry-run: writes nothing but still emits setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runDependabotModule(ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state")).toBeDefined();
+  });
+
+  it("--ci alone does NOT ship dependabot files (separate opt-in module)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
   });
 });
 

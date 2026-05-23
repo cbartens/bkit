@@ -38,6 +38,25 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 
 Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-ci-router` will not dispatch on them by design.
 
+### Dependabot alternative (opt-in, mutually exclusive with Renovate)
+
+If you have specific reasons to prefer Dependabot — first-party GitHub feature, no third-party App install, no Mend dependency in the trust surface, no Phase A/B race — bkit ships a Dependabot module as an alternative. Run `pnpm bkit install --dependabot` (NOT `--renovate`; the two are mutually exclusive and bkit will refuse to install both).
+
+Trade-offs to accept if you pick this path:
+
+- **One PR per package, not per group** — Dependabot's `groups:` support is newer and weaker than Renovate's. Expect more PR volume per scheduled run.
+- **Per-workspace coverage is manual** — bkit's shipped `dependabot.yml` ships the `github-actions` ecosystem enabled and `npm` commented out. For pnpm monorepos with explicit per-workspace coverage, you'll edit the file to add `directories: ["/", "/apps/*", "/packages/*"]` (Dependabot v2.1+) or stamp out one `package-ecosystem: npm` block per path.
+- **No lockfile maintenance** — Renovate's weekly `lockFileMaintenance` job refreshes transitive deps; Dependabot has no equivalent.
+- **No `osvVulnerabilityAlerts: true` analogue in the config** — CVE-driven PRs come from GitHub's security advisory pipeline (enabled via the helper script's `automated-security-fixes` toggle, not the YAML).
+
+The bkit-shipped `scripts/ci/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
+
+    bash scripts/ci/bkit-set-dependabot.sh        # apply (idempotent)
+    bash scripts/ci/bkit-set-dependabot.sh --dry-run    # preview
+    bash scripts/ci/bkit-set-dependabot.sh --print      # inspect current state
+
+The script is Tier 1 canonical — bkit owns it; consumers do not edit. New policy changes ship via `bkit install --dependabot`. See issue #109 for the original design.
+
 ### Manual CVE handling (when an alert fires)
 
 Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately against `dev`. If you also want to keep GitHub's Dependabot **alerts** on (Settings → Code security → Dependabot alerts), the Security tab continues to surface advisories — useful as a parallel signal, not required. Handle each alert against `dev`:
