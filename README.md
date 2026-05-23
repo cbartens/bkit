@@ -2,6 +2,18 @@
 
 Agent workflow system wiring Claude Code (and Cursor) into a five-phase Linear-integrated dev cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
+## Why bkit
+
+bkit runs a coding agent through the process a senior engineering team would insist on — design review, an adversarial code challenge, a test gate, and a release checklist — on every feature, with gates a human signs off on. Each phase fans work out to specialised subagents, several running in parallel under different lenses (one reviews for bugs while another reviews for security), so output is reviewed by independent agents before you see it.
+
+Three things that change how you work:
+
+- **Parallel by design.** Every run executes in its own isolated git worktree, so you can run many pipelines at once — design one feature while building a second and shipping a third — with no branch-switching, stashing, or conflicts between them.
+- **Tied to your tracker.** bkit integrates with GitHub Issues or Linear: it reads the issue for context, posts progress per phase, moves the issue through its states, and links the resulting PR back. Project management stays the source of truth.
+- **Consistent across the team.** Anyone, in Claude Code or Cursor, runs `/bkit-design` and gets the same reviewed, gated, tested pipeline. The rigor lives in the toolkit, not in one person's prompting.
+
+For the full pipeline and subagent reference, and a mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see [`docs/bkit-comparison.md`](docs/bkit-comparison.md).
+
 > [!IMPORTANT]
 > **`GH_BKIT_TOKEN` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
 >

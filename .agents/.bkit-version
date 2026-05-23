@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "2.3.0",
+  "pinnedVersion": "2.3.1",
   "tier3Hashes": {
     ".github/workflows/bkit-ci-router.yml": "9363cb01c3295924f49979d6b94cf01f46250d3629e8a62872cba66c7e81c290",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
