@@ -6,15 +6,46 @@
 // .bkit-version is written LAST — in postDispatch after ALL modules complete (MED-4).
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+/**
+ * Persist `bkit.depUpdater` into the consumer's package.json so the post-install
+ * advisory can tell "deliberately none" from "undecided". Mirrors the
+ * `bkit.issueTracker` persist logic in bkit-install.ts. No-op on dry-run or when
+ * package.json is absent/unparseable (non-fatal — the config file presence is
+ * still the primary signal).
+ */
+function setConsumerDepUpdater(value, dryRun) {
+    if (dryRun)
+        return;
+    const pkgPath = path.join(process.cwd(), "package.json");
+    if (!fs.existsSync(pkgPath))
+        return;
+    try {
+        const raw = fs.readFileSync(pkgPath, "utf-8");
+        const pkg = JSON.parse(raw);
+        const bkit = (pkg.bkit ?? {});
+        if (bkit.depUpdater === value)
+            return; // already set — avoid a no-op rewrite
+        bkit.depUpdater = value;
+        pkg.bkit = bkit;
+        const indentMatch = raw.match(/\n([ \t]+)"/);
+        const indent = indentMatch ? indentMatch[1] : "  ";
+        const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+    }
+    catch {
+        // non-fatal — file presence is the primary signal
+    }
+}
 function ensureDir(dir) {
     fs.mkdirSync(dir, { recursive: true });
 }
@@ -81,6 +112,11 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore"]);
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
+// Files that live under a core-owned template dir (e.g. `scripts/`) but are
+// actually owned by an OPT-IN module — skip in the core pass so they ship ONLY
+// when the consumer opts into that module, never on default `--full` install.
+// `bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
+const CORE_TEMPLATE_PATH_EXCLUDE = new Set([path.join("scripts", "ci", "bkit-set-dependabot.sh")]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
     ".github",
@@ -151,6 +187,9 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
             processCoreTemplateDir(srcPath, relPath, dryRun, tokens, ws, logPrefix);
         }
         else if (ent.isFile()) {
+            // Skip opt-in-module-owned files that happen to live under a core dir.
+            if (CORE_TEMPLATE_PATH_EXCLUDE.has(relPath))
+                continue;
             const dstPath = relPath;
             const prevLen = ws.writes.length;
             writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
@@ -1124,24 +1163,11 @@ export function runCiModule(ctx) {
                 "Both halves invoke the same `/bkit-ci-router` orchestrator (lives in `.cursor/commands/bkit-ci-router.md` + `.claude/commands/bkit-ci-router.md`, mirrored from `.agents/workflows/bkit-ci-router.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
         });
     }
-    // renovate.json5 — Tier 1 canonical overwrite. bkit owns the dependency-update
-    // config; consumers do not edit it. Ships `baseBranches: ["dev"]` (matches
-    // bkit branch-protection convention — PRs land on dev, not main), weekly
-    // grouped non-major bumps, lockfile maintenance, and packageRules that
-    // suppress consumer-side bumps on bkit-managed workflow files (router gets
-    // new SHAs/versions via `bkit install`, not via consumer Renovate).
-    //
-    // Renovate App install is one-click via https://github.com/apps/renovate —
-    // no `gh api` equivalent. See issue #123 for the consumer cleanup prompt.
-    const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
-    if (fs.existsSync(renovateSrc)) {
-        const renovateDst = path.join(".github", "renovate.json5");
-        const renovatePrev = ws.writes.length;
-        writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
-        if (ws.writes.length > renovatePrev) {
-            console.log(`${logPrefix} ${tag}ci: ${renovateDst}`);
-        }
-    }
+    // renovate.json5 is no longer shipped by `--ci`. Renovate is now opt-in via
+    // `bkit install --renovate` (phase-gated). See `runRenovateModule` below
+    // and issue #123 follow-up for rationale (Renovate App's first scan reads
+    // the default branch, so the file must reach `main` before App install —
+    // default install can't sequence that).
     // Ensure the typecheck script the workflow calls exists in package.json.
     // `test` is deliberately not managed — too opinionated for a default.
     const typecheckDefault = fs.existsSync("tsconfig.json")
@@ -1412,6 +1438,170 @@ export function runGitHooksModule(ctx) {
     }
 }
 // ---------------------------------------------------------------------------
+// runRenovateModule — opt-in `.github/renovate.json5` (phase-gated)
+// ---------------------------------------------------------------------------
+//
+// Renovate is NOT shipped by default install (--full). It's opt-in via
+// `bkit install --renovate` and runs a two-phase flow gated on whether the
+// config has reached the remote default branch:
+//
+//   Phase A — file NOT yet on origin/<DEFAULT_BRANCH>:
+//     Writes the file to the working tree and emits a "commit + PR to main,
+//     then re-run" advisory. Does NOT print the App-install URL — installing
+//     the App before the config reaches the default branch causes Renovate
+//     to fire its default onboarding flow (broken; ignores the shipped
+//     config). See issue #123 follow-up.
+//
+//   Phase B — file IS on origin/<DEFAULT_BRANCH>:
+//     Re-writes the file (idempotent byte-equal) and emits the App-install
+//     URL + activation checklist.
+function isRenovateConfigOnDefaultBranch(defaultBranch, cwd) {
+    try {
+        execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
+            cwd,
+            stdio: ["ignore", "ignore", "ignore"],
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+export function runRenovateModule(ctx) {
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const PKG_ROOT = getPkgRoot();
+    // Mutually exclusive with --dependabot — refuse if Dependabot config exists.
+    // Both opening PRs against the same packages is silly and creates noise.
+    const dependabotYml = path.join(process.cwd(), ".github", "dependabot.yml");
+    const dependabotYaml = path.join(process.cwd(), ".github", "dependabot.yaml");
+    if (fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml)) {
+        advisories.push({
+            id: "renovate-dependabot-mutually-exclusive",
+            severity: "blocker",
+            detect: "`.github/dependabot.yml` is present — Renovate and Dependabot are mutually exclusive (running both opens competing PRs against the same packages). Refusing to install Renovate.",
+            action: "Choose one:\n\n" +
+                "  A. Switch to Renovate (recommended):\n" +
+                "     1. `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
+                "     2. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n" +
+                "     3. Re-run `pnpm bkit install --renovate`.\n\n" +
+                "  B. Keep Dependabot: skip `--renovate`; run `pnpm bkit install --dependabot` to keep using bkit's Dependabot module.",
+        });
+        return;
+    }
+    const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
+    if (!fs.existsSync(renovateSrc))
+        return;
+    const renovateDst = path.join(".github", "renovate.json5");
+    const prevLen = ws.writes.length;
+    writeTier1(renovateSrc, renovateDst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}renovate: ${renovateDst}`);
+    }
+    // Record the choice so the post-install advisory stays quiet about
+    // "undecided dep updater" and the mutual-exclusion check has a record.
+    setConsumerDepUpdater("renovate", dryRun);
+    const defaultBranch = tokens.DEFAULT_BRANCH;
+    const onDefault = isRenovateConfigOnDefaultBranch(defaultBranch, process.cwd());
+    if (!onDefault) {
+        advisories.push({
+            id: "renovate-phase-a-pr-to-default-branch",
+            severity: "advisory",
+            detect: `.github/renovate.json5 is in the working tree but not yet on origin/${defaultBranch}. The Renovate GitHub App's first scan reads the default branch — installing the App before the config lands there triggers a broken onboarding PR that ignores this config (issue #123).`,
+            action: "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
+                "  1. Commit the newly-written `.github/renovate.json5`.\n" +
+                `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
+                `  3. Re-run \`pnpm bkit install --renovate\` once the file is on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
+                "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).",
+        });
+        return;
+    }
+    advisories.push({
+        id: "renovate-phase-b-install-app",
+        severity: "advisory",
+        detect: `.github/renovate.json5 is present on origin/${defaultBranch} — ready for Renovate GitHub App activation.`,
+        action: "Phase B — activate Renovate by installing the GitHub App (one-time, manual, free; bkit cannot automate this — no `gh api` equivalent exists):\n\n" +
+            "  1. Open https://github.com/apps/renovate and click Install.\n" +
+            '  2. Choose "Only select repositories" → pick this repo.\n' +
+            '  3. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranches: ["dev"]`).\n' +
+            "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
+            "  4. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
+            "  5. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).",
+    });
+}
+// ---------------------------------------------------------------------------
+// runDependabotModule — opt-in `.github/dependabot.yml` + helper script
+// ---------------------------------------------------------------------------
+//
+// Dependabot is NOT shipped by default install (--full). It's opt-in via
+// `bkit install --dependabot` and is mutually exclusive with `--renovate`.
+//
+// Unlike Renovate, Dependabot is first-party GitHub and does NOT have an
+// App-install race condition — the `dependabot.yml` file is read directly
+// from the default branch by GitHub's hosted Dependabot service. The only
+// out-of-band setup is the repo-level Dependabot toggles (auto-fixes-enabled,
+// vulnerability-alerts), which the shipped helper script `bkit-set-dependabot.sh`
+// flips via `gh api`.
+export function runDependabotModule(ctx) {
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const PKG_ROOT = getPkgRoot();
+    // Mutually exclusive with --renovate — refuse if Renovate config exists.
+    const renovateJson5 = path.join(process.cwd(), ".github", "renovate.json5");
+    const renovateJson = path.join(process.cwd(), ".github", "renovate.json");
+    if (fs.existsSync(renovateJson5) || fs.existsSync(renovateJson)) {
+        advisories.push({
+            id: "dependabot-renovate-mutually-exclusive",
+            severity: "blocker",
+            detect: "`.github/renovate.json5` is present — Renovate and Dependabot are mutually exclusive (running both opens competing PRs against the same packages). Refusing to install Dependabot.",
+            action: "Choose one:\n\n" +
+                "  A. Switch to Dependabot:\n" +
+                "     1. `git rm .github/renovate.json5`.\n" +
+                "     2. Uninstall the Renovate GitHub App at https://github.com/settings/installations → Renovate → Configure → Uninstall.\n" +
+                "     3. Re-run `pnpm bkit install --dependabot`.\n\n" +
+                "  B. Keep Renovate (recommended — see docs/security.md § Renovate activation): skip `--dependabot`; the existing Renovate setup stays.",
+        });
+        return;
+    }
+    // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
+    const ymlSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "dependabot.yml");
+    const scriptSrc = path.join(PKG_ROOT, ".agents", "templates", "scripts", "ci", "bkit-set-dependabot.sh");
+    if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc))
+        return;
+    const ymlDst = path.join(".github", "dependabot.yml");
+    const scriptDst = path.join("scripts", "ci", "bkit-set-dependabot.sh");
+    const prevLen = ws.writes.length;
+    writeTier1(ymlSrc, ymlDst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}dependabot: ${ymlDst}`);
+    }
+    const prevLen2 = ws.writes.length;
+    writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen2) {
+        console.log(`${logPrefix} ${tag}dependabot: ${scriptDst}`);
+        // Preserve executable bit on the helper script.
+        if (!dryRun) {
+            try {
+                fs.chmodSync(scriptDst, 0o755);
+            }
+            catch {
+                // non-fatal — surface via advisory below
+            }
+        }
+    }
+    // Record the choice (parity with renovate path).
+    setConsumerDepUpdater("dependabot", dryRun);
+    advisories.push({
+        id: "dependabot-setup-repo-state",
+        severity: "advisory",
+        detect: "`.github/dependabot.yml` and `scripts/ci/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
+        action: "One-shot repo-level setup (idempotent — safe to re-run):\n\n" +
+            "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+            "The script uses `gh api` to enable Dependabot security updates, vulnerability alerts, and the never-auto-merge-on-main policy. Re-run any time the policy needs sanity-checking; use `--dry-run` to preview, `--print` to inspect current state.\n\n" +
+            "After commit + merge through to your default branch, Dependabot will start opening PRs on the next scheduled poll (per `schedule:` in dependabot.yml — default weekly).",
+    });
+}
+// ---------------------------------------------------------------------------
 // MODULE_REGISTRY — maps ModuleFlag → ModuleFn
 // ---------------------------------------------------------------------------
 export const MODULE_REGISTRY = {
@@ -1421,6 +1611,8 @@ export const MODULE_REGISTRY = {
     ci: runCiModule,
     lint: runLintModule,
     "git-hooks": runGitHooksModule,
+    renovate: runRenovateModule,
+    dependabot: runDependabotModule,
     // "full" is never directly in the registry — resolveModules expands it to all modules
 };
 // Canonical dispatch order
@@ -1431,6 +1623,8 @@ export const MODULE_DISPATCH_ORDER = [
     "ci",
     "lint",
     "git-hooks",
+    "renovate",
+    "dependabot",
 ];
 /**
  * Dispatch modules in canonical order.

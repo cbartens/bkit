@@ -112,6 +112,8 @@ pnpm exec bkit check --full
 
 **Module flags:** `--core` `--claude` `--cursor` `--ci` `--lint` `--git-hooks` `--full`. Multiple flags compose. No flags = `--full`.
 
+**Opt-in flags** (NOT included in `--full`): `--tracker=github|linear`, `--renovate`, `--dependabot`. These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
+
 > **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
 
 ### Local env setup
@@ -302,8 +304,8 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
-| `renovate-config-missing` | `.github/workflows/` present without `.github/renovate.json5` (run `bkit install --ci` to write the canonical config; install the Renovate App at github.com/apps/renovate) |
-| `renovate-config-missing-dependabot-orphan` | Stale `.github/dependabot.yml` present and no Renovate config yet — consumer mid-migration (issue #123). Advisory walks through the cleanup. |
+| `tracker-setup-none` / `-github` / `-linear` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `dep-updater-none` / `-renovate` / `-dependabot` | Optional post-install decision — which dependency updater is wired. `none` nudges `bkit install --renovate` or `--dependabot` (mutually exclusive). See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
@@ -325,6 +327,29 @@ interface PreflightFinding {
 Findings are rendered in the format `--- i/N [severity] id ---` with `DETECT:` and `ACTION:` sections — copy-paste the whole banner into a coding assistant to apply fixes in sequence.
 
 For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
+
+## Optional post-install decisions
+
+Two capabilities are **opt-in** and deliberately excluded from `bkit install` / `--full`. A default install never wires them — instead, the post-install advisory banner nudges you to choose, once. Both are recorded in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`) so the nudge knows whether you've decided or deliberately opted out.
+
+| Decision               | Default                                          | Opt-in command                                                                                   | Advisory when unset  |
+| ---------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------ | -------------------- |
+| **Issue tracker**      | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`) | `tracker-setup-none` |
+| **Dependency updater** | none (no auto dep PRs)                           | `bkit install --renovate` (recommended) **or** `--dependabot` — mutually exclusive               | `dep-updater-none`   |
+
+**Why opt-in, not part of `--full`:**
+
+- **Tracker** wires real credentials and MCP servers into workflows — a consumer must choose their provider; bkit can't guess.
+- **Dependency updater** requires a deliberate choice between two tools (and, for Renovate, a one-time GitHub App install that can't be scripted). Shipping one by default would force a tool the consumer may not want and, for Renovate, create a broken onboarding PR if the App is installed before the config reaches the default branch (see `docs/security.md` § Renovate activation).
+
+**How to decide:**
+
+1. Run `bkit install` (or `--full`) as normal. The post-install banner lists `tracker-setup-none` and `dep-updater-none` if undecided.
+2. Pick a tracker: `bkit install --tracker=github` (or `linear`). Persisted to `bkit.issueTracker`; future installs preserve it.
+3. Pick a dependency updater: `bkit install --renovate` (or `--dependabot`). Persisted to `bkit.depUpdater`. For Renovate, re-run after merging the config to your default branch to get the App-install URL (Phase B).
+4. **To opt out and silence a nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater`). The advisory then stays quiet.
+
+Both decisions are reversible — re-run the install with the other flag. Renovate ↔ Dependabot are mutually exclusive: bkit refuses to install one while the other's config is present, with a cleanup advisory.
 
 ## Doctor
 

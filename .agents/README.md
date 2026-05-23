@@ -181,7 +181,9 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/renovate.json5` | ci | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite); `baseBranches: ["dev"]` per bkit branch protection. Renovate App install is one-click via `github.com/apps/renovate` — no `gh api` equivalent |
+| `.github/renovate.json5` | renovate | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --renovate`** — NOT included in `--full`. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. See issue #123 for rationale. |
+| `.github/dependabot.yml` | dependabot | `.agents/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependabot`** — NOT included in `--full`. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. See issue #109 (origin) + #123 follow-up. |
+| `scripts/ci/bkit-set-dependabot.sh` | dependabot | `.agents/templates/scripts/ci/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependabot`. |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
@@ -196,15 +198,19 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
-### bkit-repo dogfood rule — Renovate PRs against workflows
+### Optional post-install decisions (tracker + dependency updater)
 
-bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. Renovate scans only the actual workflow path (`.github/workflows/`), not the template path. When a Renovate PR opens against bkit's own workflows:
+Two capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`) and the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive). A default install wires neither; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`); setting either to `"none"` silences its nudge. Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
+
+### dogfood rule — updater PRs against workflows (only if you opt in)
+
+bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. An updater (Renovate/Dependabot) scans only the actual workflow path (`.github/workflows/`), not the template path. This dance applies ONLY if bkit-repo has opted into an updater (`bkit install --renovate` / `--dependabot`) — by default it ships neither. When an updater PR opens against bkit's own workflows:
 
 1. Before merging, manually edit the matching `.agents/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
 2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
-3. Push the template-side change to the Renovate PR's branch (or land both in a single follow-up commit on `dev` if the Renovate branch is read-only).
+3. Push the template-side change to the updater PR's branch (or land both in a single follow-up commit on `dev` if the branch is read-only).
 
-This dance only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so Renovate bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`, and the shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false` to keep consumer-side Renovate out of bkit-managed workflow files entirely.
+This only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so updater bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`. The shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false`; the shipped `dependabot.yml` covers the `github-actions` ecosystem at `/` (consumers tune ignore patterns for bkit-managed files if needed).
 
 ---
 

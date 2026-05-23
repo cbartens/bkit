@@ -13,6 +13,8 @@ import {
   runCiModule,
   runLintModule,
   runGitHooksModule,
+  runRenovateModule,
+  runDependabotModule,
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
@@ -389,6 +391,189 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
     // After flushing, it appears
     flushPostDispatch(ctx);
     expect(fs.existsSync(versionFile)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runRenovateModule — opt-in, phase-gated (issue #123 follow-up)
+// ---------------------------------------------------------------------------
+
+describe("runRenovateModule — opt-in, phase-gated against the default branch", () => {
+  it("Phase A: writes .github/renovate.json5 and emits the PR-to-default-branch advisory when no origin remote exists", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    // tmpDir is a fresh dir with no .git — the git cat-file check throws → Phase A.
+    runRenovateModule(ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(true);
+    expect(fs.readFileSync(renovatePath, "utf-8").length).toBeGreaterThan(0);
+
+    const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
+    expect(phaseA).toBeDefined();
+    expect(phaseA!.action).toMatch(/Phase A/);
+    expect(phaseA!.action).toMatch(/pnpm bkit install --renovate/);
+    // Must NOT print the App-install URL in Phase A.
+    expect(phaseA!.action).not.toMatch(/github\.com\/apps\/renovate/);
+
+    // Phase B advisory must not fire when in Phase A.
+    expect(ctx.advisories.find((a) => a.id === "renovate-phase-b-install-app")).toBeUndefined();
+  });
+
+  it("Phase A advisory references the resolved DEFAULT_BRANCH token", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, tokens: { ...makeCtx().tokens, DEFAULT_BRANCH: "trunk" } });
+    runRenovateModule(ctx);
+
+    const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
+    expect(phaseA).toBeDefined();
+    expect(phaseA!.detect).toMatch(/origin\/trunk/);
+    expect(phaseA!.action).toMatch(/`trunk`/);
+  });
+
+  it("dry-run: writes nothing to disk but still emits the Phase A advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runRenovateModule(ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
+    expect(
+      ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch"),
+    ).toBeDefined();
+  });
+
+  it("--ci alone does NOT ship renovate.json5 (split out of ci module per #123 follow-up)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
+  });
+
+  it("refuses to install when .github/dependabot.yml is present (mutually exclusive)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    // No renovate.json5 should be written
+    const renovatePath = path.join(tmpDir, ".github", "renovate.json5");
+    expect(fs.existsSync(renovatePath)).toBe(false);
+
+    // Blocker advisory should fire
+    const blocker = ctx.advisories.find((a) => a.id === "renovate-dependabot-mutually-exclusive");
+    expect(blocker).toBeDefined();
+    expect(blocker!.severity).toBe("blocker");
+    expect(blocker!.action).toMatch(/git rm \.github\/dependabot\.yml/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runDependabotModule — opt-in, mutually exclusive with Renovate (#109/#123)
+// ---------------------------------------------------------------------------
+
+describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () => {
+  it("writes .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh and emits setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runDependabotModule(ctx);
+
+    const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
+    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    expect(fs.existsSync(ymlPath)).toBe(true);
+    expect(fs.existsSync(scriptPath)).toBe(true);
+    // Helper script must be executable.
+    const mode = fs.statSync(scriptPath).mode & 0o777;
+    expect(mode & 0o100).toBe(0o100);
+
+    const advisory = ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+  });
+
+  it("refuses to install when .github/renovate.json5 is present (mutually exclusive)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runDependabotModule(ctx);
+
+    // No dependabot files should be written
+    const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
+    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    expect(fs.existsSync(ymlPath)).toBe(false);
+    expect(fs.existsSync(scriptPath)).toBe(false);
+
+    const blocker = ctx.advisories.find((a) => a.id === "dependabot-renovate-mutually-exclusive");
+    expect(blocker).toBeDefined();
+    expect(blocker!.severity).toBe("blocker");
+    expect(blocker!.action).toMatch(/git rm \.github\/renovate\.json5/);
+  });
+
+  it("dry-run: writes nothing but still emits setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runDependabotModule(ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state")).toBeDefined();
+  });
+
+  it("persists bkit.depUpdater = 'dependabot' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runDependabotModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBe("dependabot");
+  });
+
+  it("does NOT persist bkit.depUpdater when refusing (renovate.json5 present)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    const ws = makeWriteSet();
+    runDependabotModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBeUndefined();
+  });
+});
+
+describe("runRenovateModule — depUpdater persistence", () => {
+  it("persists bkit.depUpdater = 'renovate' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runRenovateModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBe("renovate");
+  });
+
+  it("does NOT persist bkit.depUpdater when refusing (dependabot.yml present)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
+    const ws = makeWriteSet();
+    runRenovateModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { depUpdater?: string };
+    };
+    expect(pkg.bkit?.depUpdater).toBeUndefined();
+  });
+
+  it("--ci alone does NOT ship dependabot files (separate opt-in module)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
   });
 });
 

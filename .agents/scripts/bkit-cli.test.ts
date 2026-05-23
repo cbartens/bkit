@@ -84,7 +84,7 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("core")).toBe(true);
   });
 
-  it("--full flag parsed → all modules resolved", () => {
+  it("--full flag parsed → all modules resolved (renovate + dependabot opt-in, excluded)", () => {
     const result = parseArgs(["install", "--full"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -92,9 +92,11 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
+    expect(result.modules.has("dependabot")).toBe(false);
   });
 
-  it("no module flags → resolves to all modules (--full equivalent)", () => {
+  it("no module flags → resolves to all modules (--full equivalent; renovate + dependabot excluded)", () => {
     const result = parseArgs(["install"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -102,6 +104,76 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
+    expect(result.modules.has("dependabot")).toBe(false);
+  });
+
+  it("--renovate alone → renovate + core only (not full stack)", () => {
+    const result = parseArgs(["install", "--renovate"]);
+    expect([...result.modules].sort()).toEqual(["core", "renovate"]);
+  });
+
+  it("--full --renovate → all modules + renovate (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--renovate"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("claude")).toBe(true);
+    expect(result.modules.has("cursor")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("lint")).toBe(true);
+    expect(result.modules.has("git-hooks")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(true);
+  });
+
+  it("--ci --renovate → ci + core + renovate (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--renovate"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "renovate"]);
+  });
+
+  it("--dependabot alone → dependabot + core only (mirror of --renovate single-purpose UX)", () => {
+    const result = parseArgs(["install", "--dependabot"]);
+    expect([...result.modules].sort()).toEqual(["core", "dependabot"]);
+  });
+
+  it("--full --dependabot → all modules + dependabot (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--dependabot"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("dependabot")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
+  });
+
+  it("--renovate --dependabot together is rejected (mutually exclusive)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--renovate", "--dependabot"])).toThrow(
+        "process.exit called",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/mutually exclusive/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("--full --renovate --dependabot is also rejected (combo with full)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--full", "--renovate", "--dependabot"])).toThrow(
+        "process.exit called",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("--full ≡ no flags (writeset equality)", () => {
@@ -210,7 +282,7 @@ describe("parseArgs — unknown flag rejection", () => {
 // ---------------------------------------------------------------------------
 
 describe("printUsage — help output", () => {
-  it("help output lists all module flags", () => {
+  it("help output lists all module flags (including opt-in --renovate and --dependabot)", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printUsage();
@@ -222,6 +294,8 @@ describe("printUsage — help output", () => {
       expect(output).toContain("--ci");
       expect(output).toContain("--lint");
       expect(output).toContain("--git-hooks");
+      expect(output).toContain("--renovate");
+      expect(output).toContain("--dependabot");
       expect(output).toContain("--full");
     } finally {
       logSpy.mockRestore();

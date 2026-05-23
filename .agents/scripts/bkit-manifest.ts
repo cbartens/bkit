@@ -34,7 +34,15 @@ export interface ManifestEntry {
   };
 }
 
-export type ModuleName = "core" | "claude" | "cursor" | "ci" | "lint" | "git-hooks";
+export type ModuleName =
+  | "core"
+  | "claude"
+  | "cursor"
+  | "ci"
+  | "lint"
+  | "git-hooks"
+  | "renovate"
+  | "dependabot";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -62,6 +70,32 @@ export const DEFAULT_ISSUE_TRACKER: IssueTracker = "none";
 export function parseIssueTracker(value: unknown): IssueTracker | null {
   return typeof value === "string" && (ISSUE_TRACKERS as readonly string[]).includes(value)
     ? (value as IssueTracker)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
+// Dependency updater (#123 follow-up)
+// ---------------------------------------------------------------------------
+
+/**
+ * Dependency-update tool chosen by the consumer (opt-in, mutually exclusive).
+ * - `renovate`   — `bkit install --renovate` (recommended).
+ * - `dependabot` — `bkit install --dependabot` (alternative).
+ * - `none`       — explicit opt-out; silences the post-install nudge advisory.
+ *
+ * Recorded in `package.json` `bkit.depUpdater` by the owning module so the
+ * post-install advisory can distinguish "deliberately none" from "undecided".
+ */
+export const DEP_UPDATERS = ["renovate", "dependabot", "none"] as const;
+export type DepUpdater = (typeof DEP_UPDATERS)[number];
+
+/** Default when consumer manifest has no `bkit.depUpdater` field (undecided). */
+export const DEFAULT_DEP_UPDATER: DepUpdater = "none";
+
+/** Narrow an unknown string to `DepUpdater` or return `null` if invalid. */
+export function parseDepUpdater(value: unknown): DepUpdater | null {
+  return typeof value === "string" && (DEP_UPDATERS as readonly string[]).includes(value)
+    ? (value as DepUpdater)
     : null;
 }
 
@@ -102,7 +136,6 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 const CI_MANIFEST: ManifestEntry[] = [
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
   { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".github/renovate.json5", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",
@@ -111,6 +144,22 @@ const CI_MANIFEST: ManifestEntry[] = [
       scripts: { typecheck: "tsc --noEmit" },
     },
   },
+];
+
+// Renovate is opt-in via `bkit install --renovate` — phase-gated against the
+// default branch. NOT included in --full. See issue #123 follow-up.
+const RENOVATE_MANIFEST: ManifestEntry[] = [
+  { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
+];
+
+// Dependabot is opt-in via `bkit install --dependabot` — first-party GitHub
+// feature, no App install required. Mutually exclusive with --renovate. NOT
+// included in --full. See issue #109 (origin) + #123 follow-up. dependabot.yml
+// is Tier 3 (seed-or-print) because consumers commonly tune the npm section
+// per their monorepo shape; the helper script is Tier 1 (canonical).
+const DEPENDABOT_MANIFEST: ManifestEntry[] = [
+  { path: ".github/dependabot.yml", format: "byte-equal-text", module: "dependabot" },
+  { path: "scripts/ci/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
@@ -168,6 +217,8 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
   "git-hooks": GIT_HOOKS_MANIFEST,
+  renovate: RENOVATE_MANIFEST,
+  dependabot: DEPENDABOT_MANIFEST,
 };
 
 // ---------------------------------------------------------------------------

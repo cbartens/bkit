@@ -13,7 +13,14 @@ import {
 import type { WriteSet } from "./bkit-tiers.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
-import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
+import {
+  parseIssueTracker,
+  DEFAULT_ISSUE_TRACKER,
+  type IssueTracker,
+  parseDepUpdater,
+  DEFAULT_DEP_UPDATER,
+  type DepUpdater,
+} from "./bkit-manifest.js";
 import { readBkitVersion } from "./bkit-version.js";
 
 export type { PreflightFinding };
@@ -544,66 +551,7 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
     action:
       "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
       "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Pair with `.github/renovate.json5` (shipped by `bkit install --ci`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
-  };
-}
-
-/**
- * Detect whether `.github/renovate.json5` exists. Without it, GHA action SHA
- * pins never get refreshed on upstream releases or CVE disclosure, and npm
- * dependency bumps fall through the cracks entirely.
- *
- * This only fires when `bkit install --ci` has NOT been run (the CI module
- * writes renovate.json5 as Tier 1 canonical). If the file is absent, point
- * at the canonical installer rather than duplicating the snippet here.
- *
- * Also detects legacy `.github/dependabot.yml` and prompts a one-time
- * cleanup (consumers migrating off the old bkit-shipped Dependabot config).
- */
-export function detectRenovateConfigMissing(cwd: string): PreflightFinding | null {
-  // Honour either `.github/renovate.json5` or `renovate.json` — Renovate
-  // reads both. We ship `.json5` to allow the comments in the canonical
-  // template, but consumers who hand-converted may have either extension.
-  const json5 = path.join(cwd, ".github", "renovate.json5");
-  const json = path.join(cwd, ".github", "renovate.json");
-  if (fs.existsSync(json5) || fs.existsSync(json)) return null;
-  // Only fire if there's a workflows dir to scan in the first place.
-  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
-
-  // Special-case: orphaned `.github/dependabot.yml` from before the bkit
-  // Renovate migration. Different recovery advice (one-time cleanup).
-  const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
-  const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
-  const orphanedDependabot = fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml);
-
-  if (orphanedDependabot) {
-    return {
-      id: "renovate-config-missing-dependabot-orphan",
-      severity: "advisory",
-      detect:
-        ".github/renovate.json5 is absent and a stale `.github/dependabot.yml` is still present — bkit no longer ships a Dependabot config (issue #123). The orphaned file does nothing until you either delete it (recommended) or keep it without bkit support.",
-      action:
-        "Migrate this repo from Dependabot to Renovate:\n\n" +
-        "  1. Run `pnpm bkit install --ci` to write the canonical `.github/renovate.json5` (Tier 1).\n" +
-        "  2. Delete the orphaned Dependabot config: `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
-        "  3. Close open Dependabot PRs: `gh pr list --author 'app/dependabot' --state open` then `gh pr close <n> --comment 'Migrating to Renovate'`.\n" +
-        "  4. GitHub UI → Settings → Code security → Dependabot version updates → Disable. (Leave Dependabot ALERTS on — Renovate uses them via `osvVulnerabilityAlerts`.)\n" +
-        "  5. Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, free, no `gh api` equivalent).\n" +
-        '  6. Verify Renovate\'s onboarding PR targets `dev` (bkit-shipped config sets `baseBranches: ["dev"]`).',
-    };
-  }
-
-  return {
-    id: "renovate-config-missing",
-    severity: "advisory",
-    detect:
-      ".github/renovate.json5 is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures, and npm dependency updates fall through the cracks entirely.",
-    action:
-      'Run `pnpm bkit install --ci` to write the bkit-shipped `.github/renovate.json5` (Tier 1 canonical). The shipped config covers github-actions (SHA-pin refresh, weekly grouped PRs) AND npm with monorepo workspace coverage, targets `dev` via `baseBranches: ["dev"]` (required for bkit branch-protection conventions), and uses `chore(deps):` commit-message prefix.\n\n' +
-      "After writing the config, one manual step is required to start opening PRs:\n\n" +
-      "  - Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, Mend Community Cloud, free). bkit cannot automate this — Renovate does not expose a `gh api` install endpoint.\n\n" +
-      "Renovate will open an onboarding PR within ~5 minutes pointing at `.github/renovate.json5`. Confirm it targets `dev`, merge it, and the first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
-      "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and canonical snippet (single source of truth: `.agents/templates/.github/renovate.json5`).",
+      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
   };
 }
 
@@ -710,15 +658,126 @@ export function buildTrackerSetupAdvisory(cwd: string): PreflightFinding | null 
     };
   }
 
-  // tracker === "none"
+  // tracker === "none". Distinguish deliberate opt-out (explicit
+  // `bkit.issueTracker: "none"`) from undecided (field absent). Symmetric with
+  // the dep-updater advisory — an explicit `none` silences the nudge.
+  if (hasExplicitIssueTrackerField(cwd)) return null;
+
   return {
     id: "tracker-setup-none",
     severity: "advisory",
     detect:
-      "bkit tracker is not configured (`bkit.issueTracker` = `none` or absent). Workflows run but every tracker call is a no-op.",
+      "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
     action:
-      "Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`.",
+      'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
   };
+}
+
+/** True when package.json has an explicit `bkit.issueTracker` field (any value). */
+function hasExplicitIssueTrackerField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.issueTracker !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read `bkit.depUpdater` from the consumer's package.json. Returns the value
+ * or the default ("none") when absent / unreadable.
+ */
+function readConsumerDepUpdater(cwd: string): DepUpdater {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return DEFAULT_DEP_UPDATER;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    const parsed = parseDepUpdater(bkitField?.depUpdater);
+    return parsed ?? DEFAULT_DEP_UPDATER;
+  } catch {
+    return DEFAULT_DEP_UPDATER;
+  }
+}
+
+/**
+ * Emit a dependency-updater setup advisory (parity with the tracker advisory).
+ * Renovate and Dependabot are both opt-in (mutually exclusive); neither ships
+ * with `--full`. This nudges consumers to make the choice post-install.
+ *
+ * Resolution order (file presence is authoritative, package.json field is the
+ * "deliberate opt-out" escape hatch):
+ *   - `.github/renovate.json5` present     → `dep-updater-renovate` (informational; active)
+ *   - `.github/dependabot.yml` present     → `dep-updater-dependabot` (informational; active)
+ *   - `bkit.depUpdater === "none"`         → null (deliberate opt-out — stay quiet)
+ *   - otherwise (undecided)                → `dep-updater-none` (nudge to choose)
+ *
+ * Only fires when there is a `.github/workflows/` dir (somewhere to apply
+ * github-actions updates) — a repo with no workflows has nothing to update.
+ */
+export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | null {
+  const renovateJson5 = path.join(cwd, ".github", "renovate.json5");
+  const renovateJson = path.join(cwd, ".github", "renovate.json");
+  const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
+  const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
+
+  if (fs.existsSync(renovateJson5) || fs.existsSync(renovateJson)) {
+    return {
+      id: "dep-updater-renovate",
+      severity: "advisory",
+      detect:
+        "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
+      action:
+        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/security.md` § Renovate activation.",
+    };
+  }
+
+  if (fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml)) {
+    return {
+      id: "dep-updater-dependabot",
+      severity: "advisory",
+      detect:
+        "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
+      action:
+        "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/security.md` § Dependabot alternative.",
+    };
+  }
+
+  // No config present — distinguish deliberate opt-out from undecided.
+  if (readConsumerDepUpdater(cwd) === "none" && hasExplicitDepUpdaterField(cwd)) {
+    return null; // consumer explicitly chose `none` — stay quiet
+  }
+
+  // Only nudge if there's a workflows dir to update in the first place.
+  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
+
+  return {
+    id: "dep-updater-none",
+    severity: "advisory",
+    detect:
+      "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
+    action:
+      "Optional post-install decision — pick one (mutually exclusive):\n\n" +
+      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/security.md` § Renovate activation).\n" +
+      "  - `pnpm bkit install --dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
+      'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
+  };
+}
+
+/** True when package.json has an explicit `bkit.depUpdater` field (any value). */
+function hasExplicitDepUpdaterField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.depUpdater !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1177,9 +1236,15 @@ export function runPostInstallCheck(
     }
   }
 
-  // Tracker-specific setup advisory — branch on bkit.issueTracker.
+  // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
+  //   1. Issue tracker — branch on bkit.issueTracker.
+  //   2. Dependency updater — branch on renovate/dependabot config presence.
+  // Both nudge the consumer to choose post-install; both silenceable via the
+  // respective package.json field set to `none`.
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
+  const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
+  if (depUpdaterSetup) phase3.push(depUpdaterSetup);
 
   // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);
@@ -1194,11 +1259,11 @@ export function runPostInstallCheck(
   const ciYml = detectCiYmlMissingTokenEnv(cwd);
   if (ciYml) phase3.push(ciYml);
 
-  // GHA action SHA pinning (KN-3) + renovate config.
+  // GHA action SHA pinning (KN-3). Renovate and Dependabot are both opt-in
+  // (`bkit install --renovate` / `--dependabot`, mutually exclusive). Neither
+  // absence is surfaced by default postinstall — consumer owns the choice.
   const gha = detectGhaFloatingTags(cwd);
   if (gha) phase3.push(gha);
-  const renovate = detectRenovateConfigMissing(cwd);
-  if (renovate) phase3.push(renovate);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
