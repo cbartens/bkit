@@ -102,7 +102,7 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
 const CI_MANIFEST: ManifestEntry[] = [
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci" },
   { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
-  { path: ".github/dependabot.yml", format: "byte-equal-text", module: "ci" },
+  { path: ".github/renovate.json5", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",

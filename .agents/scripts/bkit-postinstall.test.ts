@@ -21,11 +21,7 @@ import {
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
-  detectDependabotConfigMissing,
-  detectDependabotTargetBranchMissing,
-  detectDependabotConfigInvalid,
-  detectDependabotRepoPrereqs,
-  detectDependabotAutoFixesEnabled,
+  detectRenovateConfigMissing,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -744,10 +740,12 @@ describe("detectGhaFloatingTags", () => {
   });
 
   // Issue #124 — bkit-canonical workflow files (listed in `.bkit-version`)
-  // intentionally use tag-only pins so consumer Dependabot's SHA rewrites do
-  // not trip the canonical-hash check. The floating-tag advisory must skip
-  // them; otherwise consumers "remediate" the canonical file straight back
-  // into the collision the design is preventing.
+  // intentionally use tag-only pins. The shipped `renovate.json5` adds a
+  // packageRule with `matchFileNames` for bkit-managed workflow files so
+  // consumer-side Renovate stays out of them; consumers receive new
+  // SHAs/versions via `bkit install`, not via their own Renovate. The
+  // floating-tag advisory must skip them; otherwise consumers "remediate"
+  // the canonical file straight back into the collision the design is preventing.
   it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
@@ -811,279 +809,57 @@ describe("detectGhaFloatingTags", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectDependabotConfigMissing
+// detectRenovateConfigMissing
 // ---------------------------------------------------------------------------
 
-describe("detectDependabotConfigMissing", () => {
-  it("returns null when no .github/workflows exists (nothing to dependabot)", () => {
-    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+describe("detectRenovateConfigMissing", () => {
+  it("returns null when no .github/workflows exists (nothing to update)", () => {
+    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
   });
 
-  it("flags absence when workflows exist but no dependabot.yml", () => {
+  it("flags absence when workflows exist but no renovate config", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    const result = detectDependabotConfigMissing(tmpDir);
+    const result = detectRenovateConfigMissing(tmpDir);
     expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-config-missing");
+    expect(result!.id).toBe("renovate-config-missing");
   });
 
-  it("returns null when dependabot.yml is present", () => {
+  it("returns null when .github/renovate.json5 is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
+  });
+
+  it("returns null when .github/renovate.json (alternate ext) is present", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json"), "{}\n");
+    expect(detectRenovateConfigMissing(tmpDir)).toBeNull();
+  });
+
+  it("emits the orphan-Dependabot advisory when a stale dependabot.yml is present", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+    const result = detectRenovateConfigMissing(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("renovate-config-missing-dependabot-orphan");
+    expect(result!.action).toMatch(/git rm \.github\/dependabot\.yml/);
+    expect(result!.action).toMatch(/github\.com\/apps\/renovate/);
   });
 
-  it("returns null when dependabot.yaml (alternate ext) is present", () => {
+  it("emits the orphan advisory for dependabot.yaml (alternate ext) too", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yaml"), "version: 2\n");
-    expect(detectDependabotConfigMissing(tmpDir)).toBeNull();
+    const result = detectRenovateConfigMissing(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("renovate-config-missing-dependabot-orphan");
   });
 
-  it("advisory action mentions bkit installer and default-branch rule (no embedded snippet drift)", () => {
+  it("advisory action mentions bkit installer and Renovate App install", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    const result = detectDependabotConfigMissing(tmpDir);
+    const result = detectRenovateConfigMissing(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.action).toMatch(/pnpm bkit install --ci/);
-    expect(result!.action).toMatch(/default branch/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDependabotTargetBranchMissing
-// ---------------------------------------------------------------------------
-
-describe("detectDependabotTargetBranchMissing", () => {
-  it("returns null when no dependabot.yml exists", () => {
-    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
-  });
-
-  it("returns null when file has no updates[] entries yet (other detector handles invalid shape)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\nupdates: []\n");
-    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
-  });
-
-  it("fires when updates[] is present but no target-branch: dev anywhere", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      [
-        "version: 2",
-        "updates:",
-        "  - package-ecosystem: github-actions",
-        "    directory: /",
-        "    schedule:",
-        "      interval: weekly",
-        "",
-      ].join("\n"),
-    );
-    const result = detectDependabotTargetBranchMissing(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-target-branch-missing");
-    expect(result!.detect).toMatch(/main/);
-  });
-
-  it("fires when target-branch is set to a value other than dev", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      [
-        "version: 2",
-        "updates:",
-        "  - package-ecosystem: github-actions",
-        "    directory: /",
-        "    target-branch: main",
-        "    schedule:",
-        "      interval: weekly",
-        "",
-      ].join("\n"),
-    );
-    expect(detectDependabotTargetBranchMissing(tmpDir)).not.toBeNull();
-  });
-
-  it("returns null when at least one updates[] entry has target-branch: dev", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      [
-        "version: 2",
-        "updates:",
-        "  - package-ecosystem: github-actions",
-        "    directory: /",
-        "    target-branch: dev",
-        "    schedule:",
-        "      interval: weekly",
-        "",
-      ].join("\n"),
-    );
-    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
-  });
-
-  it("returns null for .yaml (alternate ext) with target-branch: dev", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yaml"),
-      "version: 2\nupdates:\n  - package-ecosystem: npm\n    target-branch: dev\n",
-    );
-    expect(detectDependabotTargetBranchMissing(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDependabotConfigInvalid
-// ---------------------------------------------------------------------------
-
-describe("detectDependabotConfigInvalid", () => {
-  it("returns null when file does not exist", () => {
-    expect(detectDependabotConfigInvalid(tmpDir)).toBeNull();
-  });
-
-  it("returns null for a valid minimal file", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      "version: 2\nupdates:\n  - package-ecosystem: github-actions\n",
-    );
-    expect(detectDependabotConfigInvalid(tmpDir)).toBeNull();
-  });
-
-  it("fires when version: 2 is missing", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      "updates:\n  - package-ecosystem: github-actions\n",
-    );
-    const result = detectDependabotConfigInvalid(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-config-invalid");
-    expect(result!.detect).toMatch(/version: 2/);
-  });
-
-  it("fires when updates: key is missing", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    const result = detectDependabotConfigInvalid(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toMatch(/updates/);
-  });
-
-  it("fires when file is indented with tabs (YAML-invalid)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "dependabot.yml"),
-      "version: 2\nupdates:\n\t- package-ecosystem: github-actions\n",
-    );
-    const result = detectDependabotConfigInvalid(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.detect).toMatch(/tab/);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDependabotRepoPrereqs
-// ---------------------------------------------------------------------------
-
-describe("detectDependabotRepoPrereqs", () => {
-  it("returns null when no dependabot.yml exists (nothing to gate)", () => {
-    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
-  });
-
-  it("returns null when gh reports vulnerability-alerts enabled (204)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    // gh api with 204 No Content returns empty stdout; execFileSync resolves normally.
-    execFileSync.mockReturnValue(Buffer.from(""));
-    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
-  });
-
-  it("fires when gh stderr contains 'Dependabot alerts are disabled'", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockImplementation(() => {
-      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from(
-        "gh: Dependabot alerts are disabled for this repository. (HTTP 403)\n",
-      );
-      throw err;
-    });
-    const result = detectDependabotRepoPrereqs(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-repo-prereqs-disabled");
-    expect(result!.action).toMatch(/bkit-set-dependabot\.sh/);
-  });
-
-  it("fires when gh stderr contains a generic 404", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockImplementation(() => {
-      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("HTTP 404: Not Found\n");
-      throw err;
-    });
-    expect(detectDependabotRepoPrereqs(tmpDir)).not.toBeNull();
-  });
-
-  it("returns null on gh transport error (auth missing / not a github repo) — no false positives", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockImplementation(() => {
-      const err = new Error("auth required") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
-      throw err;
-    });
-    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
-  });
-
-  it("returns null when gh is not installed (no stderr property on the thrown error)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockImplementation(() => {
-      throw new Error("ENOENT — gh not found");
-    });
-    expect(detectDependabotRepoPrereqs(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDependabotAutoFixesEnabled — bkit policy: never auto-PR to main
-// ---------------------------------------------------------------------------
-
-describe("detectDependabotAutoFixesEnabled", () => {
-  it("returns null when no dependabot.yml exists (nothing to gate)", () => {
-    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
-  });
-
-  it("fires when API reports {enabled: true}", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockReturnValue('{"enabled":true,"paused":false}');
-    const result = detectDependabotAutoFixesEnabled(tmpDir);
-    expect(result).not.toBeNull();
-    expect(result!.id).toBe("dependabot-auto-security-fixes-enabled");
-    expect(result!.detect).toMatch(/policy/i);
-    expect(result!.action).toMatch(/bkit-set-dependabot\.sh/);
-  });
-
-  it("returns null when API reports {enabled: false}", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockReturnValue('{"enabled":false,"paused":false}');
-    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
-  });
-
-  it("returns null on gh transport error (no false positives)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockImplementation(() => {
-      throw new Error("ENOENT — gh not found");
-    });
-    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
-  });
-
-  it("returns null when API returns unexpected body (no false positives)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "dependabot.yml"), "version: 2\n");
-    execFileSync.mockReturnValue('{"unrelated":"body"}');
-    expect(detectDependabotAutoFixesEnabled(tmpDir)).toBeNull();
+    expect(result!.action).toMatch(/github\.com\/apps\/renovate/);
   });
 });
 

@@ -1,7 +1,7 @@
 // bkit-templates.content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template has been updated for registry-based auth)
 // Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
-// enforces template CONTENT (GH_BKIT_TOKEN, dependabot target-branch, etc.).
+// enforces template CONTENT (GH_BKIT_TOKEN, renovate baseBranches, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -9,10 +9,7 @@ import { describe, expect, it } from "vitest";
 
 const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
 const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
-const CONSUMER_DEPENDABOT_TEMPLATE = path.resolve(".agents/templates/.github/dependabot.yml");
-const CONSUMER_DEPENDABOT_SCRIPT = path.resolve(
-  ".agents/templates/scripts/ci/bkit-set-dependabot.sh",
-);
+const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".agents/templates/.github/renovate.json5");
 
 describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
   let content: string;
@@ -66,97 +63,57 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
   });
 });
 
-describe("consumer dependabot template (.agents/templates/.github/dependabot.yml)", () => {
-  const content = fs.readFileSync(CONSUMER_DEPENDABOT_TEMPLATE, "utf-8");
+describe("consumer renovate template (.agents/templates/.github/renovate.json5)", () => {
+  const content = fs.readFileSync(CONSUMER_RENOVATE_TEMPLATE, "utf-8");
 
   it("template file exists", () => {
-    expect(fs.existsSync(CONSUMER_DEPENDABOT_TEMPLATE)).toBe(true);
-  });
-
-  it("declares version: 2", () => {
-    expect(content).toMatch(/^version:\s*2\s*$/m);
-  });
-
-  it("declares an updates: array", () => {
-    expect(content).toMatch(/^updates:\s*$/m);
-  });
-
-  it("includes the github-actions ecosystem", () => {
-    expect(content).toMatch(/package-ecosystem:\s*github-actions/);
+    expect(fs.existsSync(CONSUMER_RENOVATE_TEMPLATE)).toBe(true);
   });
 
   it("targets the dev branch (required for bkit branch-protection convention)", () => {
-    expect(content).toMatch(/^\s*target-branch:\s*dev\s*$/m);
+    // Match either `baseBranches: ["dev"]` (one-line) or multiline; allow trailing comma.
+    expect(content).toMatch(/baseBranches:\s*\[\s*"dev"\s*,?\s*\]/);
   });
 
-  it("ships chore(deps) commit-message prefix to match conventional-commit history", () => {
-    expect(content).toMatch(/prefix:\s*"chore\(deps\)"/);
+  it("ships chore(deps): commit-message prefix to match conventional-commit history", () => {
+    expect(content).toMatch(/commitMessagePrefix:\s*"chore\(deps\):"/);
   });
 
-  it("contains no tab indentation (YAML requires spaces)", () => {
-    expect(content).not.toMatch(/^\t/m);
+  it("extends Renovate's config:recommended baseline", () => {
+    expect(content).toMatch(/"config:recommended"/);
   });
 
-  it("documents that the file must reach the default branch to fire", () => {
-    expect(content).toMatch(/default branch/i);
+  it("enables osvVulnerabilityAlerts (CVE-driven PRs bypass schedule)", () => {
+    expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });
 
-  it("npm ecosystem is shipped commented out (opt-in)", () => {
-    // Active entries use `- package-ecosystem:`; commented npm uses `# - package-ecosystem: npm`.
-    expect(content).toMatch(/#\s*-\s*package-ecosystem:\s*npm/);
-    // Sanity-check: no UNCOMMENTED npm entry by default.
-    expect(content).not.toMatch(/^\s*-\s*package-ecosystem:\s*npm/m);
-  });
-});
-
-describe("consumer bkit-set-dependabot.sh template (.agents/templates/scripts/ci/)", () => {
-  const content = fs.readFileSync(CONSUMER_DEPENDABOT_SCRIPT, "utf-8");
-
-  it("template file exists", () => {
-    expect(fs.existsSync(CONSUMER_DEPENDABOT_SCRIPT)).toBe(true);
+  it("enables lockFileMaintenance with weekly schedule", () => {
+    expect(content).toMatch(/lockFileMaintenance:/);
+    expect(content).toMatch(/enabled:\s*true/);
   });
 
-  it("declares a bash shebang", () => {
-    expect(content.startsWith("#!/usr/bin/env bash")).toBe(true);
+  it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
+    // Bkit owns bkit-ci-router.yml — consumer Renovate must not touch it.
+    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-ci-router\.yml[\s\S]*enabled:\s*false/);
   });
 
-  it("enables vulnerability-alerts via gh api PUT", () => {
-    expect(content).toMatch(/gh api -X PUT\s+"?repos\/\$OWNER_REPO\/vulnerability-alerts"?/);
+  it("uses pinDigests for the github-actions manager (KN-3 SHA-pinning)", () => {
+    expect(content).toMatch(/matchManagers:\s*\[\s*"github-actions"\s*\][\s\S]*pinDigests:\s*true/);
   });
 
-  it("DISABLES automated-security-fixes via gh api DELETE (bkit policy: never auto-PR to main)", () => {
-    expect(content).toMatch(/gh api -X DELETE\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/);
-    // Sanity-check the reverse: must NOT enable automated-security-fixes
-    expect(content).not.toMatch(
-      /gh api -X PUT\s+"?repos\/\$OWNER_REPO\/automated-security-fixes"?/,
+  it("groups non-major devDependencies bumps with automerge", () => {
+    expect(content).toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
+    expect(content).toMatch(/automerge:\s*true/);
+  });
+
+  it("declares weekly schedule (before 6am on Monday)", () => {
+    expect(content).toMatch(/schedule:\s*\[\s*"before 6am on Monday"\s*\]/);
+  });
+
+  it("references the JSON schema for editor validation", () => {
+    expect(content).toMatch(
+      /\$schema:\s*"https:\/\/docs\.renovatebot\.com\/renovate-schema\.json"/,
     );
-  });
-
-  it("documents the never-auto-on-main policy", () => {
-    expect(content).toMatch(/never auto/i);
-    expect(content).toMatch(/main/);
-  });
-
-  it("supports --dry-run flag", () => {
-    expect(content).toMatch(/--dry-run/);
-  });
-
-  it("supports --print flag", () => {
-    expect(content).toMatch(/--print/);
-  });
-
-  it("guards on gh CLI availability", () => {
-    expect(content).toMatch(/command -v gh/);
-    expect(content).toMatch(/gh auth status/);
-  });
-
-  it("documents that Dependency graph UI toggle is not API-reachable", () => {
-    expect(content).toMatch(/Dependency graph/);
-    expect(content).toMatch(/settings\/security_analysis/);
-  });
-
-  it("uses strict bash mode (set -euo pipefail)", () => {
-    expect(content).toMatch(/^set -euo pipefail$/m);
   });
 });
 

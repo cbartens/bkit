@@ -156,7 +156,7 @@ bkit uses a three-tier model to handle different file ownership scenarios withou
 | --- | --- | --- |
 | **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
 | **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
-| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml`, `.github/dependabot.yml` |
+| **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
 | **Managed package.json keys** (BAR-138, v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | `scripts.typecheck` (`--ci`), `scripts.format:check` / `lint:prose` / `lint:slop` (`--lint`), `scripts.prepare` (`--git-hooks`); `devDependencies.prettier` + `slop-scan` (`--lint`), `devDependencies.husky` (`--git-hooks`) |
 
 **Marker syntax** is format-specific:
@@ -181,8 +181,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/dependabot.yml` | ci | `.agents/templates/.github/dependabot.yml` | Tier 3 (seed-or-print); `target-branch: dev` required by bkit branch protection |
-| `scripts/ci/bkit-set-dependabot.sh` | ci | `.agents/templates/scripts/ci/bkit-set-dependabot.sh` | Core templates pass; consumer helper to enable repo-level Dependabot prereqs via `gh api` |
+| `.github/renovate.json5` | ci | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite); `baseBranches: ["dev"]` per bkit branch protection. Renovate App install is one-click via `github.com/apps/renovate` — no `gh api` equivalent |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
@@ -197,15 +196,15 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
 | `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
-### bkit-repo dogfood rule — Dependabot PRs against workflows
+### bkit-repo dogfood rule — Renovate PRs against workflows
 
-bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. Dependabot scans only the actual workflow path (`.github/workflows/`), not the template path. When a Dependabot PR opens against bkit's own workflows:
+bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. Renovate scans only the actual workflow path (`.github/workflows/`), not the template path. When a Renovate PR opens against bkit's own workflows:
 
 1. Before merging, manually edit the matching `.agents/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
 2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
-3. Push the template-side change to the Dependabot PR's branch (or land both in a single follow-up commit on `dev` if the Dependabot branch is read-only).
+3. Push the template-side change to the Renovate PR's branch (or land both in a single follow-up commit on `dev` if the Renovate branch is read-only).
 
-This dance only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so Dependabot bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`.
+This dance only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so Renovate bumps survive every install. `bkit-ci-router.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`, and the shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false` to keep consumer-side Renovate out of bkit-managed workflow files entirely.
 
 ---
 

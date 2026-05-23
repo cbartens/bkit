@@ -302,11 +302,8 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
-| `dependabot-config-missing` | `.github/workflows/` present without `.github/dependabot.yml` (run `bkit install --ci` to seed) |
-| `dependabot-target-branch-missing` | `dependabot.yml` present but no `updates[]` entry declares `target-branch: dev` (Dependabot PRs will hit `main` and be rejected) |
-| `dependabot-config-invalid` | `dependabot.yml` exists but is malformed (no `version: 2`, no `updates:`, or tab-indented) |
-| `dependabot-repo-prereqs-disabled` | `dependabot.yml` present but repo-level Dependabot alerts are disabled (config silently ignored; run `scripts/ci/bkit-set-dependabot.sh`) |
-| `dependabot-auto-security-fixes-enabled` | `automated-security-fixes` is ON — bkit policy is OFF (it auto-PRs to `main`, which bkit branch protection rejects). Run `scripts/ci/bkit-set-dependabot.sh` to disable. |
+| `renovate-config-missing` | `.github/workflows/` present without `.github/renovate.json5` (run `bkit install --ci` to write the canonical config; install the Renovate App at github.com/apps/renovate) |
+| `renovate-config-missing-dependabot-orphan` | Stale `.github/dependabot.yml` present and no Renovate config yet — consumer mid-migration (issue #123). Advisory walks through the cleanup. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 

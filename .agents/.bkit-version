@@ -6,7 +6,7 @@
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "70ce7beae80389943561fbf836b86a7ce1ee2c7bc0d5c639b7c7a63fa5f2b2aa",
+    "docs/deployments.md": "3358fb6e1e4c25787edea31da81a1246f03671d6b31fda94a8a5fced859e2b59",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "41097f5618ceaac26b4f7ac95bcc5431ca2e16fb1d708d32a44ab5b8c8c692c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",

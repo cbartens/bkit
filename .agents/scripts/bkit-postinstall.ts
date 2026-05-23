@@ -392,7 +392,7 @@ export function detectBkitStubs(cwd: string): PreflightFinding[] {
 
 // ---------------------------------------------------------------------------
 // Consumer customisations that bkit ships primitives for but does NOT enforce
-// — turbo inputs, integration runtime env, GHA pinning, dependabot, etc.
+// — turbo inputs, integration runtime env, GHA pinning, renovate, etc.
 // ---------------------------------------------------------------------------
 
 /**
@@ -508,9 +508,10 @@ export function detectDevBranchProtection(): TokenPresence {
  *
  * bkit-canonical workflow files (those tracked in `.agents/.bkit-version`
  * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
- * ship tag-only pins to avoid consumer-side Dependabot rewriting the SHA and
- * tripping the canonical-hash check (issue #124). Re-pinning them would
- * defeat that design and resurface the collision on every Dependabot bump.
+ * ship tag-only pins. The bkit-shipped `renovate.json5` adds a packageRule
+ * with `matchFileNames` for bkit-managed workflow files so consumer-side
+ * Renovate stays out of them; new SHAs/versions arrive via `bkit install`
+ * when consumers bump the bkit package.
  */
 export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
   const workflowsDir = path.join(cwd, ".github", "workflows");
@@ -543,221 +544,66 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
     action:
       "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
       "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Pair with `.github/dependabot.yml` so SHA pins refresh on upstream releases.",
+      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Pair with `.github/renovate.json5` (shipped by `bkit install --ci`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
   };
 }
 
 /**
- * Detect whether `.github/dependabot.yml` exists. Without it, GHA action SHA
- * pins never get refreshed on upstream releases or CVE disclosure.
+ * Detect whether `.github/renovate.json5` exists. Without it, GHA action SHA
+ * pins never get refreshed on upstream releases or CVE disclosure, and npm
+ * dependency bumps fall through the cracks entirely.
  *
  * This only fires when `bkit install --ci` has NOT been run (the CI module
- * seeds dependabot.yml as Tier 3). If the file is absent, point at the
- * canonical installer rather than duplicating the snippet here.
+ * writes renovate.json5 as Tier 1 canonical). If the file is absent, point
+ * at the canonical installer rather than duplicating the snippet here.
+ *
+ * Also detects legacy `.github/dependabot.yml` and prompts a one-time
+ * cleanup (consumers migrating off the old bkit-shipped Dependabot config).
  */
-export function detectDependabotConfigMissing(cwd: string): PreflightFinding | null {
-  const yml = path.join(cwd, ".github", "dependabot.yml");
-  const yaml = path.join(cwd, ".github", "dependabot.yaml");
-  if (fs.existsSync(yml) || fs.existsSync(yaml)) return null;
-  // Only fire if there's a workflows dir to dependabot in the first place.
+export function detectRenovateConfigMissing(cwd: string): PreflightFinding | null {
+  // Honour either `.github/renovate.json5` or `renovate.json` — Renovate
+  // reads both. We ship `.json5` to allow the comments in the canonical
+  // template, but consumers who hand-converted may have either extension.
+  const json5 = path.join(cwd, ".github", "renovate.json5");
+  const json = path.join(cwd, ".github", "renovate.json");
+  if (fs.existsSync(json5) || fs.existsSync(json)) return null;
+  // Only fire if there's a workflows dir to scan in the first place.
   if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
+
+  // Special-case: orphaned `.github/dependabot.yml` from before the bkit
+  // Renovate migration. Different recovery advice (one-time cleanup).
+  const dependabotYml = path.join(cwd, ".github", "dependabot.yml");
+  const dependabotYaml = path.join(cwd, ".github", "dependabot.yaml");
+  const orphanedDependabot = fs.existsSync(dependabotYml) || fs.existsSync(dependabotYaml);
+
+  if (orphanedDependabot) {
+    return {
+      id: "renovate-config-missing-dependabot-orphan",
+      severity: "advisory",
+      detect:
+        ".github/renovate.json5 is absent and a stale `.github/dependabot.yml` is still present — bkit no longer ships a Dependabot config (issue #123). The orphaned file does nothing until you either delete it (recommended) or keep it without bkit support.",
+      action:
+        "Migrate this repo from Dependabot to Renovate:\n\n" +
+        "  1. Run `pnpm bkit install --ci` to write the canonical `.github/renovate.json5` (Tier 1).\n" +
+        "  2. Delete the orphaned Dependabot config: `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
+        "  3. Close open Dependabot PRs: `gh pr list --author 'app/dependabot' --state open` then `gh pr close <n> --comment 'Migrating to Renovate'`.\n" +
+        "  4. GitHub UI → Settings → Code security → Dependabot version updates → Disable. (Leave Dependabot ALERTS on — Renovate uses them via `osvVulnerabilityAlerts`.)\n" +
+        "  5. Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, free, no `gh api` equivalent).\n" +
+        '  6. Verify Renovate\'s onboarding PR targets `dev` (bkit-shipped config sets `baseBranches: ["dev"]`).',
+    };
+  }
+
   return {
-    id: "dependabot-config-missing",
+    id: "renovate-config-missing",
     severity: "advisory",
     detect:
-      ".github/dependabot.yml is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures.",
+      ".github/renovate.json5 is absent — GitHub Actions SHA pins (KN-3) never refresh on upstream releases or CVE disclosures, and npm dependency updates fall through the cracks entirely.",
     action:
-      "Run `pnpm bkit install --ci` to seed the bkit-shipped `.github/dependabot.yml` (Tier 3 seed-or-print). The shipped template covers the `github-actions` ecosystem with `target-branch: dev` (required for bkit branch-protection conventions) and a `chore(deps)` commit-message prefix.\n\n" +
-      "After seeding, two more steps are required for Dependabot to actually start opening PRs:\n\n" +
-      "  1. Merge the config all the way through dev → main. GitHub reads `.github/dependabot.yml` ONLY from the default branch (typically `main`), so a config on dev alone is silently inert.\n" +
-      "  2. Enable Dependabot alerts (required) and DISABLE automated-security-fixes (bkit policy — never auto-PR to main). bkit ships a helper:\n\n" +
-      "         bash scripts/ci/bkit-set-dependabot.sh\n\n" +
-      "     Idempotent; PUTs `vulnerability-alerts` (enable) and DELETEs `automated-security-fixes` (defensive — keeps CVE auto-PRs off main, since they would target the default branch and bkit protects main against non-dev PRs). For private repos, the Dependency graph itself may also need a one-time UI toggle at Settings → Code security and analysis (no API surface for that one).\n\n" +
-      "Verify under repo Insights → Dependency graph → Dependabot that the config is recognised as Active after both steps.\n\n" +
-      "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and the canonical snippet (single source of truth: `.agents/templates/.github/dependabot.yml`).",
-  };
-}
-
-/**
- * Detect whether `.github/dependabot.yml` exists but is missing `target-branch:
- * dev` on at least one updates[] entry. bkit consumers gate `main` to
- * PRs-from-dev only (see #67 / docs/deployments.md), so a Dependabot PR
- * without target-branch: dev hits `main` and is rejected by branch protection
- * — silent breakage of the update flow.
- *
- * Conservative match: regex for `target-branch:\s*dev`. Fires only when the
- * file exists, has at least one `package-ecosystem:` entry, AND no
- * `target-branch: dev` line appears anywhere. (Per-entry validation is left
- * to the AI merge instructions emitted on seed-or-print.)
- */
-export function detectDependabotTargetBranchMissing(cwd: string): PreflightFinding | null {
-  const yml = path.join(cwd, ".github", "dependabot.yml");
-  const yaml = path.join(cwd, ".github", "dependabot.yaml");
-  const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
-  if (!filePath) return null;
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-  // No updates[] entries → another detector handles invalid shape.
-  if (!/^\s*-\s*package-ecosystem:/m.test(content)) return null;
-  if (/^\s*target-branch:\s*dev\s*$/m.test(content)) return null;
-  return {
-    id: "dependabot-target-branch-missing",
-    severity: "advisory",
-    detect:
-      ".github/dependabot.yml exists but no updates[] entry declares `target-branch: dev`. Dependabot PRs will target the default branch (`main`), which bkit-convention branch protection rejects for non-dev PRs — the update flow will silently fail.",
-    action:
-      "Add `target-branch: dev` to every `updates[]` entry, e.g.:\n\n" +
-      "    updates:\n" +
-      "      - package-ecosystem: github-actions\n" +
-      "        directory: /\n" +
-      "        target-branch: dev\n" +
-      "        schedule:\n" +
-      "          interval: weekly\n\n" +
-      "Push the change all the way to `main` (GitHub reads dependabot.yml only from the default branch). Verify under repo Insights → Dependency graph → Dependabot that the config is recognised.",
-  };
-}
-
-/**
- * Detect whether `.github/dependabot.yml` exists but fails basic shape checks
- * (no `version: 2`, no `updates:` key, or starts with tabs that break YAML).
- * Light-touch — not a full YAML parse, just regex-based smell tests. Full
- * validation happens server-side on push.
- */
-export function detectDependabotConfigInvalid(cwd: string): PreflightFinding | null {
-  const yml = path.join(cwd, ".github", "dependabot.yml");
-  const yaml = path.join(cwd, ".github", "dependabot.yaml");
-  const filePath = fs.existsSync(yml) ? yml : fs.existsSync(yaml) ? yaml : null;
-  if (!filePath) return null;
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    return null;
-  }
-  const issues: string[] = [];
-  if (!/^\s*version:\s*2\s*$/m.test(content)) issues.push("missing `version: 2`");
-  if (!/^\s*updates:\s*$/m.test(content)) issues.push("missing `updates:` array");
-  if (/^\t/m.test(content)) issues.push("contains tab indentation (YAML requires spaces)");
-  if (issues.length === 0) return null;
-  return {
-    id: "dependabot-config-invalid",
-    severity: "advisory",
-    detect: `.github/dependabot.yml exists but is malformed: ${issues.join("; ")}. GitHub will silently ignore the config — no PRs will fire.`,
-    action:
-      "Repair the file. Required minimum shape:\n\n" +
-      "    version: 2\n" +
-      "    updates:\n" +
-      "      - package-ecosystem: github-actions\n" +
-      "        directory: /\n" +
-      "        target-branch: dev\n" +
-      "        schedule:\n" +
-      "          interval: weekly\n\n" +
-      "Or run `pnpm bkit install --ci` and follow the merge advisory to overlay the bkit reference. Verify under repo Insights → Dependency graph → Dependabot after pushing to the default branch.",
-  };
-}
-
-/**
- * Detect whether `vulnerability-alerts` is enabled — the repo-level
- * prerequisite GitHub silently requires before reading
- * `.github/dependabot.yml`. Without it, version updates never fire even
- * with a perfectly valid config on the default branch.
- *
- * Probe semantics:
- *   - GET /repos/{o}/{r}/vulnerability-alerts → 204 = enabled, 404 = disabled
- *   - gh unavailable or unauthenticated → return null (no false positives)
- *
- * Fires only when `.github/dependabot.yml` exists; no point flagging prereqs
- * if there is no config to read.
- */
-export function detectDependabotRepoPrereqs(cwd: string): PreflightFinding | null {
-  const yml = path.join(cwd, ".github", "dependabot.yml");
-  const yaml = path.join(cwd, ".github", "dependabot.yaml");
-  if (!fs.existsSync(yml) && !fs.existsSync(yaml)) return null;
-
-  let alertsEnabled: boolean | null = null;
-  try {
-    execFileSync("gh", ["api", "repos/{owner}/{repo}/vulnerability-alerts"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    alertsEnabled = true;
-  } catch (err) {
-    // gh emits non-zero on 404 (disabled) and on transport errors (gh missing,
-    // not a GitHub repo, unauthenticated). Distinguish via the message:
-    // disabled → stderr contains "404" / "Dependabot alerts are disabled".
-    const msg = String((err as { stderr?: Buffer | string }).stderr ?? err);
-    if (/404|disabled|alerts are disabled/i.test(msg)) {
-      alertsEnabled = false;
-    } else {
-      // Transport / auth / unknown — skip silently rather than emit a false advisory.
-      return null;
-    }
-  }
-  if (alertsEnabled !== false) return null;
-
-  return {
-    id: "dependabot-repo-prereqs-disabled",
-    severity: "advisory",
-    detect:
-      ".github/dependabot.yml exists but Dependabot alerts are disabled on this repo — GitHub will silently ignore the config and no PRs will fire.",
-    action:
-      "Enable Dependabot alerts (idempotent). bkit ships a helper:\n\n" +
-      "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
-      "Or call the GitHub API directly:\n\n" +
-      "    gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts\n\n" +
-      "Note: bkit policy is to leave `automated-security-fixes` DISABLED. Auto-PRs from that feature route to the default branch (`main`), which bkit-managed repos protect against non-`dev` PRs. The helper script disables it defensively; CVE handling stays manual (read the Security tab, open a PR against `dev` if needed).\n\n" +
-      "For private repos, the Dependency graph itself may also need a manual toggle at\n" +
-      "Settings → Code security and analysis → Dependency graph (GitHub does not expose\n" +
-      "an API for this toggle). After enabling, verify under repo Insights → Dependency\n" +
-      "graph → Dependabot that `.github/dependabot.yml` is listed as Active.",
-  };
-}
-
-/**
- * Detect whether `automated-security-fixes` is enabled on the repo. Bkit
- * policy: NEVER want this on — the feature opens auto-PRs against the
- * default branch (typically `main`), which bkit branch protection only
- * accepts from `dev`. Result: dead PRs piling up against `main`.
- *
- * Probe semantics:
- *   - GET /repos/{o}/{r}/automated-security-fixes → 200 with body `{"enabled": true/false}`
- *   - gh unavailable or unauthenticated → return null
- *
- * Fires only when the value is explicitly `true`. Skips on transport error.
- */
-export function detectDependabotAutoFixesEnabled(cwd: string): PreflightFinding | null {
-  const yml = path.join(cwd, ".github", "dependabot.yml");
-  const yaml = path.join(cwd, ".github", "dependabot.yaml");
-  if (!fs.existsSync(yml) && !fs.existsSync(yaml)) return null;
-
-  let body: string;
-  try {
-    body = execFileSync("gh", ["api", "repos/{owner}/{repo}/automated-security-fixes"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-      encoding: "utf-8",
-    });
-  } catch {
-    // gh unavailable, unauthenticated, or endpoint 404 — silent-skip.
-    return null;
-  }
-  if (!/"enabled"\s*:\s*true/.test(body)) return null;
-
-  return {
-    id: "dependabot-auto-security-fixes-enabled",
-    severity: "advisory",
-    detect:
-      "Dependabot `automated-security-fixes` is ENABLED on this repo — bkit policy is to keep it OFF. Security-update PRs route to the default branch (`main`); bkit branch protection rejects non-`dev` PRs to `main`, so these PRs are dead-on-arrival.",
-    action:
-      "Disable the auto-fixes feature (idempotent). bkit ships a helper:\n\n" +
-      "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
-      "Or call the API directly:\n\n" +
-      "    gh api -X DELETE repos/{owner}/{repo}/automated-security-fixes\n\n" +
-      "Dependabot version updates (from `.github/dependabot.yml` with `target-branch: dev`) continue to fire — those land on `dev` as expected. CVE alerts remain visible in the repo Security tab; handle them by opening a PR against `dev` manually when needed.",
+      'Run `pnpm bkit install --ci` to write the bkit-shipped `.github/renovate.json5` (Tier 1 canonical). The shipped config covers github-actions (SHA-pin refresh, weekly grouped PRs) AND npm with monorepo workspace coverage, targets `dev` via `baseBranches: ["dev"]` (required for bkit branch-protection conventions), and uses `chore(deps):` commit-message prefix.\n\n' +
+      "After writing the config, one manual step is required to start opening PRs:\n\n" +
+      "  - Install the Renovate GitHub App at https://github.com/apps/renovate (one-click, Mend Community Cloud, free). bkit cannot automate this — Renovate does not expose a `gh api` install endpoint.\n\n" +
+      "Renovate will open an onboarding PR within ~5 minutes pointing at `.github/renovate.json5`. Confirm it targets `dev`, merge it, and the first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
+      "If you prefer to author the file yourself, see `docs/security.md` § Supply-Chain (GitHub Actions) for the rationale and canonical snippet (single source of truth: `.agents/templates/.github/renovate.json5`).",
   };
 }
 
@@ -1348,22 +1194,11 @@ export function runPostInstallCheck(
   const ciYml = detectCiYmlMissingTokenEnv(cwd);
   if (ciYml) phase3.push(ciYml);
 
-  // GHA action SHA pinning (KN-3) + dependabot config.
+  // GHA action SHA pinning (KN-3) + renovate config.
   const gha = detectGhaFloatingTags(cwd);
   if (gha) phase3.push(gha);
-  const dependabot = detectDependabotConfigMissing(cwd);
-  if (dependabot) phase3.push(dependabot);
-  // dependabot.yml exists but missing target-branch: dev or otherwise malformed.
-  const dependabotTargetBranch = detectDependabotTargetBranchMissing(cwd);
-  if (dependabotTargetBranch) phase3.push(dependabotTargetBranch);
-  const dependabotInvalid = detectDependabotConfigInvalid(cwd);
-  if (dependabotInvalid) phase3.push(dependabotInvalid);
-  // dependabot.yml present but repo-level prerequisites (Dependabot alerts) disabled.
-  const dependabotPrereqs = detectDependabotRepoPrereqs(cwd);
-  if (dependabotPrereqs) phase3.push(dependabotPrereqs);
-  // dependabot.yml present + automated-security-fixes enabled (policy violation: PRs route to main).
-  const dependabotAutoFixes = detectDependabotAutoFixesEnabled(cwd);
-  if (dependabotAutoFixes) phase3.push(dependabotAutoFixes);
+  const renovate = detectRenovateConfigMissing(cwd);
+  if (renovate) phase3.push(renovate);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);
