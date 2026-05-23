@@ -349,7 +349,7 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect(result.verb).toBe("uninstall");
   });
 
-  it("uninstall with no flags resolves to all modules (--full equivalent)", () => {
+  it("uninstall with no flags resolves to all modules INCLUDING opt-in add-ons (zero footprint)", () => {
     const result = parseArgs(["uninstall"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -357,6 +357,18 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("git-hooks")).toBe(true);
+    // Asymmetry vs install: full uninstall reaches opt-in add-ons so no bkit footprint remains.
+    expect(result.modules.has("renovate")).toBe(true);
+    expect(result.modules.has("dependabot")).toBe(true);
+  });
+
+  it("opt-in asymmetry: install --full EXCLUDES opt-in add-ons; uninstall --full INCLUDES them", () => {
+    const inst = parseArgs(["install", "--full"]);
+    const unin = parseArgs(["uninstall", "--full"]);
+    expect(inst.modules.has("renovate")).toBe(false);
+    expect(inst.modules.has("dependabot")).toBe(false);
+    expect(unin.modules.has("renovate")).toBe(true);
+    expect(unin.modules.has("dependabot")).toBe(true);
   });
 
   it("uninstall with --ci --lint resolves to core + ci + lint", () => {
@@ -365,6 +377,11 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("lint")).toBe(true);
     expect(result.modules.has("claude")).toBe(false);
+  });
+
+  it("uninstall --renovate alone → core + renovate only (targeted is symmetric, not full stack)", () => {
+    const result = parseArgs(["uninstall", "--renovate"]);
+    expect([...result.modules].sort()).toEqual(["core", "renovate"]);
   });
 
   it("uninstall --dry-run sets dryRun flag", () => {
@@ -413,7 +430,7 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect(result.uninstallFlags.autoRevert).toBe(true);
   });
 
-  it("module flags work with uninstall (--full mirrors install)", () => {
+  it("uninstall --full === uninstall (no flags) — both resolve the complete set incl. opt-in", () => {
     const withFull = parseArgs(["uninstall", "--full"]);
     const noFlags = parseArgs(["uninstall"]);
     expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());

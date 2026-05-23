@@ -372,15 +372,15 @@ describe("P4.T6 — --non-interactive upgrade auto-apply", () => {
 // ---------------------------------------------------------------------------
 
 describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
-  it("updates canonicalHashes for upgraded files in .bkit-version", () => {
+  it("records the on-disk hash of upgraded files in .bkit-version", () => {
     const newContent = "new template content\n";
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-old.md": sha256("old\n") }));
-    const templatePath = writeFile(".bkit-staging/t/foo.md", newContent);
+    // The dest file exists on disk (runUpgrade just wrote/merged it) — the hash is
+    // taken from disk, NOT the template, so block/scope-merged files record correctly.
+    writeFile(".claude/agents/bkit-foo.md", newContent);
 
     const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
-    const candidates = [{ relPath: ".claude/agents/bkit-foo.md", templatePath }];
-
-    updateCanonicalHashesAfterUpgrade(result, candidates, { dryRun: false, cwd: tmpDir });
+    updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
     const updated = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
     expect(updated).not.toBeNull();
@@ -390,16 +390,11 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
   });
 
   it("is a no-op in dry-run mode", () => {
-    const newContent = "new\n";
     writeBkitVersionInDir(makeVersion({ ".claude/agents/bkit-foo.md": sha256("old\n") }));
-    const templatePath = writeFile(".bkit-staging/t/foo.md", newContent);
+    writeFile(".claude/agents/bkit-foo.md", "new\n");
 
     const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
-    updateCanonicalHashesAfterUpgrade(
-      result,
-      [{ relPath: ".claude/agents/bkit-foo.md", templatePath }],
-      { dryRun: true, cwd: tmpDir },
-    );
+    updateCanonicalHashesAfterUpgrade(result, { dryRun: true, cwd: tmpDir });
 
     const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
     // Hash should still be the old one (dry-run didn't update)
@@ -411,7 +406,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const result = { updated: [], conflicts: [], skipped: [] };
     // Should not throw
     expect(() =>
-      updateCanonicalHashesAfterUpgrade(result, [], { dryRun: false, cwd: tmpDir }),
+      updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir }),
     ).not.toThrow();
   });
 
@@ -419,13 +414,10 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const content = "stable template content\n";
     // .bkit-version exists but has no entry for the skipped file (pre-DE-12 install).
     writeBkitVersionInDir(makeVersion({}));
-    const templatePath = writeFile(".bkit-staging/t/foo.md", content);
+    writeFile(".claude/agents/bkit-foo.md", content);
 
-    // diffFile would classify this as "skip" because diskHash === templateHash.
     const result = { updated: [], conflicts: [], skipped: [".claude/agents/bkit-foo.md"] };
-    const candidates = [{ relPath: ".claude/agents/bkit-foo.md", templatePath }];
-
-    updateCanonicalHashesAfterUpgrade(result, candidates, { dryRun: false, cwd: tmpDir });
+    updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
     const updated = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
     expect(updated).not.toBeNull();
@@ -434,25 +426,22 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
   });
 
   it("does NOT seed canonicalHashes for conflict files (would re-introduce silent overwrite)", () => {
-    const templateContent = "new template content\n";
     writeBkitVersionInDir(makeVersion({}));
-    const templatePath = writeFile(".bkit-staging/t/foo.md", templateContent);
+    // Even though a consumer-customised file exists on disk, conflicts are never seeded.
+    writeFile(".claude/agents/bkit-foo.md", "consumer-customised\n");
 
-    // Conflict means consumer drift was detected — we MUST NOT record a hash for these.
     const result = {
       updated: [],
       conflicts: [
         {
           relPath: ".claude/agents/bkit-foo.md",
-          templateContent,
+          templateContent: "new template content\n",
           diskContent: "consumer-customised\n",
         },
       ],
       skipped: [],
     };
-    const candidates = [{ relPath: ".claude/agents/bkit-foo.md", templatePath }];
-
-    updateCanonicalHashesAfterUpgrade(result, candidates, { dryRun: false, cwd: tmpDir });
+    updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
     const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
     expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBeUndefined();

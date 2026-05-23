@@ -283,3 +283,99 @@ describe("P4.T7 — upgrade integration: heavy-customised-consumer scenario", ()
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Issue #129 §5 — `bkit upgrade` must NOT force-create opt-in module files
+//
+// Opt-in modules (renovate, dependabot) ship only via an explicit
+// `bkit install --renovate`/`--dependabot`. The upgrade template walk previously
+// wrote EVERY template, so it created `.github/renovate.json5` on consumers that
+// never opted in — opening duplicate dependency PRs next to existing Dependabot.
+// ---------------------------------------------------------------------------
+
+describe("issue #129 §5 — upgrade does not force-create opt-in module files", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runBkitUpgrade() {
+    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--non-interactive"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+  }
+
+  it("does not create .github/renovate.json5 or .github/dependabot.yml for a non-opted-in consumer", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    // Minimal consumer: package.json + .bkit-version, no opt-in configs present.
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    writeVersionFile();
+
+    const result = runBkitUpgrade();
+
+    // Opt-in files were never written (skipped at candidate collection).
+    expect(fs.existsSync(path.join(tmpDir, ".github", "renovate.json5"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    // Non-opt-in managed files DID get created — proving the walk ran (not a no-op).
+    expect(fs.existsSync(path.join(tmpDir, ".gitignore"))).toBe(true);
+    expect(result.status).toBe(0);
+  });
+
+  it("DOES update .github/renovate.json5 when the consumer has already opted in (dest present)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    writeVersionFile();
+    // Consumer opted into Renovate previously — a stale config sits on disk.
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{ stale: true }\n", "utf-8");
+
+    runBkitUpgrade();
+
+    // The opt-in file is still present (processed as a candidate, not skipped/deleted).
+    expect(fs.existsSync(path.join(tmpDir, ".github", "renovate.json5"))).toBe(true);
+  });
+
+  it("preserves consumer prose after bkit:end in docs/*.md through a real `bkit upgrade` (#129 §1/§6)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer" }),
+      "utf-8",
+    );
+    writeVersionFile();
+
+    // docs/*.md have NO manifest entry — this proves the full CLI wiring
+    // (collectTemplates → no format → content-detected block-merge) protects the
+    // consumer's project prose written AFTER the end marker. End-to-end, not a unit stub.
+    const consumerDoc =
+      "<!-- bkit:start -->\n# Testing\n\n> stale bkit guidance to be replaced\n<!-- bkit:end -->\n\n" +
+      "## Our project testing notes — MUST SURVIVE\n\n- Custom Vitest + Playwright suite.\n";
+    fs.mkdirSync(path.join(tmpDir, "docs"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "docs", "testing.md"), consumerDoc, "utf-8");
+
+    runBkitUpgrade();
+
+    const after = fs.readFileSync(path.join(tmpDir, "docs", "testing.md"), "utf-8");
+    // Consumer prose after bkit:end is intact.
+    expect(after).toContain("## Our project testing notes — MUST SURVIVE");
+    expect(after).toContain("Custom Vitest + Playwright suite.");
+    // bkit block was updated to the shipped template (not whole-file-overwritten).
+    expect(after).not.toContain("stale bkit guidance to be replaced");
+  });
+});

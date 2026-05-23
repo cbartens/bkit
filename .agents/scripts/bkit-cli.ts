@@ -69,7 +69,7 @@ const MODULE_FLAGS = new Set<ModuleFlag>([
 const ALL_MODULES: ModuleFlag[] = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 
 /** Opt-in modules: not included in `--full` or default install; require explicit flag. */
-const OPTIN_MODULES = new Set<ModuleFlag>(["renovate", "dependabot"]);
+export const OPTIN_MODULES = new Set<ModuleFlag>(["renovate", "dependabot"]);
 
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
@@ -86,21 +86,27 @@ const UNINSTALL_ONLY_FLAGS = new Set([
 // Install-specific flags (not module flags; not uninstall flags)
 const INSTALL_ONLY_FLAGS = new Set(["auto-revert"]);
 
-export function resolveModules(flags: Set<ModuleFlag>): Set<ModuleFlag> {
-  // Special case: a single opt-in module flag alone (without --full) resolves
-  // to core + that module — NOT the full stack. Matches the `--renovate` /
-  // `--dependabot` single-purpose install UX.
+export function resolveModules(
+  flags: Set<ModuleFlag>,
+  opts: { optInModulesInFull?: boolean } = {},
+): Set<ModuleFlag> {
+  // Single opt-in flag alone (no --full) → core + that module ONLY. Targeted is
+  // symmetric across install/uninstall and never pulls in the rest of the stack.
   if (flags.size === 1) {
     for (const m of OPTIN_MODULES) {
       if (flags.has(m)) return new Set<ModuleFlag>(["core", m]);
     }
   }
-  // --full or empty flags → all modules (opt-in modules require explicit flag).
+  // --full / empty → all non-opt-in modules. Opt-in add-ons are ASYMMETRIC:
+  //   install  adds one only when explicitly flagged (they need external setup —
+  //            App/secrets/dashboard/choice — so a default install must not auto-wire them);
+  //   uninstall adds ALL of them (a full uninstall must leave zero bkit footprint).
+  // Safe: runUninstall is manifest-driven + skip-absent, so removing a never-installed
+  // opt-in module's files is a harmless no-op.
   if (flags.has("full") || flags.size === 0) {
     const out = new Set<ModuleFlag>(ALL_MODULES);
-    // Opt-in modules: preserve only when explicitly requested alongside --full.
     for (const m of OPTIN_MODULES) {
-      if (flags.has(m)) out.add(m);
+      if (opts.optInModulesInFull || flags.has(m)) out.add(m);
     }
     return out;
   }
@@ -244,7 +250,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
     process.exit(1);
   }
 
-  const modules = resolveModules(moduleFlags);
+  // Full uninstall removes opt-in add-ons too (leave zero footprint); full install does not.
+  const modules = resolveModules(moduleFlags, { optInModulesInFull: verb === "uninstall" });
 
   return { verb, modules, uninstallFlags, upgradeFlags, tracker };
 }
@@ -260,7 +267,9 @@ Usage:
                                  conflict list emitted to stderr. Use --non-interactive
                                  for CI (auto-apply non-conflicting; exit non-zero on conflicts).
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
-                                 No flags = --full (all modules).
+                                 No flags = --full — ALL modules incl. opt-in add-ons
+                                 (renovate/dependabot), so no bkit footprint remains.
+                                 Target one with its flag (e.g. uninstall --renovate).
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
   bkit help                     Print this message.
@@ -273,14 +282,15 @@ Module flags (composable — same for install and uninstall):
   --ci            .github/workflows/ci.yml (Tier 2 managed-block, tokens substituted).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
-  --renovate      .github/renovate.json5 (opt-in, phase-gated — NOT included in --full).
+  --renovate      .github/renovate.json5 (opt-in, phase-gated — NOT in install --full;
+                  IS removed by uninstall --full).
                   Phase A: file not yet on origin/<default-branch> → writes file, prints
                   prompt to PR → main, then re-run. Phase B: file detected on default
                   branch → prints GitHub App install URL + activation checklist.
                   Mutually exclusive with --dependabot.
   --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
-                  NOT included in --full). First-party GitHub feature; no App install or
-                  phase gate. Mutually exclusive with --renovate.
+                  NOT in install --full; IS removed by uninstall --full). First-party
+                  GitHub feature; no App install or phase gate. Mutually exclusive with --renovate.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.

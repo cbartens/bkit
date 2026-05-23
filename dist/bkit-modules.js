@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
-import { runPayload, applyT1, applyT2, applyT3 } from "./bkit-install.js";
+import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
@@ -106,8 +106,10 @@ export { getPkgRoot } from "./bkit-paths.js";
 // ---------------------------------------------------------------------------
 // Top-level template directories/files that belong to core (not other modules)
 const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", "scripts"]);
-// Top-level template files (non-directory) that belong to core
-const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore"]);
+// Top-level template files (non-directory) that belong to core.
+// `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
+// is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
+const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gitattributes"]);
 // Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
@@ -149,9 +151,8 @@ function runCoreTemplates(dryRun, pkgRoot, tokens, ws, logPrefix) {
             continue;
         const srcPath = path.join(root, name);
         if (ent.isFile()) {
-            // Remap (e.g. gitignore → .gitignore)
-            const destName = name === "gitignore" ? ".gitignore" : name;
-            const dstPath = destName;
+            // Single shared dotfile remap (gitignore → .gitignore, npmignore → .npmignore).
+            const dstPath = remapTemplateDest(name);
             const prevLen = ws.writes.length;
             writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
             if (ws.writes.length > prevLen) {
