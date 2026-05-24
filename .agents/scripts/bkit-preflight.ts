@@ -708,18 +708,25 @@ export function detectMissingMcpServers(
  * Consumer ran `bkit install` (which seeds .env.example) but has not yet
  * copied it to .agents/.env and filled in their tokens.
  */
-export function detectMissingDotenv(cwd: string): PreflightFinding | null {
+// `tracker` controls whether `LINEAR_API_KEY` appears in the token prose — a github/none
+// repo never wires Linear, so listing the key is a false ask (issue #138). Defaults to
+// `linear` (the superset) so any caller that doesn't pass a tracker still surfaces every
+// token; the real Phase-3 caller passes the consumer's resolved `bkit.issueTracker`.
+export function detectMissingDotenv(
+  cwd: string,
+  tracker: IssueTracker = "linear",
+): PreflightFinding | null {
   const examplePath = path.join(cwd, ".agents", ".env.example");
   const envPath = path.join(cwd, ".agents", ".env");
   if (!fs.existsSync(examplePath)) return null;
   if (fs.existsSync(envPath)) return null;
+  const tokens =
+    tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY" : "GH_TOKEN, GH_BKIT_TOKEN";
   return {
     id: "mcp-env-missing-dotenv",
     severity: "advisory",
-    detect:
-      ".agents/.env.example exists but .agents/.env does not. MCP servers and agent tooling will not have access to GH_TOKEN, GH_BKIT_TOKEN, or LINEAR_API_KEY.",
-    action:
-      "[mcp-env] Copy .agents/.env.example to .agents/.env and fill in your tokens (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY). Then run `direnv allow` to auto-export them into your shell. .agents/.env is gitignored and safe to commit-skip.",
+    detect: `.agents/.env.example exists but .agents/.env does not. MCP servers and agent tooling will not have access to ${tokens}.`,
+    action: `[mcp-env] Copy .agents/.env.example to .agents/.env and fill in your tokens (${tokens}). Then run \`direnv allow\` to auto-export them into your shell. .agents/.env is gitignored and safe to commit-skip.`,
   };
 }
 
@@ -727,7 +734,10 @@ export function detectMissingDotenv(cwd: string): PreflightFinding | null {
  * Advisory: .agents/.env exists but one or more required keys are blank or absent.
  * Returns one finding per missing/blank key.
  */
-export function detectBlankDotenvKeys(cwd: string): PreflightFinding[] {
+export function detectBlankDotenvKeys(
+  cwd: string,
+  tracker: IssueTracker = "linear",
+): PreflightFinding[] {
   const envPath = path.join(cwd, ".agents", ".env");
   if (!fs.existsSync(envPath)) return [];
 
@@ -757,11 +767,17 @@ export function detectBlankDotenvKeys(cwd: string): PreflightFinding[] {
       description:
         "classic PAT with read:packages scope for authenticating to the GitHub Packages npm registry (@cbartens/* packages)",
     },
-    {
-      key: "LINEAR_API_KEY",
-      description:
-        "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
-    },
+    // LINEAR_API_KEY only matters under the Linear tracker (issue #138) — a github/none
+    // repo's MCP stack never uses it, so don't flag it as a blank required key.
+    ...(tracker === "linear"
+      ? [
+          {
+            key: "LINEAR_API_KEY",
+            description:
+              "Linear personal API key for the Linear MCP server and the Linear preflight hook (generate at https://linear.app/settings/api)",
+          },
+        ]
+      : []),
   ];
 
   const findings: PreflightFinding[] = [];
@@ -794,7 +810,10 @@ function isCloudOrCi(): boolean {
  * Advisory: direnv is not installed.
  * Short-circuits in CI / cloud environments where direnv is irrelevant.
  */
-export function detectDirenvMissing(cwd: string): PreflightFinding | null {
+export function detectDirenvMissing(
+  cwd: string,
+  tracker: IssueTracker = "linear",
+): PreflightFinding | null {
   if (isCloudOrCi()) return null;
   // Only meaningful when .envrc exists (seeded by bkit install)
   const envrcPath = path.join(cwd, ".envrc");
@@ -802,6 +821,11 @@ export function detectDirenvMissing(cwd: string): PreflightFinding | null {
 
   const result = spawnSync("which", ["direnv"], { encoding: "utf-8" });
   if (result.status === 0 && result.stdout.trim()) return null;
+  // LINEAR_API_KEY only matters under the Linear tracker (issue #138).
+  const editKeys =
+    tracker === "linear" ? "GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY" : "GH_BKIT_TOKEN, GH_TOKEN";
+  const exportKeys =
+    tracker === "linear" ? "GH_BKIT_TOKEN / GH_TOKEN / LINEAR_API_KEY" : "GH_BKIT_TOKEN / GH_TOKEN";
   return {
     id: "mcp-env-direnv-missing",
     severity: "advisory",
@@ -817,9 +841,9 @@ export function detectDirenvMissing(cwd: string): PreflightFinding | null {
       "    # bash: echo 'eval \"$(direnv hook bash)\"' >> ~/.bashrc && source ~/.bashrc\n\n" +
       "    # 3. One-time per repo — copy the example, fill in tokens, allow\n" +
       "    cp .agents/.env.example .agents/.env                             # if not already done\n" +
-      "    # edit .agents/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY\n" +
+      `    # edit .agents/.env: set ${editKeys}\n` +
       "    direnv allow\n\n" +
-      "After step 3, restart Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers. Alternative if you do not want direnv: export GH_BKIT_TOKEN / GH_TOKEN / LINEAR_API_KEY in ~/.zshrc or ~/.bashrc directly — works but leaks tokens into every shell on this machine.",
+      `After step 3, restart Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers. Alternative if you do not want direnv: export ${exportKeys} in ~/.zshrc or ~/.bashrc directly — works but leaks tokens into every shell on this machine.`,
   };
 }
 
@@ -827,7 +851,10 @@ export function detectDirenvMissing(cwd: string): PreflightFinding | null {
  * Advisory: direnv is installed but the .envrc is blocked (not allowed).
  * Short-circuits in CI / cloud environments.
  */
-export function detectDirenvNotAllowed(cwd: string): PreflightFinding | null {
+export function detectDirenvNotAllowed(
+  cwd: string,
+  tracker: IssueTracker = "linear",
+): PreflightFinding | null {
   if (isCloudOrCi()) return null;
   // Only meaningful when .envrc exists
   const envrcPath = path.join(cwd, ".envrc");
@@ -855,8 +882,7 @@ export function detectDirenvNotAllowed(cwd: string): PreflightFinding | null {
       severity: "advisory",
       detect:
         "direnv is installed but the .envrc in this repo is blocked. .agents/.env is not being auto-loaded.",
-      action:
-        "[mcp-env] Run `direnv allow` in this repo to trust the .envrc and enable auto-load of .agents/.env. direnv will then export GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY into your shell whenever you cd into the repo.",
+      action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .agents/.env. direnv will then export ${tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
     };
   }
   return null;

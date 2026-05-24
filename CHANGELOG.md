@@ -6,6 +6,19 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Changed
+
+### Fixed
+
+- **`bkit-cloud.yml` no longer hardcodes Linear — `issueTracker: github` produces a Linear-free workflow (issue [#138](https://github.com/cbartens/bkit/issues/138)).** `bkit install`/`upgrade` now renders the cloud workflow for the consumer's `bkit.issueTracker`: github/none repos get a workflow with no `LINEAR_API_KEY` secret and `mcp__github__*` (not `mcp__linear__*`) in `--allowed-tools`; Linear repos are unchanged. The drift gate stays consistent because the render is deterministic from `issueTracker` (read identically on install and `bkit check`). The Linear-only advisories are now tracker-gated: `linear-api-key-secret-missing` and the `LINEAR_API_KEY` line in `cloud-secrets-three-locations` / `cloud-router` fire only under the Linear tracker — a migrated github repo's `bkit check` no longer nags for a key its workflow doesn't use. The `mcp-env` dotenv/direnv advisory prose (`mcp-env-missing-dotenv`, `mcp-env-blank-key-*`, `mcp-env-direnv-*`) is likewise tracker-gated — github/none repos are no longer told to set `LINEAR_API_KEY` in `.agents/.env`. (The shipped `.agents/.env.example` stays a complete reference listing every token.)
+
+- **Cloud-agent integration is now fully opt-in — `--full` ships zero cloud footprint (issue [#119](https://github.com/cbartens/bkit/issues/119)).** The entire cloud surface moved into the opt-in `bkit install --cloud` module: the phase-routed workflow plus the env scaffolding (`.claude/hooks/cloud-bootstrap.sh`, `.cursor/Dockerfile`, `.cursor/environment.json`) that previously rode in the default `claude`/`cursor` modules. A default install no longer writes any file that auto-spins-up or bootstraps a Claude/Cursor cloud agent. The `.claude/settings.json` `SessionStart` hook entry for `cloud-bootstrap.sh` is now guarded (`test -f … || true`) so a `--full` install without the script no-ops instead of erroring. `bkit uninstall --full` still removes the opt-in add-ons (asymmetry preserved from [#129](https://github.com/cbartens/bkit/issues/129)); `bkit uninstall --cloud` targets only the cloud module.
+- **Phase 1 — `bkit-ci-router` generalised into a phase-routed `bkit-cloud` workflow (issue [#119](https://github.com/cbartens/bkit/issues/119)).** `.github/workflows/bkit-ci-router.yml` → `.github/workflows/bkit-cloud.yml`: a single phase-agnostic GitHub Action that runs any bkit phase. CI-pass→`ship` / CI-fail→`debug` triggers are preserved exactly; `design`/`plan`/`build` are reachable via `workflow_dispatch` for end-to-end smoke testing. Dynamic `run-name` reflects phase + issue ref; concurrency is keyed on the issue (dispatch) or feat branch (CI). The mirrored orchestrator `/bkit-ci-router` → `/bkit-cloud` now routes by phase to the matching skill (the dispatched skill ingests its own brief from the tracker, MCP-only). The Renovate fence (`renovate.json5` `matchFileNames`) tracks the rename. Phase 2 (tracker webhook triggers) remains a follow-up.
+
+---
+
 ## [2.5.3] — 2026-05-24
 
 ### Fixed

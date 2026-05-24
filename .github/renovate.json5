@@ -64,7 +64,7 @@
     // ─────────────────────────────────────────────────────────────────────
     {
       matchFileNames: [
-        ".github/workflows/bkit-ci-router.yml",
+        ".github/workflows/bkit-cloud.yml",
       ],
       enabled: false,
     },

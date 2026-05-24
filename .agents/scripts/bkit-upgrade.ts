@@ -156,6 +156,13 @@ export interface UpgradeCandidate {
    * writeTier3). Only meaningful for whole-file (byte-equal-text) candidates.
    */
   seedOrPrint?: boolean;
+  /**
+   * Pre-rendered template content that overrides reading `templatePath`. Used for
+   * files install writes via a transform the upgrade walk can't reproduce from the raw
+   * template — e.g. the tracker-conditional `bkit-cloud.yml` (issue #138), rendered with
+   * the consumer's `bkit.issueTracker` so install and upgrade emit byte-identical output.
+   */
+  contentOverride?: string;
 }
 
 export interface UpgradeOptions {
@@ -192,14 +199,16 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
   // formats; the tier writers push exactly one entry per file they actually change.
   const ws: WriteSet = { writes: [] };
 
-  for (const { relPath, templatePath, format, seedOrPrint } of candidates) {
-    if (!fs.existsSync(templatePath)) {
+  for (const { relPath, templatePath, format, seedOrPrint, contentOverride } of candidates) {
+    if (contentOverride === undefined && !fs.existsSync(templatePath)) {
       console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
       continue;
     }
 
     const absolutePath = path.join(cwd, relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
+    // `contentOverride` (e.g. the tracker-rendered bkit-cloud.yml, #138) wins over the
+    // raw template so upgrade emits the same bytes install would.
+    const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
 
     // Resolve the write strategy the SAME way `bkit install` would — so install and
     // upgrade can never disagree on a file and fight each other across runs:

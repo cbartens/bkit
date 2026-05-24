@@ -149,7 +149,7 @@ Composition guidance:
 
 Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40-character commit) and pair with an updater. Pinning without an updater is worse than not pinning — CVEs in pinned actions are never patched. bkit ships two opt-in paths (mutually exclusive): `pnpm bkit install --renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). See `security.md` § Renovate activation and § Dependabot alternative for the trade-offs and step-by-step flow.
 
-**Exemption — `bkit-ci-router.yml`:** The bkit-canonical `bkit-ci-router.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The bkit-shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-ci-router.yml"]` + `enabled: false`, so consumer-side Renovate stays out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-ci-router.yml`.
+**Exemption — `bkit-cloud.yml`:** The bkit-canonical `bkit-cloud.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The bkit-shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-cloud.yml"]` + `enabled: false`, so consumer-side Renovate stays out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-cloud.yml`.
 
 <!-- bkit:end -->
 
@@ -209,7 +209,7 @@ Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be acc
 The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that lands inside any repo using bkit. This repo dogfoods the **same** config (no divergence — `bkit check --renovate` enforces it). The fence has two parts:
 
 - `ignorePaths` includes `.agents/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install`/`upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
-- A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade` (which re-syncs templates + pin), never a bare Renovate version bump, and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-ci-router.yml` exemption.
+- A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade` (which re-syncs templates + pin), never a bare Renovate version bump, and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-cloud.yml` exemption.
 
 **Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.agents/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.agents/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
 

@@ -20,7 +20,7 @@ const MODULE_FLAGS = new Set([
 // `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
 // this path explicitly opt out of bkit's Renovate recommendation; installing both
 // opens competing PRs against the same packages. Rationale (cloud): the
-// `bkit-ci-router.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
+// `bkit-cloud.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
 // secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
 // and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
 // a default. See issue #119 ("Managed Cloud Agents").
@@ -226,7 +226,7 @@ Module flags (composable — same for install and uninstall):
   --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
                   NOT in install --full; IS removed by uninstall --full). First-party
                   GitHub feature; no App install or phase gate. Mutually exclusive with --renovate.
-  --cloud         .github/workflows/bkit-ci-router.yml (opt-in — NOT in install --full;
+  --cloud         .github/workflows/bkit-cloud.yml (opt-in — NOT in install --full;
                   IS removed by uninstall --full). Post-CI auto-routing: dispatches
                   bkit-ship on CI pass / bkit-debug on CI fail. Inert without
                   ANTHROPIC_API_KEY + LINEAR_API_KEY repo secrets, GitHub Actions write

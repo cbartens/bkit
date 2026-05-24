@@ -91,13 +91,15 @@ export function runUpgrade(candidates, options) {
     // Local WriteSet drives updated/skipped classification for the block/scope-merge
     // formats; the tier writers push exactly one entry per file they actually change.
     const ws = { writes: [] };
-    for (const { relPath, templatePath, format, seedOrPrint } of candidates) {
-        if (!fs.existsSync(templatePath)) {
+    for (const { relPath, templatePath, format, seedOrPrint, contentOverride } of candidates) {
+        if (contentOverride === undefined && !fs.existsSync(templatePath)) {
             console.error(`${LOG_PREFIX} Template not found: ${templatePath} — skipping ${relPath}`);
             continue;
         }
         const absolutePath = path.join(cwd, relPath);
-        const templateContent = fs.readFileSync(templatePath, "utf-8");
+        // `contentOverride` (e.g. the tracker-rendered bkit-cloud.yml, #138) wins over the
+        // raw template so upgrade emits the same bytes install would.
+        const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
         // Resolve the write strategy the SAME way `bkit install` would — so install and
         // upgrade can never disagree on a file and fight each other across runs:
         //
