@@ -50,6 +50,8 @@ Every tracker section MUST define these sub-sections (snippet IDs):
 | `issue-update-failed` | Failure Path additive label + state update |
 | `issue-update-debug` | Debug additive label + state update |
 | `issue-update-merged` | Ship terminal state update (`bkit:merged`, close issue if tracker supports) |
+| `issue-update-status-active` | Move project board item → "In progress" (Build/Debug start). Env-gated, best-effort |
+| `issue-update-status-done` | Move project board item → "Done" (Ship close). Env-gated, best-effort |
 | `comment-post-step` | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}` |
 | `comment-on-issue` | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
 | `list-sub-issues` | Enumerate sub-issues of a parent (design Step 9 workstream sync) |
@@ -71,7 +73,7 @@ GitHub Issues + Projects v2. Default tracker.
 
 ### rule-block
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
@@ -106,6 +108,26 @@ Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__git
 ### issue-update-merged
 
 Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}], state: "closed", state_reason: "completed" })`.
+
+### issue-update-status-active
+
+GitHub Projects v2 board → "In progress". Best-effort, NEVER gate. Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `GH_PROJECT_*` env. **If** `GH_PROJECT_NUMBER` unset → skip (log `Project board sync not configured — skipping board status.`). **Else**:
+
+1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, item_id: {ITEM_ID}, updated_field: { id: {GH_PROJECT_STATUS_FIELD_ID}, value: "{GH_PROJECT_STATUS_PROGRESS_OPTION}" } })`.
+
+**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
+
+### issue-update-status-done
+
+GitHub Projects v2 board → "Done". Best-effort, NEVER gate. Same flow as `issue-update-status-active` with the terminal option. **If** `GH_PROJECT_NUMBER` unset → skip. **Else**:
+
+1. `mcp__github__projects_write({ method: "add_project_item", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+2. `mcp__github__projects_list({ method: "list_project_items", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, query: "{ISSUE_ID}" })` → numeric `id` → `{ITEM_ID}`.
+3. `mcp__github__projects_write({ method: "update_project_item", owner: "{GH_PROJECT_OWNER}", owner_type: "org", project_number: {GH_PROJECT_NUMBER}, item_id: {ITEM_ID}, updated_field: { id: {GH_PROJECT_STATUS_FIELD_ID}, value: "{GH_PROJECT_STATUS_DONE_OPTION}" } })`.
+
+**If** any call fails → retry once after 5s, then continue.
 
 ### comment-post-step
 
@@ -217,6 +239,14 @@ Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__lin
 
 Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
 
+### issue-update-status-active
+
+Linear has no separate project board — issue state is already moved to "In Progress" by `issue-update-phase`. No-op (log `Linear: board status carried by issue state — no separate update.`).
+
+### issue-update-status-done
+
+Linear has no separate project board — issue state is already moved to "Done" by `issue-update-merged`. No-op.
+
 ### comment-post-step
 
 `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
@@ -313,6 +343,14 @@ _Tracker not wired — skip._
 _Tracker not wired — skip._
 
 ### issue-update-merged
+
+_Tracker not wired — skip._
+
+### issue-update-status-active
+
+_Tracker not wired — skip._
+
+### issue-update-status-done
 
 _Tracker not wired — skip._
 
