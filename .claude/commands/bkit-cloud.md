@@ -108,7 +108,7 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
     Assert `ISSUE_ID` non-empty. **Else** → **Failure Path**. Then update status:
     ```bash
     REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
     [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — ship/debug run post-build" >&2; exit 1; }
     mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
     STATUS="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json"
