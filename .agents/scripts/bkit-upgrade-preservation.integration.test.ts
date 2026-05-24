@@ -332,7 +332,7 @@ describe("upgrade never overwrites a present seed-or-print file (#129 §1)", () 
 
     const templatePath = writeTemplate(
       "pre-commit",
-      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
+      "#!/usr/bin/env sh\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
     );
 
     const result = upgrade([

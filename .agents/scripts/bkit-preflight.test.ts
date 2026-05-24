@@ -567,7 +567,7 @@ describe("detectCiYmlVerboseCiBlockMissing", () => {
 
   it("flags when bkit markers present but verbose-ci-env block missing", () => {
     writeCiYml(
-      "jobs:\n  run-tests:\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
+      "jobs:\n  bkit-tests:\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
     );
     const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
     expect(f).toBeDefined();
@@ -579,14 +579,14 @@ describe("detectCiYmlVerboseCiBlockMissing", () => {
 
   it("does NOT flag when verbose-ci-env named block is present", () => {
     writeCiYml(
-      "jobs:\n  run-tests:\n    # bkit:start verbose-ci-env\n    env:\n      VERBOSE_CI: ''\n    # bkit:end verbose-ci-env\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
+      "jobs:\n  bkit-tests:\n    # bkit:start verbose-ci-env\n    env:\n      VERBOSE_CI: ''\n    # bkit:end verbose-ci-env\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
     );
     const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
     expect(f).toBeNull();
   });
 
   it("does NOT flag when ci.yml has no bkit markers at all (consumer owns ci.yml entirely)", () => {
-    writeCiYml("jobs:\n  run-tests:\n    steps:\n      - run: echo hi\n");
+    writeCiYml("jobs:\n  bkit-tests:\n    steps:\n      - run: echo hi\n");
     const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
     expect(f).toBeNull();
   });

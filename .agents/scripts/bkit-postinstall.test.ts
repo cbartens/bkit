@@ -11,7 +11,6 @@ import {
   detectNpmrcAuth,
   detectGhSecret,
   detectMainBranchProtection,
-  detectDevBranchProtection,
   detectVercelProject,
   detectVercelEnv,
   detectCiYmlMissingTokenEnv,
@@ -522,18 +521,6 @@ describe("detectBkitStubs", () => {
     expect(findings[0]!.action).toContain("delete the entire stub block");
   });
 
-  it("scans pre-commit for the wrong-branch-guard sentinel", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard — header\npnpm lint-staged\n",
-    );
-    const findings = detectBkitStubs(tmpDir);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("bkit-stub-wrong-branch-guard");
-    expect(findings[0]!.detect).toContain(".husky/pre-commit");
-  });
-
   it("does not fire when the sentinel line has been removed (block left uncommented in place)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -674,35 +661,6 @@ describe("detectTestIntegrationEnv", () => {
       '{"scripts":{"test:integration":"supabase start && vitest run"}}',
     );
     expect(detectTestIntegrationEnv(tmpDir)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// detectDevBranchProtection (mocks execFileSync like detectMainBranchProtection)
-// ---------------------------------------------------------------------------
-
-describe("detectDevBranchProtection", () => {
-  it("returns 'present' when gh api returns 200", () => {
-    execFileSync.mockReturnValue(Buffer.from("{}"));
-    expect(detectDevBranchProtection()).toBe("present");
-  });
-
-  it("returns 'missing' when stderr contains 'Branch not protected'", () => {
-    execFileSync.mockImplementation(() => {
-      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("gh: Branch not protected (HTTP 404)\n");
-      throw err;
-    });
-    expect(detectDevBranchProtection()).toBe("missing");
-  });
-
-  it("returns 'unknown' when gh is unauthenticated", () => {
-    execFileSync.mockImplementation(() => {
-      const err = new Error("auth") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
-      throw err;
-    });
-    expect(detectDevBranchProtection()).toBe("unknown");
   });
 });
 
@@ -996,7 +954,7 @@ describe("detectRunLevelsNotComposed", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      "jobs:\n  run-tests:\n    runs-on: ubuntu-latest\n",
+      "jobs:\n  bkit-tests:\n    runs-on: ubuntu-latest\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });

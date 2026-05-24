@@ -1,16 +1,2 @@
 #!/usr/bin/env sh
-# bkit-stub:wrong-branch-guard — Refuse direct commits to dev / {{DEFAULT_BRANCH}} outside .worktrees/. To enable: uncomment the block below and delete this stub header.
-# BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-# case "$BRANCH" in
-#   dev|{{DEFAULT_BRANCH}})
-#     case "$PWD" in
-#       *.worktrees/*) ;;
-#       *)
-#         echo "[pre-commit] Refusing direct commit on $BRANCH outside .worktrees/" >&2
-#         echo "[pre-commit] If a fix lands here by mistake, recovery is 'git revert', NEVER 'git cherry-pick' back to feat/*." >&2
-#         exit 1
-#         ;;
-#     esac
-#     ;;
-# esac
 pnpm lint-staged && pnpm lint:prose && pnpm lint:slop

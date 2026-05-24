@@ -678,7 +678,7 @@
 ## 🤖 Step 12 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Assert squash-merge CI run completed `run-tests`:
+2. Assert squash-merge CI run completed `bkit-tests`:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
@@ -687,7 +687,7 @@
    RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
    [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
    TESTS_CONCLUSION=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | test("test"; "i"))][0].conclusion // empty')
-   [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "run-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
+   [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "bkit-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
 3. Update status, batch-commit, and push:
@@ -726,7 +726,7 @@
 - [ ] All documents archived and logs retained for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
+- [ ] Squash-merge CI run completed `bkit-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue update attempted (issue closed, phase label `bkit:merged`, status/state `Done`)

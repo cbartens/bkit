@@ -242,11 +242,6 @@ const BKIT_STUBS = [
         file: ".github/workflows/ci.yml",
         description: "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
     },
-    {
-        id: "wrong-branch-guard",
-        file: ".husky/pre-commit",
-        description: "Refuse direct commits to dev / main outside .worktrees/. Blocks accidental agent commits to wrong branch; pair with the bkit-debug runbook rule that recovery is `git revert`, never `git cherry-pick`. If `.husky/pre-commit` was customised by the consumer (Tier-3 seed-or-print), splice the guard block into your existing hook rather than letting `bkit install` reseed.",
-    },
 ];
 export function detectBkitStubs(cwd) {
     const findings = [];
@@ -419,28 +414,6 @@ export function detectTestIntegrationEnv(cwd) {
             '    "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n\n' +
             "Or chain a real-service preflight (e.g. `supabase start && vitest run …`). If the absence is intentional (pure-mock integration suite), add a comment in the script and dismiss this advisory by tagging the package — there is no auto-suppress mechanism yet.",
     };
-}
-/**
- * Detect whether branch protection is configured on `dev`. Pattern matches
- * detectMainBranchProtection but for the dev branch. Used to surface the
- * "main is protected but dev is not" gap that lets agent direct-pushes /
- * mis-targeted PRs bypass the run-tests status check.
- */
-export function detectDevBranchProtection() {
-    try {
-        execFileSync("gh", ["api", "repos/{owner}/{repo}/branches/dev/protection"], {
-            stdio: ["ignore", "pipe", "pipe"],
-            timeout: 5000,
-        });
-        return "present";
-    }
-    catch (err) {
-        const stderr = err.stderr?.toString() ?? "";
-        if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
-            return "missing";
-        }
-        return "unknown";
-    }
 }
 /**
  * Detect whether `.github/workflows/<file>.yml` uses floating action tag
@@ -1153,38 +1126,22 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
     const hasProtectionScript = fs.existsSync(protectionScript);
     const scriptHint = hasProtectionScript
-        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
+        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. The script pre-flights that a `bkit-tests` job exists in `.github/workflows/ci.yml` before requiring it as a status check."
         : "";
     if (protectionStatus === "missing") {
         phase3.push({
             id: "main-branch-protection-missing",
             severity: "advisory",
             detect: "main has no branch protection rule.",
-            action: "bkit's build and ship workflows now require feat/* PRs to target dev (base=dev). To enforce at the GitHub layer:\n\n" +
+            action: "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
                 "    Settings → Branches → Add rule → Branch name pattern: main\n" +
                 "    - Require a pull request before merging\n" +
-                "    - Require status checks: run-tests\n" +
-                "    - Restrict who can push: only allow PRs from dev\n\n" +
-                "Without this, a misconfigured agent or manual gh pr create --base main can still squash a feat/* branch directly into production. Any open PRs targeting main directly will fail the new workflow gates — retarget to dev or close." +
+                "    - Require status checks: bkit-tests\n" +
+                "    - Do not allow bypassing the above settings (enforce for admins)\n" +
+                "    - Require linear history; block force-pushes and deletions\n\n" +
+                "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +
                 scriptHint,
         });
-    }
-    // Dev branch protection — most agent direct-pushes / ghost-greens land on dev first.
-    // Only fire when main IS protected (otherwise main-branch-protection-missing is the
-    // higher-priority advisory and pairing both would be noise).
-    if (protectionStatus === "present") {
-        const devProtectionStatus = detectDevBranchProtection();
-        if (devProtectionStatus === "missing") {
-            phase3.push({
-                id: "dev-branch-protection-missing",
-                severity: "advisory",
-                detect: "main is protected but dev is not.",
-                action: "Direct agent pushes / mis-targeted PRs to dev bypass the `run-tests` status check. Apply a looser dev policy (chore commits allowed, run-tests required):\n\n" +
-                    (hasProtectionScript
-                        ? "    bash scripts/ci/bkit-set-protection.sh --dev\n\n(idempotent; safe to re-run)"
-                        : "    gh api -X PUT repos/{owner}/{repo}/branches/dev/protection -F required_status_checks.strict=false -F 'required_status_checks.contexts[]=run-tests' -F enforce_admins=false -F required_pull_request_reviews=null -F restrictions=null"),
-            });
-        }
     }
     // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
     //   1. Issue tracker — branch on bkit.issueTracker.
