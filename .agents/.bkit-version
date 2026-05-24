@@ -58,7 +58,7 @@
     "docs/architecture.md": "e74ca6ae7e878ea694a2cb2d7355fdb64ca310a1091a7aa74c484782c0397e52",
     "docs/completed.md": "017dcb73f534603cce7583a859bb96d5466099aa7e3dc94d6c0baf0816aa5234",
     "docs/decisions.md": "3163f83d0ce39c5c376806d82c54a100dcb0cfdec56ccefa6e27d42acf1da321",
-    "docs/knowledge.md": "5fb57e477d45535cab1224b0c5d04ab102af7e37fd8fbb119fa3a7748c0241e2",
+    "docs/knowledge.md": "b6a8154f9865e6356df763ed5653ddc0ca312ed80656dd5b59300196d7f3125e",
     "docs/pending.md": "785b8bfeda66a5857304399da5ccf332255e6d32c112af4f52ad5277065a7efa",
     "docs/technology.md": "b53991e4116da14297236d1ae6e855450e21fc9ae0cb61e4f20dffa70329ea2d",
     ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"

@@ -140,6 +140,9 @@ description: "Ship Feature — Autonomous merge and archive"
 8. <!-- bkit:tracker issue-update-phase start -->
    _Tracker not wired — skip phase label update._
    <!-- bkit:tracker issue-update-phase end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 9. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -155,7 +158,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] Issue update attempted (phase label `bkit:ship`)
+- [ ] Issue update attempted (phase label `bkit:ship`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -744,6 +747,9 @@ description: "Ship Feature — Autonomous merge and archive"
 4. <!-- bkit:tracker issue-update-merged start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-update-merged end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 5. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -761,5 +767,5 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue update attempted (terminal state via `issue-update-merged`; phase label `bkit:merged`)
+- [ ] Issue update attempted (issue closed, phase label `bkit:merged`, status/state `Done`)
 - [ ] Issue comment attempted (`Step 12` section)

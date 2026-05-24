@@ -151,6 +151,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 11. <!-- bkit:tracker issue-update-debug start -->
     _Tracker not wired — skip._
     <!-- bkit:tracker issue-update-debug end -->
+    <!-- bkit:tracker issue-update-status start -->
+    _Tracker not wired — skip status/state update._
+    <!-- bkit:tracker issue-update-status end -->
 12. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
     <!-- bkit:tracker comment-post-step end -->
@@ -171,7 +174,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
-- [ ] Issue update attempted (additive label `bkit:debug`)
+- [ ] Issue update attempted (additive label `bkit:debug`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -854,6 +857,9 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
     <!-- bkit:tracker issue-update-review start -->
     _Tracker not wired — skip._
     <!-- bkit:tracker issue-update-review end -->
+    <!-- bkit:tracker issue-update-status start -->
+    _Tracker not wired — skip status/state update._
+    <!-- bkit:tracker issue-update-status end -->
 12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
     <!-- bkit:tracker issue-read start -->
     _Tracker not wired — skip._
@@ -885,6 +891,6 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
-- [ ] If `OBSERVE_MODE` = off issue update attempted (hand-off state via `issue-update-review`)
+- [ ] If `OBSERVE_MODE` = off issue update attempted (phase label `bkit:debug` preserved, status/state `In Review`)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 12` section)

@@ -824,7 +824,7 @@ Phase label is preserved through Close Workflow exit — tracker-specific state 
 
 ### Tracker-specific state
 
-Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed`) are encapsulated in `trackers.md` snippet IDs:
+Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed` + optional Projects v2 board status) are encapsulated in `trackers.md` snippet IDs:
 
 <!-- prettier-ignore -->
 | Snippet | When |
@@ -834,6 +834,7 @@ Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `
 | `issue-update-merged` | `/bkit-ship` Step 12. Terminal close (Linear "Done"; GitHub `state: closed`). |
 | `issue-update-failed` | Failure Path. Adds `bkit:failed` additive label. |
 | `issue-update-debug` | `/bkit-debug` Step 1. Adds `bkit:debug` additive label. |
+| `issue-update-status` | Step 1 (design/plan/build/debug/ship) → "In progress"; phase Close (design/plan/build/debug) → "In review"; `/bkit-ship` Step 12 → "Done". GitHub Projects v2 board (`bkit.githubProject`; skipped if unset/absent). Linear no-op (issue state already carries it). |
 
 ### Comment lifecycle
 

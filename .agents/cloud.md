@@ -110,14 +110,18 @@ Use a **fine-grained** PAT scoped to the repo you'll work on (or each consumer r
 | Issues | Read & write | `gh issue` |
 | Actions | Read & write | `gh run view` logs, `gh workflow run` |
 | Workflows | Read & write | `gh workflow` (edit `.github/workflows/*`) |
+| Projects (org) | Read & write | GitHub Projects v2 board status sync (`bkit.githubProject`) — org-owned boards only; see note |
 | Metadata | Read | mandatory, auto-included |
 
 `gh` reads `GH_TOKEN` automatically; no `gh auth login`.
+
+> **Projects v2 board sync (`bkit.githubProject`):** the **Projects** permission is an **Organization** permission (table row above) — it only appears when the token's **resource owner is the org**, _not_ your personal account, and the org may require the token to be **approved**. It lives under the token UI's **Organizations** tab, not Repository permissions, and governs `…/orgs/{org}/projectsV2/…`. User-owned (personal-account) boards are unreachable by fine-grained PATs entirely — see below.
 
 #### When classic is still required
 
 - **`pnpm publish` to GitHub Packages.** Fine-grained packages support has edge cases on user-owned packages. Put a classic PAT (`write:packages` + `repo`) in `GITHUB_TOKEN`, separate from `GH_TOKEN`. Keep it only in release-flow sessions.
 - **Cross-repo work in a single cloud session.** Fine-grained PATs only see their allowlist; classic sees everything your user can.
+- **User-owned (personal-account) Projects v2 boards.** Fine-grained PATs expose Projects only as an _organization_ permission — personal boards are unreachable. Use a classic PAT with `project` scope, or move the board under an org.
 
 #### Notes
 
