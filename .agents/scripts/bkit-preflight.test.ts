@@ -1077,6 +1077,17 @@ describe("detectMissingDotenv", () => {
   it("does NOT flag when .agents/.env.example does not exist", () => {
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
+
+  it("github tracker: token prose omits LINEAR_API_KEY; linear keeps it (issue #138)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    const gh = detectMissingDotenv(tmpDir, "github")!;
+    expect(gh.detect).not.toContain("LINEAR_API_KEY");
+    expect(gh.action).not.toContain("LINEAR_API_KEY");
+    expect(gh.action).toContain("GH_TOKEN");
+    const linear = detectMissingDotenv(tmpDir, "linear")!;
+    expect(linear.action).toContain("LINEAR_API_KEY");
+  });
 });
 
 describe("detectBlankDotenvKeys", () => {
@@ -1097,6 +1108,19 @@ describe("detectBlankDotenvKeys", () => {
     expect(ids).toContain("mcp-env-blank-key-gh_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("github tracker: does NOT flag blank LINEAR_API_KEY (issue #138)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+    const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
+    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
+    expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
 
   it("returns one advisory for the blank key only", () => {

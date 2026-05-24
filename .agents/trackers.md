@@ -163,7 +163,7 @@ When `bkit-build` opens the PR, the body template includes a metadata marker:
 <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
 ```
 
-HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, ci-router) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
+HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
 
 **Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
 
@@ -256,7 +256,7 @@ Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present
 
 After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → if a tracking GitHub PR exists for this work, remove PR label `bkit:auto` via `mcp__github__update_pull_request` → terminate workflow normally (current run finishes, no further automation).
 
-> Cross-provider note: Linear is the tracker but the CI dispatch surface is still GitHub. Kill switch must propagate to the GitHub PR label so PR-label-triggered ci-router stops firing.
+> Cross-provider note: Linear is the tracker but the CI dispatch surface is still GitHub. Kill switch must propagate to the GitHub PR label so PR-label-triggered cloud stops firing.
 
 ### pr-body-metadata
 

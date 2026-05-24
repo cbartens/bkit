@@ -61,7 +61,7 @@
           },
           {
             "type": "command",
-            "command": "bash .claude/hooks/cloud-bootstrap.sh"
+            "command": "test -f .claude/hooks/cloud-bootstrap.sh && bash .claude/hooks/cloud-bootstrap.sh || true"
           }
         ]
       }

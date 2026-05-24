@@ -15,6 +15,8 @@ import {
   runGitHooksModule,
   runRenovateModule,
   runDependabotModule,
+  runCloudModule,
+  renderCloudWorkflow,
   dispatchModules,
   type ModuleContext,
 } from "./bkit-modules";
@@ -574,6 +576,131 @@ describe("runRenovateModule — depUpdater persistence", () => {
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runCloudModule — opt-in post-CI auto-routing (issue #119)
+// ---------------------------------------------------------------------------
+
+describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => {
+  const routerRel = path.join(".github", "workflows", "bkit-cloud.yml");
+  const bootstrapRel = path.join(".claude", "hooks", "cloud-bootstrap.sh");
+  const dockerRel = path.join(".cursor", "Dockerfile");
+  const envRel = path.join(".cursor", "environment.json");
+
+  it("writes bkit-cloud.yml + all cloud scaffolding and emits the bkit-cloud-setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runCloudModule(ctx);
+
+    const routerPath = path.join(tmpDir, routerRel);
+    expect(fs.existsSync(routerPath)).toBe(true);
+    expect(fs.readFileSync(routerPath, "utf-8").length).toBeGreaterThan(0);
+
+    // Scaffolding moved into the cloud module (#119): cloud-bootstrap.sh, Cursor
+    // Dockerfile, environment.json all ship via --cloud now, not claude/cursor.
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(true);
+
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/ANTHROPIC_API_KEY/);
+    // The env-scaffolding customisation advisory moved here from the claude module.
+    expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
+  });
+
+  it("persists bkit.cloudAgents = 'enabled' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { cloudAgents?: string };
+    };
+    expect(pkg.bkit?.cloudAgents).toBe("enabled");
+  });
+
+  it("dry-run: writes nothing to disk but still emits the setup advisory", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runCloudModule(ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    expect(ctx.advisories.find((a) => a.id === "bkit-cloud-setup")).toBeDefined();
+  });
+
+  it("--ci alone does NOT ship bkit-cloud.yml (split out of ci module per #119)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "ci"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+  });
+
+  it("the default module set does NOT ship bkit-cloud.yml or cloud scaffolding", () => {
+    // `cursor` is omitted — its applyT3 transform process.exit(1)s on the empty
+    // modelLookup in this harness (see the dispatch tests above). The router only
+    // ever shipped via `ci`, so this set still proves it's gone from --full.
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    // claude is in the set — proves cloud-bootstrap.sh moved out of it into --cloud (#119).
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
+  });
+
+  // --- issue #138: bkit-cloud.yml is rendered tracker-conditional ---
+
+  it("github tracker: renders a Linear-free bkit-cloud.yml (issue #138)", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, issueTracker: "github" }));
+    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
+    expect(yml).not.toContain("LINEAR_API_KEY");
+    expect(yml).not.toContain("mcp__linear__*");
+    expect(yml).toContain("mcp__github__*");
+    expect(yml).not.toMatch(/@@CLOUD_TRACKER/); // all sentinels resolved
+  });
+
+  it("linear tracker: keeps LINEAR_API_KEY + mcp__linear__* (regression-safe)", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, issueTracker: "linear" }));
+    const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
+    expect(yml).toContain("LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}");
+    expect(yml).toContain("mcp__linear__*");
+    expect(yml).not.toContain("mcp__github__*");
+    expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
+  });
+});
+
+describe("renderCloudWorkflow — tracker-conditional render (issue #138)", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+  const template = fs.readFileSync(
+    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+
+  for (const tracker of ["github", "none"] as const) {
+    it(`${tracker} tracker → zero Linear references`, () => {
+      const out = renderCloudWorkflow(template, tracker);
+      expect(out).not.toContain("LINEAR_API_KEY");
+      expect(out).not.toContain("mcp__linear__*");
+      expect(out).toContain("mcp__github__*");
+      expect(out).not.toMatch(/@@CLOUD_TRACKER/);
+      // env block stays well-formed after the Linear line is dropped
+      expect(out).toMatch(
+        /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
+      );
+    });
+  }
+
+  it("linear tracker → Linear surface intact", () => {
+    const out = renderCloudWorkflow(template, "linear");
+    expect(out).toContain("          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}");
+    expect(out).toContain("mcp__linear__*");
+    expect(out).not.toContain("mcp__github__*");
+    expect(out).not.toMatch(/@@CLOUD_TRACKER/);
   });
 });
 

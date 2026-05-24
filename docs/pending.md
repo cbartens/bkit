@@ -106,7 +106,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via GHA run log + existing Linear comment append (Failure Path mirror). No automated retry, dead-letter queue, or exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies added complexity.
+- **Description:** v1 of `bkit-cloud` surfaces dispatch-step crashes via GHA run log + existing Linear comment append (Failure Path mirror). No automated retry, dead-letter queue, or exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies added complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
 

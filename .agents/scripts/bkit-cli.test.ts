@@ -84,7 +84,7 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("core")).toBe(true);
   });
 
-  it("--full flag parsed → all modules resolved (renovate + dependabot opt-in, excluded)", () => {
+  it("--full flag parsed → all modules resolved (renovate + dependabot + cloud opt-in, excluded)", () => {
     const result = parseArgs(["install", "--full"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -94,9 +94,10 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("git-hooks")).toBe(true);
     expect(result.modules.has("renovate")).toBe(false);
     expect(result.modules.has("dependabot")).toBe(false);
+    expect(result.modules.has("cloud")).toBe(false);
   });
 
-  it("no module flags → resolves to all modules (--full equivalent; renovate + dependabot excluded)", () => {
+  it("no module flags → resolves to all modules (--full equivalent; renovate + dependabot + cloud excluded)", () => {
     const result = parseArgs(["install"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
@@ -106,6 +107,7 @@ describe("parseArgs — module flags", () => {
     expect(result.modules.has("git-hooks")).toBe(true);
     expect(result.modules.has("renovate")).toBe(false);
     expect(result.modules.has("dependabot")).toBe(false);
+    expect(result.modules.has("cloud")).toBe(false);
   });
 
   it("--renovate alone → renovate + core only (not full stack)", () => {
@@ -127,6 +129,25 @@ describe("parseArgs — module flags", () => {
   it("--ci --renovate → ci + core + renovate (compose without --full)", () => {
     const result = parseArgs(["install", "--ci", "--renovate"]);
     expect([...result.modules].sort()).toEqual(["ci", "core", "renovate"]);
+  });
+
+  it("--cloud alone → cloud + core only (not full stack)", () => {
+    const result = parseArgs(["install", "--cloud"]);
+    expect([...result.modules].sort()).toEqual(["cloud", "core"]);
+  });
+
+  it("--full --cloud → all modules + cloud (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--cloud"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("ci")).toBe(true);
+    expect(result.modules.has("cloud")).toBe(true);
+    expect(result.modules.has("renovate")).toBe(false);
+    expect(result.modules.has("dependabot")).toBe(false);
+  });
+
+  it("--ci --cloud → ci + core + cloud (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--cloud"]);
+    expect([...result.modules].sort()).toEqual(["ci", "cloud", "core"]);
   });
 
   it("--dependabot alone → dependabot + core only (mirror of --renovate single-purpose UX)", () => {
@@ -282,7 +303,7 @@ describe("parseArgs — unknown flag rejection", () => {
 // ---------------------------------------------------------------------------
 
 describe("printUsage — help output", () => {
-  it("help output lists all module flags (including opt-in --renovate and --dependabot)", () => {
+  it("help output lists all module flags (including opt-in --renovate, --dependabot and --cloud)", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printUsage();
@@ -296,6 +317,7 @@ describe("printUsage — help output", () => {
       expect(output).toContain("--git-hooks");
       expect(output).toContain("--renovate");
       expect(output).toContain("--dependabot");
+      expect(output).toContain("--cloud");
       expect(output).toContain("--full");
     } finally {
       logSpy.mockRestore();
@@ -360,6 +382,7 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     // Asymmetry vs install: full uninstall reaches opt-in add-ons so no bkit footprint remains.
     expect(result.modules.has("renovate")).toBe(true);
     expect(result.modules.has("dependabot")).toBe(true);
+    expect(result.modules.has("cloud")).toBe(true);
   });
 
   it("opt-in asymmetry: install --full EXCLUDES opt-in add-ons; uninstall --full INCLUDES them", () => {
@@ -367,8 +390,15 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     const unin = parseArgs(["uninstall", "--full"]);
     expect(inst.modules.has("renovate")).toBe(false);
     expect(inst.modules.has("dependabot")).toBe(false);
+    expect(inst.modules.has("cloud")).toBe(false);
     expect(unin.modules.has("renovate")).toBe(true);
     expect(unin.modules.has("dependabot")).toBe(true);
+    expect(unin.modules.has("cloud")).toBe(true);
+  });
+
+  it("uninstall --cloud alone → core + cloud only (targeted is symmetric, not full stack)", () => {
+    const result = parseArgs(["uninstall", "--cloud"]);
+    expect([...result.modules].sort()).toEqual(["cloud", "core"]);
   });
 
   it("uninstall with --ci --lint resolves to core + ci + lint", () => {

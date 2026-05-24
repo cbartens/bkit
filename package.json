@@ -67,6 +67,7 @@
   },
   "bkit": {
     "issueTracker": "github",
-    "depUpdater": "renovate"
+    "depUpdater": "renovate",
+    "cloudAgents": "enabled"
   }
 }

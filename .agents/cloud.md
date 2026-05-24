@@ -310,22 +310,22 @@ When bkit's reference Dockerfile changes (e.g. vale version bump):
 
 After `bkit-build` Step 18 close-workflow pushes its CI-trigger commit (`chore({FID}): close-workflow`, no skip tags) and exits, the post-CI router decides ship vs. debug and dispatches the matching skill in a fresh cloud session — no operator action between CI completion and the dispatched session starting.
 
-The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.agents/workflows/bkit-ci-router.md`, mirrored to `.claude/commands/bkit-ci-router.md` + `.cursor/commands/bkit-ci-router.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
+The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.agents/workflows/bkit-cloud.md`, mirrored to `.claude/commands/bkit-cloud.md` + `.cursor/commands/bkit-cloud.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
 
 ## What lives where (post-CI half)
 
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-ci-router.yml` (thin plumbing — Tier 3 seed via `bkit install`). On CI completion, dispatches `claude-code-action@v1` with prompt `/bkit-ci-router $CI_STATUS $PR_NUMBER`. | GitHub repo secrets: `ANTHROPIC_API_KEY`, `LINEAR_API_KEY`. Linear issue must carry the `Auto` label (opt-in). |
-| **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-ci-router $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
+| **Claude** | `.github/workflows/bkit-cloud.yml` (thin plumbing — Tier 3 seed via `bkit install`). On CI completion, dispatches `claude-code-action@v1` with prompt `/bkit-cloud $CI_STATUS $PR_NUMBER`. | GitHub repo secrets: `ANTHROPIC_API_KEY`, `LINEAR_API_KEY`. Linear issue must carry the `Auto` label (opt-in). |
+| **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-cloud $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
 
-**Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch time. The pasted string is generic and timeless. When bkit's routing logic evolves (new edge cases, new gates), only the mirrored `.cursor/commands/bkit-ci-router.md` changes — the dashboard config is untouched.
+**Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch time. The pasted string is generic and timeless. When bkit's routing logic evolves (new edge cases, new gates), only the mirrored `.cursor/commands/bkit-cloud.md` changes — the dashboard config is untouched.
 
 ## Cursor dashboard — exact paste
 
 ```
-/bkit-ci-router $CI_STATUS $PR_NUMBER
+/bkit-cloud $CI_STATUS $PR_NUMBER
 ```
 
 ## Claude — required GitHub Actions permissions
@@ -345,7 +345,7 @@ Flip **both** org and repo before the first router run, otherwise `actions/check
 | `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
 | `LINEAR_API_KEY` | Router reads issue labels (Linear `Auto` opt-in gate) + appends comments. Already present for the Linear webhook flow. | Linear personal API key. |
 
-The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-ci-router.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.json push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
+The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-cloud.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.json push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
 
 ## Routing decision (router orchestrator)
 
@@ -355,7 +355,7 @@ The slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fai
 2. Extracts `{FID}` from the head branch (`feat/{FID}` convention).
 3. Stale-run guard: compares the latest CI run's `headSha` against the PR's current `headRefOid`. Skips on mismatch (newer commit already in flight).
 4. Linear opt-in gate: refuses to dispatch unless the Linear issue carries the `Auto` label.
-5. Appends a `bkit-ci-router → /bkit-{ship,debug}` line to the existing Linear comment thread.
+5. Appends a `bkit-cloud → /bkit-{ship,debug}` line to the existing Linear comment thread.
 6. Invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) via the `Skill` / `Task` tool. The dispatched skill owns its session lifecycle from there.
 
 Skip conditions emit a single Linear no-op line and exit 0 — only real failures (missing args, Linear API unreachable, malformed state) take the Failure Path.

@@ -23,7 +23,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 ├── bkit-debug.md          # Workflow 4/6 — 12 steps; observe + normal-debug modes
 ├── bkit-ship.md           # Workflow 5/6 — 11 steps; merge → archive → close
 ├── bkit-audit.md          # Workflow 6/6 — 7 steps; hard stop after summary
-├── bkit-ci-router.md      # Utility — post-CI auto-dispatch of /bkit-ship or /bkit-debug
+├── bkit-cloud.md          # Utility — phase-routed cloud dispatch (ship/debug by CI; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
 └── bkit-worktree-prune.md # Utility — human-triggered; remove worktree(s) and optionally branch
 ```
@@ -37,7 +37,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 | `/bkit-debug` | yes | no | Remediated commit pushed to feature branch |
 | `/bkit-ship` | yes | yes | Squash-merged PR; plans canonical at `docs/plans/{YYYYMM}/` (no archive move — `{YYYYMM}` = creation month); worktree gone |
 | `/bkit-audit` | yes | yes | `docs/audits/{FID}-audit.md` + one Linear sub-issue per workstream |
-| `/bkit-ci-router` | args `$CI_STATUS $PR_NUMBER` | n/a (dispatches into `/bkit-ship` or `/bkit-debug`) | 4 steps; same session continues into the dispatched workflow |
+| `/bkit-cloud` | args `{PHASE} {ARG}` (`{ARG}` = PR for ship/debug, issue for design/plan/build) | n/a (dispatches into the matching `/bkit-{phase}`) | Phase-routed; same session continues into the dispatched skill |
 | `/bkit-worktree-sync` | arg `{FID}` | n/a (interactive) | Merged or rebased commits in current branch |
 | `/bkit-worktree-prune` | optional arg `{FID}` | n/a (interactive) | Deleted worktree (and optionally branch) |
 
@@ -136,7 +136,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
 | **Status** | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` is central state file (dev's working copy, all workflows); ONE entry per step with `parentSha` captured at step START (see § status.json). |
 | **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
-| **Labels** | Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` mutually exclusive — drop old phase before adding new. `bkit:failed` (Failure Path), `bkit:debug` (Debug Workflow), `bkit:auto` (CI-router trigger gate) are additive — added without dropping phase (see § Tracker Integration). |
+| **Labels** | Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` mutually exclusive — drop old phase before adding new. `bkit:failed` (Failure Path), `bkit:debug` (Debug Workflow), `bkit:auto` (cloud CI-class trigger gate) are additive — added without dropping phase (see § Tracker Integration). |
 | **Comments** | NEW comment per workflow step via tracker MCP. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content (see § Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
@@ -151,7 +151,7 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 <!-- prettier-ignore -->
 | Workflow | Location | Mechanism |
 | --- | --- | --- |
-| **ALL workflows** (`plan`, `design`, `build`, `debug`, `ship`, `audit`, `ci-router`, and any future workflow) | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success), at any early-exit branch (e.g. SKIP / no-op), OR at Failure Path (failure). Outside-worktree progress reads via `cat`. |
+| **ALL workflows** (`plan`, `design`, `build`, `debug`, `ship`, `audit`, `cloud`, and any future workflow) | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success), at any early-exit branch (e.g. SKIP / no-op), OR at Failure Path (failure). Outside-worktree progress reads via `cat`. |
 
 Rationale: single canonical location enables `cat $REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` outside-worktree progress reads from anywhere on the machine without git knowledge. Per-step writes accumulate locally; one dev push at termination with `bkit [skip ci]` (except plan/design close-workflow on success, which is the substantive feature commit and runs CI). Resume reads the on-disk file directly — works across crashes.
 
@@ -720,19 +720,19 @@ Human-triggered. Removes a Claude worktree (and optionally its feature branch). 
 - **`{FID}` provided** → Single Worktree Path: warn if `AHEAD` > 0 commits not in `origin/dev`; confirm removal; `git worktree remove --force` + `git worktree prune`; offer to delete local branch (`-d` safe; `-D` only on explicit force confirm).
 - **No arg** → List All Path: enumerate `.worktrees/*` with branch / ahead / behind / last-commit; prompt user to enter `{FID}` or `all` or `x`.
 
-### `/bkit-ci-router` — 4 steps
+### `/bkit-cloud` — phase-routed dispatch
 
-**Goal:** post-CI dispatcher. Reads `$CI_STATUS` + `$PR_NUMBER` from invocation args, decides ship-vs-debug, dispatches via `Skill` / `Task` tool. No worktree, no Linear state change beyond a single comment line.
+**Goal:** phase-routed cloud dispatcher. Reads `{PHASE}` + `{ARG}` from invocation args and routes to the matching phase skill. **CI-class** (`ship`/`debug`, `{ARG}` = PR) runs Steps 1–4 (guard + opt-in gate + dispatch); **brief-class** (`design`/`plan`/`build`, `{ARG}` = issue) runs Step 1 then Step 4 — the human `workflow_dispatch` is the opt-in, and the dispatched skill ingests its own brief + owns its `status.json` / worktree / FID. No worktree, no tracker state change beyond a single comment line.
 
 <!-- prettier-ignore -->
 | Step | Notes |
 | --- | --- |
-| 1 — Start Workflow | Resolve `{FID}` from `gh pr view $PR_NUMBER --json headRefName` (`feat/{FID}` convention). Resolve `{ISSUE_ID}` from branch slug. Create fresh tracker comment header. |
-| 2 — Stale-Run Guard | Compare CI run `headSha` to PR `headRefOid`. Mismatch → `GUARD_VERDICT` = FAIL (newer commit in flight) → exit 0 with no-op comment line. |
-| 3 — Opt-In Gate | Require Linear `Auto` label on issue. Absent → `AUTO_VERDICT` = FAIL → exit 0 with no-op comment line. |
-| 4 — Dispatch Workflow | `DISPATCH_TARGET` = `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail). Invoke via `Skill` (Claude) / `Task` (Cursor); dispatched workflow owns its session from there. The regression-gate-verification gate that catches Vercel-ignore / `decide`-step demotion lives in `/bkit-ship` Step 3 — Regression Guard (universal — also applies to manual `/bkit-ship` invocations that bypass the router). |
+| 1 — Start Workflow | Classify `{PHASE}` → `CLASS`. CI-class: resolve `{FID}` from `gh pr view {ARG} --json headRefName` (`feat/{FID}` convention), `{ISSUE_ID}` from PR body / branch slug, init `status.json` (`cloud`). Brief-class: `{ISSUE_ID}` = `{ARG}`; no FID / no `status.json` (the skill owns them). Create fresh tracker comment header. |
+| 2 — Stale-Run Guard | **CI-class only.** Compare CI run `headSha` to PR `headRefOid`. Mismatch → `GUARD_VERDICT` = FAIL (newer commit in flight) → exit 0 with no-op comment line. |
+| 3 — Opt-In Gate | **CI-class only.** Require tracker `Auto` label on issue. Absent → `AUTO_VERDICT` = FAIL → exit 0 with no-op comment line + kill-switch propagation. |
+| 4 — Dispatch | Route `{PHASE}` → `/bkit-ship {FID}` / `/bkit-debug {FID}` / `/bkit-design {ISSUE_ID}` / `/bkit-plan {ISSUE_ID}` / `/bkit-build {ISSUE_ID}`. Invoke via `Skill` (Claude) / `Task` (Cursor); dispatched skill owns its session from there. The regression-gate-verification gate that catches Vercel-ignore / `decide`-step demotion lives in `/bkit-ship` Step 3 — Regression Guard (universal — also applies to manual `/bkit-ship` invocations that bypass the workflow). |
 
-**Skip conditions emit one tracker no-op line and exit 0.** Only real failures (missing args, tracker unreachable, malformed state) take the Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; router never counts attempts.
+**CI-class skip conditions emit one tracker no-op line and exit 0.** Only real failures (missing args, tracker unreachable, malformed state) take the Failure Path. Loop bound: `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT` = 3 internally; the cloud workflow never counts attempts.
 
 ## Worktree Model
 
@@ -818,7 +818,7 @@ Phase label is preserved through Close Workflow exit — tracker-specific state 
 <!-- prettier-ignore -->
 | Label | Added by | When |
 | --- | --- | --- |
-| `bkit:auto` | Human (via tracker UI) at issue creation; written by issue-id-extraction snippet's create-issue fallback | Opt-in gate for `/bkit-ci-router` PR-label trigger. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
+| `bkit:auto` | Human (via tracker UI) at issue creation; written by issue-id-extraction snippet's create-issue fallback | Opt-in gate for `/bkit-cloud` CI-class (ship/debug) dispatch. Removed by any workflow that finds `bkit:auto` absent on the linked issue (kill-switch propagation). |
 | `bkit:failed` | Failure Path of any workflow | Workflow hit its Failure Path; human triage required. Phase label persists alongside, so reviewers see which workflow failed. Cleared when `/bkit-debug` Step 1 starts (debug entry supersedes the prior failure marker) and when `/bkit-ship` Step 12 adds `bkit:merged` (terminal success). |
 | `bkit:debug` | `/bkit-debug` Step 1 | `/bkit-debug` is running on top of a prior phase (typically `bkit:build` or `bkit:ship`). Prior phase label persists alongside, so reviewers see which workflow is being debugged. |
 

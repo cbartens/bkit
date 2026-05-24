@@ -98,25 +98,44 @@ describe("getInstallManifest", () => {
     expect(slopEntry!.format).toBe("byte-equal-text");
   });
 
-  it("cursor manifest includes environment.json as byte-equal-text", () => {
-    const entries = getInstallManifest(["cursor"]);
+  it("cloud manifest includes environment.json as byte-equal-text (moved out of cursor — #119)", () => {
+    const entries = getInstallManifest(["cloud"]);
     const envEntry = entries.find((e) => e.path === ".cursor/environment.json");
     expect(envEntry).toBeDefined();
     expect(envEntry!.format).toBe("byte-equal-text");
+    expect(envEntry!.seedOrPrint).toBe(true);
+    // Not in the default cursor module — it ships only via --cloud.
+    expect(
+      getInstallManifest(["cursor"]).find((e) => e.path === ".cursor/environment.json"),
+    ).toBeUndefined();
   });
 
-  it("cursor manifest includes Dockerfile as markered-text (Tier 2 — base toolchain block + consumer extensions)", () => {
-    const entries = getInstallManifest(["cursor"]);
+  it("cloud manifest includes Dockerfile as markered-text (moved out of cursor — #119)", () => {
+    const entries = getInstallManifest(["cloud"]);
     const dockerEntry = entries.find((e) => e.path === ".cursor/Dockerfile");
     expect(dockerEntry).toBeDefined();
     expect(dockerEntry!.format).toBe("markered-text");
+    expect(
+      getInstallManifest(["cursor"]).find((e) => e.path === ".cursor/Dockerfile"),
+    ).toBeUndefined();
   });
 
-  it("claude manifest includes cloud-bootstrap.sh as markered-text (Tier 2 — install steps block + consumer extensions)", () => {
-    const entries = getInstallManifest(["claude"]);
+  it("cloud manifest includes cloud-bootstrap.sh as markered-text (moved out of claude — #119)", () => {
+    const entries = getInstallManifest(["cloud"]);
     const bootstrapEntry = entries.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh");
     expect(bootstrapEntry).toBeDefined();
     expect(bootstrapEntry!.format).toBe("markered-text");
+    expect(
+      getInstallManifest(["claude"]).find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
+    ).toBeUndefined();
+  });
+
+  it("cloud manifest includes the phase-routed bkit-cloud.yml workflow (renamed from bkit-ci-router — #119)", () => {
+    const entries = getInstallManifest(["cloud"]);
+    const wf = entries.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
+    expect(wf).toBeDefined();
+    expect(wf!.format).toBe("byte-equal-text");
+    expect(entries.find((e) => e.path === ".github/workflows/bkit-ci-router.yml")).toBeUndefined();
   });
 });
 

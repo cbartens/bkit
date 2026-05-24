@@ -93,8 +93,8 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
   });
 
   it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
-    // Bkit owns bkit-ci-router.yml — consumer Renovate must not touch it.
-    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-ci-router\.yml[\s\S]*enabled:\s*false/);
+    // Bkit owns bkit-cloud.yml — consumer Renovate must not touch it.
+    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
