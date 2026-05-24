@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "2.5.3",
+  "version": "2.6.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -43,12 +43,14 @@
     "lint:no-tier-terms": "pnpm exec tsx .agents/scripts/bkit-lint-no-tier-terms.ts",
     "prepare": "husky"
   },
+  "dependencies": {
+    "picomatch": "^4.0.4"
+  },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "@types/picomatch": "^4.0.3",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.10",
-    "picomatch": "^4.0.4",
     "prettier": "^3.5.3",
     "slop-scan": "^0.3.0",
     "tsx": "^4.19.2",
