@@ -1,0 +1,96 @@
+[
+  {
+    "workflow": "design",
+    "startedAt": "2026-05-24T22:32:24Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "design-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-24T22:32:24Z",
+        "parentSha": "15027dcb06e03084357d377f41f7698c3cbe4c8f",
+        "artifacts": []
+      },
+      {
+        "step": "design-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-24T22:32:24Z",
+        "parentSha": "15027dcb06e03084357d377f41f7698c3cbe4c8f",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/design-input.md"]
+      },
+      {
+        "step": "design-brainstorm-ideate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-24T22:35:15Z",
+        "parentSha": "eb21389ff2cf228c998b8c6222e1711320d22da5",
+        "artifacts": [
+          "docs/plans/202605/logs/143-real-world-testing/design-brainstorm-ideate-1.md",
+          "docs/plans/202605/logs/143-real-world-testing/design-brainstorm-ideate-2.md",
+          "docs/plans/202605/logs/143-real-world-testing/design-brainstorm-ideate-3.md"
+        ]
+      },
+      {
+        "step": "design-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-24T22:39:35Z",
+        "parentSha": "c45cff527200a4849ce419e0871dec8dede25022",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/design-v1-draft.md"]
+      },
+      {
+        "step": "design-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-24T22:44:11Z",
+        "parentSha": "4f9f122b002546997205ed4a2f55538847f8d761",
+        "artifacts": [
+          "docs/plans/202605/logs/143-real-world-testing/design-review-1.md",
+          "docs/plans/202605/logs/143-real-world-testing/design-review-2.md"
+        ]
+      },
+      {
+        "step": "design-apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-24T22:51:20Z",
+        "parentSha": "4e749774b9085b4a492d98e90095eb9c00453edd",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/design-v2-reviewed.md"]
+      },
+      {
+        "step": "design-organise",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-24T22:53:38Z",
+        "parentSha": "f80083864f1768069aa661be17f59d7de6e1ee8b",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/design-v3-organised.md"]
+      },
+      {
+        "step": "design-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-24T22:55:42Z",
+        "parentSha": "86d353ba80a0613b96ea3ea965339978e4a6ac3c",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/design-summary.md"]
+      },
+      {
+        "step": "design-workstream-issues",
+        "status": "DONE",
+        "at": "2026-05-24T22:59:23Z",
+        "parentSha": "c278090bda1af3718b2f836d140a91be7dbeeede",
+        "artifacts": []
+      },
+      {
+        "step": "design-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-24T22:59:47Z",
+        "parentSha": "2e89a3ccb9fbd5828fd2164e2630af654f92724d",
+        "artifacts": []
+      }
+    ]
+  }
+]
