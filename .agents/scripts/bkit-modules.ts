@@ -1996,6 +1996,13 @@ export function runCloudModule(ctx: ModuleContext): void {
   const trackerLabelLine = isLinearCloud
     ? "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the workflow exits no-op.\n\n"
     : "  - Confirm the issue carries the `Auto` label before pushing the build commit — without it the workflow exits no-op.\n\n";
+  // OPTIONAL manual trigger (GitHub tracker only): the `@claude` mention path. Run
+  // `/install-github-app` to add it alongside the CI-driven + workflow_dispatch paths.
+  // Experimental until verified live — the runner must load the bkit skill mirror and
+  // allow the phase skill. GitHub-gated because you mention on a GitHub issue/PR.
+  const mentionTipLine = isLinearCloud
+    ? ""
+    : "  - OPTIONAL (manual launch) — run `/install-github-app` (Claude Code CLI) to add `@claude` mention launches: comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to start a phase from the tracker UI, alongside the CI-driven and `workflow_dispatch` paths. It coexists with `bkit-cloud.yml` (different trigger events) and provides the runner's GitHub identity for the `mcp__github__*` surface. Verify with one live `@claude` mention before relying on it — the runner must load the bkit skill mirror and allow the phase skill.\n";
   advisories.push({
     id: "bkit-cloud-setup",
     severity: "advisory",
@@ -2006,6 +2013,7 @@ export function runCloudModule(ctx: ModuleContext): void {
       "IN GITHUB (Claude half):\n" +
       "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
       "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
+      mentionTipLine +
       trackerSecretLine +
       "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
       trackerLabelLine +

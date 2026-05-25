@@ -611,6 +611,23 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
   });
 
+  it("github tracker: bkit-cloud-setup advisory includes the optional `@claude` mention tip", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, issueTracker: "github" });
+    runCloudModule(ctx);
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory!.action).toMatch(/install-github-app/);
+    expect(advisory!.action).toMatch(/@claude/);
+  });
+
+  it("linear tracker: bkit-cloud-setup advisory omits the `@claude` mention tip (GitHub-only path)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, issueTracker: "linear" });
+    runCloudModule(ctx);
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory!.action).not.toMatch(/install-github-app/);
+  });
+
   it("persists bkit.cloudAgents = 'enabled' to package.json on success", () => {
     const ws = makeWriteSet();
     runCloudModule(makeCtx({ ws }));
