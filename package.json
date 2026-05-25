@@ -47,7 +47,7 @@
     "picomatch": "^4.0.4"
   },
   "devDependencies": {
-    "@types/node": "^20.11.0",
+    "@types/node": "^24.0.0",
     "@types/picomatch": "^4.0.3",
     "husky": "^9.1.7",
     "lint-staged": "^15.2.10",
