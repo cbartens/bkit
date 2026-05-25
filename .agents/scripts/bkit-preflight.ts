@@ -699,6 +699,61 @@ export function detectMissingMcpServers(
   return findings;
 }
 
+/**
+ * Advisory: one finding per bkit-managed MCP server that is present in the file
+ * but NOT required by the resolved tracker (the symmetric counterpart to
+ * `detectMissingMcpServers`). Catches the stale-leftover case — e.g. a repo
+ * switched to `--tracker=github` but still carries the `linear` entry.
+ *
+ * Only flags servers bkit itself manages (`REQUIRED_MCP_SERVERS`). Consumer-added
+ * MCP servers (custom tooling, other providers) are never flagged for removal.
+ *
+ * Semantics:
+ *   - File absent / malformed / no mcpServers → return []
+ *   - `issueTracker` undefined → return [] (cannot know what's allowed → no false positives)
+ *   - bkit-managed server present but not in `requiredMcpServersForTracker(tracker)` → one advisory
+ *
+ * Follows `[context] Message` advisory format.
+ */
+export function detectExtraMcpServers(
+  cwd: string,
+  relPath: string,
+  issueTracker?: IssueTracker,
+): PreflightFinding[] {
+  if (issueTracker === undefined) return [];
+
+  const absPath = path.join(cwd, relPath);
+  if (!fs.existsSync(absPath)) return [];
+
+  let doc: Record<string, unknown>;
+  try {
+    doc = JSON.parse(fs.readFileSync(absPath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return []; // malformed JSON — skip silently
+  }
+
+  const mcpServers =
+    doc.mcpServers !== null && typeof doc.mcpServers === "object" && !Array.isArray(doc.mcpServers)
+      ? (doc.mcpServers as Record<string, unknown>)
+      : null;
+  if (!mcpServers) return [];
+
+  const allowed = requiredMcpServersForTracker(issueTracker);
+  const findings: PreflightFinding[] = [];
+  // Only consider servers bkit manages — never flag consumer-added MCP servers.
+  for (const key of REQUIRED_MCP_SERVERS) {
+    if (allowed.includes(key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(mcpServers, key)) continue;
+    findings.push({
+      id: `mcp-extra-server-${key}-${relPath.replace(/[^a-z0-9]/gi, "-")}`,
+      severity: "advisory",
+      detect: `${relPath} has the ${key} MCP server but the ${issueTracker} tracker does not use it.`,
+      action: `[mcp] ${relPath} carries the ${key} MCP server, which is not used by the ${issueTracker} tracker. Remove the "${key}" entry from mcpServers (it is no longer needed).`,
+    });
+  }
+  return findings;
+}
+
 // ---------------------------------------------------------------------------
 // [mcp-env] advisories — direnv + .agents/.env setup (BAR-260 follow-up)
 // ---------------------------------------------------------------------------
@@ -1032,8 +1087,11 @@ export function runPreflight(
   // Missing MCP server advisory — one finding per missing required key, per file.
   // Tracker-aware: when issueTracker === "github", only github MCP server is required
   // (Linear gate is a no-op on GitHub tracker — gate moved into workflow Step 1 via MCP).
+  // Extra MCP server advisory — one finding per bkit-managed server that the
+  // resolved tracker does not use (e.g. a stale `linear` entry under `github`).
   for (const relPath of [".mcp.json", ".cursor/mcp.json"]) {
     advisories.push(...detectMissingMcpServers(cwd, relPath, resolvedTracker));
+    advisories.push(...detectExtraMcpServers(cwd, relPath, resolvedTracker));
   }
 
   // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),

@@ -77,13 +77,20 @@ Two orthogonal axes plus one curated suite, replacing the prior single ad-hoc li
 
 - **Tier (scope):** `unit < integration < e2e` — mocked, fast, gate every PR. Scripts `test:unit`,
   `test:integration`, `test:e2e`.
-- **Liveness (mode):** an `API_LIVE=1` env flag flips mocking off globally ("use real APIs incl.
-  external"). It is a MODE — the SAME assertions re-run without mocks — NOT a separate test set.
-  Live scripts: `test:integration:live`, `test:e2e:live` (each sets `API_LIVE=1` and filters to the
-  `@live` tag).
+- **Liveness:** a `LIVE_API` env flag (`LIVE_API=1` / `true` in code) flips mocking off globally
+  ("use real APIs incl. external"). The flag is the PRIMITIVE; two authoring styles key on it and
+  both are valid: a MODE test (`if (!process.env.LIVE_API) vi.mock(...)`) re-runs the SAME assertion
+  mocked-or-live (the truest #143 fix — one source of assertions, no mock/live drift); a SUBSET test
+  (`describe.skipIf(!process.env.LIVE_API)`) is live-only and skips without the flag — the pattern
+  the `gether` consumer already uses across its integration suite (today via a fragmented
+  `TEST_REAL_APIS` / `HAS_LOCAL_SUPABASE` / `HAS_LIVE_TARGET` / `RUN_INTEGRATION` set this convention
+  unifies). Live scripts: `test:integration:live`, `test:e2e:live` (each sets `LIVE_API=1`, filters
+  to `@live`).
+- **Naming split:** the surface vocabulary is `live` (`:live` script suffix, `@live` / `@smoke`
+  tags, CI job + env-file names like `.env.live`); the in-code env var is `LIVE_API`.
 - **Smoke (curated live subset):** `test:smoke` — a curated `@smoke` subset of the live tests
-  (`API_LIVE=1`), run on main/dev push + as the build gate + agent-invocable.
-- **Tags:** `@live` (eligible under `API_LIVE=1`) is a SUPERSET of `@smoke` (curated). Strict
+  (`LIVE_API=1`), run on main/dev push + as the build gate + agent-invocable.
+- **Tags:** `@live` (eligible under `LIVE_API=1`) is a SUPERSET of `@smoke` (curated). Strict
   nesting: `@smoke` within `@live` within all tests.
 
 "The live test" in this doc means whichever of `test:integration:live` / `test:e2e:live` /
@@ -220,7 +227,7 @@ field.
   fills in to upgrade from "no stack" to "live stack."
 - **`package.json` / `turbo.json`** — the script-naming standard: the `lint:*` / `check:*` /
   `test:*` scripts, the `lint` / `check` / `test` umbrella aggregates (mocked tiers only), and the
-  `:live` / smoke scripts that set `API_LIVE=1` and filter the `@live` / `@smoke` tags.
+  `:live` / smoke scripts that set `LIVE_API=1` and filter the `@live` / `@smoke` tags.
 - **`.github/workflows/ci.yml`** — the mocked `lint check test` job on every PR + a `test:smoke`
   job gated `if: github.event_name == 'push'` (dev/main push only).
 - **`.agents/workflows/bkit-debug.md`** — capability resolution in Worktree Setup; reproduce-first
@@ -301,7 +308,7 @@ value at a guard when no live stack exists.
 Inside the existing `<!-- bkit:start -->` managed block, replace the single `Real` Tiers row with
 the full taxonomy in consumer-neutral language: the tier table (Unit / Integration / E2E + the
 `:live` variants + Smoke), the `lint` / `check` / `test` script groups, the `@live` / `@smoke`
-tags, and the `API_LIVE` mode flag. The tier table:
+tags, and the `LIVE_API` mode flag. The tier table:
 
 ```
 | Tier        | Script                | Liveness | Tag     | What it exercises                                          | Where it runs                          |
@@ -309,15 +316,15 @@ tags, and the `API_LIVE` mode flag. The tier table:
 | Unit        | `test:unit`           | mocked   | —       | Pure units, fast.                                          | CI on every PR (folded into `test`).   |
 | Integration | `test:integration`    | mocked   | —       | Component seams with deps mocked.                          | CI on every PR (folded into `test`).   |
 | E2E         | `test:e2e`            | mocked   | —       | End-to-end paths with external deps mocked.                | CI on every PR (folded into `test`).   |
-| Integration | `test:integration:live` | live (`API_LIVE=1`) | `@live`  | The integration assertions re-run against real APIs.   | debug live gate; not in bare `test`.   |
-| E2E         | `test:e2e:live`       | live (`API_LIVE=1`) | `@live`  | The e2e assertions re-run against real APIs.            | debug live gate; not in bare `test`.   |
-| Smoke       | `test:smoke`          | live (`API_LIVE=1`) | `@smoke` | A curated `@smoke` subset of the live tests.            | main/dev push + build gate; agent-invocable. |
+| Integration | `test:integration:live` | live (`LIVE_API=1`) | `@live`  | The integration assertions re-run against real APIs.   | debug live gate; not in bare `test`.   |
+| E2E         | `test:e2e:live`       | live (`LIVE_API=1`) | `@live`  | The e2e assertions re-run against real APIs.            | debug live gate; not in bare `test`.   |
+| Smoke       | `test:smoke`          | live (`LIVE_API=1`) | `@smoke` | A curated `@smoke` subset of the live tests.            | main/dev push + build gate; agent-invocable. |
 ```
 
 Script groups (consumer-neutral): `lint` -> all `lint:*`; `check` -> all `check:*`; `test` -> the
 MOCKED tiers only (`test:unit` + `test:integration` + `test:e2e`). The `:live` scripts and
 `test:smoke` are NEVER folded into `test` so a bare `pnpm test` never hits live APIs. Tags: `@live`
-is the superset eligible under `API_LIVE=1`; `@smoke` is the curated subset within `@live`.
+is the superset eligible under `LIVE_API=1`; `@smoke` is the curated subset within `@live`.
 
 The bkit repo declares ALL `:live`/smoke scripts ABSENT — its suite tests the install scripts and
 has no live boundary — so its live gates degrade to CONCERNS by design. That bkit-repo-specific
@@ -686,7 +693,7 @@ PASS|FAIL`, but `bkit-debug-failure-diagnose.md` emits `PASS | CONCERNS | FAIL`.
 
 | Decided                                                                                                                                                                                                                                                                                                   | Alternatives                                                                                                                                                               | Why                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Testing taxonomy = two axes (tier `unit<integration<e2e` x liveness via `API_LIVE=1`) + a curated `@smoke` subset; live scripts `test:integration:live` / `test:e2e:live` / `test:smoke`, tags `@smoke` within `@live` within all                                                                         | Single ad-hoc live-test token (prior draft); a separate live test SET rather than a re-run MODE; structured `bkit-real-stack.md` config file (brainstorm 2)                | Liveness is a MODE (same assertions re-run without mocks), not a parallel suite — one source of assertions, no drift between mock and live tests. The smoke subset bounds paid-boundary cost. Discovery rides the existing `jq -e .scripts[...]` / turbo task pattern; no new file type or parser. The config file's one real edge (vacuous-pass detection) is preserved via the status.json fail-then-pass record. |
+| Testing taxonomy = two axes (tier `unit<integration<e2e` x liveness via `LIVE_API=1`) + a curated `@smoke` subset; live scripts `test:integration:live` / `test:e2e:live` / `test:smoke`, tags `@smoke` within `@live` within all                                                                         | Single ad-hoc live-test token (prior draft); a separate live test SET rather than a re-run MODE; structured `bkit-real-stack.md` config file (brainstorm 2)                | Liveness is a MODE (same assertions re-run without mocks), not a parallel suite — one source of assertions, no drift between mock and live tests. The smoke subset bounds paid-boundary cost. Discovery rides the existing `jq -e .scripts[...]` / turbo task pattern; no new file type or parser. The config file's one real edge (vacuous-pass detection) is preserved via the status.json fail-then-pass record. |
 | Script-naming standard: three groups (`lint:*`, `check:*`, `test:*`) + umbrella aggregates (`lint` -> all `lint:*`; `check` -> all `check:*`; `test` -> MOCKED tiers only). `typecheck` -> `check:type`, `format:check` -> `check:format`; live tiers + `test:smoke` NEVER folded into `test`             | Keep flat per-task names and enumerate them in every workflow command; fold live into `test`                                                                               | Workflows read `lint check test` instead of long enumerations; one convention covers all scripts; a bare `pnpm test` can NEVER hit live APIs because the live tiers are excluded from the `test` aggregate by construction. `format` (a mutating `--write`) stays `format`, not a check.                                                                                                                            |
 | Escape hatch = capability state `absent`/`off` degrading gates to CONCERNS (never hard-FAIL), with `[live=off]` flag + loud close-comment + status.json record                                                                                                                                            | Silent skip; mandatory hard-fail with no opt-out                                                                                                                           | A mandatory gate on a stackless / credential-less consumer is unsatisfiable, gets disabled, and the effort is wasted (the input's explicit warning). Silent skip recreates #143. Auditable CONCERNS is the only stable middle.                                                                                                                                                                                      |
 | Hard FAIL fires ONLY when `LIVE_STACK = live` AND the live test fails after remediation                                                                                                                                                                                                                   | Hard FAIL on any unavailable stack; CONCERNS even on a live failure                                                                                                        | Degrade where we cannot verify; refuse to degrade in the exact failure mode we are trying to catch.                                                                                                                                                                                                                                                                                                                 |
@@ -800,7 +807,7 @@ The script-naming convention that every other workstream's commands reference (A
   `lint:no-tier-terms`; `check:type` (was `typecheck`), `check:format` (was `format:check`),
   `check:dist` (bkit-repo only), `check:bkit` (was `pnpm bkit check`; bkit-repo only); `format`
   (prettier `--write`) stays `format`; the mocked tiers `test:unit` / `test:integration` /
-  `test:e2e`, the live tiers `test:integration:live` / `test:e2e:live` (each setting `API_LIVE=1`,
+  `test:e2e`, the live tiers `test:integration:live` / `test:e2e:live` (each setting `LIVE_API=1`,
   filtering `@live`), and `test:smoke` (curated `@smoke`).
 - The umbrella aggregates: `lint` -> all `lint:*`; `check` -> all `check:*`; `test` -> MOCKED tiers
   only (`test:unit` + `test:integration` + `test:e2e`). The live tiers and `test:smoke` are NEVER
@@ -830,7 +837,7 @@ one auditable place rather than smeared across the gate workstreams.
 The canonical consumer-facing definition of the testing taxonomy in `docs/testing.md`:
 inside the existing `<!-- bkit:start -->` managed block, replace the single `Real` Tiers row with
 the full picture — the tier table (Unit / Integration / E2E + the `:live` variants + Smoke), the
-`lint` / `check` / `test` script groups, the `@live` / `@smoke` tags, and the `API_LIVE` mode flag —
+`lint` / `check` / `test` script groups, the `@live` / `@smoke` tags, and the `LIVE_API` mode flag —
 all in consumer-neutral language (Architecture "testing taxonomy", Data Model "docs/testing.md
 consumer surface"). Also record that the bkit repo declares ALL `:live`/smoke scripts ABSENT (its
 suite tests the install scripts; no live boundary) so its gates degrade — that bkit-repo choice

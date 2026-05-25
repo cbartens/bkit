@@ -21,6 +21,7 @@ import {
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
   detectMissingMcpServers,
+  detectExtraMcpServers,
   REQUIRED_MCP_SERVERS,
   detectMissingDotenv,
   detectBlankDotenvKeys,
@@ -1048,6 +1049,138 @@ describe("detectMissingMcpServers", () => {
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
     const { advisories } = runPreflight(makeModules("core"), tmpDir);
     expect(advisories.some((f) => f.id.includes("mcp-missing-server"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectExtraMcpServers — symmetric "no longer needed" advisory
+// ---------------------------------------------------------------------------
+
+describe("detectExtraMcpServers", () => {
+  it("returns empty array when issueTracker is undefined (cannot know what's allowed)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    expect(detectExtraMcpServers(tmpDir, ".mcp.json")).toEqual([]);
+  });
+
+  it("returns empty array when file does not exist", () => {
+    expect(detectExtraMcpServers(tmpDir, ".mcp.json", "github")).toEqual([]);
+  });
+
+  it("returns empty array when file is malformed JSON (skip silently)", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "not valid json{{{", "utf-8");
+    expect(detectExtraMcpServers(tmpDir, ".mcp.json", "github")).toEqual([]);
+  });
+
+  it("github tracker: flags a stale linear server with a remove advisory", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    const findings = detectExtraMcpServers(tmpDir, ".mcp.json", "github");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.severity).toBe("advisory");
+    expect(findings[0]!.id).toContain("mcp-extra-server-linear");
+    expect(findings[0]!.action).toContain("[mcp]");
+    expect(findings[0]!.action).toContain("Remove");
+    expect(findings[0]!.action).toContain("linear");
+    expect(findings[0]!.action).not.toMatch(/BAR-\d+/);
+  });
+
+  it("none tracker: flags a stale linear server (only github is needed for PR ops)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    const findings = detectExtraMcpServers(tmpDir, ".mcp.json", "none");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.id).toContain("mcp-extra-server-linear");
+  });
+
+  it("linear tracker: github + linear are both allowed → no advisory", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    expect(detectExtraMcpServers(tmpDir, ".mcp.json", "linear")).toEqual([]);
+  });
+
+  it("never flags consumer-added (non-bkit-managed) MCP servers for removal", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+          "my-custom-server": { url: "https://example.com/mcp" },
+        },
+      }),
+      "utf-8",
+    );
+    expect(detectExtraMcpServers(tmpDir, ".mcp.json", "github")).toEqual([]);
+  });
+
+  it("works identically for .cursor/mcp.json path", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    const findings = detectExtraMcpServers(tmpDir, ".cursor/mcp.json", "github");
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.action).toContain(".cursor/mcp.json");
+  });
+
+  it("runPreflight emits mcp-extra-server advisory for stale linear under github tracker", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "test", bkit: { issueTracker: "github" } }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          linear: { url: "https://mcp.linear.app/mcp" },
+          github: { url: "https://api.githubcopilot.com/mcp/" },
+        },
+      }),
+      "utf-8",
+    );
+    const { advisories } = runPreflight(makeModules("core"), tmpDir);
+    expect(advisories.some((f) => f.id.includes("mcp-extra-server-linear"))).toBe(true);
   });
 });
 
