@@ -28,6 +28,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
 - For bkit-managed workflow files (`bkit-cloud.yml`): a packageRule with `matchFileNames` + `enabled: false` suppresses consumer-side bumps — new SHAs/versions arrive via `bkit install`, not consumer Renovate.
+- Ships an inert `hostRules` anchor for `npm.pkg.github.com` — you must provision a read token to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
 
 **Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
 
@@ -37,6 +38,19 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency.
 
 Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-cloud` will not dispatch on them by design.
+
+### Renovate read-auth for the private package
+
+`@cbartens/bkit` lives on GitHub Packages (`npm.pkg.github.com`, restricted). To regenerate `pnpm-lock.yaml` after bumping **any** dependency, Renovate resolves the whole workspace — including `@cbartens/bkit` — so it needs read auth to that registry. Without it, lockfile regeneration fails, every dependency PR lands with a stale lockfile, and CI fails `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE`. Disabling _updates_ to `@cbartens/bkit` does not help — the regen for unrelated deps still resolves it.
+
+**Critical:** the `GH_BKIT_TOKEN` you set as a GitHub Actions secret for CI is **not** visible to Mend's hosted Renovate runner. The token must be provisioned on Renovate's side. The shipped `renovate.json5` includes an inert `hostRules` anchor for `npm.pkg.github.com`; finish it via the path matching your setup:
+
+- **Mend Community Cloud (hosted, default):** Add `GH_BKIT_TOKEN` (a PAT with `read:packages`) as a **Mend repository secret** at https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets. Then uncomment the `token: "{{ secrets.GH_BKIT_TOKEN }}"` line in `.github/renovate.json5` so the `hostRules` entry resolves the secret. (Do not commit a literal token; `{{ secrets.* }}` references the dashboard secret.)
+- **Self-hosted Renovate:** Inject the token via the `RENOVATE_HOST_RULES` env var, the bot's `config.js`, or an `encrypted: { token: "<blob>" }` field encrypted with your own bot key — no edit to the committed `token` line needed.
+
+Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps no longer read `encrypted` secrets from repo config — only dashboard secrets (the path above). The `encrypted` route is self-hosted only.
+
+This is part of Phase B activation; `pnpm bkit install --renovate` prints it in the activation checklist. The `hostRules` anchor is inert (no-op) until you add the token, so it never breaks consumers who have not provisioned it yet.
 
 ### Dependabot alternative (opt-in, mutually exclusive with Renovate)
 

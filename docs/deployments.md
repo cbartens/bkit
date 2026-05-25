@@ -155,9 +155,9 @@ Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40
 
 ## Project
 
-### `GH_BKIT_TOKEN` — four-surface presence matrix
+### `GH_BKIT_TOKEN` — presence matrix
 
-`GH_BKIT_TOKEN` is required at four surfaces; missing any one breaks an install or CI run. Detector coverage in `bkit install` Phase 3 mirrors this matrix.
+`GH_BKIT_TOKEN` is required at four surfaces for every consumer; missing any one breaks an install or CI run. Detector coverage in `bkit install` Phase 3 mirrors those four. A fifth surface applies only when Renovate is enabled — bkit cannot detect it (it lives in Mend's dashboard, off-repo).
 
 <!-- prettier-ignore -->
 | Surface | Where to set | Symptom if missing | bkit detector |
@@ -166,6 +166,7 @@ Every `.github/workflows/*.yml` step using a third-party action MUST SHA-pin (40
 | `.npmrc` | `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` (env-var ref, **never** literal) plus `@cbartens:registry=https://npm.pkg.github.com` | Same 401, more opaque (pnpm v7.20+ silently ignores entire `.npmrc` — see KN-1) | `detectNpmrcAuth` (Phase 3) |
 | GitHub Actions secret | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` on every install step | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` references `${GH_BKIT_TOKEN}`) |
 | Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production` | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \ | "production")` (Phase 3) |
+| Renovate (Mend hosted, **only if `--renovate`**) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `renovate.json5`'s `hostRules`. Self-hosted: `RENOVATE_HOST_RULES` env | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE` — Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard); surfaced in the `--renovate` Phase B checklist + security.md § Renovate read-auth |
 
 Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
 
