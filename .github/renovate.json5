@@ -11,7 +11,23 @@
 
   // Extend Renovate's curated baseline. `config:recommended` enables the
   // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
-  extends: ["config:recommended", ":dependencyDashboard"],
+  //
+  // `local>cbartens/bkit//.github/renovate-local` pulls in `.github/renovate-local.json5`,
+  // a CONSUMER-OWNED file bkit does NOT manage. This file (renovate.json5) is
+  // Tier-1 canonical-overwrite — rewritten on every `bkit install` — so hand-edits
+  // here are clobbered. Put repo-specific Renovate rules in renovate-local.json5
+  // instead; they survive `bkit install`/`bkit upgrade`. It's listed LAST so it
+  // wins over the presets above. Precedence caveat: extended-preset packageRules
+  // are evaluated BEFORE this config's inline packageRules below, so renovate-local
+  // can ADD rules and set keys bkit leaves unset (notably `enabled: false` to fence
+  // a package — bkit never sets `enabled: true`), but it canNOT override a key bkit
+  // sets explicitly (e.g. `automerge`). Renovate resolves the preset from the
+  // DEFAULT branch; append `#<branch>` to resolve from another branch.
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+    "local>cbartens/bkit//.github/renovate-local",
+  ],
 
   // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open
   // PRs against `dev`, not the default branch.
@@ -23,7 +39,7 @@
   // to `main` to take effect. `merge` layers `dev`'s config over `main`'s for the
   // dev-targeted runs, so ongoing config edits can live on `dev`. Bootstrap caveat:
   // this option is itself read from `main`, so it needs ONE merge to `main` before
-  // dev-side config edits are honored. See docs/security.md § Renovate activation.
+  // dev-side config edits are honored. See docs/deployments.md § GitHub Actions pinning.
   useBaseBranchConfig: "merge",
 
   // Weekly batched runs — keeps PR noise low. CVE-driven updates fire
@@ -76,7 +92,7 @@
   // The GitHub-Actions `GH_BKIT_TOKEN` repo secret used for CI is NOT visible
   // to Mend's hosted runner — the token must be provisioned on Renovate's side.
   // This rule is an inert anchor until you add the token. Full recipe:
-  // docs/security.md § Renovate read-auth for the private package.
+  // docs/deployments.md § GitHub Actions pinning (Renovate read-auth).
   // ─────────────────────────────────────────────────────────────────────
   hostRules: [
     {
@@ -196,8 +212,8 @@
 
     // ─────────────────────────────────────────────────────────────────────
     // GitHub Actions — refreshes SHA-pinned `uses:` lines on upstream releases
-    // and CVE disclosures (pairs with bkit's KN-3 SHA-pinning rule in
-    // docs/security.md).
+    // and CVE disclosures (pairs with bkit's SHA-pinning rule in
+    // docs/deployments.md § GitHub Actions pinning).
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["github-actions"],

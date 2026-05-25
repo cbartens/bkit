@@ -431,7 +431,12 @@ describe("upgrade substitutes template tokens (#129 §2)", () => {
         nonInteractive: true,
         dryRun: false,
         cwd: tmpDir,
-        tokens: { NODE_VERSION: "22", DEFAULT_BRANCH: "main", PROJECT_NAME: "x" },
+        tokens: {
+          NODE_VERSION: "22",
+          DEFAULT_BRANCH: "main",
+          PROJECT_NAME: "x",
+          REPO_SLUG: "acme/x",
+        },
       },
     );
 

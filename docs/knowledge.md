@@ -61,12 +61,12 @@
 - **Category:** integrations
 - **Symptom:** A newly added integration config (`renovate.json5`, `dependabot.yml`, a branch-protection-scoped check, etc.) appears inert, or the App's onboarding PR opens against the wrong base branch / ungrouped / with a redundant root config — because the file was committed on a feature or integration branch but not yet merged to the default branch.
 - **Root cause:** GitHub Apps and most CI integrations resolve their configuration from the repository's DEFAULT branch at install/scan time, not from the branch where the file was committed. bkit consumers gate the default branch to PRs-from-integration-branch-only, so the config must travel through to the default branch before the integration can see it. Activating the App first makes it scan a branch that has no config yet.
-- **Fix or rule:** Land the config on the default branch FIRST (merge it through your integration branch → default), THEN install/activate the App. `bkit install --renovate` enforces this with a two-phase flow: Phase A writes the file and prompts you to merge it to the default branch; Phase B (re-run after the merge) detects it on the remote default branch, then prints the App install URL + activation checklist. The same ordering applies to Dependabot and any default-branch-scoped integration. See `security.md` § Renovate activation. **Renovate-specific:** the default-branch read applies to _ongoing_ config edits too, not just first activation — an edit to `renovate.json5` on `dev` is invisible until merged to `main`. bkit ships `useBaseBranchConfig: "merge"` so dev-side edits are honored for dev-targeted runs, but that option is itself read from `main` and needs one bootstrap merge to `main` before it takes effect.
+- **Fix or rule:** Land the config on the default branch FIRST (merge it through your integration branch → default), THEN install/activate the App. `bkit install --renovate` enforces this with a two-phase flow: Phase A writes the file and prompts you to merge it to the default branch; Phase B (re-run after the merge) detects it on the remote default branch, then prints the App install URL + activation checklist. The same ordering applies to Dependabot and any default-branch-scoped integration. See `deployments.md` § GitHub Actions pinning. **Renovate-specific:** the default-branch read applies to _ongoing_ config edits too, not just first activation — an edit to `renovate.json5` on `dev` is invisible until merged to `main`. bkit ships `useBaseBranchConfig: "merge"` so dev-side edits are honored for dev-targeted runs, but that option is itself read from `main` and needs one bootstrap merge to `main` before it takes effect.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** human
-- **Related:** `security.md` (§ Renovate activation, § Dependabot alternative), `.github/renovate.json5`, `.github/dependabot.yml`
+- **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/dependabot.yml`
 
 ## KN-CORE-4: `pnpm update @cbartens/bkit` narrows the manifest range to an exact minor (pnpm 10) (2026-05-24)
 
@@ -90,7 +90,19 @@
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** human
-- **Related:** `security.md` (§ SHA-pinning / Renovate), `.github/renovate.json5`, `.github/workflows/bkit-cloud.yml`
+- **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/workflows/bkit-cloud.yml`
+
+## KN-CORE-6: Renovate's hosted lockfile regen ignores `pnpm.overrides` — fence overridden packages in the consumer-owned `renovate-local.json5` (2026-05-25)
+
+- **Category:** integrations
+- **Symptom:** A package pinned in root `pnpm.overrides` (e.g. `react = 19.2.4` to stop cross-package skew) gets its locked version rewritten by Renovate on an "eligible" bump (e.g. patch `19.2.4 → 19.2.6`) while the `19.2.4` override stays in `package.json`. The resulting `pnpm-lock.yaml` is inconsistent → CI fails `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`, `automerge` never fires, and Renovate keeps recreating/rebasing the branch, clobbering any manually-corrected lockfile pushed to it.
+- **Root cause:** Renovate's hosted lockfile regeneration does NOT reconcile the bumped version against `pnpm.overrides` (local `pnpm` does). Same shape as the `bkit-cloud.yml` SHA-pin case — a Renovate config fighting an intentional pin. The class is general: any `pnpm.overrides`-pinned package can hit it; react was just the instance. A bare react fence in the canonical `renovate.json5` is the wrong layer — bkit has no react, so it would push a consumer-specific pin to every consumer and re-appear on the next override (whack-a-mole).
+- **Fix or rule:** Fence the overridden package in `.github/renovate-local.json5` (consumer-owned, bkit-seeded once, survives `install`/`upgrade`; pulled into `renovate.json5` via `extends: ["local>cbartens/bkit//.github/renovate-local"]`): `{ matchPackageNames: ["<pkg>"], enabled: false }`. Precedence caveat: extended-preset rules are evaluated BEFORE bkit's inline rules, so the fence works only because it sets `enabled: false` and bkit never sets `enabled: true` on a matching rule — `renovate-local` canNOT override keys bkit sets explicitly (e.g. `automerge`). Renovate resolves the preset from the default branch; commit `renovate-local.json5` alongside `renovate.json5` and land both there (the `extends` target must exist or Renovate raises a config error). See bkit issue #179.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** human
+- **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/renovate-local.json5`, `package.json` (`pnpm.overrides`)
 
 <!-- bkit:end -->
 

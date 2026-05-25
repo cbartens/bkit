@@ -89,6 +89,17 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
     expect(content).toMatch(/"config:recommended"/);
   });
 
+  it("extends a consumer-owned local preset (renovate-local) so repo-specific rules survive bkit install", () => {
+    // renovate.json5 is Tier-1 canonical-overwrite; consumer customisations live in
+    // the unmanaged renovate-local.json5, pulled in via a {{REPO_SLUG}}-tokenised
+    // local preset. Listed LAST in `extends` so it wins over the baseline presets.
+    expect(content).toMatch(/"local>\{\{REPO_SLUG\}\}\/\/\.github\/renovate-local"/);
+    const extendsBlock = content.match(/extends:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
+    expect(extendsBlock.indexOf("renovate-local")).toBeGreaterThan(
+      extendsBlock.indexOf("config:recommended"),
+    );
+  });
+
   it("enables osvVulnerabilityAlerts (CVE-driven PRs bypass schedule)", () => {
     expect(content).toMatch(/osvVulnerabilityAlerts:\s*true/);
   });

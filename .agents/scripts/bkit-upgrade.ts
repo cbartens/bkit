@@ -37,7 +37,12 @@ import type { ManifestEntry } from "./bkit-manifest.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
-const EMPTY_TOKENS: TokenMap = { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "" };
+const EMPTY_TOKENS: TokenMap = {
+  NODE_VERSION: "",
+  DEFAULT_BRANCH: "",
+  PROJECT_NAME: "",
+  REPO_SLUG: "",
+};
 
 /**
  * Detect a template's managed-block marker style from its content.

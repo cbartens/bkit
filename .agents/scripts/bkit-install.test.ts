@@ -825,6 +825,7 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
       NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
+      REPO_SLUG: "acme/test-project",
     };
     const substituted = applyTokens(content, tokens);
     expect(substituted).not.toContain("{{NODE_VERSION}}");

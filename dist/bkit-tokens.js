@@ -58,6 +58,29 @@ function resolveDefaultBranch(cwd) {
     }
     return "main";
 }
+// Resolve REPO_SLUG: parse `owner/repo` from `git remote get-url origin`.
+// Handles HTTPS (`https://github.com/owner/repo.git`), SSH scp-form
+// (`git@github.com:owner/repo.git`), and ssh:// URLs. Returns "" on failure —
+// the Renovate module is origin-gated, so an empty slug only occurs before the
+// repo has a remote, and self-heals on the next `--renovate` run.
+function resolveRepoSlug(cwd) {
+    try {
+        const url = execSync("git remote get-url origin", {
+            cwd,
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "ignore"],
+        }).trim();
+        // Strip a trailing `.git`, then capture the final `owner/repo` segment after
+        // the last `/` or `:` (covers both URL and scp-style remotes).
+        const m = url.replace(/\.git$/, "").match(/[/:]([^/:]+\/[^/:]+)$/);
+        if (m?.[1])
+            return m[1];
+    }
+    catch {
+        // no remote / not a git repo — fall back to empty
+    }
+    return "";
+}
 // Read and parse package.json from cwd. Throws if absent.
 function readPackageJson(cwd) {
     const pkgPath = path.join(cwd, "package.json");
@@ -79,6 +102,7 @@ export async function resolveTokens(cwd) {
         NODE_VERSION: resolveNodeVersion(cwd, pkg),
         DEFAULT_BRANCH: resolveDefaultBranch(cwd),
         PROJECT_NAME: name.trim(),
+        REPO_SLUG: resolveRepoSlug(cwd),
     };
 }
 // Substitute {{TOKEN}} placeholders in content string.
@@ -89,8 +113,10 @@ export function applyTokens(content, tokens) {
     const nodeVersion = tokens.NODE_VERSION;
     const defaultBranch = tokens.DEFAULT_BRANCH;
     const projectName = tokens.PROJECT_NAME;
+    const repoSlug = tokens.REPO_SLUG;
     return content
         .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
         .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
-        .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName);
+        .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
+        .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
 }
