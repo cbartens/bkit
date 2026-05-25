@@ -51,7 +51,8 @@ export type ModuleName =
   | "lint"
   | "git-hooks"
   | "renovate"
-  | "dependabot";
+  | "dependabot"
+  | "cloud";
 
 // ---------------------------------------------------------------------------
 // Issue tracker (#39)
@@ -109,6 +110,34 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud agents — post-CI auto-routing (#119 "Managed Cloud Agents")
+// ---------------------------------------------------------------------------
+
+/**
+ * Cloud-agent automation chosen by the consumer (opt-in).
+ * - `enabled` — `bkit install --cloud` installed `.github/workflows/bkit-cloud.yml`
+ *               (the Claude half of post-CI auto-routing). Set by `runCloudModule`
+ *               on the success path only.
+ * - `none`    — explicit opt-out; silences the post-install nudge advisory.
+ *
+ * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
+ * (`bkit-cloud.yml`) is the authoritative "active" signal; the package.json
+ * field only distinguishes a deliberate opt-out from an undecided install.
+ */
+export const CLOUD_MODES = ["enabled", "none"] as const;
+export type CloudAgents = (typeof CLOUD_MODES)[number];
+
+/** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
+export const DEFAULT_CLOUD_AGENTS: CloudAgents = "none";
+
+/** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
+export function parseCloudAgents(value: unknown): CloudAgents | null {
+  return typeof value === "string" && (CLOUD_MODES as readonly string[]).includes(value)
+    ? (value as CloudAgents)
+    : null;
+}
+
+// ---------------------------------------------------------------------------
 // Per-module manifests
 // ---------------------------------------------------------------------------
 
@@ -125,7 +154,10 @@ const CORE_MANIFEST: ManifestEntry[] = [
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
-  { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "claude" },
+  // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
+  // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
+  // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
+  // so a default --full install without the script no-ops instead of erroring.
   { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".agents/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
@@ -139,13 +171,9 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   { path: ".cursor/hooks/preflight.sh", format: "markered-text", module: "cursor" },
   { path: ".cursor/rules/00-shared-rules.mdc", format: "markered-text", module: "cursor" },
   { path: ".cursor/settings.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
-  { path: ".cursor/Dockerfile", format: "markered-text", module: "cursor" },
-  {
-    path: ".cursor/environment.json",
-    format: "byte-equal-text",
-    module: "cursor",
-    seedOrPrint: true,
-  },
+  // .cursor/Dockerfile + .cursor/environment.json moved to the opt-in `cloud` module
+  // (CLOUD_MANIFEST) — they only matter for Cursor Background Agents (cloud), are read
+  // by Cursor's cloud infra (not in-repo hooks), and are inert for local Cursor use.
   { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
@@ -154,8 +182,6 @@ const CI_MANIFEST: ManifestEntry[] = [
   // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
   // duplicate top-level keys, so consumers own it after the initial seed.
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-  // bkit-ci-router.yml is canonical (writeTier1) — bkit owns it end-to-end, auto-overwrites.
-  { path: ".github/workflows/bkit-ci-router.yml", format: "byte-equal-text", module: "ci" },
   {
     path: "package.json",
     format: "markered-text",
@@ -163,6 +189,34 @@ const CI_MANIFEST: ManifestEntry[] = [
     packageJsonKeys: {
       scripts: { typecheck: "tsc --noEmit" },
     },
+  },
+];
+
+// Cloud agent integration is opt-in via `bkit install --cloud` — NOT included in
+// --full, so a default install ships ZERO cloud footprint. Every file here is
+// inert until a human wires the matching cloud surface (repo secrets + Actions
+// permissions for the workflow; the Claude/Cursor dashboard for the env scaffolding):
+//
+//   - bkit-cloud.yml         — phase-routed GitHub Action; auto-dispatches a cloud
+//                              agent on CI events. Inert without ANTHROPIC_API_KEY +
+//                              LINEAR_API_KEY + Actions write perms, and depends on
+//                              the issue tracker (itself opt-in). The ONE pathway that
+//                              actually auto-spins-up a cloud agent.
+//   - cloud-bootstrap.sh     — Claude Code on the web SessionStart install hook
+//                              (no-op unless CLAUDE_CODE_REMOTE=true).
+//   - .cursor/Dockerfile     — Cursor Background Agent container toolchain.
+//   - .cursor/environment.json — Cursor Background Agent env config (consumer-owned).
+//
+// See issue #119 ("Managed Cloud Agents").
+const CLOUD_MANIFEST: ManifestEntry[] = [
+  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
+  { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
+  { path: ".cursor/Dockerfile", format: "markered-text", module: "cloud" },
+  {
+    path: ".cursor/environment.json",
+    format: "byte-equal-text",
+    module: "cloud",
+    seedOrPrint: true,
   },
 ];
 
@@ -239,6 +293,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   "git-hooks": GIT_HOOKS_MANIFEST,
   renovate: RENOVATE_MANIFEST,
   dependabot: DEPENDABOT_MANIFEST,
+  cloud: CLOUD_MANIFEST,
 };
 
 // ---------------------------------------------------------------------------

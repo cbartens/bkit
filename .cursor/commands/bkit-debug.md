@@ -24,7 +24,7 @@
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
@@ -89,7 +89,7 @@
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before debug" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
@@ -131,6 +131,13 @@
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
     **Format:** `{ISSUE_ID}-{slug}` — no prefix, slug ≤3 tokens, kebab, lowercase, no stopwords (e.g. `123-add-foo-bar`). Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
 11. Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+
+1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
+
+**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
 12. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
     `{BODY}` = fenced block below:
     ```comment
@@ -149,7 +156,7 @@
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
-- [ ] Issue update attempted (additive label `bkit:debug`)
+- [ ] Issue update attempted (additive label `bkit:debug`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -810,6 +817,13 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 
 11. **If** `OBSERVE_MODE` = off:
     GitHub no-op. Issue stays `open`; phase label set in `issue-update-phase` carries the completion signal until the next phase or terminal ship close (`issue-update-merged`).
+    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+
+1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
+
+**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
 12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
     `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
     **If** `bkit:auto` NOT in `{LABELS}`:
@@ -835,6 +849,6 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
-- [ ] If `OBSERVE_MODE` = off issue update attempted (hand-off state via `issue-update-review`)
+- [ ] If `OBSERVE_MODE` = off issue update attempted (phase label `bkit:debug` preserved, status/state `In Review`)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 12` section)

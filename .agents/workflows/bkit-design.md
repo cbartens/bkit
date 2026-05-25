@@ -117,6 +117,9 @@ description: "Design Feature — Autonomous design phase"
 8. <!-- bkit:tracker issue-update-phase start -->
    _Tracker not wired — skip phase label update._
    <!-- bkit:tracker issue-update-phase end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 9. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -132,7 +135,7 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] Issue update attempted (phase label `bkit:design`)
+- [ ] Issue update attempted (phase label `bkit:design`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -600,6 +603,9 @@ description: "Design Feature — Autonomous design phase"
 5. <!-- bkit:tracker issue-update-review start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-update-review end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 6. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -618,5 +624,5 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
-- [ ] Issue update attempted (hand-off state via `issue-update-review`; phase label `bkit:design` preserved)
+- [ ] Issue update attempted (phase label `bkit:design` preserved, status/state `In Review`)
 - [ ] Issue comment attempted (`Step 10` section)

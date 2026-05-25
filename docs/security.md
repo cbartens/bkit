@@ -27,7 +27,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - Runs weekly (`schedule: ["before 6am on Monday"]`) with grouped non-major bumps, lockfile maintenance, and `automerge: true` for devDependencies + patch updates.
 - Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
-- For bkit-managed workflow files (`bkit-ci-router.yml`): a packageRule with `matchFileNames` + `enabled: false` suppresses consumer-side bumps — new SHAs/versions arrive via `bkit install`, not consumer Renovate.
+- For bkit-managed workflow files (`bkit-cloud.yml`): a packageRule with `matchFileNames` + `enabled: false` suppresses consumer-side bumps — new SHAs/versions arrive via `bkit install`, not consumer Renovate.
 
 **Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
 
@@ -36,7 +36,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency.
 
-Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-ci-router` will not dispatch on them by design.
+Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — the `bkit-cloud` will not dispatch on them by design.
 
 ### Dependabot alternative (opt-in, mutually exclusive with Renovate)
 

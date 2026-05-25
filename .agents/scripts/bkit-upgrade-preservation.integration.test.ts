@@ -332,7 +332,7 @@ describe("upgrade never overwrites a present seed-or-print file (#129 §1)", () 
 
     const templatePath = writeTemplate(
       "pre-commit",
-      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
+      "#!/usr/bin/env sh\npnpm lint-staged && pnpm lint:prose && pnpm lint:slop\n",
     );
 
     const result = upgrade([
@@ -362,19 +362,46 @@ describe("upgrade never overwrites a present seed-or-print file (#129 §1)", () 
 
   it("canonical byte-equal (NOT seed-or-print) still auto-updates when no consumer drift", () => {
     const old = "router v1\n";
-    writeAbs(".github/workflows/bkit-ci-router.yml", old);
-    seedVersion({ ".github/workflows/bkit-ci-router.yml": sha256(old) }); // current == canonical
-    const templatePath = writeTemplate("bkit-ci-router.yml", "router v2\n");
+    writeAbs(".github/workflows/bkit-cloud.yml", old);
+    seedVersion({ ".github/workflows/bkit-cloud.yml": sha256(old) }); // current == canonical
+    const templatePath = writeTemplate("bkit-cloud.yml", "router v2\n");
 
     const result = upgrade([
       // no seedOrPrint → canonical, bkit owns it end-to-end
-      { relPath: ".github/workflows/bkit-ci-router.yml", templatePath, format: "byte-equal-text" },
+      { relPath: ".github/workflows/bkit-cloud.yml", templatePath, format: "byte-equal-text" },
     ]);
 
-    expect(result.updated).toContain(".github/workflows/bkit-ci-router.yml");
-    expect(
-      fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-ci-router.yml"), "utf-8"),
-    ).toBe("router v2\n");
+    expect(result.updated).toContain(".github/workflows/bkit-cloud.yml");
+    expect(fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-cloud.yml"), "utf-8")).toBe(
+      "router v2\n",
+    );
+  });
+
+  it("honors contentOverride — writes rendered content, never the raw sentinel template (issue #138)", () => {
+    const old = "rendered v1\n";
+    writeAbs(".github/workflows/bkit-cloud.yml", old);
+    seedVersion({ ".github/workflows/bkit-cloud.yml": sha256(old) });
+    // Raw template carries an unresolved sentinel that must NEVER reach the consumer.
+    const templatePath = writeTemplate(
+      "bkit-cloud.yml",
+      "@@CLOUD_TRACKER_SECRET_ENV@@\nraw v2 with mcp__linear__*\n",
+    );
+
+    const result = upgrade([
+      {
+        relPath: ".github/workflows/bkit-cloud.yml",
+        templatePath,
+        format: "byte-equal-text",
+        // What renderCloudWorkflow(tracker) produced — install + upgrade share this.
+        contentOverride: "rendered v2 (github, no linear)\n",
+      },
+    ]);
+
+    expect(result.updated).toContain(".github/workflows/bkit-cloud.yml");
+    const written = fs.readFileSync(path.join(tmpDir, ".github/workflows/bkit-cloud.yml"), "utf-8");
+    expect(written).toBe("rendered v2 (github, no linear)\n");
+    expect(written).not.toContain("@@CLOUD_TRACKER"); // raw sentinel never written
+    expect(written).not.toContain("mcp__linear__*"); // raw template's Linear bits never written
   });
 });
 

@@ -11,7 +11,6 @@ import {
   detectNpmrcAuth,
   detectGhSecret,
   detectMainBranchProtection,
-  detectDevBranchProtection,
   detectVercelProject,
   detectVercelEnv,
   detectCiYmlMissingTokenEnv,
@@ -25,6 +24,7 @@ import {
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
+  buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   formatChecklist,
   runPostInstallCheck,
@@ -521,18 +521,6 @@ describe("detectBkitStubs", () => {
     expect(findings[0]!.action).toContain("delete the entire stub block");
   });
 
-  it("scans pre-commit for the wrong-branch-guard sentinel", () => {
-    fs.mkdirSync(path.join(tmpDir, ".husky"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".husky", "pre-commit"),
-      "#!/usr/bin/env sh\n# bkit-stub:wrong-branch-guard — header\npnpm lint-staged\n",
-    );
-    const findings = detectBkitStubs(tmpDir);
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.id).toBe("bkit-stub-wrong-branch-guard");
-    expect(findings[0]!.detect).toContain(".husky/pre-commit");
-  });
-
   it("does not fire when the sentinel line has been removed (block left uncommented in place)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
@@ -677,35 +665,6 @@ describe("detectTestIntegrationEnv", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectDevBranchProtection (mocks execFileSync like detectMainBranchProtection)
-// ---------------------------------------------------------------------------
-
-describe("detectDevBranchProtection", () => {
-  it("returns 'present' when gh api returns 200", () => {
-    execFileSync.mockReturnValue(Buffer.from("{}"));
-    expect(detectDevBranchProtection()).toBe("present");
-  });
-
-  it("returns 'missing' when stderr contains 'Branch not protected'", () => {
-    execFileSync.mockImplementation(() => {
-      const err = new Error("gh: api failed") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("gh: Branch not protected (HTTP 404)\n");
-      throw err;
-    });
-    expect(detectDevBranchProtection()).toBe("missing");
-  });
-
-  it("returns 'unknown' when gh is unauthenticated", () => {
-    execFileSync.mockImplementation(() => {
-      const err = new Error("auth") as Error & { stderr?: Buffer };
-      err.stderr = Buffer.from("HTTP 401: Bad credentials\n");
-      throw err;
-    });
-    expect(detectDevBranchProtection()).toBe("unknown");
-  });
-});
-
-// ---------------------------------------------------------------------------
 // detectGhaFloatingTags
 // ---------------------------------------------------------------------------
 
@@ -751,7 +710,7 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
@@ -759,7 +718,7 @@ describe("detectGhaFloatingTags", () => {
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
-        canonicalHashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
     expect(detectGhaFloatingTags(tmpDir)).toBeNull();
@@ -769,14 +728,14 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
       path.join(tmpDir, ".agents", ".bkit-version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
-        tier3Hashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+        tier3Hashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
         canonicalHashes: {},
       }),
     );
@@ -787,7 +746,7 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
@@ -799,13 +758,13 @@ describe("detectGhaFloatingTags", () => {
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
-        canonicalHashes: { ".github/workflows/bkit-ci-router.yml": "deadbeef" },
+        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
     const result = detectGhaFloatingTags(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toContain("ci.yml");
-    expect(result!.detect).not.toContain("bkit-ci-router.yml");
+    expect(result!.detect).not.toContain("bkit-cloud.yml");
   });
 });
 
@@ -883,6 +842,69 @@ describe("buildDepUpdaterSetupAdvisory", () => {
 });
 
 // ---------------------------------------------------------------------------
+// buildCloudSetupAdvisory — optional post-install decision (parity with the
+// tracker / dep-updater advisories). Cloud agents (post-CI auto-routing) are
+// opt-in via `bkit install --cloud`. See issue #119.
+// ---------------------------------------------------------------------------
+
+describe("buildCloudSetupAdvisory", () => {
+  it("bkit-cloud.yml present → cloud-router (informational, active)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
+    );
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router");
+  });
+
+  it("nudges (cloud-router-none) when workflows exist but the router is absent", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router-none");
+    expect(result!.action).toMatch(/pnpm bkit install --cloud/);
+  });
+
+  it("returns null when no workflows dir exists (no CI to route on — no nudge)", () => {
+    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet when bkit.cloudAgents is explicitly 'none' (deliberate opt-out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+    );
+    expect(buildCloudSetupAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("still nudges when bkit.cloudAgents is absent (undecided, not opted out)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router-none");
+  });
+
+  it("router presence wins over a stale bkit.cloudAgents=none field", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { cloudAgents: "none" } }),
+    );
+    const result = buildCloudSetupAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("cloud-router");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // buildTrackerSetupAdvisory — symmetric opt-out (explicit `none` silences;
 // absent field nudges). Requires .claude/ or .cursor/ present to fire at all.
 // ---------------------------------------------------------------------------
@@ -932,7 +954,7 @@ describe("detectRunLevelsNotComposed", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      "jobs:\n  run-tests:\n    runs-on: ubuntu-latest\n",
+      "jobs:\n  bkit-tests:\n    runs-on: ubuntu-latest\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });
@@ -967,15 +989,19 @@ describe("detectRunLevelsNotComposed", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectCiRouterSecrets", () => {
-  it("returns empty when bkit-ci-router workflow is absent", () => {
+  it("returns empty when bkit-cloud workflow is absent", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("emits one finding per missing secret when router workflow exists", () => {
+  it("Linear tracker: emits ANTHROPIC + LINEAR findings when both secrets missing", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+    );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
-      "name: bkit-ci-router\n",
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
     const findings = detectCiRouterSecrets(tmpDir);
@@ -985,11 +1011,30 @@ describe("detectCiRouterSecrets", () => {
     ]);
   });
 
-  it("returns empty when both secrets are present", () => {
+  it("github tracker: emits ONLY ANTHROPIC — no LINEAR_API_KEY advisory (issue #138)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
+    );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
-      "name: bkit-ci-router\n",
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
+    );
+    execSync.mockReturnValue(""); // gh secret list returns no secrets
+    const findings = detectCiRouterSecrets(tmpDir);
+    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
+  });
+
+  it("Linear tracker: returns empty when both secrets are present", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
     );
     execSync.mockReturnValue("ANTHROPIC_API_KEY\nLINEAR_API_KEY\n");
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
@@ -1005,11 +1050,11 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).toBeNull();
   });
 
-  it("fires when bkit-ci-router workflow exists", () => {
+  it("fires when bkit-cloud workflow exists", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-ci-router.yml"),
-      "name: bkit-ci-router\n",
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -1027,6 +1072,37 @@ describe("buildCloudDashboardsAdvisory", () => {
   it("fires when .cursor/ exists", () => {
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     expect(buildCloudDashboardsAdvisory(tmpDir)).not.toBeNull();
+  });
+
+  it("github tracker: omits LINEAR_API_KEY from the secrets checklist (issue #138)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "github" } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
+    );
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).not.toContain("LINEAR_API_KEY");
+    expect(result!.action).not.toContain("LINEAR_API_KEY");
+    expect(result!.action).toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("linear tracker: keeps LINEAR_API_KEY in the checklist (regression-safe)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+      "name: bkit-cloud\n",
+    );
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result!.action).toContain("LINEAR_API_KEY");
   });
 });
 

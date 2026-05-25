@@ -101,7 +101,7 @@ description: "Build Feature — Autonomous implementation"
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before build" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
@@ -152,6 +152,9 @@ description: "Build Feature — Autonomous implementation"
     <!-- bkit:tracker issue-update-phase start -->
     _Tracker not wired — skip issue update._
     <!-- bkit:tracker issue-update-phase end -->
+    <!-- bkit:tracker issue-update-status start -->
+    _Tracker not wired — skip status/state update._
+    <!-- bkit:tracker issue-update-status end -->
 11. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
     <!-- bkit:tracker comment-post-step end -->
@@ -169,7 +172,7 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Not blocked by any related issues
 - [ ] Long-branch advisory emitted
-- [ ] Issue update attempted (phase label `bkit:build`)
+- [ ] Issue update attempted (phase label `bkit:build`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -954,6 +957,9 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. <!-- bkit:tracker issue-update-review start -->
    _Tracker not wired — skip issue update._
    <!-- bkit:tracker issue-update-review end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 4. Re-read issue labels to check kill-switch:
    <!-- bkit:tracker issue-read start -->
    _Tracker not wired — skip._
@@ -979,6 +985,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue update attempted via `issue-update-review` (state `In Review`)
+- [ ] Issue update attempted (phase label `bkit:build` preserved, status/state `In Review`)
 - [ ] Kill-switch propagation checked (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 18` section)

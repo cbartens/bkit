@@ -11,6 +11,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      picomatch:
+        specifier: ^4.0.4
+        version: 4.0.4
     devDependencies:
       '@types/node':
         specifier: ^20.11.0
@@ -24,9 +28,6 @@ importers:
       lint-staged:
         specifier: ^15.2.10
         version: 15.5.2
-      picomatch:
-        specifier: ^4.0.4
-        version: 4.0.4
       prettier:
         specifier: ^3.5.3
         version: 3.8.3

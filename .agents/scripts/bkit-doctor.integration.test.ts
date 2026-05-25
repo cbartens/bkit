@@ -224,8 +224,13 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
   });
 
-  it("mcp-env-blank-key advisories surface when .agents/.env has blank values", () => {
-    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+  it("mcp-env-blank-key advisories surface when .agents/.env has blank values (Linear tracker → all 3 keys)", () => {
+    // Linear tracker so LINEAR_API_KEY is a required key (issue #138 tracker-gating).
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "linear" } }),
+      "utf-8",
+    );
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".agents", ".env"),
@@ -240,6 +245,27 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(ids).toContain("mcp-env-blank-key-gh_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
+  });
+
+  it("github tracker: mcp-env-blank-key does NOT flag LINEAR_API_KEY (issue #138)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { issueTracker: "github" } }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".agents", ".env"),
+      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "utf-8",
+    );
+
+    const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
+    const ws = { writes: [], reverts: [] };
+    const findings = runPostInstallCheck([], ws, modules, tmpDir);
+    const ids = findings.map((a) => a.id);
+    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
 
   it("no mcp-env advisories when .agents/.env has all keys populated and no .envrc", () => {

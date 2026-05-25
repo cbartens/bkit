@@ -123,7 +123,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
   it("byte-equal-text file: unknown hash (no tier3Hashes entry) → skip-tier3-unknown", () => {
     writeFile(".cursor/environment.json", '{"build":{"dockerfile":"Dockerfile"}}\n');
     // No .bkit-version file → no hash recorded
-    const table = buildDecisionTable(["cursor"], makeCtx());
+    const table = buildDecisionTable(["cloud"], makeCtx());
     const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
@@ -136,7 +136,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
       pinnedVersion: "0.7.0",
       tier3Hashes: { ".cursor/environment.json": sha256(content) },
     });
-    const table = buildDecisionTable(["cursor"], makeCtx());
+    const table = buildDecisionTable(["cloud"], makeCtx());
     const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
@@ -150,7 +150,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
       pinnedVersion: "0.7.0",
       tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
     });
-    const table = buildDecisionTable(["cursor"], makeCtx());
+    const table = buildDecisionTable(["cloud"], makeCtx());
     const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-modified");
@@ -163,7 +163,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
       pinnedVersion: "0.7.0",
       tier3Hashes: { ".cursor/environment.json": sha256(originalContent) },
     });
-    const table = buildDecisionTable(["cursor"], makeCtx({ force: true }));
+    const table = buildDecisionTable(["cloud"], makeCtx({ force: true }));
     const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("delete");
@@ -177,7 +177,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
 
-    const table = buildDecisionTable(["cursor"], makeCtx());
+    const table = buildDecisionTable(["cloud"], makeCtx());
     const entry = table.find((r) => r.file === ".cursor/environment.json");
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("skip-tier3-unknown");
@@ -198,7 +198,10 @@ describe("buildDecisionTable — nuke mode", () => {
       tier3Hashes: { ".cursor/Dockerfile": sha256("different content\n") },
     });
 
-    const table = buildDecisionTable(["core", "claude", "cursor"], makeCtx({ nuke: true }));
+    const table = buildDecisionTable(
+      ["core", "claude", "cursor", "cloud"],
+      makeCtx({ nuke: true }),
+    );
     const decisions = table.filter((r) => r.decision !== "skip-absent").map((r) => r.decision);
     expect(decisions.every((d) => d === "delete")).toBe(true);
   });
@@ -289,7 +292,7 @@ describe("runUninstall — round-trip", () => {
 
   it("preserves byte-equal-text file when hash unknown (no tier3Hashes)", async () => {
     writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
-    await runUninstall(["cursor"], makeCtx());
+    await runUninstall(["cloud"], makeCtx());
     expect(fileExists(".cursor/environment.json")).toBe(true);
   });
 
@@ -300,7 +303,7 @@ describe("runUninstall — round-trip", () => {
       pinnedVersion: "0.7.0",
       tier3Hashes: { ".cursor/environment.json": sha256(content) },
     });
-    await runUninstall(["cursor"], makeCtx());
+    await runUninstall(["cloud"], makeCtx());
     expect(fileExists(".cursor/environment.json")).toBe(false);
   });
 
@@ -310,7 +313,7 @@ describe("runUninstall — round-trip", () => {
       pinnedVersion: "0.7.0",
       tier3Hashes: { ".cursor/environment.json": sha256('{"install":"original"}\n') },
     });
-    await runUninstall(["cursor"], makeCtx());
+    await runUninstall(["cloud"], makeCtx());
     expect(fileExists(".cursor/environment.json")).toBe(true);
     expect(readFile(".cursor/environment.json")).toBe('{"install":"consumer modified"}\n');
   });
@@ -361,7 +364,7 @@ describe("runUninstall — nuke", () => {
     });
 
     const result = await runUninstall(
-      ["core", "claude", "cursor"],
+      ["core", "claude", "cursor", "cloud"],
       makeCtx({ nuke: true, yes: true }),
     );
 

@@ -79,7 +79,7 @@ description: "Plan Feature — Autonomous plan generation"
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
@@ -119,6 +119,9 @@ description: "Plan Feature — Autonomous plan generation"
 9. <!-- bkit:tracker issue-update-phase start -->
    _Tracker not wired — skip phase label update._
    <!-- bkit:tracker issue-update-phase end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 10. <!-- bkit:tracker comment-post-step start -->
     _Tracker not wired — skip comment post._
     <!-- bkit:tracker comment-post-step end -->
@@ -136,7 +139,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] `PARENT_FID` extraction from issue description attempted
-- [ ] Issue update attempted (phase label `bkit:plan`)
+- [ ] Issue update attempted (phase label `bkit:plan`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -558,7 +561,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 1. Copy final plan to canonical bucket:
    ```bash
-   YYYYMM=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   YYYYMM=$(ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
    PLAN_FINAL=$(ls docs/plans/$YYYYMM/logs/{FID}/plan-v*.md 2>/dev/null | grep -v 'plan-v[0-9]*-[0-9]' | sort -V | tail -1)
    [ -z "$PLAN_FINAL" ] && { echo "No plan version found" >&2; exit 1; }
@@ -607,6 +610,9 @@ description: "Plan Feature — Autonomous plan generation"
 5. <!-- bkit:tracker issue-update-review start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-update-review end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 6. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -625,5 +631,5 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
-- [ ] Issue update attempted (state `In Review`; phase label `Plan` preserved)
+- [ ] Issue update attempted (status/state `In Review`; phase label `Plan` preserved)
 - [ ] Issue comment attempted (`Step 11` section)

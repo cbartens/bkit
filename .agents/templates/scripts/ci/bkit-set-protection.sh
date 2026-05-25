@@ -1,32 +1,43 @@
 #!/usr/bin/env bash
-# bkit-set-protection.sh — Apply default branch protection to main (and optionally dev).
+# bkit-set-protection.sh — Apply bkit's branch protection policy to main.
 #
-# Default policy aligns with bkit's ship workflow:
-#   - main: require PR, require ci.yml#run-tests status, linear history, no force-push, no deletion.
-#   - dev (--dev): no required PR (chore commits allowed) but require ci.yml#run-tests; no force-push.
+# Policy (aligns with the bkit release flow — main only ever moves via a
+# release PR; build/ship keep all feat/* PRs on dev):
+#   - main: require PR, require the `bkit-tests` status check, enforce for
+#     admins (no bypass), linear history, no force-push, no deletion.
+#
+# `dev` is intentionally left UNPROTECTED. Operators choose direct-push or
+# feat/PR and own that tests ran (either on dev directly or on the branch/PR).
+#
+# enforce-for-admins is load-bearing: agents act with the owner's admin token,
+# so an admin-bypass exemption means the agent itself is the bypass. Covering
+# admins is the only way protection actually constrains agents.
+#
+# Before requiring `bkit-tests`, the script verifies a job by that name exists
+# in .github/workflows/ci.yml — requiring a status check that no CI job
+# produces would wedge every PR (the context stays "Expected" forever).
 #
 # Usage:
-#   bash scripts/ci/bkit-set-protection.sh             # main only, default policy
-#   bash scripts/ci/bkit-set-protection.sh --dev       # also configure dev with chore-allowed policy
-#   bash scripts/ci/bkit-set-protection.sh --dry-run   # print every gh api call without executing
+#   bash scripts/ci/bkit-set-protection.sh             # apply main policy
+#   bash scripts/ci/bkit-set-protection.sh --dry-run   # print the gh api call without executing
 #   bash scripts/ci/bkit-set-protection.sh --print     # print current protection JSON for main and exit
 #
-# Requires: gh, jq. Run from repo root. Override policy by editing the protection
-# payload below — the defaults match the bkit-ship workflow's expectations.
+# Requires: gh, jq. Run from repo root. Override policy by editing the payload
+# below — the defaults match the bkit release flow's expectations.
 
 set -euo pipefail
 
 DRY_RUN=0
 PRINT_ONLY=0
-DO_DEV=0
+REQUIRED_JOB="bkit-tests"
+CI_YML=".github/workflows/ci.yml"
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run) DRY_RUN=1 ;;
-    --dev) DO_DEV=1 ;;
     --print) PRINT_ONLY=1 ;;
     -h|--help)
-      sed -n '2,16p' "$0"
+      sed -n '2,24p' "$0"
       exit 0
       ;;
     *)
@@ -49,6 +60,18 @@ if [ "$PRINT_ONLY" = "1" ]; then
   exit 0
 fi
 
+# Pre-flight: the required status check must correspond to a real CI job, or
+# branch protection blocks every PR waiting on a context that never reports.
+[ -f "$CI_YML" ] || {
+  echo "[bkit-set-protection] $CI_YML not found — cannot verify the '$REQUIRED_JOB' status check exists. Aborting." >&2
+  exit 1
+}
+if ! grep -qE "^[[:space:]]+${REQUIRED_JOB}:" "$CI_YML"; then
+  echo "[bkit-set-protection] No job named '$REQUIRED_JOB' found in $CI_YML." >&2
+  echo "[bkit-set-protection] Requiring a status check that no CI job produces would wedge every PR. Aborting." >&2
+  exit 1
+fi
+
 apply_protection() {
   local BRANCH="$1"
   local PAYLOAD="$2"
@@ -63,14 +86,15 @@ apply_protection() {
   echo "$PAYLOAD" | gh api -X PUT "repos/$OWNER_REPO/branches/$BRANCH/protection" --input -
 }
 
-# Default policy for main: require PR, require ci.yml#run-tests, linear history, no force-push, no deletion.
-MAIN_PAYLOAD=$(cat <<'JSON'
+# main: require PR, require the bkit-tests check, enforce for admins (no bypass),
+# linear history, no force-push, no deletion.
+MAIN_PAYLOAD=$(cat <<JSON
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["run-tests"]
+    "contexts": ["$REQUIRED_JOB"]
   },
-  "enforce_admins": false,
+  "enforce_admins": true,
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": false,
@@ -85,25 +109,5 @@ JSON
 )
 
 apply_protection main "$MAIN_PAYLOAD"
-
-if [ "$DO_DEV" = "1" ]; then
-  # Looser policy for dev: chore commits allowed (no required PR), but status check + no force-push.
-  DEV_PAYLOAD=$(cat <<'JSON'
-{
-  "required_status_checks": {
-    "strict": false,
-    "contexts": ["run-tests"]
-  },
-  "enforce_admins": false,
-  "required_pull_request_reviews": null,
-  "restrictions": null,
-  "required_linear_history": false,
-  "allow_force_pushes": true,
-  "allow_deletions": false
-}
-JSON
-)
-  apply_protection dev "$DEV_PAYLOAD"
-fi
 
 echo "[bkit-set-protection] Done. Verify with: gh api repos/$OWNER_REPO/branches/main/protection | jq ."

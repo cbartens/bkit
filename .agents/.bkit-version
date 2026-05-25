@@ -1,15 +1,15 @@
 {
-  "pinnedVersion": "2.5.3",
+  "pinnedVersion": "2.6.0",
   "tier3Hashes": {
-    ".github/workflows/bkit-ci-router.yml": "9363cb01c3295924f49979d6b94cf01f46250d3629e8a62872cba66c7e81c290",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
-    ".github/renovate.json5": "9e0da45b7ae6d3af01e6ebd949d6f7177b7794148b1cbb36a623ae947faf65a8"
+    ".github/renovate.json5": "9e0da45b7ae6d3af01e6ebd949d6f7177b7794148b1cbb36a623ae947faf65a8",
+    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "922fe77d51c0fe69c5755a83ff473b4f6c4f112ccac212f1e32de2f68b08a61f",
+    "docs/deployments.md": "9c898d6c635e6e9a70408c0d7f73a14c59b6b979ea74e38e1817eaa0b76469af",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
-    ".claude/settings.json": "56d5f1467d16c1f9556cefb1d8ebb53afe5f409b2963e40ac623363a4e98e11d",
+    ".claude/settings.json": "5a07bba2ae7b29166d2934c32dcaff3ab39097f677734a48c5b3f2afe7bf64c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
@@ -44,13 +44,12 @@
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "839c727d18c7d62c9120c9fbc2cdfc870489bcdfc1b2f5ddfa1a615e24ca3214",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
-    ".github/workflows/bkit-ci-router.yml": "83e71f949c874dd427fe3684cce1450d723f684308b593fac5fc2a29643dc765",
     "docs/observability.md": "8b2efc3b22555255f8d742106df3c885ccc388126b04d463a1a344b47fb60e98",
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
     ".gitignore": "1fc62a838c6c929928be1debe1536a56281b28711554e13432eb15c1e1d76cc2",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "48302986fd8b7c4ce5b5bd5a88d47042ccf98f3ed22cc8ce910e0c68d90c348c",
-    "docs/security.md": "b3de5fad546ae0563f4c907f0c0c3b6cd2fcc5d1c52f85b3a8788a257e39ecd5",
+    "docs/security.md": "b3d45bce6ef9b83415c355d369e4e8d783472e8f2b14a11e64459eed298a8d83",
     ".github/renovate.json5": "9e0da45b7ae6d3af01e6ebd949d6f7177b7794148b1cbb36a623ae947faf65a8",
     ".agents/.env.example": "1dbcfa023ec0a687532f474c8ed2cd77c9e15e1e464e61706d1ed7b87416b11e",
     ".agents/friction.md": "3cc4c98c00175efd21ea404309cdb279e9056a5c2c38c55c06c961a714e7cad8",
@@ -59,8 +58,9 @@
     "docs/architecture.md": "e74ca6ae7e878ea694a2cb2d7355fdb64ca310a1091a7aa74c484782c0397e52",
     "docs/completed.md": "017dcb73f534603cce7583a859bb96d5466099aa7e3dc94d6c0baf0816aa5234",
     "docs/decisions.md": "3163f83d0ce39c5c376806d82c54a100dcb0cfdec56ccefa6e27d42acf1da321",
-    "docs/knowledge.md": "5fb57e477d45535cab1224b0c5d04ab102af7e37fd8fbb119fa3a7748c0241e2",
+    "docs/knowledge.md": "b6a8154f9865e6356df763ed5653ddc0ca312ed80656dd5b59300196d7f3125e",
     "docs/pending.md": "785b8bfeda66a5857304399da5ccf332255e6d32c112af4f52ad5277065a7efa",
-    "docs/technology.md": "b53991e4116da14297236d1ae6e855450e21fc9ae0cb61e4f20dffa70329ea2d"
+    "docs/technology.md": "b53991e4116da14297236d1ae6e855450e21fc9ae0cb61e4f20dffa70329ea2d",
+    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
   }
 }

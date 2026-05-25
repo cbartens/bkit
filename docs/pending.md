@@ -106,7 +106,7 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** v1 of `bkit-ci-router` surfaces dispatch-step crashes via GHA run log + existing Linear comment append (Failure Path mirror). No automated retry, dead-letter queue, or exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies added complexity.
+- **Description:** v1 of `bkit-cloud` surfaces dispatch-step crashes via GHA run log + existing Linear comment append (Failure Path mirror). No automated retry, dead-letter queue, or exponential backoff. Operator-triggered remediation only. Revisit if observed crash rate justifies added complexity.
 - **Source:** phase
 - **Related:** BAR-148, DE-14
 
@@ -176,7 +176,7 @@
 - **Category:** infra
 - **Severity:** normal
 - **Status:** deferred
-- **Description:** `main` currently has no GitHub-side protection — both classic branch protection (`repos/.../branches/main/protection`) and rulesets (`repos/.../rulesets`) return `403 Upgrade to GitHub Pro or make this repository public`. Dev→main PR flow is enforced only by bkit workflow discipline, not by GitHub. Apply the ruleset once the repo is either made public or upgraded to GitHub Pro. Ruleset JSON staged at `/tmp/main-ruleset.json`: target `refs/heads/main`, enforcement `active`, rules = `deletion` + `non_fast_forward` + `pull_request` (1 approval, no stale-dismiss, no code-owner, no last-push-approval, no thread resolution) + `required_status_checks` (non-strict, context `run-tests`), zero bypass actors. CI job name `run-tests` already matches (`.github/workflows/ci.yml`). Apply with `gh api -X POST repos/cbartens/bkit/rulesets --input /tmp/main-ruleset.json`.
+- **Description:** `main` currently has no GitHub-side protection — both classic branch protection (`repos/.../branches/main/protection`) and rulesets (`repos/.../rulesets`) return `403 Upgrade to GitHub Pro or make this repository public`. Dev→main PR flow is enforced only by bkit workflow discipline, not by GitHub. Apply once the repo is either made public or upgraded to GitHub Pro. **Quick path:** `bash scripts/ci/bkit-set-protection.sh` (require PR, required check `bkit-tests`, enforce-for-admins, linear history, no force-push/deletion; pre-flights that a `bkit-tests` job exists in `ci.yml`). Equivalent ruleset JSON staged at `/tmp/main-ruleset.json`: target `refs/heads/main`, enforcement `active`, rules = `deletion` + `non_fast_forward` + `pull_request` (0 approvals so the release agent can self-merge, no stale-dismiss, no code-owner, no last-push-approval, no thread resolution) + `required_status_checks` (non-strict, context `bkit-tests`), **zero bypass actors** (enforce-for-admins is load-bearing — agents act with the owner's admin token). CI job renamed `run-tests` → `bkit-tests` (#140; `.github/workflows/ci.yml`). Apply with `gh api -X POST repos/cbartens/bkit/rulesets --input /tmp/main-ruleset.json`.
 - **Workaround:** Agents follow bkit workflow rules — never push directly to `main`; PRs always base=main head=dev (or feature→dev→main); humans approve+merge; surface PR URL and stop if blocked.
 - **Source:** human
 - **Related:** `.github/workflows/ci.yml`

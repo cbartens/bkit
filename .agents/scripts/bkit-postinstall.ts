@@ -20,6 +20,9 @@ import {
   parseDepUpdater,
   DEFAULT_DEP_UPDATER,
   type DepUpdater,
+  parseCloudAgents,
+  DEFAULT_CLOUD_AGENTS,
+  type CloudAgents,
 } from "./bkit-manifest.js";
 import { readBkitVersion } from "./bkit-version.js";
 
@@ -295,12 +298,6 @@ const BKIT_STUBS: BkitStub[] = [
     description:
       "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
   },
-  {
-    id: "wrong-branch-guard",
-    file: ".husky/pre-commit",
-    description:
-      "Refuse direct commits to dev / main outside .worktrees/. Blocks accidental agent commits to wrong branch; pair with the bkit-debug runbook rule that recovery is `git revert`, never `git cherry-pick`. If `.husky/pre-commit` was customised by the consumer (Tier-3 seed-or-print), splice the guard block into your existing hook rather than letting `bkit install` reseed.",
-  },
 ];
 
 export function detectBkitStubs(cwd: string): PreflightFinding[] {
@@ -484,28 +481,6 @@ export function detectTestIntegrationEnv(cwd: string): PreflightFinding | null {
       '    "test:integration": "TEST_REAL_APIS=true SUPABASE_URL=$SUPABASE_DEV_URL vitest run --config=vitest.integration.config.ts"\n\n' +
       "Or chain a real-service preflight (e.g. `supabase start && vitest run …`). If the absence is intentional (pure-mock integration suite), add a comment in the script and dismiss this advisory by tagging the package — there is no auto-suppress mechanism yet.",
   };
-}
-
-/**
- * Detect whether branch protection is configured on `dev`. Pattern matches
- * detectMainBranchProtection but for the dev branch. Used to surface the
- * "main is protected but dev is not" gap that lets agent direct-pushes /
- * mis-targeted PRs bypass the run-tests status check.
- */
-export function detectDevBranchProtection(): TokenPresence {
-  try {
-    execFileSync("gh", ["api", "repos/{owner}/{repo}/branches/dev/protection"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    return "present";
-  } catch (err) {
-    const stderr = (err as { stderr?: Buffer }).stderr?.toString() ?? "";
-    if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
-      return "missing";
-    }
-    return "unknown";
-  }
 }
 
 /**
@@ -781,8 +756,90 @@ function hasExplicitDepUpdaterField(cwd: string): boolean {
 }
 
 /**
+ * Read `bkit.cloudAgents` from the consumer's package.json. Returns the value
+ * or the default ("none") when absent / unreadable.
+ */
+function readConsumerCloudAgents(cwd: string): CloudAgents {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return DEFAULT_CLOUD_AGENTS;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    const parsed = parseCloudAgents(bkitField?.cloudAgents);
+    return parsed ?? DEFAULT_CLOUD_AGENTS;
+  } catch {
+    return DEFAULT_CLOUD_AGENTS;
+  }
+}
+
+/** True when package.json has an explicit `bkit.cloudAgents` field (any value). */
+function hasExplicitCloudAgentsField(cwd: string): boolean {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+    const bkitField = pkg.bkit as Record<string, unknown> | undefined;
+    return bkitField !== undefined && bkitField.cloudAgents !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
+ * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
+ * `bkit install --cloud`; it does NOT ship with `--full`. This nudges consumers
+ * to make the choice post-install.
+ *
+ * Resolution order (file presence is authoritative, package.json field is the
+ * "deliberate opt-out" escape hatch):
+ *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
+ *   - `bkit.cloudAgents === "none"`                  → null (deliberate opt-out — stay quiet)
+ *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
+ *
+ * Only fires when there is a `.github/workflows/` dir — without CI there is no
+ * completion event for the router to wake on, so nothing to route.
+ */
+export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
+  const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+  // `LINEAR_API_KEY` is only a dependency under the Linear tracker (issue #138).
+  const secretsPhrase =
+    readConsumerIssueTracker(cwd) === "linear"
+      ? "`ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets"
+      : "an `ANTHROPIC_API_KEY` repo secret";
+
+  if (fs.existsSync(routerPath)) {
+    return {
+      id: "cloud-router",
+      severity: "advisory",
+      detect:
+        "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present).",
+      action: `The workflow is inert until its dependencies are configured: ${secretsPhrase}, GitHub Actions write permissions (org AND repo), and — for the Cursor half — a Cloud Agents dashboard trigger. See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud\`) and \`.agents/cloud.md\` § Post-CI auto-routing for the full checklist.`,
+    };
+  }
+
+  // No router present — distinguish deliberate opt-out from undecided.
+  if (readConsumerCloudAgents(cwd) === "none" && hasExplicitCloudAgentsField(cwd)) {
+    return null; // consumer explicitly chose `none` — stay quiet
+  }
+
+  // Only nudge if there's a workflows dir for the router to wake on.
+  if (!fs.existsSync(path.join(cwd, ".github", "workflows"))) return null;
+
+  return {
+    id: "cloud-router-none",
+    severity: "advisory",
+    detect:
+      "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
+    action:
+      `Optional post-install decision. Run \`pnpm bkit install --cloud\` to install the post-CI auto-routing workflow (dispatches bkit-ship on CI pass, bkit-debug on CI fail). It requires ${secretsPhrase}, GitHub Actions write permissions, and (Cursor half) a dashboard trigger — the install prints the full checklist (\`bkit-cloud-setup\`).\n\n` +
+      'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
+  };
+}
+
+/**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
- * the consumer's repo has at least one bkit-ci-router workflow installed OR a
+ * the consumer's repo has the bkit-cloud workflow installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
  * which means the same three secrets need to be set in three places (GitHub
  * Actions, Cursor Settings online, Claude app web).
@@ -790,39 +847,56 @@ function hasExplicitDepUpdaterField(cwd: string): boolean {
  * Returns null when none of the three trigger paths exist.
  */
 export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | null {
-  const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-ci-router.yml"));
+  const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"));
   const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
   const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
   if (!hasRouter && !hasClaude && !hasCursor) return null;
+  // `LINEAR_API_KEY` is only part of the cloud secret set under the Linear tracker —
+  // a github/none repo's workflow never references it (issue #138).
+  const isLinear = readConsumerIssueTracker(cwd) === "linear";
+  const secretList = isLinear
+    ? "`ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`"
+    : "`ANTHROPIC_API_KEY`, `GH_BKIT_TOKEN`";
+  const ghSetLines = isLinear
+    ? "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
+      "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
+      '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
+      "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n"
+    : "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
+      '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
+      "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|GH_BKIT_TOKEN'`\n\n";
+  const vendorNote = isLinear
+    ? "ANTHROPIC_API_KEY and LINEAR_API_KEY are read from their respective vendor dashboards (https://console.anthropic.com/settings/keys, https://linear.app/settings/api)."
+    : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys).";
   return {
     id: "cloud-secrets-three-locations",
     severity: "advisory",
-    detect:
-      "The same secrets used by bkit's CI workflow (`ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`) must also be set in the Cursor Background Agents and Claude Code (web) dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.",
+    detect: `The same secrets used by bkit's CI workflow (${secretList}) must also be set in the Cursor Background Agents and Claude Code (web) dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
     action:
       "Set each secret in all THREE locations:\n\n" +
-      "1. **GitHub Actions** (used by bkit-ci-router and consumer workflows):\n" +
-      "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
-      "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
-      '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
-      "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n" +
+      "1. **GitHub Actions** (used by the bkit-cloud workflow and consumer workflows):\n" +
+      ghSetLines +
       "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
       "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
-      "Same VALUE in all three places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. ANTHROPIC_API_KEY and LINEAR_API_KEY are read from their respective vendor dashboards (https://console.anthropic.com/settings/keys, https://linear.app/settings/api).",
+      "Same VALUE in all three places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
+      vendorNote,
   };
 }
 
 /**
- * Detect whether `ANTHROPIC_API_KEY` / `LINEAR_API_KEY` GitHub Actions secrets
- * are set. Only fires when `.github/workflows/bkit-ci-router.yml` exists — the
- * router is the bkit-shipped workflow that uses both. Returns one finding per
- * missing secret.
+ * Detect whether the GitHub Actions secrets the bkit-cloud workflow needs are set.
+ * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
+ * always required (claude-code-action); `LINEAR_API_KEY` is required ONLY under the
+ * Linear tracker — a `github`/`none` repo's workflow has no Linear wiring (issue #138),
+ * so demanding the key there is a false positive. Returns one finding per missing secret.
  */
 export function detectCiRouterSecrets(cwd: string): PreflightFinding[] {
   const findings: PreflightFinding[] = [];
-  const routerPath = path.join(cwd, ".github", "workflows", "bkit-ci-router.yml");
+  const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
   if (!fs.existsSync(routerPath)) return findings;
-  for (const name of ["ANTHROPIC_API_KEY", "LINEAR_API_KEY"]) {
+  const tracker = readConsumerIssueTracker(cwd);
+  const required = ["ANTHROPIC_API_KEY", ...(tracker === "linear" ? ["LINEAR_API_KEY"] : [])];
+  for (const name of required) {
     const status = detectGhSecret(name);
     if (status === "missing") {
       findings.push({
@@ -830,9 +904,9 @@ export function detectCiRouterSecrets(cwd: string): PreflightFinding[] {
         severity: "advisory",
         detect: `gh secret list confirms ${name} secret is NOT set on this GitHub repo.`,
         action:
-          `\`.github/workflows/bkit-ci-router.yml\` requires ${name} to invoke its Claude Code action. Without it, the router exits no-op on every Linear ticket.\n\nSet the secret:\n\n` +
+          `\`.github/workflows/bkit-cloud.yml\` requires ${name} to invoke its Claude Code action. Without it, the workflow exits no-op.\n\nSet the secret:\n\n` +
           `    gh secret set ${name} --body='<paste-value-here>'\n\n` +
-          `Then verify: \`gh secret list | grep ${name}\`. The router workflow itself does not need redeploying — secrets are read at run time.`,
+          `Then verify: \`gh secret list | grep ${name}\`. The workflow itself does not need redeploying — secrets are read at run time.`,
       });
     }
     // "unknown" → silent skip (CLI absent / unauthenticated — covered by gh-bkit-token-secret-unknown).
@@ -1199,7 +1273,7 @@ export function runPostInstallCheck(
   const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
   const hasProtectionScript = fs.existsSync(protectionScript);
   const scriptHint = hasProtectionScript
-    ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the default policy, then drop `--dry-run` to apply. Add `--dev` to also protect dev with a looser policy that still requires the `run-tests` check."
+    ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. The script pre-flights that a `bkit-tests` job exists in `.github/workflows/ci.yml` before requiring it as a status check."
     : "";
   if (protectionStatus === "missing") {
     phase3.push({
@@ -1207,46 +1281,31 @@ export function runPostInstallCheck(
       severity: "advisory",
       detect: "main has no branch protection rule.",
       action:
-        "bkit's build and ship workflows now require feat/* PRs to target dev (base=dev). To enforce at the GitHub layer:\n\n" +
+        "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
         "    Settings → Branches → Add rule → Branch name pattern: main\n" +
         "    - Require a pull request before merging\n" +
-        "    - Require status checks: run-tests\n" +
-        "    - Restrict who can push: only allow PRs from dev\n\n" +
-        "Without this, a misconfigured agent or manual gh pr create --base main can still squash a feat/* branch directly into production. Any open PRs targeting main directly will fail the new workflow gates — retarget to dev or close." +
+        "    - Require status checks: bkit-tests\n" +
+        "    - Do not allow bypassing the above settings (enforce for admins)\n" +
+        "    - Require linear history; block force-pushes and deletions\n\n" +
+        "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +
         scriptHint,
     });
-  }
-
-  // Dev branch protection — most agent direct-pushes / ghost-greens land on dev first.
-  // Only fire when main IS protected (otherwise main-branch-protection-missing is the
-  // higher-priority advisory and pairing both would be noise).
-  if (protectionStatus === "present") {
-    const devProtectionStatus = detectDevBranchProtection();
-    if (devProtectionStatus === "missing") {
-      phase3.push({
-        id: "dev-branch-protection-missing",
-        severity: "advisory",
-        detect: "main is protected but dev is not.",
-        action:
-          "Direct agent pushes / mis-targeted PRs to dev bypass the `run-tests` status check. Apply a looser dev policy (chore commits allowed, run-tests required):\n\n" +
-          (hasProtectionScript
-            ? "    bash scripts/ci/bkit-set-protection.sh --dev\n\n(idempotent; safe to re-run)"
-            : "    gh api -X PUT repos/{owner}/{repo}/branches/dev/protection -F required_status_checks.strict=false -F 'required_status_checks.contexts[]=run-tests' -F enforce_admins=false -F required_pull_request_reviews=null -F restrictions=null"),
-      });
-    }
   }
 
   // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
   //   1. Issue tracker — branch on bkit.issueTracker.
   //   2. Dependency updater — branch on renovate/dependabot config presence.
-  // Both nudge the consumer to choose post-install; both silenceable via the
+  //   3. Cloud agents — branch on bkit-cloud.yml presence (#119).
+  // Each nudges the consumer to choose post-install; each silenceable via the
   // respective package.json field set to `none`.
   const trackerSetup = buildTrackerSetupAdvisory(cwd);
   if (trackerSetup) phase3.push(trackerSetup);
   const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
   if (depUpdaterSetup) phase3.push(depUpdaterSetup);
+  const cloudSetup = buildCloudSetupAdvisory(cwd);
+  if (cloudSetup) phase3.push(cloudSetup);
 
-  // bkit-ci-router workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
+  // bkit-cloud workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);
 
   // Cloud / IDE-online dashboards — Cursor Background Agents + Claude Code on the web
@@ -1290,12 +1349,15 @@ export function runPostInstallCheck(
   // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
   // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
   // after writes, so Phase 1 cannot see them on first install.
-  const missingDotenv = detectMissingDotenv(cwd);
+  // Pass the consumer's tracker so the mcp-env prose omits LINEAR_API_KEY on github/none
+  // repos (issue #138) — they never wire Linear, so asking for the key is a false ask.
+  const mcpEnvTracker = readConsumerIssueTracker(cwd);
+  const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
   if (missingDotenv) phase3.push(missingDotenv);
-  phase3.push(...detectBlankDotenvKeys(cwd));
-  const direnvMissing = detectDirenvMissing(cwd);
+  phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));
+  const direnvMissing = detectDirenvMissing(cwd, mcpEnvTracker);
   if (direnvMissing) phase3.push(direnvMissing);
-  const direnvNotAllowed = detectDirenvNotAllowed(cwd);
+  const direnvNotAllowed = detectDirenvNotAllowed(cwd, mcpEnvTracker);
   if (direnvNotAllowed) phase3.push(direnvNotAllowed);
 
   // Intra-phase dedup (first occurrence wins)

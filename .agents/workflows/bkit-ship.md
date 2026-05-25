@@ -101,7 +101,7 @@ description: "Ship Feature — Autonomous merge and archive"
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-2)}')
+   YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — plan must exist before ship" >&2; exit 1; }
    mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
    LOCK="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/.lock"
@@ -140,6 +140,9 @@ description: "Ship Feature — Autonomous merge and archive"
 8. <!-- bkit:tracker issue-update-phase start -->
    _Tracker not wired — skip phase label update._
    <!-- bkit:tracker issue-update-phase end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 9. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -155,7 +158,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] Issue update attempted (phase label `bkit:ship`)
+- [ ] Issue update attempted (phase label `bkit:ship`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---
@@ -713,7 +716,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ## 🤖 Step 12 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Assert squash-merge CI run completed `run-tests`:
+2. Assert squash-merge CI run completed `bkit-tests`:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)
    RUN=$(gh run list --branch dev --commit "$SQUASH_SHA" --json databaseId,status,conclusion --limit 1)
@@ -722,7 +725,7 @@ description: "Ship Feature — Autonomous merge and archive"
    RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
    [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
    TESTS_CONCLUSION=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | test("test"; "i"))][0].conclusion // empty')
-   [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "run-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
+   [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "bkit-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
 3. Update status, batch-commit, and push:
@@ -744,6 +747,9 @@ description: "Ship Feature — Autonomous merge and archive"
 4. <!-- bkit:tracker issue-update-merged start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-update-merged end -->
+   <!-- bkit:tracker issue-update-status start -->
+   _Tracker not wired — skip status/state update._
+   <!-- bkit:tracker issue-update-status end -->
 5. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
@@ -758,8 +764,8 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] All documents archived and logs retained for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Squash-merge CI run completed `run-tests` (not cancelled, not skipped)
+- [ ] Squash-merge CI run completed `bkit-tests` (not cancelled, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue update attempted (terminal state via `issue-update-merged`; phase label `bkit:merged`)
+- [ ] Issue update attempted (issue closed, phase label `bkit:merged`, status/state `Done`)
 - [ ] Issue comment attempted (`Step 12` section)

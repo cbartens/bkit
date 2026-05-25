@@ -3,7 +3,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs, printUsage, OPTIN_MODULES } from "./bkit-cli.js";
-import { dispatchModules, getPkgRoot, type ModuleContext } from "./bkit-modules.js";
+import {
+  dispatchModules,
+  getPkgRoot,
+  renderCloudWorkflow,
+  type ModuleContext,
+} from "./bkit-modules.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
@@ -751,6 +756,20 @@ async function main() {
       for (const entry of getModuleManifest(mod as ModuleName)) optInPaths.add(entry.path);
     }
 
+    // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
+    // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
+    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
+    let upgradeTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
+    try {
+      const pkg = JSON.parse(
+        fs.readFileSync(path.join(process.cwd(), "package.json"), "utf-8"),
+      ) as { bkit?: { issueTracker?: unknown } };
+      const stored = parseIssueTracker(pkg.bkit?.issueTracker);
+      if (stored !== null) upgradeTracker = stored;
+    } catch {
+      // package.json absent/unparseable — default tracker
+    }
+
     const candidates: UpgradeCandidate[] = [];
     if (fs.existsSync(tplRoot)) {
       const collectTemplates = (dir: string, rel: string): void => {
@@ -767,11 +786,19 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
+            // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
+            // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
+            // so upgrade emits byte-identical output (install/upgrade can never disagree).
+            const contentOverride =
+              relPath === CLOUD_WORKFLOW_RELPATH
+                ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
+                : undefined;
             candidates.push({
               relPath,
               templatePath: entAbs,
               format: entry?.format,
               seedOrPrint: entry?.seedOrPrint,
+              contentOverride,
             });
           }
         }

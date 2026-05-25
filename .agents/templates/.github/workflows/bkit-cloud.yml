@@ -1,0 +1,150 @@
+name: bkit-cloud
+
+# Phase-routed cloud-agent workflow (issue #119). A single workflow runs ANY bkit
+# phase inside a fresh Claude Code session on the runner via claude-code-action.
+#
+# Phase 1 wires two trigger surfaces:
+#   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
+#     (preserves the previous bkit-ci-router behaviour exactly).
+#   - workflow_dispatch: pick ANY phase (ship|debug|design|plan|build) for an issue.
+#     design/plan/build are smoke-test entry points here until phase 2 wires tracker
+#     webhooks (Linear bridge + native GitHub `issues: labeled`).
+#
+# The job body is phase-agnostic: it resolves PHASE + a brief-context arg (PR for the
+# CI-driven ship/debug path, issue number for dispatched runs), then invokes the
+# mirrored `/bkit-cloud` orchestrator. The orchestrator ingests the brief from the
+# tracker (issue description + comments, MCP-only, most-recent-wins) and routes to the
+# matching phase skill. Cursor consumers configure the equivalent trigger in the Cursor
+# cloud agents dashboard — this YAML is the Claude half only.
+#
+# Required secrets: ANTHROPIC_API_KEY (always)@@CLOUD_TRACKER_SECRET_NOTE@@. Tracker-conditional:
+# `bkit install`/`upgrade` renders this file for the consumer's `bkit.issueTracker` —
+# the Linear secret + MCP surface appear only under the Linear tracker (issue #138).
+# The auto-provided `github.token` (scoped by the `permissions:` block below) handles
+# all repo git/gh access — GH_BKIT_TOKEN is package-install scoped and has no access to
+# consumer repos, so this workflow does not use it.
+# Required tracker label on the issue: `Auto` (opt-in) for the CI-driven path.
+# Docs: .agents/cloud.md § Post-CI auto-routing.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: ['feat/**']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: 'bkit phase to run'
+        required: true
+        type: choice
+        options:
+          - ship
+          - debug
+          - design
+          - plan
+          - build
+      issue:
+        description: 'Tracker issue number/id supplying the brief'
+        required: true
+        type: string
+
+# Dynamic run name (shown in the Actions runs list). Dispatched runs render
+# `bkit cloud <phase>(<issue>)`; CI-driven runs echo the triggering commit subject
+# (`head_commit.message` — already `{type}({scope}): {message}`) prefixed with `bkit cloud`.
+run-name: >-
+  ${{ inputs.phase
+      && format('bkit cloud {0}({1})', inputs.phase, inputs.issue)
+      || format('bkit cloud {0}', github.event.workflow_run.head_commit.message) }}
+
+concurrency:
+  # Key on the issue when dispatched, else the feat branch (1:1 with FID/issue) for the
+  # CI path — a newer trigger cancels an in-flight run on the same issue/branch. Ship
+  # squash-merge is a single GitHub-atomic API call, so a mid-run cancel cannot leave a
+  # PR in a partial state.
+  group: bkit-cloud-${{ inputs.issue || github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+
+permissions:
+  # contents: write — the dispatched phase commits + pushes its single per-run
+  # status.json update to `dev` with `[skip ci]` (BAR-187 canonical pattern).
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+
+jobs:
+  run:
+    # CI-driven runs fire only on terminal CI conclusions (skip cancelled / skipped);
+    # dispatched runs always proceed (phase resolution happens in the job).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` fences this file off
+      # from consumer-side Renovate; new SHAs arrive via `bkit install`. See issue #124.
+      - uses: actions/checkout@v4
+        with:
+          # Check out `dev` at the workspace root so the dispatched phase's
+          # `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` resolves to dev's
+          # working copy (BAR-187 invariant). The phase skill creates its own
+          # `feat/{FID}` worktree under `.worktrees/` as needed.
+          ref: dev
+          fetch-depth: 0
+          # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
+          # Do not swap in GH_BKIT_TOKEN — it has no access to the consumer repo.
+          token: ${{ github.token }}
+
+      - name: Configure git user
+        run: |
+          git config user.name 'bkit-cloud[bot]'
+          git config user.email 'bkit-cloud@users.noreply.github.com'
+
+      - name: Resolve phase + brief context
+        id: ctx
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          IN_PHASE: ${{ inputs.phase }}
+          IN_ISSUE: ${{ inputs.issue }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # Dispatched: phase + issue come straight from inputs.
+            PHASE="$IN_PHASE"
+            ARG="$IN_ISSUE"
+          else
+            # CI-driven: success -> ship, failure -> debug; route by the open PR.
+            case "$CONCLUSION" in
+              success) PHASE=ship ;;
+              failure) PHASE=debug ;;
+              *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::notice::No open PR for branch $BRANCH — no-op exit."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ARG="$PR_NUMBER"
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
+          echo "arg=$ARG" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch /bkit-cloud on Claude Code runner
+        if: steps.ctx.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Orchestrator contract: `/bkit-cloud <phase> <arg>` where <arg> is the open
+          # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
+          prompt: "/bkit-cloud ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"
+          # Lock the runner-side session to the same tool surface bkit grants the local
+          # orchestrator. The tracker MCP namespace matches the configured tracker so brief
+          # ingestion is tracker-agnostic; GitHub repo access is always available via the
+          # OIDC-minted github.token (rendered per tracker by bkit install — issue #138).
+          claude_args: "--allowed-tools=Bash,Edit,Write,Read,Grep,Glob,WebFetch,Skill,@@CLOUD_TRACKER_MCP@@"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+@@CLOUD_TRACKER_SECRET_ENV@@
+          GH_TOKEN: ${{ github.token }}
