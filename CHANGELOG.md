@@ -14,6 +14,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.6.1] — 2026-05-25
+
+### Fixed
+
+- **Renovate can now regenerate `pnpm-lock.yaml` for repos depending on the private `@cbartens/bkit` package (issue [#169](https://github.com/cbartens/bkit/issues/169)).** Resolving the workspace to regenerate the lockfile for _any_ dependency bump requires read auth to `npm.pkg.github.com`, which Mend's hosted runner lacks — so every consumer dependency PR was failing CI with `ERR_PNPM_OUTDATED_LOCKFILE`. The shipped `renovate.json5` template now carries an inert, tokenless `hostRules` anchor for `npm.pkg.github.com` (an active `{{ secrets.* }}` ref would hard-error when the Mend secret is unset, regressing consumers on upgrade), the Phase B activation advisory gains the read-auth provisioning step, and `docs/security.md` documents both the Mend-hosted (dashboard secret) and self-hosted (`RENOVATE_HOST_RULES` / `encrypted`) paths.
+
+---
+
 ## [2.6.0] — 2026-05-25
 
 ### Added
