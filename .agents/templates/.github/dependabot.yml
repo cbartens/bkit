@@ -12,8 +12,8 @@
 version: 2
 updates:
   # GitHub Actions — refreshes SHA-pinned `uses:` lines on upstream releases
-  # and CVE disclosures (paired with bkit's KN-3 SHA-pinning rule documented
-  # in docs/security.md).
+  # and CVE disclosures (paired with bkit's SHA-pinning rule documented
+  # in docs/deployments.md § GitHub Actions pinning).
   - package-ecosystem: github-actions
     directory: /
     target-branch: dev

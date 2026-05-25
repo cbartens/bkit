@@ -26,7 +26,12 @@ import { readBkitVersion, writeBkitVersion, sha256, isConsumerModified, } from "
 import { writeTier2, writeTier2JsonContained } from "./bkit-tiers.js";
 import { applyTokens } from "./bkit-tokens.js";
 /** Zero-value token map — markered-text templates managed on upgrade are token-free. */
-const EMPTY_TOKENS = { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "" };
+const EMPTY_TOKENS = {
+    NODE_VERSION: "",
+    DEFAULT_BRANCH: "",
+    PROJECT_NAME: "",
+    REPO_SLUG: "",
+};
 /**
  * Detect a template's managed-block marker style from its content.
  * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed in

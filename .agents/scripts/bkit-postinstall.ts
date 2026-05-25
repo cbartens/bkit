@@ -706,7 +706,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       detect:
         "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
       action:
-        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/security.md` § Renovate activation.",
+        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
     };
   }
 
@@ -717,7 +717,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       detect:
         "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
       action:
-        "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/security.md` § Dependabot alternative.",
+        "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
     };
   }
 
@@ -736,7 +736,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
     action:
       "Optional post-install decision — pick one (mutually exclusive):\n\n" +
-      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/security.md` § Renovate activation).\n" +
+      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
       "  - `pnpm bkit install --dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
       'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
   };

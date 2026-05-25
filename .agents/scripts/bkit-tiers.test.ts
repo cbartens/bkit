@@ -44,6 +44,7 @@ const TOKENS = {
   NODE_VERSION: "22",
   DEFAULT_BRANCH: "main",
   PROJECT_NAME: "test-project",
+  REPO_SLUG: "acme/test-project",
 };
 
 // ---------------------------------------------------------------------------

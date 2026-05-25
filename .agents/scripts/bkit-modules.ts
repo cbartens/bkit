@@ -1643,6 +1643,39 @@ export function runGitHooksModule(ctx: ModuleContext): void {
 //     Re-writes the file (idempotent byte-equal) and emits the App-install
 //     URL + activation checklist.
 
+// Seed content for `.github/renovate-local.json5` — the consumer-owned overrides
+// file pulled in by renovate.json5's `extends`. bkit writes this ONCE (create-if-
+// absent) and never touches it again: it is NOT a managed template (no Tier-1/2/3
+// candidate), so neither `bkit install` nor `bkit upgrade` overwrites or nags about
+// it. The `extends` target must exist or Renovate raises a config error, so the
+// stub guarantees a resolvable, valid (if empty) preset from the first commit.
+const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT manage or overwrite this file.
+//
+// \`.github/renovate.json5\` (bkit-owned, rewritten on every \`bkit install\`) pulls
+// this file in via \`extends: ["local>OWNER/REPO//.github/renovate-local"]\`. Put
+// repo-specific Renovate rules here — they survive \`bkit install\`/\`bkit upgrade\`.
+//
+// Precedence: rules here are evaluated BEFORE bkit's built-in rules in renovate.json5,
+// so this file can ADD rules and set keys bkit leaves unset — notably \`enabled: false\`
+// to fence a package — but it canNOT override a key bkit sets explicitly (e.g.
+// \`automerge\`). Renovate resolves this preset from your DEFAULT branch; commit it
+// alongside renovate.json5 and land both on the default branch before activating the
+// Renovate App. To resolve it from a different branch, append \`#<branch>\` to the
+// extends entry in renovate.json5 (e.g. \`.../renovate-local#dev\`).
+//
+// Example — fence a package pinned in root \`pnpm.overrides\` so Renovate's hosted
+// lockfile regen can't rewrite the locked version and desync pnpm-lock.yaml (which
+// would fail CI's \`pnpm install --frozen-lockfile\`):
+//
+//   packageRules: [
+//     { matchPackageNames: ["react", "react-dom", "react-test-renderer"], enabled: false },
+//   ],
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  packageRules: [],
+}
+`;
+
 function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): boolean {
   try {
     execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
@@ -1691,6 +1724,20 @@ export function runRenovateModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}renovate: ${renovateDst}`);
   }
 
+  // Seed the consumer-owned overrides file pulled in by renovate.json5's `extends`.
+  // Create-if-absent only: once written it is the consumer's — never overwritten,
+  // never diffed, no nag advisory (its whole purpose is to diverge from this stub).
+  // It is deliberately NOT a managed template, so `bkit upgrade` ignores it too.
+  const renovateLocalDst = path.join(".github", "renovate-local.json5");
+  if (!fs.existsSync(renovateLocalDst)) {
+    if (!dryRun) {
+      fs.mkdirSync(path.dirname(renovateLocalDst), { recursive: true });
+      fs.writeFileSync(renovateLocalDst, RENOVATE_LOCAL_STUB, "utf-8");
+    }
+    ws.writes.push({ path: renovateLocalDst, action: "write" });
+    console.log(`${logPrefix} ${tag}renovate (consumer overrides): ${renovateLocalDst}`);
+  }
+
   // Record the choice so the post-install advisory stays quiet about
   // "undecided dep updater" and the mutual-exclusion check has a record.
   setConsumerBkitField("depUpdater", "renovate", dryRun);
@@ -1705,9 +1752,9 @@ export function runRenovateModule(ctx: ModuleContext): void {
       detect: `.github/renovate.json5 is in the working tree but not yet on origin/${defaultBranch}. The Renovate GitHub App's first scan reads the default branch — installing the App before the config lands there triggers a broken onboarding PR that ignores this config (issue #123).`,
       action:
         "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
-        "  1. Commit the newly-written `.github/renovate.json5`.\n" +
+        "  1. Commit BOTH `.github/renovate.json5` AND `.github/renovate-local.json5` (the consumer-owned overrides file renovate.json5 pulls in via `extends`). Renovate raises a config error if the `extends` target is missing, so they must travel together.\n" +
         `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
-        `  3. Re-run \`pnpm bkit install --renovate\` once the file is on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
+        `  3. Re-run \`pnpm bkit install --renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
         "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).",
     });
     return;
@@ -1722,12 +1769,13 @@ export function runRenovateModule(ctx: ModuleContext): void {
       "  1. Open https://github.com/apps/renovate and click Install.\n" +
       '  2. Choose "Only select repositories" → pick this repo.\n' +
       "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `GH_BKIT_TOKEN` secret is NOT visible to Mend's runner. The shipped config has an inert `hostRules` anchor for `npm.pkg.github.com` — finish it:\n" +
-      '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `GH_BKIT_TOKEN` (PAT with `read:packages`), then uncomment `token: "{{ secrets.GH_BKIT_TOKEN }}"` in `.github/renovate.json5`.\n' +
-      "     - Self-hosted: set the `RENOVATE_HOST_RULES` env var (or an `encrypted` block). See docs/security.md § Renovate read-auth.\n" +
+      '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `GH_BKIT_TOKEN` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.GH_BKIT_TOKEN }}"` in `.github/renovate.json5`.\n' +
+      "     - Self-hosted: set the `RENOVATE_HOST_RULES` env var (or an `encrypted` block). See docs/deployments.md § GitHub Actions pinning.\n" +
       '  4. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranches: ["dev"]`).\n' +
       "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
       "  5. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
-      "  6. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).",
+      "  6. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
+      "Customizing Renovate later: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`. Put repo-specific rules in `.github/renovate-local.json5` (consumer-owned; survives install/upgrade). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.",
   });
 }
 
@@ -1765,7 +1813,7 @@ export function runDependabotModule(ctx: ModuleContext): void {
         "     1. `git rm .github/renovate.json5`.\n" +
         "     2. Uninstall the Renovate GitHub App at https://github.com/settings/installations → Renovate → Configure → Uninstall.\n" +
         "     3. Re-run `pnpm bkit install --dependabot`.\n\n" +
-        "  B. Keep Renovate (recommended — see docs/security.md § Renovate activation): skip `--dependabot`; the existing Renovate setup stays.",
+        "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip `--dependabot`; the existing Renovate setup stays.",
     });
     return;
   }
@@ -1996,6 +2044,13 @@ export function runCloudModule(ctx: ModuleContext): void {
   const trackerLabelLine = isLinearCloud
     ? "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the workflow exits no-op.\n\n"
     : "  - Confirm the issue carries the `Auto` label before pushing the build commit — without it the workflow exits no-op.\n\n";
+  // OPTIONAL manual trigger (GitHub tracker only): the `@claude` mention path. Run
+  // `/install-github-app` to add it alongside the CI-driven + workflow_dispatch paths.
+  // Experimental until verified live — the runner must load the bkit skill mirror and
+  // allow the phase skill. GitHub-gated because you mention on a GitHub issue/PR.
+  const mentionTipLine = isLinearCloud
+    ? ""
+    : "  - OPTIONAL (manual launch) — run `/install-github-app` (Claude Code CLI) to add `@claude` mention launches: comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to start a phase from the tracker UI, alongside the CI-driven and `workflow_dispatch` paths. It coexists with `bkit-cloud.yml` (different trigger events) and provides the runner's GitHub identity for the `mcp__github__*` surface. Verify with one live `@claude` mention before relying on it — the runner must load the bkit skill mirror and allow the phase skill.\n";
   advisories.push({
     id: "bkit-cloud-setup",
     severity: "advisory",
@@ -2006,6 +2061,7 @@ export function runCloudModule(ctx: ModuleContext): void {
       "IN GITHUB (Claude half):\n" +
       "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
       "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
+      mentionTipLine +
       trackerSecretLine +
       "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
       trackerLabelLine +

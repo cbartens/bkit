@@ -14,6 +14,19 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.7.0] — 2026-05-25
+
+### Added
+
+- **Consumer-extensible Renovate config — repo-specific rules now survive `bkit install`/`bkit upgrade` (issue [#179](https://github.com/cbartens/bkit/issues/179)).** The shipped `renovate.json5` (bkit-owned, rewritten on every `bkit install` — hand-edits are clobbered) now `extends` a consumer-owned `.github/renovate-local.json5`, seeded once by `bkit install --renovate` and never overwritten or diffed thereafter (it is not a managed template, so neither install nor upgrade touches it). A new `{{REPO_SLUG}}` token (parsed from the `origin` remote — HTTPS/SSH/scp forms) renders the `local>OWNER/REPO//.github/renovate-local` preset reference Renovate's local-preset syntax requires. Precedence is documented honestly: extended-preset packageRules are evaluated _before_ bkit's inline rules, so `renovate-local.json5` can add rules and set keys bkit leaves unset (notably `enabled: false` to fence a package — bkit never sets `enabled: true`) but cannot override a key bkit sets explicitly (e.g. `automerge`). The canonical use case — fencing a package pinned in root `pnpm.overrides` so Renovate's hosted lockfile regen can't rewrite the locked version and desync `pnpm-lock.yaml` (failing CI's `--frozen-lockfile`) — is captured in `docs/knowledge.md` KN-CORE-6.
+
+### Changed
+
+- **Recurring `chore(deps): Pin dependencies` PR on `bkit-cloud.yml` stopped (issue [#169](https://github.com/cbartens/bkit/issues/169) follow-up; KN-CORE-5).** `enabled: false` only suppresses _version_ updates — the `github-actions` manager still scanned `bkit-cloud.yml` and applied tag→SHA `pinDigests`, recreating the Pin PR on every scan. The file is now in `ignorePaths` (stops the scan outright); the `matchFileNames` packageRule is kept as a secondary guard. Paired with `useBaseBranchConfig: "merge"` so ongoing `renovate.json5` edits committed to `dev` are honored for dev-targeted runs (previously only the default branch's config was read).
+- **Renovate / supply-chain operational docs relocated to `deployments.md` § GitHub Actions pinning (issue [#179](https://github.com/cbartens/bkit/issues/179)).** Action SHA-pinning, Renovate activation (Phase A/B), private-registry read-auth, consumer customization, the Dependabot alternative, and manual CVE handling are CI/CD pipeline rules — they now live under one canonical home in `deployments.md` instead of being split across `security.md`. `security.md` § Supply-Chain keeps only the security-relevant invariant (Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to the agent API-key secrets). All cross-references (knowledge entries, install/postinstall advisories, README, config-template comments) updated.
+
+---
+
 ## [2.6.1] — 2026-05-25
 
 ### Fixed

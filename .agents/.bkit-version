@@ -1,13 +1,13 @@
 {
-  "pinnedVersion": "2.6.1",
+  "pinnedVersion": "2.7.0",
   "tier3Hashes": {
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
-    ".github/renovate.json5": "9e0da45b7ae6d3af01e6ebd949d6f7177b7794148b1cbb36a623ae947faf65a8",
+    ".github/renovate.json5": "75a26d995e011c687d74de8cd744eee8d9b03743ad728760d6e61897f88777ee",
     ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "9c898d6c635e6e9a70408c0d7f73a14c59b6b979ea74e38e1817eaa0b76469af",
+    "docs/deployments.md": "d205292cd8b3cb3f65004f546d530aba6e1c8a6b0a2b6005c3c8ff69089c9170",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "5a07bba2ae7b29166d2934c32dcaff3ab39097f677734a48c5b3f2afe7bf64c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -50,7 +50,7 @@
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "48302986fd8b7c4ce5b5bd5a88d47042ccf98f3ed22cc8ce910e0c68d90c348c",
     "docs/security.md": "b3d45bce6ef9b83415c355d369e4e8d783472e8f2b14a11e64459eed298a8d83",
-    ".github/renovate.json5": "9e0da45b7ae6d3af01e6ebd949d6f7177b7794148b1cbb36a623ae947faf65a8",
+    ".github/renovate.json5": "75a26d995e011c687d74de8cd744eee8d9b03743ad728760d6e61897f88777ee",
     ".agents/.env.example": "1dbcfa023ec0a687532f474c8ed2cd77c9e15e1e464e61706d1ed7b87416b11e",
     ".agents/friction.md": "3cc4c98c00175efd21ea404309cdb279e9056a5c2c38c55c06c961a714e7cad8",
     ".agents/rules.md": "81648185538f49d7f0afc8b51a31a5456c5f3dbc356176661dbb9257ecb7351a",
@@ -58,9 +58,10 @@
     "docs/architecture.md": "e74ca6ae7e878ea694a2cb2d7355fdb64ca310a1091a7aa74c484782c0397e52",
     "docs/completed.md": "017dcb73f534603cce7583a859bb96d5466099aa7e3dc94d6c0baf0816aa5234",
     "docs/decisions.md": "3163f83d0ce39c5c376806d82c54a100dcb0cfdec56ccefa6e27d42acf1da321",
-    "docs/knowledge.md": "b6a8154f9865e6356df763ed5653ddc0ca312ed80656dd5b59300196d7f3125e",
+    "docs/knowledge.md": "dedd528847e7c539e8960a42eee26c8a26946c24bb5daf9f6525442e91922ce4",
     "docs/pending.md": "785b8bfeda66a5857304399da5ccf332255e6d32c112af4f52ad5277065a7efa",
     "docs/technology.md": "b53991e4116da14297236d1ae6e855450e21fc9ae0cb61e4f20dffa70329ea2d",
-    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
+    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb",
+    ".github/renovate-local.json5": "544dfe7090ac2a93d497f69aca729d6a599f25c82a4254e1cb4474dcd33a91b6"
   }
 }

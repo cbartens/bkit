@@ -40,6 +40,7 @@ function makeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
       NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
+      REPO_SLUG: "acme/test-project",
     },
     modelLookup: new Map(),
     advisories: [],
@@ -445,6 +446,55 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     ).toBeDefined();
   });
 
+  it("seeds the consumer-owned renovate-local.json5 stub with valid, empty packageRules", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    const localPath = path.join(tmpDir, ".github", "renovate-local.json5");
+    expect(fs.existsSync(localPath)).toBe(true);
+    const local = fs.readFileSync(localPath, "utf-8");
+    expect(local).toMatch(/\$schema:\s*"https:\/\/docs\.renovatebot\.com\/renovate-schema\.json"/);
+    expect(local).toMatch(/packageRules:\s*\[\s*\]/);
+    // The stub documents itself as consumer-owned.
+    expect(local).toMatch(/bkit does NOT manage/i);
+  });
+
+  it("substitutes REPO_SLUG into renovate.json5's local-preset extends entry", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, tokens: { ...makeCtx().tokens, REPO_SLUG: "acme/widget" } });
+    runRenovateModule(ctx);
+
+    const renovate = fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8");
+    expect(renovate).toContain('"local>acme/widget//.github/renovate-local"');
+    expect(renovate).not.toContain("{{REPO_SLUG}}");
+  });
+
+  it("does NOT overwrite an existing renovate-local.json5 and emits no nag advisory", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    const localPath = path.join(tmpDir, ".github", "renovate-local.json5");
+    const consumerContent =
+      '{ packageRules: [{ matchPackageNames: ["react"], enabled: false }] }\n';
+    fs.writeFileSync(localPath, consumerContent);
+
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    // Consumer content preserved verbatim — bkit must not touch it.
+    expect(fs.readFileSync(localPath, "utf-8")).toBe(consumerContent);
+    // No tier3 merge-suggested advisory for the consumer-owned file.
+    expect(ctx.advisories.find((a) => a.id.includes("renovate-local"))).toBeUndefined();
+  });
+
+  it("dry-run: does not write the renovate-local.json5 stub to disk", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, dryRun: true });
+    runRenovateModule(ctx);
+
+    expect(fs.existsSync(path.join(tmpDir, ".github", "renovate-local.json5"))).toBe(false);
+  });
+
   it("--ci alone does NOT ship renovate.json5 (split out of ci module per #123 follow-up)", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
@@ -609,6 +659,23 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(advisory!.action).toMatch(/ANTHROPIC_API_KEY/);
     // The env-scaffolding customisation advisory moved here from the claude module.
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
+  });
+
+  it("github tracker: bkit-cloud-setup advisory includes the optional `@claude` mention tip", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, issueTracker: "github" });
+    runCloudModule(ctx);
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory!.action).toMatch(/install-github-app/);
+    expect(advisory!.action).toMatch(/@claude/);
+  });
+
+  it("linear tracker: bkit-cloud-setup advisory omits the `@claude` mention tip (GitHub-only path)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, issueTracker: "linear" });
+    runCloudModule(ctx);
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory!.action).not.toMatch(/install-github-app/);
   });
 
   it("persists bkit.cloudAgents = 'enabled' to package.json on success", () => {

@@ -41,6 +41,7 @@ function makeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
       NODE_VERSION: "22",
       DEFAULT_BRANCH: "main",
       PROJECT_NAME: "test-project",
+      REPO_SLUG: "acme/test-project",
     },
     modelLookup: new Map(),
     advisories: [],
