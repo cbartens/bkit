@@ -32,3 +32,27 @@
 <!-- bkit:end -->
 
 <!-- Entries up to 2026-05-18 cleaned out after capture into BAR-155 (shipped) and BAR-230 (follow-ups). Harvest evidence preserved in those issues; recovered/duplicate entries removed. -->
+
+## Plan start blocked by pre-flight env state (unrelated branch WIP + unpushed dev) (2026-05-25)
+
+- **Category:** human-confirm
+- **Workflow:** plan
+- **Step:** 1 — Start Workflow (orchestrator, pre-lock)
+- **Source:** orchestrator
+- **Description:** `/bkit-plan 143` invoked while HEAD was on an unrelated feature branch with uncommitted WIP, and local `dev` was 2 commits ahead of `origin/dev` (one being the #143 design revision the plan depends on). Step 1's divergence guard (`AHEAD>0 -> exit 1`) would have routed to Failure Path, which posts `bkit:failed` to the issue + writes a FAILED status — inappropriate for a pre-flight environment condition on a not-yet-started workflow. Orchestrator halted and asked the user (2 questions) instead of mechanically failing.
+- **Suggested fix:** Distinguish "pre-flight environment precondition" (dev-ahead, WIP on unrelated branch) from "workflow failure" in Step 1 — surface to human + halt WITHOUT the Failure-Path issue-labelling/status-write, since no workflow run exists yet to fail. The guard's own message ("Push or reset before retrying") already implies retry-after-fix, not terminal failure.
+- **Related:** 143-real-world-testing, issue #143
+- **Recovery:** User pushed `dev` to origin and switched to a clean branch even with dev tip; orchestrator re-verified (0 ahead, clean tree) and proceeded. Worktree branched cleanly from the dev tip.
+- **Status:** RECOVERED
+
+## status.json written to main-repo working copy (not worktree) -> plan steps lost to mid-run reset (2026-05-25)
+
+- **Category:** tool-failure
+- **Workflow:** plan
+- **Step:** orchestrator (all status-write steps 2-11)
+- **Source:** orchestrator
+- **Description:** In a linked worktree, `REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")` resolves to the MAIN repo, not the worktree, so every `STATUS="$REPO_ROOT/docs/.../status.json"` write landed in the main-repo working copy — a file outside the worktree's VCS and on whatever branch the main repo happened to be on. Mid-run the main repo was switched to `dev` (working copy reset to dev's committed design-only status.json: a 1-element array). Subsequent `jq '.[-1].steps += [...]'` then appended plan-complexity-split / plan-summary / plan-close-workflow INTO the design entry (`.[-1]` = design, since the plan element no longer existed), and `.[-1] |= (.status="DONE")` hit design. The 8 earlier plan steps were lost entirely. All actual plan ARTIFACTS were unaffected (committed in the worktree branch); only status.json corrupted.
+- **Suggested fix:** status.json should live in and be committed from the WORKTREE (use the worktree root, e.g. `git rev-parse --show-toplevel`, not `--git-common-dir`), OR the per-step writes must target a path that is branch/worktree-stable. As written, the "dev working copy" status model is corrupted by any concurrent `git checkout` in the main repo and by the worktree/main-repo working-tree split. Also: `jq '.[-1]'` blindly trusting the last array element is unsafe after a reset — select by `.workflow=="plan"` explicitly.
+- **Related:** 143-real-world-testing, issue #143, commits f4f6061..925bb9a (plan run)
+- **Recovery:** Reconstructed status.json authoritatively from dev's committed design(10) entry + the full 11-step plan workflow (verdicts/artifacts re-derived from the committed step artifacts), committed to dev at close.
+- **Status:** RECOVERED
