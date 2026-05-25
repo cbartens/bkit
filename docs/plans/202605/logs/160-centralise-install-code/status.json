@@ -1,0 +1,96 @@
+[
+  {
+    "workflow": "design",
+    "startedAt": "2026-05-25T02:20:36Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "design-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-25T02:20:36Z",
+        "parentSha": "77d843d9e543b8a837b0d555e216c3b007d5d9ff",
+        "artifacts": []
+      },
+      {
+        "step": "design-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-25T02:20:36Z",
+        "parentSha": "77d843d9e543b8a837b0d555e216c3b007d5d9ff",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/design-input.md"]
+      },
+      {
+        "step": "design-brainstorm-ideate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-25T02:24:45Z",
+        "parentSha": "d06dd733c856bfc65f4733be91a68b0770dce039",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/design-brainstorm-ideate-1.md",
+          "docs/plans/202605/logs/160-centralise-install-code/design-brainstorm-ideate-2.md",
+          "docs/plans/202605/logs/160-centralise-install-code/design-brainstorm-ideate-3.md"
+        ]
+      },
+      {
+        "step": "design-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-25T02:29:08Z",
+        "parentSha": "c26421bbdfaaa323eae68d037e9772260ef01c36",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/design-v1-draft.md"]
+      },
+      {
+        "step": "design-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-25T02:35:20Z",
+        "parentSha": "5b51b698d1e8072cf01ffe202d382570fe77904a",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/design-review-1.md",
+          "docs/plans/202605/logs/160-centralise-install-code/design-review-2.md"
+        ]
+      },
+      {
+        "step": "design-apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-25T02:40:13Z",
+        "parentSha": "c937f59a422f5d8581d7e04966f140158bfd50c3",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/design-v2-reviewed.md"]
+      },
+      {
+        "step": "design-organise",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-25T02:42:39Z",
+        "parentSha": "0828b173e2d2041b7d8bbae6e470bd47aeb3fea8",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/design-v3-organised.md"]
+      },
+      {
+        "step": "design-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-25T02:44:29Z",
+        "parentSha": "7c19fbe04497f8ff90231855c6b16f5685b0f6d3",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/design-summary.md"]
+      },
+      {
+        "step": "design-workstream-issues",
+        "status": "DONE",
+        "at": "2026-05-25T02:48:24Z",
+        "parentSha": "69f9dff2c2297a1cc544205a46579b9b0fa8a5bc",
+        "artifacts": []
+      },
+      {
+        "step": "design-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-25T02:48:53Z",
+        "parentSha": "2a0d5a9045630957c57d5cee9ae13e35192ef871",
+        "artifacts": []
+      }
+    ]
+  }
+]

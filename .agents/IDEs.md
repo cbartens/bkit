@@ -221,6 +221,8 @@ Both hosts use the same `mcpServers` key shape, but the files differ:
 
 Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_TOKEN}" }`. The `${GH_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.agents/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
 
+**Tracker switch is seed-only, not a rewrite.** `.mcp.json` / `.cursor/mcp.json` are Tier-3 seed-or-print: bkit writes the tracker-filtered content only when the file is _absent_. On an existing file it never overwrites — so switching trackers (e.g. `--tracker=linear` → `--tracker=github`) leaves the old tracker's `mcpServers` entry behind. Two advisories catch the divergence: `mcp-missing-server-<name>` when the file lacks a server the tracker needs, and `mcp-extra-server-<name>` when it carries a bkit-managed server the tracker no longer uses (remove that entry). Consumer-added (non-bkit) MCP servers are never flagged.
+
 > Note: `mcpServers` inside `.claude/settings.json` is silently ignored by Claude Code for server definitions — only `.mcp.json` (project) or `claude mcp add` (user scope) take effect. Tool-permission `allow` entries in `.claude/settings.json` (`mcp__github__*`) are separate and remain there.
 
 ---
