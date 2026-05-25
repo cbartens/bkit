@@ -90,6 +90,37 @@
         "at": "2026-05-24T22:59:47Z",
         "parentSha": "2e89a3ccb9fbd5828fd2164e2630af654f92724d",
         "artifacts": []
+      },
+      {
+        "step": "plan-scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 10,
+        "at": "2026-05-25T04:36:59Z",
+        "parentSha": "826511816389fe7cca3674f54c63a76464a4c28a",
+        "artifacts": [
+          "docs/plans/202605/logs/143-real-world-testing/plan-scope-check-1.md",
+          "docs/plans/202605/logs/143-real-world-testing/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "plan-apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-25T04:42:40Z",
+        "parentSha": "3adb60a509dfc825b4bef37cdf155f6e4b2562ea",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-v3-checked.md"]
+      },
+      {
+        "step": "plan-complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-25T04:44:33Z",
+        "parentSha": "65c7eaec948c7260d8092944d9ee9fbda9e52735",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-complexity-check.md"]
       }
     ]
   }
