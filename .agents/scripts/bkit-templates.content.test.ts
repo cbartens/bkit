@@ -75,6 +75,12 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
     expect(content).toMatch(/baseBranches:\s*\[\s*"dev"\s*,?\s*\]/);
   });
 
+  it("merges base-branch config so dev-side renovate.json5 edits take effect", () => {
+    // Without useBaseBranchConfig, Renovate reads config ONLY from the default
+    // branch (main) — config edits on `dev` are silently ignored.
+    expect(content).toMatch(/useBaseBranchConfig:\s*"merge"/);
+  });
+
   it("ships chore(deps): commit-message prefix to match conventional-commit history", () => {
     expect(content).toMatch(/commitMessagePrefix:\s*"chore\(deps\):"/);
   });
@@ -95,6 +101,13 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
   it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
     // Bkit owns bkit-cloud.yml — consumer Renovate must not touch it.
     expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
+  });
+
+  it("ignores bkit-cloud.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
+    // `enabled: false` only suppresses version updates; the github-actions manager
+    // still scans the file and applies pinDigests, recreating a "Pin dependencies"
+    // PR on every scan. ignorePaths stops the scan outright (primary fence).
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/bkit-cloud\.yml"/);
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
