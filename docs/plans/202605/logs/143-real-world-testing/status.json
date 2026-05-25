@@ -123,5 +123,113 @@
         "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-complexity-check.md"]
       }
     ]
+  },
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-25T04:15:32Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "plan-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-25T04:15:32Z",
+        "parentSha": "77653efba2cbd5db1126daac950ba2bd554a7d23",
+        "artifacts": []
+      },
+      {
+        "step": "plan-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-25T04:15:32Z",
+        "parentSha": "77653efba2cbd5db1126daac950ba2bd554a7d23",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-input.md"]
+      },
+      {
+        "step": "plan-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-25T04:22:00Z",
+        "parentSha": "f4f6061",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-v1-draft.md"]
+      },
+      {
+        "step": "plan-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 4,
+        "at": "2026-05-25T04:30:00Z",
+        "parentSha": "887de82",
+        "artifacts": [
+          "docs/plans/202605/logs/143-real-world-testing/plan-review-1.md",
+          "docs/plans/202605/logs/143-real-world-testing/plan-review-2.md",
+          "docs/plans/202605/logs/143-real-world-testing/plan-review-3.md"
+        ]
+      },
+      {
+        "step": "plan-apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-25T04:40:00Z",
+        "parentSha": "a96b1be",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-v2-reviewed.md"]
+      },
+      {
+        "step": "plan-scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 10,
+        "at": "2026-05-25T04:48:00Z",
+        "parentSha": "8265118",
+        "artifacts": [
+          "docs/plans/202605/logs/143-real-world-testing/plan-scope-check-1.md",
+          "docs/plans/202605/logs/143-real-world-testing/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "plan-apply-scope",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-25T04:56:00Z",
+        "parentSha": "3adb60a",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-v3-checked.md"]
+      },
+      {
+        "step": "plan-complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-25T05:02:00Z",
+        "parentSha": "65c7eae",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-complexity-check.md"]
+      },
+      {
+        "step": "plan-complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-25T05:10:00Z",
+        "parentSha": "ad12d3a",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-v4-split.md"]
+      },
+      {
+        "step": "plan-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-25T05:18:00Z",
+        "parentSha": "39176cf",
+        "artifacts": ["docs/plans/202605/logs/143-real-world-testing/plan-summary.md"]
+      },
+      {
+        "step": "plan-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-25T05:24:00Z",
+        "parentSha": "925bb9a",
+        "artifacts": []
+      }
+    ]
   }
 ]
