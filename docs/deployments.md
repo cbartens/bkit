@@ -193,7 +193,7 @@ This is part of Phase B activation; `pnpm bkit install --renovate` prints it in 
 
 `.github/renovate.json5` is bkit-managed: `bkit install` rewrites the whole file, so any hand-edit there is clobbered on the next install. For repo-specific Renovate rules, edit **`.github/renovate-local.json5`** instead — a consumer-owned file bkit seeds once and never touches again (it is not a managed template, so neither `install` nor `upgrade` overwrites it). The bkit config pulls it in via `extends: ["local>cbartens/bkit//.github/renovate-local"]` (the `cbartens/bkit` token resolves to your `owner/repo` from the `origin` remote at install time).
 
-**Precedence — read this before relying on it.** Renovate evaluates `extends`-preset packageRules **before** the host config's own inline rules, and for any given setting the later (bkit's inline) rule wins. So `renovate-local.json5` can:
+**Precedence — read this before relying on it.** Renovate evaluates `extends`-preset packageRules **before** the host config's own inline rules, and for any given setting the later (bkit's inline) rule wins. This means `renovate-local.json5` can:
 
 - ✅ **Add** rules for packages or managers bkit doesn't already configure.
 - ✅ **Set keys bkit leaves unset** — notably `enabled: false` to fence a package. bkit never sets `enabled: true` on a matching rule, so a fence here holds.
