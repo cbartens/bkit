@@ -14,6 +14,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.8.1] — 2026-05-26
+
+### Fixed
+
+- **2.8.0 shipped prose that failed bkit's own Vale write-good gate, blocking consumer upgrade commits (issue [#195](https://github.com/cbartens/bkit/issues/195)).** `docs/deployments.md` contained a sentence-initial "So" — a pattern flagged by the write-good `StartsWith` rule that bkit ships and consumers run on every commit/push. The root cause was a lint asymmetry: bkit's own `lint:prose` script covered only `docs/knowledge.md`, not the full `docs/*.md` corpus, so the prose bkit was authoring and shipping was never linted by the same gate bkit imposes on consumers. Fixed by rewording the offending sentence ("So" → "This means") in both `docs/deployments.md` and its shipped template source, and widening `lint:prose` in bkit's own `package.json` to cover `docs/*.md` and `.agents/templates/docs/**` (parity with the consumer gate). Consumers re-run `pnpm bkit upgrade` to reconverge `docs/deployments.md` with zero drift (verified live).
+- **bkit's own `lint:prose` did not cover the shipped template docs (issue [#195](https://github.com/cbartens/bkit/issues/195)).** `.agents/templates/docs/**` was absent from the Vale glob, meaning prose regressions in template sources were invisible until a consumer installed them. The template docs are now included in bkit's lint pass. KN-29 records the lint-asymmetry root cause and Vale `gether` config learnings for future reference.
+- **Shipped `.vale.ini` lacked write-good exemptions for `docs/plans/**`and`docs/notes.md`(issue [#195](https://github.com/cbartens/bkit/issues/195)).** LLM-generated plan documents and notes routinely contain phrasing that triggers write-good/LLMSlop rules. Without exemptions, consumers running`pnpm lint:prose`on a repo with bkit-generated plan docs would get false-positive failures. The shipped`.vale.ini`template (a`seedOrPrint`file — reaches new consumers on seed; existing consumers merge manually) now excludes`docs/plans/\*\*`and`docs/notes.md` from the write-good and LLMSlop style checks.
+
+---
+
 ## [2.8.0] — 2026-05-26
 
 ### Added
