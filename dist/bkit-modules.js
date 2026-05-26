@@ -1381,7 +1381,7 @@ export function runGitHooksModule(ctx) {
 const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT manage or overwrite this file.
 //
 // \`.github/renovate.json5\` (bkit-owned, rewritten on every \`bkit install\`) pulls
-// this file in via \`extends: ["local>OWNER/REPO//.github/renovate-local"]\`. Put
+// this file in via \`extends: ["local>OWNER/REPO//.github/renovate-local.json5"]\`. Put
 // repo-specific Renovate rules here — they survive \`bkit install\`/\`bkit upgrade\`.
 //
 // Precedence: rules here are evaluated BEFORE bkit's built-in rules in renovate.json5,
@@ -1390,7 +1390,7 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 // \`automerge\`). Renovate resolves this preset from your DEFAULT branch; commit it
 // alongside renovate.json5 and land both on the default branch before activating the
 // Renovate App. To resolve it from a different branch, append \`#<branch>\` to the
-// extends entry in renovate.json5 (e.g. \`.../renovate-local#dev\`).
+// extends entry in renovate.json5 (e.g. \`.../renovate-local.json5#dev\`).
 //
 // Example — fence a package pinned in root \`pnpm.overrides\` so Renovate's hosted
 // lockfile regen can't rewrite the locked version and desync pnpm-lock.yaml (which
