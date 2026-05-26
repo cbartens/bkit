@@ -190,3 +190,23 @@
 - **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
 - **Source:** phase
 - **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`
+
+## CI lint guarding against `.agents/scripts`/`.agents/templates` source-literal re-introduction in `.bkit/src` (2026-05-26)
+
+- **Type:** feature
+- **Category:** testing
+- **Severity:** low
+- **Status:** open
+- **Description:** After #160 relocates the engine/payload to `.bkit/`, a standing CI lint asserting no `.agents/scripts`/`.agents/templates` SOURCE-root literal creeps back into `.bkit/src` (and `tsconfig.json`/`vitest.config.ts`/`package.json`) would prevent regression of the single-source-of-truth seam. #160's Gate WS-3 grep is a one-time check, not a recurring guard; WS-7 only adds a rules.md block-equality gate. Out of scope for #160 (pattern-prevention beyond the stated refactor). Revisit if a stale source-root literal re-appears post-merge.
+- **Source:** phase
+- **Related:** #160, `.bkit/src/bkit-paths.ts` (`BKIT_SRC_SUBPATH` seam)
+
+## bkit-repo-own `renovate-local.json5` parallel update if Renovate noise emerges post-`.bkit/` move (2026-05-26)
+
+- **Type:** issue
+- **Category:** infra
+- **Severity:** low
+- **Status:** deferred
+- **Description:** #160 re-points the SHIPPED `renovate.json5` template `ignorePaths` `.agents/templates/** → .bkit/templates/**`. The bkit repo's OWN Renovate config (`renovate-local.json5` / repo-level overrides) is not touched by #160. If, after the move, Renovate on the bkit repo itself emits onboarding-PR noise scanning the relocated `.bkit/` tree, add a parallel `ignorePaths`/fence to the bkit repo's own Renovate config. Out of scope for #160. No work required unless noise is observed.
+- **Source:** phase
+- **Related:** #160, `.github/renovate-local.json5`

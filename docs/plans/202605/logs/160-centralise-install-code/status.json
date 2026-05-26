@@ -92,5 +92,113 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-26T02:36:45Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "plan-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T02:36:45Z",
+        "parentSha": "6976d6d1e521e8465075ce209c039f12c2da4d56",
+        "artifacts": []
+      },
+      {
+        "step": "plan-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-26T02:36:45Z",
+        "parentSha": "6976d6d1e521e8465075ce209c039f12c2da4d56",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-input.md"]
+      },
+      {
+        "step": "plan-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-26T02:42:40Z",
+        "parentSha": "cff5f36d94dfe250ae88972f25e3748989a3f45f",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-v1-draft.md"]
+      },
+      {
+        "step": "plan-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 1,
+        "at": "2026-05-26T02:46:45Z",
+        "parentSha": "6983f84ccf6d09135cc4e7c227f7fcc6c579a6cd",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/plan-review-1.md",
+          "docs/plans/202605/logs/160-centralise-install-code/plan-review-2.md",
+          "docs/plans/202605/logs/160-centralise-install-code/plan-review-3.md"
+        ]
+      },
+      {
+        "step": "plan-apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-26T02:51:10Z",
+        "parentSha": "a84ab87dc49bca1d318e4e1fe1e8937ee44fe9c9",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-v2-reviewed.md"]
+      },
+      {
+        "step": "plan-scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-26T02:53:30Z",
+        "parentSha": "839338f40f0492a5fe3320c3efe6346083542d14",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/plan-scope-check-1.md",
+          "docs/plans/202605/logs/160-centralise-install-code/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "plan-apply-scope",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T03:00:03Z",
+        "parentSha": "f355159ecb52a45697f1ebda962c09c1d7397889",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-v3-checked.md"]
+      },
+      {
+        "step": "plan-complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-26T03:01:55Z",
+        "parentSha": "bd03caa575b35eaf0d379dee7a9804f536d27a43",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-complexity-check.md"]
+      },
+      {
+        "step": "plan-complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T03:10:45Z",
+        "parentSha": "a51659f41edd6baaa561a7f885316f76be17ab94",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-v4-split.md"]
+      },
+      {
+        "step": "plan-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T03:12:31Z",
+        "parentSha": "b94fef5f074d4d91c91e52f34b016b960ac6415b",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/plan-summary.md"]
+      },
+      {
+        "step": "plan-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T03:14:49Z",
+        "parentSha": "f3f2b8c603b1647c2784137e56814589c800c2c2",
+        "artifacts": []
+      }
+    ]
   }
 ]

@@ -68,3 +68,15 @@
 - **Related:** 80-audit-workflow, issue #80, cancelled #103/#104/#84–#93/#105, created #187–#193
 - **Recovery:** User chose "cancel old, create 7 fresh"; orchestrator retitled+closed the 13 stale children (`not_planned`, bodies kept) and created #187–#193 with correct titles + blocked-by DAG.
 - **Status:** RECOVERED
+
+## Main repo `core.bare` flipped to `true` mid-run, blocking Close-Workflow merge (2026-05-26)
+
+- **Category:** tool-failure
+- **Workflow:** plan
+- **Step:** 11 — Close Workflow (squash-merge to dev)
+- **Source:** orchestrator
+- **Description:** During `/bkit-plan 160`, Steps 1–2 ran fine against the main repo (`git status --porcelain` returned the untracked-file list, so `core.bare=false` then). By Step 11, `git checkout dev` / `git pull` / `git merge --squash` in the main repo all failed with `fatal: this operation must be run in a work tree`. `git rev-parse --show-toplevel` and `--is-inside-work-tree` errored identically, while `git branch --show-current` (which doesn't need a work tree) still returned `dev`. Root cause: `.git/config` `[core] bare = true` — the main repo (a non-bare checkout with `.git` as a directory and a full working tree) had `core.bare` flipped to `true` at some point after Step 2, after the worktree was created. No orchestrator step sets `core.bare`; suspected external mutation (IDE git integration — `GIT_ASKPASS` points at Cursor — or a git operation side-effect). All committed artifacts on `feat/160-...` were intact; only the main repo's work-tree operations were blocked.
+- **Suggested fix:** Close-Workflow (Step 11.4) should assert `git -C "$REPO_ROOT" config --get core.bare` is `false` (or `git rev-parse --is-inside-work-tree` succeeds) before `git checkout dev`, and self-heal with `git config core.bare false` when the main repo demonstrably has a working tree (`.git` is a dir + tracked files present). Consider doing this assertion at Step 1 too, to fail fast with a clear message instead of an opaque "must be run in a work tree" at merge time. Related to the known worktree/main-repo split fragility (see the 2026-05-25 status.json entry).
+- **Related:** 160-centralise-install-code, issue #160
+- **Recovery:** Set `git -C "$REPO_ROOT" config core.bare false`; `git status` and `--show-toplevel` worked again; resumed the Step 11.4 squash-merge.
+- **Status:** RECOVERED
