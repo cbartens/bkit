@@ -12,7 +12,7 @@
   // Extend Renovate's curated baseline. `config:recommended` enables the
   // sensible defaults (timezone-aware schedules, dependency-dashboard, etc.).
   //
-  // `local>{{REPO_SLUG}}//.github/renovate-local` pulls in `.github/renovate-local.json5`,
+  // `local>{{REPO_SLUG}}//.github/renovate-local.json5` pulls in `.github/renovate-local.json5`,
   // a CONSUMER-OWNED file bkit does NOT manage. This file (renovate.json5) is
   // Tier-1 canonical-overwrite — rewritten on every `bkit install` — so hand-edits
   // here are clobbered. Put repo-specific Renovate rules in renovate-local.json5
@@ -26,7 +26,7 @@
   extends: [
     "config:recommended",
     ":dependencyDashboard",
-    "local>{{REPO_SLUG}}//.github/renovate-local",
+    "local>{{REPO_SLUG}}//.github/renovate-local.json5",
   ],
 
   // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open

@@ -14,6 +14,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.8.3] — 2026-05-26
+
+### Fixed
+
+- **Shipped `renovate.json5` referenced the consumer-overrides preset without the `.json5` extension, disabling the entire Renovate config (regression in 2.7.0, issue [#179](https://github.com/cbartens/bkit/issues/179)).** The generated `extends` entry was `local>OWNER/REPO//.github/renovate-local` (extensionless), but `bkit install --renovate` seeds the overrides file as `.github/renovate-local.json5`. Per Renovate's preset resolution an extensionless local preset defaults to `.json`, so Renovate fetched the nonexistent `renovate-local.json`, 404'd, and aborted the run with a `config-validation` error — disabling the whole repo config and raising an "Action Required: Fix Renovate Configuration" issue. Affected 2.7.0–2.8.2; found on a consumer running 2.8.2 (Renovate 43.194.0, Mend hosted), and bkit's own dogfood repo was affected too. Fixed by adding the explicit `.json5` extension to the preset reference everywhere bkit emits it (canonical template, regenerated dogfood config, the `RENOVATE_LOCAL_STUB` comment, and the `docs/deployments.md` / `docs/knowledge.md` references). The `.json5` seed file is kept (its comments are load-bearing and Renovate parses JSONC presets fine with the explicit extension); renaming the file to `.json` was rejected because bkit never overwrites the already-seeded `renovate-local.json5`, so it would re-break every existing consumer. Consumers re-run `pnpm bkit upgrade` to reconverge `renovate.json5` with zero drift (the `.json5` seed is already present and untouched). Tests now assert the `.json5` extension and that no extensionless reference survives.
+
+### Removed
+
+- **Removed the orphaned `lint:no-tier-terms` script.** The Phase-3 regression guard (`.agents/scripts/bkit-lint-no-tier-terms.ts` + its `package.json` script) was not wired into CI or any git hook, so it enforced nothing while still failing on pre-existing doc terminology. Dropped entirely.
+
+---
+
 ## [2.8.2] — 2026-05-26
 
 ### Fixed

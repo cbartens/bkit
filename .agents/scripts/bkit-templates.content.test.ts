@@ -93,7 +93,11 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
     // renovate.json5 is Tier-1 canonical-overwrite; consumer customisations live in
     // the unmanaged renovate-local.json5, pulled in via a {{REPO_SLUG}}-tokenised
     // local preset. Listed LAST in `extends` so it wins over the baseline presets.
-    expect(content).toMatch(/"local>\{\{REPO_SLUG\}\}\/\/\.github\/renovate-local"/);
+    // The explicit `.json5` extension is load-bearing (issue #179): an
+    // extensionless local preset resolves to `.json`, 404s, and disables the
+    // whole config. The reference must match the seeded `renovate-local.json5`.
+    expect(content).toMatch(/"local>\{\{REPO_SLUG\}\}\/\/\.github\/renovate-local\.json5"/);
+    expect(content).not.toMatch(/renovate-local"/);
     const extendsBlock = content.match(/extends:\s*\[([\s\S]*?)\]/)?.[1] ?? "";
     expect(extendsBlock.indexOf("renovate-local")).toBeGreaterThan(
       extendsBlock.indexOf("config:recommended"),

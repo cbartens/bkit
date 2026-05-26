@@ -470,8 +470,26 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     runRenovateModule(ctx);
 
     const renovate = fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8");
-    expect(renovate).toContain('"local>acme/widget//.github/renovate-local"');
+    expect(renovate).toContain('"local>acme/widget//.github/renovate-local.json5"');
     expect(renovate).not.toContain("{{REPO_SLUG}}");
+  });
+
+  it("references the local preset with the explicit .json5 extension matching the seeded filename", () => {
+    // Regression guard for issue #179: an extensionless local preset
+    // (`local>owner/repo//.github/renovate-local`) resolves to `.json`, which
+    // does not exist — Renovate 404s and disables the entire repo config. The
+    // `extends` entry must end in `.json5` and match the seeded filename exactly.
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, tokens: { ...makeCtx().tokens, REPO_SLUG: "acme/widget" } });
+    runRenovateModule(ctx);
+
+    const renovate = fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8");
+    const presetRef = renovate.match(/"local>[^"]*\/renovate-local[^"]*"/)?.[0] ?? "";
+    expect(presetRef).toBe('"local>acme/widget//.github/renovate-local.json5"');
+    // The reference must point at the file bkit actually seeds.
+    expect(fs.existsSync(path.join(tmpDir, ".github", "renovate-local.json5"))).toBe(true);
+    // No extensionless reference survives anywhere in the rendered config.
+    expect(renovate).not.toMatch(/renovate-local"/);
   });
 
   it("does NOT overwrite an existing renovate-local.json5 and emits no nag advisory", () => {
