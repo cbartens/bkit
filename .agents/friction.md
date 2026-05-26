@@ -80,3 +80,15 @@
 - **Related:** 160-centralise-install-code, issue #160
 - **Recovery:** Set `git -C "$REPO_ROOT" config core.bare false`; `git status` and `--show-toplevel` worked again; resumed the Step 11.4 squash-merge.
 - **Status:** RECOVERED
+
+## bkit-plan-update left `Verdict: PENDING` placeholder, forcing a re-invocation (2026-05-26)
+
+- **Category:** agent-rework
+- **Workflow:** plan
+- **Step:** 5 — Apply Review
+- **Source:** subagent (`bkit-plan-update`)
+- **Description:** During `/bkit-plan 141`, the Apply-Review subagent completed the full plan edit (`plan-v2-reviewed.md`, 532 lines, all 10 CRITICAL findings resolved) but its final assistant message was truncated mid-action and it left the verdict header as the literal placeholder `Verdict: PENDING` / `<!-- verdict:end -->` at the top of the file. `PENDING` is not in `PASS|CONCERNS|FAIL`, so Gate-5 verdict extraction failed and Step 5.3's "invoke offending subagent again to re-emit ONLY the verdict header" recovery had to run. The re-invocation read the completed file, assessed it, and emitted `Verdict: PASS` — no plan rework needed, only the header was missing.
+- **Suggested fix:** `bkit-plan-update` (and any subagent that owns a verdict-headed artifact) should write the verdict header FIRST as its very first file write — before the body edits — so a truncated/interrupted run still leaves a valid (if conservative) verdict rather than the `PENDING` placeholder. The orchestrator already handles this via Step 5.3, but the extra round-trip is avoidable. Step 7's apply-scope prompt mitigated this by explicitly instructing "emit the verdict header before anything else risky"; folding that instruction into the agent definition itself would close the gap for Step 5 too.
+- **Related:** 141-cloud-app, issue #141
+- **Recovery:** Re-invoked `bkit-plan-update` per Step 5.3 with the re-emit instruction; it read the completed `plan-v2-reviewed.md`, confirmed all 10 CRITICALs resolved, and set `Verdict: PASS`. No plan content changed.
+- **Status:** RECOVERED

@@ -1,0 +1,110 @@
+[
+  {
+    "workflow": "plan",
+    "startedAt": "2026-05-26T08:40:29Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "plan-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T08:40:29Z",
+        "parentSha": "43a92c51cacacbee01e7dac9cc0b6e7e41b8751c",
+        "artifacts": []
+      },
+      {
+        "step": "plan-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-26T08:40:29Z",
+        "parentSha": "43a92c51cacacbee01e7dac9cc0b6e7e41b8751c",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-input.md"]
+      },
+      {
+        "step": "plan-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-26T08:49:07Z",
+        "parentSha": "0afd96007811e7a43dcc4ee523fa28117dead10f",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-v1-draft.md"]
+      },
+      {
+        "step": "plan-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 10,
+        "at": "2026-05-26T08:54:08Z",
+        "parentSha": "aa6ca22280c9e75a96a3db64ceecc042049bee29",
+        "artifacts": [
+          "docs/plans/202605/logs/141-cloud-app/plan-review-1.md",
+          "docs/plans/202605/logs/141-cloud-app/plan-review-2.md",
+          "docs/plans/202605/logs/141-cloud-app/plan-review-3.md"
+        ]
+      },
+      {
+        "step": "plan-apply-review",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T09:03:10Z",
+        "parentSha": "24244d7b246601077f97ec29852e97c1382af944",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-v2-reviewed.md"]
+      },
+      {
+        "step": "plan-scope-check",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 5,
+        "at": "2026-05-26T09:05:51Z",
+        "parentSha": "3a04f27a330abc8f34eb90ac2414e0b9f8de2207",
+        "artifacts": [
+          "docs/plans/202605/logs/141-cloud-app/plan-scope-check-1.md",
+          "docs/plans/202605/logs/141-cloud-app/plan-scope-check-2.md"
+        ]
+      },
+      {
+        "step": "plan-apply-scope",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T09:11:39Z",
+        "parentSha": "1f156bd01dc4bff271d3279f3cc66445adcaafab",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-v3-checked.md"]
+      },
+      {
+        "step": "plan-complexity-check",
+        "status": "DONE",
+        "verdict": "SPLIT",
+        "attempt": 1,
+        "at": "2026-05-26T09:13:20Z",
+        "parentSha": "53f557381bdccdc5e027db74cac558b2ed11f86c",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-complexity-check.md"]
+      },
+      {
+        "step": "plan-complexity-split",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T09:23:17Z",
+        "parentSha": "4db9db582e4770428c7c409d454793815de0ef6a",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-v4-split.md"]
+      },
+      {
+        "step": "plan-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T09:25:01Z",
+        "parentSha": "7c0c717603f1ca2557103bf95225989dfc4f42d1",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/plan-summary.md"]
+      },
+      {
+        "step": "plan-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T09:27:30Z",
+        "parentSha": "84930d68ddc909ea2ac9e994dcfe1e59f292e856",
+        "artifacts": []
+      }
+    ]
+  }
+]
