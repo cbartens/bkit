@@ -56,3 +56,15 @@
 - **Related:** 143-real-world-testing, issue #143, commits f4f6061..925bb9a (plan run)
 - **Recovery:** Reconstructed status.json authoritatively from dev's committed design(10) entry + the full 11-step plan workflow (verdicts/artifacts re-derived from the committed step artifacts), committed to dev at close.
 - **Status:** RECOVERED
+
+## Step 9 workstream matching breaks when a re-design renumbers WS meanings (2026-05-26)
+
+- **Category:** human-confirm
+- **Workflow:** design
+- **Step:** 9 — Design Workstream Issues
+- **Source:** orchestrator
+- **Description:** `/bkit-design 80` was a re-design of an issue that already had sub-issues from a superseded decomposition. The old run cut WS-1=orchestrator, WS-2..WS-12=one-per-lens, WS-13=pipeline-prompts (#103, #104, #84–#93, #105). The new design cut a structurally different 7-workstream set (WS-1=stack-detect, WS-2=skill-install, WS-3=all-11-lenses, …). Step 9 matches existing children to new workstreams purely by `^WS-{N}:` title-prefix, which assumes WS-{N} means the same thing across runs. It does not after a re-design: following the literal procedure would have posted "now this is Stack-detect" Update comments onto issues still TITLED "Workflow Orchestrator"/"architecture lens", and fired spurious Delete comments at real lens issues (#89–#93/#105) whose work still exists (folded into new WS-3). Orchestrator halted and asked the user how to reconcile rather than producing a tracker where titles and scope contradict.
+- **Suggested fix:** Step 9 needs a re-design branch: when existing children's `WS-{N}` titles don't semantically match the new design's `WS-{N}` names (or when the new decomposition is a known re-cut), prefer cancel-old-and-create-fresh over match-by-number Update. At minimum, match on title SLUG not just the numeric prefix, and treat a name mismatch at the same number as "stale child" (cancel) rather than "reuse". Consider recording a design-supersedes-design marker so Step 9 can detect the re-cut automatically.
+- **Related:** 80-audit-workflow, issue #80, cancelled #103/#104/#84–#93/#105, created #187–#193
+- **Recovery:** User chose "cancel old, create 7 fresh"; orchestrator retitled+closed the 13 stale children (`not_planned`, bodies kept) and created #187–#193 with correct titles + blocked-by DAG.
+- **Status:** RECOVERED

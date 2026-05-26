@@ -1,0 +1,96 @@
+[
+  {
+    "workflow": "design",
+    "startedAt": "2026-05-26T02:31:44Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "design-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T02:31:44Z",
+        "parentSha": "6976d6d1e521e8465075ce209c039f12c2da4d56",
+        "artifacts": []
+      },
+      {
+        "step": "design-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-26T02:31:44Z",
+        "parentSha": "6976d6d1e521e8465075ce209c039f12c2da4d56",
+        "artifacts": ["docs/plans/202605/logs/80-audit-workflow/design-input.md"]
+      },
+      {
+        "step": "design-brainstorm-ideate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-26T02:34:34Z",
+        "parentSha": "ebbe286b09ccba605891bf9852eebaaf5a0909e1",
+        "artifacts": [
+          "docs/plans/202605/logs/80-audit-workflow/design-brainstorm-ideate-1.md",
+          "docs/plans/202605/logs/80-audit-workflow/design-brainstorm-ideate-2.md",
+          "docs/plans/202605/logs/80-audit-workflow/design-brainstorm-ideate-3.md"
+        ]
+      },
+      {
+        "step": "design-generate",
+        "status": "DONE",
+        "attempt": 1,
+        "at": "2026-05-26T02:38:34Z",
+        "parentSha": "c3f4b9b962ced860b6477b933f7fdac461314fdb",
+        "artifacts": ["docs/plans/202605/logs/80-audit-workflow/design-v1-draft.md"]
+      },
+      {
+        "step": "design-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-26T02:42:26Z",
+        "parentSha": "ff0d2b6ecf45fa8da011b09d676a1ba97e7b64ce",
+        "artifacts": [
+          "docs/plans/202605/logs/80-audit-workflow/design-review-1.md",
+          "docs/plans/202605/logs/80-audit-workflow/design-review-2.md"
+        ]
+      },
+      {
+        "step": "design-apply-review",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-26T02:47:42Z",
+        "parentSha": "8c6777cb70a0922b23767bcd127e6503f213e743",
+        "artifacts": ["docs/plans/202605/logs/80-audit-workflow/design-v2-reviewed.md"]
+      },
+      {
+        "step": "design-organise",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T02:50:39Z",
+        "parentSha": "9149bbd3611961c258bb7f9eeda8412594d3ff62",
+        "artifacts": ["docs/plans/202605/logs/80-audit-workflow/design-v3-organised.md"]
+      },
+      {
+        "step": "design-summary",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-26T02:52:42Z",
+        "parentSha": "068ffff20efa704bd29b3cbdf956b0dc4a9c3a4a",
+        "artifacts": ["docs/plans/202605/logs/80-audit-workflow/design-summary.md"]
+      },
+      {
+        "step": "design-workstream-issues",
+        "status": "DONE",
+        "at": "2026-05-26T03:05:24Z",
+        "parentSha": "fe973d188684b6b5be1608e9f40a61a9dd1b500e",
+        "artifacts": []
+      },
+      {
+        "step": "design-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-26T03:07:24Z",
+        "parentSha": "e480aba17a1c218c58f6100a9ef08e28f38023b0",
+        "artifacts": []
+      }
+    ]
+  }
+]
