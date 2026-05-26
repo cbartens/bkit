@@ -26,7 +26,7 @@
 
 bkit's cloud-agent capability on GitHub-tracker repos has never run end-to-end: a live dispatch proved `claude-code-action@v1` cannot boot because `bkit-cloud.yml` lacks `id-token: write` and was designed to lean on `github.token` instead of the Claude GitHub App (D1). The same live trace surfaced two more defects — bookkeeping commits without `[skip ci]` fire the CI auto-router mid-build (D2), and an incoherent concurrency key lets a dispatched build race the auto-ship it triggers (D3). The authoritative FINAL SCOPE comment (#141 `issuecomment-4542046671`) rebuilds the whole capability **on** the Claude GitHub App (OIDC identity) rather than around it, splits the opt-in `cloud` module into `cloud=claude` / `cloud=cursor` variants constrained by tracker, moves the CI auto-route gate into a two-tier YAML guard (`bkit [auto route]` marker + in-job `bkit:auto` re-check), and migrates Linear's bare `Auto` label to `bkit:auto`. This change MUST land together with #184's single shared HEAD-subject assertion.
 
-**This child (Block 1) delivers:** D1 fix (`id-token: write` + App-auth framing) on the `bkit-cloud.yml` template + rendered copy, the `renderCloudWorkflow` Linear-branch deletion (GitHub-only render), the `--cloud=claude|cursor` value-bearing flag + `--force`, the `runCloudModule` variant split + `bkit.cloud` field + manifest split, the symmetric tracker/cloud constraint + tracker-switch hard-block, the `bkit-cloud-setup` advisory flip (App optional→required) + `Auto`→`bkit:auto` advisory text, the `bkit check` consistency assertion, the `bkit-postinstall.ts` Linear-coupling reconciliation, dry-run parity for both variants, and the `advisories.md` regen.
+**This child (Block 1) delivers:** D1 fix (`id-token: write` + App-auth framing) on the `bkit-cloud.yml` template + rendered copy, the `renderCloudWorkflow` Linear-branch deletion (GitHub-only render), the `--cloud=claude|cursor` value-bearing flag + `--force`, the `runCloudModule` variant split + single `bkit.cloudAgents=claude|cursor|none` field + manifest split, the symmetric tracker/cloud constraint + tracker-switch hard-block, the `bkit-cloud-setup` advisory flip (App optional→required) + `Auto`→`bkit:auto` advisory text, the `bkit check` consistency assertion, the `bkit-postinstall.ts` Linear-coupling reconciliation, dry-run parity for both variants, and the `advisories.md` regen.
 
 **Success Criteria (this child):**
 
@@ -118,7 +118,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -144,13 +144,13 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 > **New names / fields:**
 >
 > - New CLI value: `--cloud=claude|cursor` (replaces bare `--cloud`).
-> - New `package.json` field: **`bkit.cloud` (`"claude" | "cursor"`)** recording the cloud variant — distinct from the existing `bkit.cloudAgents` ("enabled"/"none") presence signal. **LOCKED (DECISION-C):** field name is `bkit.cloud`; `bkit.cloudAgents` keeps its presence-signal meaning so `runPostInstallCheck` (reads `cloudAgents`) is unaffected. FINAL SCOPE decision 4 calls it the "new cloud-variant field"; this resolves it. Human may override at Gate 1, but the runbook assumes `bkit.cloud` and does not branch.
+> - **Changed `package.json` field:** `bkit.cloudAgents` value space widens from `"enabled" | "none"` to **`"claude" | "cursor" | "none"`** (one self-describing field, mirrors `bkit.issueTracker`). **DECISION-C (AMENDED 2026-05-27):** a single field carries presence + variant; **NO separate `bkit.cloud` field**. Legacy `"enabled"` reads as `"claude"` (back-compat in `parseCloudAgents`). FINAL SCOPE decision 4's "new cloud-variant field" is resolved this way.
 > - New commit marker: `bkit [auto route]` (literal, `bkit` outside the brackets, direction-neutral; mirrors `bkit [skip ci]`).
 > - New workflow grant: `id-token: write` in `bkit-cloud.yml`.
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -159,7 +159,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 
 ## Decisions (A–E, all LOCKED — full text in [parent index](./141-cloud-app-plan.md))
 
-This child acts on **DECISION-A** (T1.1/T1.7 — keep `bkit-cloud.yml` on `ANTHROPIC_API_KEY`+OIDC; do NOT migrate to/from `claude_code_oauth_token`), **DECISION-B** (T1.7 advisory directs consumers to `/install-github-app`; no shipped `claude.yml` template), **DECISION-C** (T1.5/T1.8 — `bkit.cloud` field, distinct from `bkit.cloudAgents`), and **DECISION-D** (T1.5 — manifest split so uninstall removes only the recorded variant's files). DECISION-E acts in child 2. Human may override A–E only at Gate 1; the runbook assumes the locked defaults and does NOT branch.
+This child acts on **DECISION-A** (T1.1/T1.7 — keep `bkit-cloud.yml` on `ANTHROPIC_API_KEY`+OIDC; do NOT migrate to/from `claude_code_oauth_token`), **DECISION-B** (T1.7 advisory directs consumers to `/install-github-app`; no shipped `claude.yml` template), **DECISION-C (AMENDED 2026-05-27)** (T1.5/T1.8 — single `bkit.cloudAgents = claude|cursor|none` field; legacy `enabled`→`claude`; NO separate `bkit.cloud` field), and **DECISION-D** (T1.5 — manifest split so uninstall removes only the recorded variant's files). DECISION-E acts in child 2. Human may override A–E only at Gate 1; the runbook assumes the locked defaults and does NOT branch.
 
 ## Supersession Inventory (FULL — carried in this child; rows acted on by all children)
 
@@ -199,7 +199,7 @@ _No new API routes, DB writes, or user-input schemas — bkit ships workflow + C
 - [ ] **Pending Blockers:** Confirm **#184** state and land it on the same branch (shared HEAD-subject assertion is a hard dependency — see Prerequisite Plans). Check `docs/pending.md` for related deferrals.
 - [ ] **Project Context:** Read `docs/knowledge.md` KN-11 (`[skip ci]` HEAD → empty rollup) + KN-23 (CI is the only quality gate); `docs/deployments.md` § "CI trigger on final workflow push" (the existing commit-tag contract that #184 formalises and D2 implements); `docs/decisions.md`.
 - [ ] **Testing & Quality:** Align with bkit's Vitest suites (`bkit-modules.integration.test.ts`, `bkit-dry-run-parity.integration.test.ts`, `bkit-doctor.integration.test.ts`, `bkit-cli.test.ts`). Validate shipped config with the real tool/resolver, never string-presence-only (per repo memory).
-- [ ] **Prerequisite Plans:** **#184** (shared HEAD-subject assertion) — MUST land together on this branch. No separate prior plan to execute; coordinate the two in one PR. **Resolve #184's exact assertion shape from its tracker issue (GitHub issue #184) before child 2's T2.1** so the builder does not re-discover it; if #184 has its own plan artifact under `docs/plans/`, consult it for the snippet home + token-allowlist contract. **This resolution is a Gate-1 prerequisite carried here even though T2.1 lives in child 2.**
+- [ ] **Prerequisite Plans:** **#184** (shared HEAD-subject assertion) — MUST land together on this branch. No separate prior plan to execute; coordinate the two in one PR. **RESOLVED 2026-05-27 — see § "#184 Shared HEAD-Subject Assertion — RESOLVED" below.** (#184 has NO separate plan artifact under `docs/plans/` — confirmed; the shape was resolved directly from the issue + its #141-coupling comment.) **This resolution is a Gate-1 prerequisite carried here even though T2.1 lives in child 2.**
 
 ### Conditional (verify only when applicable)
 
@@ -211,12 +211,33 @@ _No new API routes, DB writes, or user-input schemas — bkit ships workflow + C
 
 - [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`).
 - [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`).
-- [ ] **#184 coordination:** #184's exact shared HEAD-subject assertion shape resolved from its tracker issue (and plan artifact if present) — recorded for child 2's T2.1.
+- [x] **#184 coordination:** #184's exact shared HEAD-subject assertion shape RESOLVED (2026-05-27, maintainer review) — recorded below for child 2's T2.1.
 - [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+
+## #184 Shared HEAD-Subject Assertion — RESOLVED (Gate-1 output, 2026-05-27)
+
+> [!IMPORTANT]
+> Resolves #184's four open questions so child 2 T2.1 implements without re-discovery. #184 ([issuecomment-4541679278](https://github.com/cbartens/bkit/issues/184#issuecomment-4541679278)) explicitly lands this contract _through_ #141: HEAD must be loud (no `[skip ci]`); an opted-in HEAD additionally carries `bkit [auto route]`, which the assertion must treat as legitimate.
+
+**Contract (DENY-LIST, never an allow-list):**
+
+- HEAD commit subject of any push to a CI-validated ref MUST NOT contain a CI-suppressing token: `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` (GitHub's recognized set; substring match).
+- PR title MUST NOT contain `[skip ci]` (any variant) or `[skip build]` (the squash subject becomes `dev` HEAD; `[skip build]` there skips the post-merge deploy).
+- **Allowlisted loud tokens that MUST pass:** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. A deny-list permits them automatically (none contain a suppressor substring). The assertion MUST NOT be an allow-list that rejects extra tokens — that is the failure mode #141 must avoid.
+
+**Open-question resolutions:**
+
+- **Q1 — Where:** a single named assertion documented in `.agents/workflows.md` (alongside § "CI trigger mechanic" / § "`bkit [verbose ci]` Marker Propagation"), invoked by build Gate 18 + Step 17 create-pr, debug Gate 12 + create-pr, and ship Gate + squash `--body ""`. NOT a `trackers.md` snippet (those are tracker-specific), NOT MCP (it is a git/`gh` op, not a GitHub-API write), NOT `preflight.sh` (a SessionStart hook that cannot block; wrong trigger). No new git hook or CI job this cycle.
+- **Q2 — Scope:** HEAD subject + PR title only. GitHub evaluates the HEAD commit (push) / PR title (`pull_request`). No history scan — the "buried non-skip / trigger-commit" case reduces to "HEAD must be clean," which D2 (`[skip ci]` on worktree-setup/create-pr) + the loud marked close-workflow commit guarantee by construction.
+- **Q3 — Remediation:** hard-fail, loud — name the offending commit SHA/subject (or PR title) + the fix, route to the workflow's Failure Path. No silent auto-fix / empty-trigger-commit: with D2 + the loud close-workflow HEAD, HEAD is clean by construction and the assertion is the safety net. (Build Step 17's existing `bkit [force build]` empty-commit auto-fix is unrelated and stays.)
+- **Q4 — `[skip build]`:** gated on the **PR title** (above); on the HEAD commit it is NOT gated (Vercel-only, not a CI suppressor) — `bkit [force build]` remains the escape hatch.
+- **Token registry:** child 2's `docs/deployments.md` pass adds `bkit [auto route]` to § Commit-message tags alongside `[verbose ci]`/`[force build]`/`[skip *]`, marked a loud (non-suppressing) routing marker, and points the § "CI trigger on final workflow push" rule at the new shared assertion.
+- **Mechanism — deterministic command, orchestrator-invoked (NOT a git hook).** The check is a deterministic shell test: `git log -1 --pretty=%s` (HEAD subject) and `gh pr view --json title` piped to a fixed `grep -iE` of the suppressor set; the exit code is the verdict — **zero LLM judgment**. It is invoked by the orchestrator at the close-workflow final push / create-pr / merge steps, and is **NOT** placed in the shipped `.husky/pre-push` hook. Reason: the invariant is **contextual to a workflow's last / CI-triggering push**, and bkit _intentionally_ pushes `[skip ci]` HEADs intermediately (D2: worktree-setup/create-pr commits) and to `dev` (status bookkeeping, e.g. `chore({FID}): build DONE bkit [skip ci]`). A blanket pre-push hook asserting "HEAD != `[skip ci]`" would wrongly block those legitimate pushes — only the orchestrator knows which push is the final loud one. **Two clauses, invoked where each applies:** the HEAD-subject clause at the final CI-triggering push (build Gate 18 / debug Gate 12); the PR-title clause at create-pr and verified at the ship squash (`--body ""`).
+- **Reconcile scattered mitigations (#184 AC bullet 4 — no drift):** delete the inline re-derivations in build/debug/ship gates (replaced by the invocation), and point `.agents/rules.md:58,63` + `.agents/workflows.md` § "CI trigger mechanic" + `docs/deployments.md` § "CI trigger on final workflow push" at the single shared assertion. **After this, #184 is FULLY FOLDED into this plan** — there is no separate #184 work product; executing child 2 T2.1 + T2.5 discharges all four of #184's acceptance criteria, and #184 is closed by the combined #141+#184 squash merge (or may be closed now as "folded into #141").
 
 ## Data Schema Integration
 
-None — bkit is a tooling repo with no application database. The only persisted state is `package.json` `bkit.*` fields (config, not a DB schema). Config-field changes (`bkit.cloud`) are tracked under `Architecture & Component Changes` and `Documentation Updates`.
+None — bkit is a tooling repo with no application database. The only persisted state is `package.json` `bkit.*` fields (config, not a DB schema). Config-field changes (`bkit.cloudAgents` widened to `claude|cursor|none`) are tracked under `Architecture & Component Changes` and `Documentation Updates`.
 
 ## Architecture & Component Changes — Block 1
 
@@ -248,7 +269,7 @@ Grouped by FINAL-SCOPE internal-ordering block. **CRITICAL:** All `[MODIFY]` fil
 - `runCloudModule` (lines 1923-2084): **SPLIT** into `cloud=claude` vs `cloud=cursor` behaviour:
   - `cloud=claude` → ship `bkit-cloud.yml` + `cloud-bootstrap.sh`; require `tracker=github` + App.
   - `cloud=cursor` → ship `.cursor/Dockerfile` + `environment.json`; require `tracker=linear`.
-  - Record the variant via a new `bkit.cloud` field (set alongside the existing `setConsumerBkitField("cloudAgents", "enabled", …)` at line 2013).
+  - Record the variant by widening the existing `bkit.cloudAgents` write at line 2013 — `setConsumerBkitField("cloudAgents", variant, …)` where `variant` is `"claude"`/`"cursor"` (DECISION-C AMENDED: single field, NO separate `bkit.cloud`). Update `parseCloudAgents`/`hasCloudAgentsField` (`bkit-postinstall.ts`) to accept `claude|cursor|none` and map legacy `"enabled"` → `"claude"`.
 - `bkit-cloud-setup` advisory (id at line 2064; action ~2068-2083 — FINAL SCOPE cited ~2056-2062/~2075 from an earlier commit): flip App optional→required; **DELETE** the `github.token`-only line (line 2075); state `/install-github-app` + App required. Update `mentionTipLine` (lines 2060-2062) accordingly.
 - **Bare `Auto` in advisory text (R3-2):** migrate the bare `Auto` strings at `:2051` ("reads the `Auto` opt-in label"), `:2054` ("labelled `Auto` in Linear"), `:2055` ("carries the `Auto` label") → `bkit:auto`. These sit in the `isLinearCloud` branch; reconcile with the cloud-split (T1.5): if the split deletes that branch, the strings are removed with it; otherwise fix them in place. Verify no bare `Auto` remains in `bkit-modules.ts` advisory output after this task + T1.5.
 - `MODULE_REGISTRY` (line 2090) + `MODULE_DISPATCH_ORDER` (line 2104): wire the `cloud` module to dispatch the correct variant based on the parsed `--cloud=` value.
@@ -271,11 +292,11 @@ Grouped by FINAL-SCOPE internal-ordering block. **CRITICAL:** All `[MODIFY]` fil
 
 - **Existence Check:** Exists.
 - `CLOUD_MANIFEST` (lines 211-221) currently lists all four files under one module. Split the manifest so `cloud=claude` owns `bkit-cloud.yml` + `cloud-bootstrap.sh` and `cloud=cursor` owns `.cursor/Dockerfile` + `environment.json` (or keep one manifest but gate file emission by variant in `runCloudModule` — choose the approach that keeps uninstall correct).
-- Add a `bkit.cloud` field convention note (mirror `CloudAgents` block lines 113-138).
+- Update the `CloudAgents` field convention note (lines 113-138) for the widened value space `claude|cursor|none` (DECISION-C AMENDED — no separate `bkit.cloud` field).
 
 #### [MODIFY] `bkit check` / consistency assertion (in `bkit-install.ts` Phase-3 post-install / advisory replay, or doctor path)
 
-- **Existence Check:** Post-install checks run for both install AND check (`bkit-install.ts` ~line 988). Add a `cloud=claude` config-consistency assertion: when `bkit.cloud === "claude"` (or `bkit-cloud.yml` present) → assert workflow has `id-token: write`, the `ANTHROPIC_API_KEY` note, and the App advisory is surfaced. Fail `bkit check` (exit 1) on inconsistency.
+- **Existence Check:** Post-install checks run for both install AND check (`bkit-install.ts` ~line 988). Add a `cloud=claude` config-consistency assertion: when `bkit.cloudAgents === "claude"` (or `bkit-cloud.yml` present) → assert workflow has `id-token: write`, the `ANTHROPIC_API_KEY` note, and the App advisory is surfaced. Fail `bkit check` (exit 1) on inconsistency.
 
 #### [MODIFY] `.agents/cloud.md`
 
@@ -300,7 +321,7 @@ Grouped by FINAL-SCOPE internal-ordering block. **CRITICAL:** All `[MODIFY]` fil
 
 - **Existing tests this change MUST update (named explicitly — R3-opt/R2-opt):**
   - Advisory asserts **lines 679-701**: `bkit-cloud-setup` action now asserts App-required + `/install-github-app`; remove `github.token` expectation; assert `bkit:auto` (not bare `Auto`) in advisory text.
-  - `bkit.cloudAgents === "enabled"` assertion at **~703-710**: extend to also assert the new `bkit.cloud` variant field is recorded (`"claude"`/`"cursor"`).
+  - `bkit.cloudAgents === "enabled"` assertion at **~703-710**: update to assert `bkit.cloudAgents === "claude"`/`"cursor"` (DECISION-C AMENDED — single field, widened value space) plus a parse test that legacy `"enabled"` maps to `"claude"`.
   - `renderCloudWorkflow` Linear-keep regression tests at **754-762** and **787-793** (the "linear tracker keeps `LINEAR_API_KEY`" cases): **DELETE/replace** — Linear branch is removed. The 765-794 block is the broader render set; assert `id-token: write` + GitHub-only there.
   - `linear: omits install-github-app` advisory test at **~695-700**: restructure under the cloud-split (linear→cursor ships NO `bkit-cloud.yml`).
 - Add cloud=claude/cursor variant + tracker-constraint + tracker-switch tests. Add `cloud=claude`/`cloud=cursor` dry-run parity (T1.10). Add the `bkit-postinstall.ts` advisory reconciliation test (T1.9) and the `bkit check` consistency test (T1.8).
@@ -346,14 +367,14 @@ See [parent index](./141-cloud-app-plan.md) § Rollback Strategy — single `git
   - **Done when:** `.github/workflows/bkit-cloud.yml` has `id-token: write`, no Linear/`github.token` framing; byte-identical to `renderCloudWorkflow(template, "github")`.
 - [ ] **T1.4:** Add value-bearing `--cloud=claude|cursor` parsing (reject bare `--cloud` + invalid values) and `--force` install-context parsing in `.agents/scripts/bkit-cli.ts`; update `printUsage`.
   - **Done when:** `bkit install --cloud` (bare) errors; `--cloud=claude`/`--cloud=cursor` parse to the variant; `bkit-cli.test.ts` covers both + invalid value; help shows `--cloud=claude|cursor`.
-- [ ] **T1.5:** Split `runCloudModule` by variant + add `bkit.cloud` field; update `MODULE_REGISTRY`/`MODULE_DISPATCH_ORDER` + `bkit-manifest.ts` so `cloud=claude` ships `bkit-cloud.yml`+`cloud-bootstrap.sh` and `cloud=cursor` ships `.cursor/Dockerfile`+`environment.json`.
-  - **Done when:** integration test shows `--cloud=claude` writes `bkit-cloud.yml` (not `.cursor/Dockerfile`) and `--cloud=cursor` writes `.cursor/Dockerfile`+`environment.json` (not `bkit-cloud.yml`); `package.json` `bkit.cloud` recorded (DECISION-C) AND the existing `bkit.cloudAgents === "enabled"` assertion at `bkit-modules.integration.test.ts:~703-710` is extended to assert `bkit.cloud` too; manifest is split per DECISION-D so uninstall removes ONLY the recorded variant's files (test asserts `uninstall` of a `cloud=claude` install does not orphan `.cursor/*` and vice-versa); the manifest variant split (Derived Test Matrix row 14) is asserted in the manifest suite `.agents/scripts/bkit-manifest.test.ts` (each `CLOUD_MANIFEST` entry tagged with / gated by its owning variant — `cloud=claude` owns `bkit-cloud.yml`+`cloud-bootstrap.sh`, `cloud=cursor` owns `.cursor/Dockerfile`+`environment.json`).
+- [ ] **T1.5:** Split `runCloudModule` by variant + record the variant in the single `bkit.cloudAgents` field (`claude`/`cursor`; DECISION-C AMENDED — no separate `bkit.cloud`; legacy `enabled`→`claude` in `parseCloudAgents`); update `MODULE_REGISTRY`/`MODULE_DISPATCH_ORDER` + `bkit-manifest.ts` so `cloud=claude` ships `bkit-cloud.yml`+`cloud-bootstrap.sh` and `cloud=cursor` ships `.cursor/Dockerfile`+`environment.json`.
+  - **Done when:** integration test shows `--cloud=claude` writes `bkit-cloud.yml` (not `.cursor/Dockerfile`) and `--cloud=cursor` writes `.cursor/Dockerfile`+`environment.json` (not `bkit-cloud.yml`); `package.json` `bkit.cloudAgents` recorded as `claude`/`cursor` (DECISION-C AMENDED — single field, NO `bkit.cloud`) AND the existing `bkit.cloudAgents === "enabled"` assertion at `bkit-modules.integration.test.ts:~703-710` is updated to assert the variant value (`claude`/`cursor`) plus a legacy `enabled`→`claude` parse test; manifest is split per DECISION-D so uninstall removes ONLY the recorded variant's files (test asserts `uninstall` of a `cloud=claude` install does not orphan `.cursor/*` and vice-versa); the manifest variant split (Derived Test Matrix row 14) is asserted in the manifest suite `.agents/scripts/bkit-manifest.test.ts` (each `CLOUD_MANIFEST` entry tagged with / gated by its owning variant — `cloud=claude` owns `bkit-cloud.yml`+`cloud-bootstrap.sh`, `cloud=cursor` owns `.cursor/Dockerfile`+`environment.json`).
 - [ ] **T1.6:** Add symmetric tracker/cloud constraint + tracker-switch hard-block (`--force`) in `.agents/scripts/bkit-install.ts`.
   - **Done when:** `.agents/scripts/bkit-install.ts` exists and is the edited file (`test -f .agents/scripts/bkit-install.ts`); `--cloud=claude` on `tracker=linear` hard-errors (and vice versa); switching a recorded tracker without `--force` hard-errors; first-set is free; `--force` overrides; tests assert each.
 - [ ] **T1.7:** Flip the `bkit-cloud-setup` advisory App optional→required; delete the `github.token`-only line; update `mentionTipLine`; migrate the bare `Auto` advisory strings (`bkit-modules.ts:2051/2054/2055`) → `bkit:auto` (or remove with the `isLinearCloud` branch if T1.5's split deletes it); flip `cloud.md` matrix (line 23) + path E (line 30) + Post-CI section.
   - **Done when:** advisory action contains `/install-github-app` + "required" and no `github.token`-handles-everything text; `grep -n '\bAuto\b' .agents/scripts/bkit-modules.ts` returns no advisory-label references (only `bkit:auto`); `cloud.md` describes the App as base requirement; `bkit-modules.integration.test.ts` advisory asserts updated (including the `bkit:auto` advisory text) and green.
 - [ ] **T1.8:** Add `bkit check` `cloud=claude` config-consistency assertion (workflow `id-token`, `ANTHROPIC_API_KEY` note, App advisory surfaced) in the install/check post-install path.
-  - **Done when:** `bkit check` exits 1 when `bkit.cloud=claude` but `bkit-cloud.yml` lacks `id-token`; integration/doctor test covers it.
+  - **Done when:** `bkit check` exits 1 when `bkit.cloudAgents=claude` but `bkit-cloud.yml` lacks `id-token`; integration/doctor test covers it.
 - [ ] **T1.9:** Reconcile `bkit-postinstall.ts` cloud advisories with the GitHub-only `bkit-cloud.yml` + cloud-split (R3-3): drop the `tracker==="linear"` → `LINEAR_API_KEY`-in-`bkit-cloud.yml` coupling in `buildCloudSetupAdvisory` (:803), `buildCloudDashboardsAdvisory` (:849), `buildCloudSecretsAdvisory` (:895); `bkit-cloud.yml`-related advisory text becomes `cloud=claude`/`github`-only.
   - **Done when:** none of the three builders associate `LINEAR_API_KEY` with `bkit-cloud.yml`; `grep -n 'LINEAR_API_KEY' .agents/scripts/bkit-postinstall.ts` shows it only on the `cloud=cursor`/`tracker=linear` (`.cursor`) path, never the `bkit-cloud.yml` secret set; a `bkit-modules.integration.test.ts` (or postinstall-advisory) test asserts the GitHub-only secret set for `cloud=claude` and no `bkit-cloud.yml`+`LINEAR_API_KEY` advisory for `tracker=linear`.
 - [ ] **T1.10:** Extend `bkit-dry-run-parity.integration.test.ts` to cover BOTH cloud variants (`--cloud=claude` AND `--cloud=cursor`) — dry-run output matches the real-install file set for each variant (owns Derived Test Matrix row 13).
