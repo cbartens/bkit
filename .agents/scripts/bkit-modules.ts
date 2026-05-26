@@ -1676,6 +1676,14 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 }
 `;
 
+// Customization guidance appended to EVERY renovate install advisory (Phase A
+// and Phase B), so a consumer learns where their overrides go before they reach
+// Phase B — not only at App-activation time. The load-bearing point: renovate.json5
+// is bkit-owned and overwritten on every install, so any override that would
+// conflict with it belongs in renovate-local.json5, which survives install/upgrade.
+const RENOVATE_CUSTOMIZE_NOTE =
+  "Customizing Renovate: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`/`bkit upgrade`, so changes there are lost on the next run. Put repo-specific rules in `.github/renovate-local.json5` instead (consumer-owned; bkit never overwrites it). On conflict renovate-local ADDS to bkit's rules and can set keys bkit leaves unset (notably `enabled: false` to fence a package) but canNOT override a key bkit sets explicitly (e.g. `automerge`). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.";
+
 function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): boolean {
   try {
     execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
@@ -1755,7 +1763,8 @@ export function runRenovateModule(ctx: ModuleContext): void {
         "  1. Commit BOTH `.github/renovate.json5` AND `.github/renovate-local.json5` (the consumer-owned overrides file renovate.json5 pulls in via `extends`). Renovate raises a config error if the `extends` target is missing, so they must travel together.\n" +
         `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
         `  3. Re-run \`pnpm bkit install --renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
-        "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).",
+        "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).\n\n" +
+        RENOVATE_CUSTOMIZE_NOTE,
     });
     return;
   }
@@ -1775,7 +1784,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
       "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +
       "  5. (If migrating from Dependabot) GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on (Renovate's `osvVulnerabilityAlerts` surfaces them via the same Security tab).\n" +
       "  6. Merge the onboarding PR. The first batch of grouped update PRs follows on the next scheduled run (Monday ~06:00 UTC).\n\n" +
-      "Customizing Renovate later: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`. Put repo-specific rules in `.github/renovate-local.json5` (consumer-owned; survives install/upgrade). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.",
+      RENOVATE_CUSTOMIZE_NOTE,
   });
 }
 
