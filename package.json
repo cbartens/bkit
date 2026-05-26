@@ -39,7 +39,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .agents/workflows .agents/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .agents/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
     "lint:no-tier-terms": "pnpm exec tsx .agents/scripts/bkit-lint-no-tier-terms.ts",
     "prepare": "husky"
   },
