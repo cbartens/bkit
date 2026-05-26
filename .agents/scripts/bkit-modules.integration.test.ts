@@ -418,6 +418,10 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     expect(phaseA!.action).toMatch(/pnpm bkit install --renovate/);
     // Must NOT print the App-install URL in Phase A.
     expect(phaseA!.action).not.toMatch(/github\.com\/apps\/renovate/);
+    // Phase A (not only Phase B) must carry the renovate-local override guidance:
+    // a consumer should learn where conflicting overrides go before App activation.
+    expect(phaseA!.action).toMatch(/renovate-local\.json5/);
+    expect(phaseA!.action).toMatch(/On conflict/);
 
     // Phase B advisory must not fire when in Phase A.
     expect(ctx.advisories.find((a) => a.id === "renovate-phase-b-install-app")).toBeUndefined();
