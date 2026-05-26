@@ -14,6 +14,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.8.0] — 2026-05-26
+
+### Added
+
+- **`@claude` mention launch path (path E) for cloud agents.** The `bkit-cloud` workflow now supports triggering a Claude Code cloud agent via an `@claude` mention in a GitHub issue comment — path E alongside the existing CI-triggered (path C) and `workflow_dispatch` (path D) entry points. Consumers with `--cloud` installed get the mention-triggered path automatically after upgrading.
+- **Consumer-extensible Renovate config via `renovate-local.json5` (issue [#179](https://github.com/cbartens/bkit/issues/179)).** The shipped `renovate.json5` now `extends` a consumer-owned `.github/renovate-local.json5` which is seeded once and never overwritten. Allows consumers to add package-specific rules (e.g. `enabled: false` to fence a pinned package) that survive `bkit upgrade`. See the 2.7.0 entry for the full design; this entry credits the cloud wiring that depended on it.
+
+### Changed
+
+- **Renovate `bkit-cloud.yml` fenced via `ignorePaths` (follow-up to issue [#169](https://github.com/cbartens/bkit/issues/169)).** `bkit-cloud.yml` is now in `ignorePaths` in the shipped `renovate.json5`, stopping the file scan outright (the prior `matchFileNames` packageRule only suppressed version updates, not `pinDigests` rescans — causing recurring Pin PRs). `useBaseBranchConfig: "merge"` added so `renovate.json5` edits committed to `dev` are honored for dev-targeted runs.
+- **Vite and pnpm major bumps fenced in the bkit dogfood `renovate-local.json5`.** These high-disruption majors now require manual review and are not auto-merged. Consumers running `bkit install --renovate` get the seeded `renovate-local.json5` as a template; applying similar guards is documented in `docs/deployments.md`.
+
+---
+
 ## [2.7.0] — 2026-05-25
 
 ### Added
