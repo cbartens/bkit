@@ -21,5 +21,18 @@
 //   ],
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
-  packageRules: [],
+  packageRules: [
+    // Fence intentionally-pinned majors so Renovate stops reopening PRs we've
+    // already deliberately rejected (bkit issue #176). Minor/patch stay enabled.
+    //
+    // vite is pinned to ^6 via root `pnpm.overrides`. vite 8 swapped its default
+    // transformer to oxc, which fails transforming the bkit integration tests
+    // (vitest is not yet vite-8 compatible). Revisit when vitest supports vite 8.
+    { matchPackageNames: ["vite"], matchUpdateTypes: ["major"], enabled: false },
+    // pnpm 11 is a deliberate config migration, not a drop-in bump: it ignores
+    // `pnpm.overrides` in package.json (must move to pnpm-workspace.yaml) and
+    // blocks esbuild's build script by default (needs onlyBuiltDependencies).
+    // pnpm 10.x works fine; take 11 deliberately per the #176 checklist.
+    { matchPackageNames: ["pnpm"], matchUpdateTypes: ["major"], enabled: false },
+  ],
 }
