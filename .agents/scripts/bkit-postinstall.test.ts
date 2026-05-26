@@ -1173,6 +1173,29 @@ describe("renderAdvisoriesMarkdown", () => {
     expect(md).not.toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
+  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose (#195)", () => {
+    // Empty and populated render paths must both lead with the marker, since the
+    // gitignored artifact is linted on-disk by the shipped lint:prose glob.
+    const empty = renderAdvisoriesMarkdown([], {
+      mode: "check",
+      version: "2.8.2",
+      timestamp: fixedTs,
+    });
+    expect(empty.startsWith("<!-- vale off -->")).toBe(true);
+    const populated = renderAdvisoriesMarkdown(
+      [
+        {
+          id: "x",
+          severity: "advisory",
+          detect: "So this opens with So.",
+          action: "So does this.",
+        },
+      ],
+      { mode: "check", version: "2.8.2", timestamp: fixedTs },
+    );
+    expect(populated.startsWith("<!-- vale off -->")).toBe(true);
+  });
+
   it("renders findings as numbered sections with severity, detect, action", () => {
     const findings: PreflightFinding[] = [
       { id: "a-blocker", severity: "blocker", detect: "Detect A", action: "Action A" },

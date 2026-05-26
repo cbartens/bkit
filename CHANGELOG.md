@@ -14,6 +14,14 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [2.8.2] — 2026-05-26
+
+### Fixed
+
+- **Generated `.agents/advisories.md` failed consumer `lint:prose` in pre-commit/pre-push hooks, blocking the upgrade commit (follow-up to [#195](https://github.com/cbartens/bkit/issues/195)).** The advisories generator reproduces the `.vale.ini` reference verbatim — including the `write-good.So = NO` line added in 2.8.1 — and the write-good `StartsWith` rule matches the substring `good.So ` inside that config line, causing Vale to flag it. The file is gitignored so CI was unaffected, but consumer pre-commit/pre-push hooks operate on the on-disk file and would fail. Fixed by prepending a `<!-- vale off -->` whole-file skip marker to the generated `.agents/advisories.md`. This is a deliberate per-file opt-out for a generated artifact that reproduces config and slop tokens verbatim — not a blanket skip of gitignored files. Because the file regenerates on every `bkit install`/`upgrade`/`check`, the fix reaches all consumers (new and existing) on the next bkit run, unlike a `.vale.ini` exemption or `lint:prose` glob change.
+
+---
+
 ## [2.8.1] — 2026-05-26
 
 ### Fixed
