@@ -395,6 +395,13 @@
         "at": "2026-05-27T07:35:38Z",
         "parentSha": "acfce670a0db0cfc79e122f975e1d84cbb7e1518",
         "artifacts": ["docs/plans/202605/logs/141-cloud-app/ship-summary.md"]
+      },
+      {
+        "step": "ship-prune-skills",
+        "status": "DONE",
+        "at": "2026-05-27T07:36:24Z",
+        "parentSha": "44d7109757e12005c05b1e60ebdc2861a0e8efe8",
+        "artifacts": []
       }
     ]
   }
