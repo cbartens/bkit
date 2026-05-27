@@ -867,7 +867,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 4. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
 6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
-7. Run the HEAD-Subject Assertion (PR-title clause) — the PR title must not contain CI-suppressing or `[skip build]` tokens:
+7. Run HEAD-Subject Assertion:
    ```bash
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
    if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
@@ -897,7 +897,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] PR base verified (`PR_BASE` = dev)
-- [ ] HEAD-Subject Assertion passed (PR-title clause; PR title free of CI-suppressor and `[skip build]` tokens)
+- [ ] HEAD-Subject Assertion passed
 - [ ] Workflow status updated (step `build-create-pr` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
@@ -906,20 +906,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Re-read issue labels, run the HEAD-Subject Assertion, update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
+2. Re-read labels, run HEAD-Subject Assertion, then update status, commit, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
-   # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
+   # Auto-route marker from labels (this-block scope; empty when tracker unwired or bkit:auto absent).
    AUTO_ROUTE_SUFFIX=""
-   # If the tracker snippet above populated LABELS and bkit:auto is present, set the suffix.
-   # Fallback when tracker not wired: suffix stays empty (no auto-route marker).
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   # HEAD-Subject Assertion (HEAD clause) — the close-workflow commit will be HEAD after push.
+   # HEAD-Subject Assertion (HEAD clause): close-workflow commit is HEAD after push.
    UPCOMING="chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    if echo "$UPCOMING" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "HEAD-subject assertion FAILED: '$UPCOMING' contains a CI-suppressing token." >&2; exit 1
    fi
-   # Update status, commit, and push.
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -945,9 +942,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
 
 **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
-4. Re-read issue labels post-push to check kill-switch (this read is the orchestrator-side kill switch; the marker was already set in step 2 at commit-build time):
+4. Re-read issue labels post-push:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   **If** `bkit:auto` NOT in `{LABELS}`:
    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml` — the orchestrator kill-switch is for non-CI paths only.
 5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
@@ -961,8 +957,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
-- [ ] HEAD-Subject Assertion passed (HEAD-subject clause invoked; asserts no CI-suppressor in `chore({FID}): close-workflow[AUTO_ROUTE_SUFFIX]`)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present iff issue carried `bkit:auto` at close time
+- [ ] HEAD-Subject Assertion passed
+- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`

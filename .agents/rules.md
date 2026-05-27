@@ -55,13 +55,13 @@
 
 - **Commits/pushes:** NEVER commit/push unprompted; requires specific request.
 - **Commits:** `{type}({FID}): {message}` format.
-- **Code commits:** Ensure code commit is HEAD so CI runs. The shared HEAD-Subject Assertion (`.agents/workflows.md` § "HEAD-Subject Assertion") enforces this at final CI-triggering push — orchestrators invoke it; it is not a git hook.
+- **Code commits:** Ensure code commit is HEAD so CI runs.
 - **Docs-only commits:** Append `[skip build] [skip ci]`. Do NOT push alone — batch with next code push.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
-- **CI:** Pushes auto-trigger; NEVER manually trigger - final push to PR / `dev` HEAD MUST NOT contain `[skip ci]`. See `.agents/workflows.md` § "HEAD-Subject Assertion" + `docs/deployments.md` § "CI trigger on final workflow push" for the enforcement contract and full tag taxonomy.
+- **CI:** Pushes auto-trigger; NEVER manually. Final push to PR / `dev` → HEAD commit should NEVER contain `[skip ci]`. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
 - **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.

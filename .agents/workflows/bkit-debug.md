@@ -805,7 +805,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-3. Re-read issue labels and update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
+3. Re-read labels, then update status, commit, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    <!-- bkit:tracker issue-read start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-read end -->
@@ -900,7 +900,6 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
     <!-- bkit:tracker issue-read start -->
     _Tracker not wired — skip._
     <!-- bkit:tracker issue-read end -->
-    **If** `bkit:auto` NOT in `{LABELS}`:
     <!-- bkit:tracker kill-switch-check start -->
     _Tracker not wired — kill switch inactive._
     <!-- bkit:tracker kill-switch-check end -->
@@ -921,8 +920,8 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
-- [ ] HEAD-Subject Assertion passed (HEAD clause invoked for the CI-triggering commit per mode: PR-mode → close-workflow commit; local-mode → create-pr commit; asserts no CI-suppressor; `bkit [auto route]` + `bkit [verbose ci]` are legitimate and pass)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present on the CI-triggering commit iff issue carried `bkit:auto` at close time
+- [ ] HEAD-Subject Assertion passed
+- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)

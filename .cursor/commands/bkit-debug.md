@@ -765,7 +765,7 @@
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-3. Re-read issue labels and update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
+3. Re-read labels, then update status, commit, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
    # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
@@ -858,7 +858,6 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
 12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
     `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-    **If** `bkit:auto` NOT in `{LABELS}`:
     After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml` — the orchestrator kill-switch is for non-CI paths only.
 13. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
     `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
@@ -875,8 +874,8 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
-- [ ] HEAD-Subject Assertion passed (HEAD clause invoked for the CI-triggering commit per mode: PR-mode → close-workflow commit; local-mode → create-pr commit; asserts no CI-suppressor; `bkit [auto route]` + `bkit [verbose ci]` are legitimate and pass)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present on the CI-triggering commit iff issue carried `bkit:auto` at close time
+- [ ] HEAD-Subject Assertion passed
+- [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)

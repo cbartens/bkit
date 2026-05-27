@@ -354,7 +354,7 @@ description: "Ship Feature — Autonomous merge and archive"
      git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
    fi
    ```
-3. Run the HEAD-Subject Assertion (PR-title clause) before merge — the squash subject becomes `dev` HEAD:
+3. Run HEAD-Subject Assertion:
    ```bash
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
    if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
@@ -404,7 +404,7 @@ description: "Ship Feature — Autonomous merge and archive"
 ### 🔒 Gate 5 — Merge PR
 
 - [ ] `MERGE_ATTEMPT` incremented
-- [ ] HEAD-Subject Assertion passed (PR-title clause invoked before merge; PR title free of CI-suppressor and `[skip build]` tokens — squash subject becomes `dev` HEAD)
+- [ ] HEAD-Subject Assertion passed
 - [ ] PR merge attempted
 - [ ] `state` extracted (MERGED or not)
 - [ ] CI run triggered on dev (`RUN_ID` captured)

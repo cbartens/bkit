@@ -80,7 +80,7 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
    ```
    **If** the exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-4. **Brief-class (`CLASS` = brief — `design`/`plan`/`build`):** set `ISSUE_ID="$ARG"`; assert non-empty. **Else** → **Failure Path**. There is no PR, no FID, and no `status.json` to manage here — the dispatched skill owns its own FID / worktree / `status.json` and ingests the brief (issue description + all comments, most-recent comment wins on conflict) from the tracker on start. Skip CI-class sub-steps 5–10; post the Step 1 comment (sub-step 11) then proceed to Gate 1. (Steps 2–3 are CI-class only — the human `workflow_dispatch` is the opt-in.)
+4. **Brief-class (`design`/`plan`/`build`):** set `ISSUE_ID="$ARG"`; assert non-empty (**Else** → **Failure Path**). Skip sub-steps 5–10 — no PR/FID/`status.json` here; the dispatched skill owns FID/worktree/`status.json` and ingests its own brief. Post the Step 1 comment (sub-step 11), then Gate 1.
 5. **CI-class (`CLASS` = ci — `ship`/`debug`) — sub-steps 5–10 resolve the PR context.** `{ARG}` is the open PR number: set `PR_NUMBER="$ARG"`.
 6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
 7. **If** `PR_STATE` != OPEN → **Failure Path**. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**.
@@ -142,7 +142,7 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
 
 ## 🤖 Step 2 — Dispatch
 
-**CI-class** (`ship`/`debug`): the stale-run guard and `bkit:auto` opt-in gate are performed inside `bkit-cloud.yml` before this orchestrator runs (free-tier YAML `if: contains(..., 'bkit [auto route]')` + in-job `gh issue view {ISSUE} --json labels` re-check). This orchestrator step runs only after both YAML gates pass. **Brief-class** (`design`/`plan`/`build`): runs directly after Step 1 (the human `workflow_dispatch` is the opt-in; YAML gates are skipped for dispatched runs).
+**CI-class** (`ship`/`debug`): runs only after `bkit-cloud.yml`'s two gates pass (free-tier `bkit [auto route]` marker + in-job `bkit:auto` label re-check). **Brief-class** (`design`/`plan`/`build`): runs directly after Step 1 — `workflow_dispatch` is the opt-in; YAML gates skipped.
 
 1. **CI-class only** — update status, commit, and push (brief-class skips this; the dispatched skill owns its own `status.json`):
    ```bash
@@ -162,14 +162,13 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
    ```comment
    ### Step 2 — Dispatch - Phase: {PHASE}
    ```
-3. Invoke the matching phase skill via the `Skill` tool, then exit so the dispatched skill owns the session. The invoked skill ingests its own brief from the tracker (issue description + comments, MCP-only). Route by `{PHASE}`:
+3. Invoke matching phase skill via `Skill` tool → exit (dispatched skill owns session). Route by `{PHASE}`:
    - `ship` → `/bkit-ship {FID}`
    - `debug` → `/bkit-debug {FID}`
    - `design` → `/bkit-design {ISSUE_ID}`
    - `plan` → `/bkit-plan {ISSUE_ID}`
    - `build` → `/bkit-build {ISSUE_ID}`
-
-   **If** `{PHASE}` matches none of the above → **Failure Path**.
+   **IF** `{PHASE}` matches none of above → **Failure Path**.
 
 ### 🔒 Gate 2 — Dispatch
 
