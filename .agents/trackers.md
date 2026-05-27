@@ -58,7 +58,7 @@ Every tracker section MUST define these sub-sections (snippet IDs):
 | `set-blocked-by` | Set `blockedBy` edges on an issue (workstream `Requires` propagation) |
 | `issue-blockers-check` | Read blocked-by relations/markers; gate workflow if any blocker still open |
 | `phase-labels` | Mapping of workflow names to phase labels |
-| `kill-switch-check` | After `issue-read`: detect missing `bkit:auto` and propagate kill switch to PR label |
+| `kill-switch-check` | After `issue-read`: detect missing `bkit:auto` and terminate current workflow (live kill switch for CI auto-routing is in `bkit-cloud.yml` YAML, not here) |
 | `pr-body-metadata` | PR body marker — parsing/read instructions for cross-workflow issue/FID resolution |
 | `pr-body-marker` | PR body marker — literal HTML comment line for inclusion in PR body during creation |
 
@@ -166,7 +166,7 @@ Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked
 
 ### kill-switch-check
 
-After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → remove PR label `bkit:auto` if PR exists (`mcp__github__update_pull_request({ owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER}, labels: [labels minus bkit:auto] })`) → terminate workflow normally (current run finishes, no further automation).
+After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml` — the orchestrator kill-switch is for non-CI paths only.
 
 ### pr-body-metadata
 
@@ -178,7 +178,7 @@ When `bkit-build` opens the PR, the body template includes a metadata marker:
 
 HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
 
-**Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
+**Fail-closed:** missing or malformed marker → terminate workflow (no-op exit; the live kill switch for CI auto-routing is the in-job `bkit:auto` label re-check in `bkit-cloud.yml`).
 
 ### pr-body-marker
 
@@ -271,9 +271,7 @@ Linear has no separate project board — issue state is already moved by `issue-
 
 ### kill-switch-check
 
-After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → if a tracking GitHub PR exists for this work, remove PR label `bkit:auto` via `mcp__github__update_pull_request` → terminate workflow normally (current run finishes, no further automation).
-
-> Cross-provider note: Linear is the tracker but the CI dispatch surface is still GitHub. Kill switch must propagate to the GitHub PR label so PR-label-triggered cloud stops firing.
+After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live CI kill switch for cloud auto-routing is the in-job issue-label re-check inside `bkit-cloud.yml` — no PR-label propagation required.
 
 ### pr-body-metadata
 
@@ -285,7 +283,7 @@ When `bkit-build` opens the GitHub PR, the body template includes a metadata mar
 
 (Linear ISSUE_ID like `BAR-123` — no `#` prefix since it's not a GitHub issue number.) HTML comment, invisible in rendered PR body. Downstream workflows resolve via `mcp__github__pull_request_read` + marker parsing.
 
-**Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
+**Fail-closed:** missing or malformed marker → terminate workflow (no-op exit).
 
 ### pr-body-marker
 

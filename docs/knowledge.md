@@ -486,3 +486,15 @@
 - **Severity:** normal
 - **Source:** consumer-friction
 - **Related:** #195, #179 (introduced the prose), KN-23 (CI is the only authoritative gate — but only over the files it actually lints), `.agents/scripts/bkit-modules.ts` (shipped `lint:prose`), `.agents/templates/.vale.ini`
+
+## KN-30: bkit-cloud CI path never ran end-to-end: D1 OIDC boot failure, D2 mid-build router fire, D3 concurrency race (2026-05-27)
+
+- **Category:** tooling
+- **Symptom:** (D1) A live dispatch of `bkit-cloud.yml` failed ~26s in with "Could not fetch an OIDC token … add `id-token: write`". `claude-code-action@v1` in `mode: agent` calls `getOidcToken` at boot — `github.token` passed only as `env: GH_TOKEN` is NOT consumed for the action's own auth. The CI cloud path had never completed. (D2) On a re-build with an open PR, the `worktree-setup` and `create-pr` commits (neither carried `[skip ci]`) triggered a `pull_request: synchronize` CI event → the cloud auto-router fired mid-build. (D3) Dispatched build `bkit-cloud.yml` runs (issue `inputs.issue=50` → group `bkit-cloud-50`) and CI-completion runs (branch `head_branch=feat/50-slug` → group `bkit-cloud-feat/50-slug`) resolved to different concurrency groups → `cancel-in-progress` could not serialize a dispatched build against the ship it triggered.
+- **Root cause:** (D1) `bkit-cloud.yml` was designed on the assumption that `github.token` handles all repo git/gh access — the App's OIDC requirement was not surfaced until a live dispatch. (D2) The `worktree-setup` and `create-pr` commits lacked `[skip ci]` tags (documented in `deployments.md` for `create-pr` but not implemented; `worktree-setup` was a genuinely NEW contract entry). (D3) The concurrency key mixed `inputs.issue` (numeric FID) with `head_branch` (`feat/50-slug`) across the two trigger paths — different strings, no cancel.
+- **Fix or rule:** (D1) Add `id-token: write` to `bkit-cloud.yml` permissions; require the Claude GitHub App via `/install-github-app`. (D2) Add `bkit [skip ci]` to `worktree-setup` and `create-pr` commit messages; add `bkit [auto route]` to the close-workflow commit (and debug re-trigger commit) only when the issue carries `bkit:auto` at close time. (D3) The SHARED-DERIV step in `bkit-cloud.yml` derives a canonical FID (issue number) from the PR body `bkit:fid` marker (primary) or branch slug (fallback); both dispatch and CI paths resolve to `bkit-cloud-<FID>` at the concurrency key level. See also: DE-21 (full architectural decision), `docs/deployments.md` § "CI trigger on final workflow push", `.agents/workflows.md` § "HEAD-Subject Assertion".
+- **Type:** gotcha
+- **Confidence:** high (D1 confirmed live; D2/D3 confirmed by code analysis)
+- **Severity:** high (D1 blocked all cloud CI usage; D2 mid-build fires caused confirmed CI run #202/PR #102 phantom; D3 latent race)
+- **Source:** live-dispatch
+- **Related:** #141, #184, DE-21, KN-11 (`[skip ci]` HEAD → empty rollup)

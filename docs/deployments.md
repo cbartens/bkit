@@ -308,17 +308,33 @@ See issue #132 (consumer-reported dashboard noise) and § Renovate activation ab
 
 ### CI trigger on final workflow push
 
-GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `bkit [skip ci]` (matched via GitHub substring check on `[skip ci]`) or `bkit [skip actions]`. When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
+GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `bkit [skip ci]`.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.agents/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+
+**Commit-tag taxonomy:**
+
+<!-- prettier-ignore -->
+| Tag | Suppressor? | Effect |
+| --- | --- | --- |
+| `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
+| `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — `worktree-setup`, `create-pr`, `summary` (design/plan), status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
+| `bkit [skip build]` | NO for CI; YES for Vercel | Vercel ignore script cancels preview build; CI cap remains at partial tier. Not a CI suppressor — safe on PR HEAD when CI must fire. PR title must not carry it (blocks post-squash deploy). |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. |
+| `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow + debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; treated as legitimate by the HEAD-Subject Assertion. |
+| `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
 
 <!-- prettier-ignore -->
 | Surface | Mechanic |
 | --- | --- |
-| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `bkit [skip build] bkit [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
+| build/debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Push fires `pull_request` synchronize. |
+| build/debug `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
+| build `create-pr` commit | `chore({FID}): create-pr bkit [skip ci]` — bookkeeping; no CI trigger. Fires after PR creation but before the close-workflow push. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID`. |
 
-All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
+All other docs-only intermediate commits (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow` commit (build/debug) and the squash-merge subject (ship) are unmarked and loud.
+
+**Commit-message tags reference (full table):** see `.agents/workflows.md` § "CI / Vercel commit tags".
 
 ### Manual CI trigger on feat branches (`workflow_dispatch`)
 

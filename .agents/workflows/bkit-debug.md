@@ -805,7 +805,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-3. Update status, commit, and push:
+3. Re-read issue labels to determine `bkit [auto route]` marker (**before** the close-workflow commit — authoritative "at close time" signal for PR-mode; also before the create-pr commit for local-mode):
+   <!-- bkit:tracker issue-read start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-read end -->
+   ```bash
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   ```
+4. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
@@ -815,13 +823,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}"
+   # PR-mode: close-workflow commit IS the loud HEAD at CI time — carry the auto-route marker here.
+   # local-mode: the create-pr commit (step 9 below) is the CI-triggering HEAD — marker goes there instead.
+   PR_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "pr" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}${PR_MODE_AUTO_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    git push origin "$(git branch --show-current)"
    ```
-4. Capture branch state:
+5. Capture branch state:
    ```bash
    CURRENT=$(git branch --show-current)
    PR_URL=""
@@ -831,11 +842,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      EXISTING_PR=$(gh pr list --head "$CURRENT" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
    fi
    ```
-5. Set `TRIGGER_PR`:
+6. Set `TRIGGER_PR`:
    - **If** `CURRENT` = `dev` **or** `main` → push to trigger branch (CI fires) → `TRIGGER_PR` = 0.
    - **If** `EXISTING_PR` non-empty (`DEBUG_MODE` = pr) → push fires `pull_request` event → `TRIGGER_PR` = 0.
    - **Else** (`DEBUG_MODE` = local, feature branch, no PR) → `TRIGGER_PR` = 1.
-6. **If** `TRIGGER_PR` = 1 → create PR:
+7. **If** `TRIGGER_PR` = 1 → create PR:
    ```bash
    gh pr create --base dev --title "feat({FID}): debug-remediated" --body "$(cat <<'EOF'
    <!-- bkit:start -->
@@ -844,19 +855,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    EOF
    )"
    ```
-7. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
-8. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-9. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
-   ```bash
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
-     '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}"
-   git push origin "$(git branch --show-current)"
-   ```
-10. Update status, commit, and push:
+8. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
+9. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
+10. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
+    ```bash
+    PARENT_SHA=$(git rev-parse HEAD)
+    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
+      '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
+      "$STATUS" > "$t" && mv "$t" "$STATUS"
+    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
+    # local-mode: create-pr commit IS the CI-triggering HEAD — carry the auto-route marker.
+    # AUTO_ROUTE_SUFFIX was read in step 3 above (before the close-workflow commit).
+    LOCAL_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && LOCAL_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
+    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}${LOCAL_MODE_AUTO_SUFFIX}"
+    git push origin "$(git branch --show-current)"
+    ```
+11. Update status, commit, and push:
 
 ```bash
 git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
@@ -896,7 +910,9 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
+- [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+- [ ] HEAD-Subject Assertion passed (HEAD clause invoked for the CI-triggering commit per mode: PR-mode → close-workflow commit; local-mode → create-pr commit; asserts no CI-suppressor; `bkit [auto route]` + `bkit [verbose ci]` are legitimate and pass)
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present on the CI-triggering commit iff issue carried `bkit:auto` at close time
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)

@@ -56,10 +56,16 @@ run-name: >-
       || format('bkit cloud {0}', github.event.workflow_run.head_commit.message) }}
 
 concurrency:
-  # Key on the issue when dispatched, else the feat branch (1:1 with FID/issue) for the
-  # CI path — a newer trigger cancels an in-flight run on the same issue/branch. Ship
-  # squash-merge is a single GitHub-atomic API call, so a mid-run cancel cannot leave a
-  # PR in a partial state.
+  # Key on the FID (issue number) — a newer trigger cancels an in-flight run for the
+  # same issue/branch. Ship squash-merge is a single GitHub-atomic API call, so a
+  # mid-run cancel cannot leave a PR in a partial state.
+  #
+  # SHARED-DERIV: both paths resolve to bkit-cloud-<FID> where FID = issue number:
+  #   - dispatch path: inputs.issue IS the FID directly (numeric issue number).
+  #   - CI-completion path: FID derived from PR-body metadata marker (bkit:fid=N) in
+  #     the Resolve-phase step (SHARED-DERIV); expressed here as head_branch since
+  #     YAML concurrency cannot reference step outputs. The SHARED-DERIV step enforces
+  #     FID consistency at runtime and cancels in-flight runs via the same group key.
   group: bkit-cloud-${{ inputs.issue || github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
@@ -77,9 +83,20 @@ permissions:
 
 jobs:
   run:
-    # CI-driven runs fire only on terminal CI conclusions (skip cancelled / skipped);
-    # dispatched runs always proceed (phase resolution happens in the job).
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    # CI-driven runs fire only on terminal CI conclusions (skip cancelled / skipped).
+    # Free-tier gate: CI-driven runs additionally require 'bkit [auto route]' in the
+    # head commit message — zero runner minutes if the marker is absent (no opted-in
+    # close-workflow HEAD). Dispatched runs always proceed.
+    # bkit:start auto-route-gate
+    if: |
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || (
+          (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+          && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
+        )
+      }}
+    # bkit:end auto-route-gate
     runs-on: ubuntu-latest
     steps:
       # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` fences this file off
@@ -116,6 +133,7 @@ jobs:
             # Dispatched: phase + issue come straight from inputs.
             PHASE="$IN_PHASE"
             ARG="$IN_ISSUE"
+            FID="$IN_ISSUE"
           else
             # CI-driven: success -> ship, failure -> debug; route by the open PR.
             case "$CONCLUSION" in
@@ -130,10 +148,37 @@ jobs:
               exit 0
             fi
             ARG="$PR_NUMBER"
+
+            # bkit:start shared-deriv
+            # SHARED-DERIV: derive FID + ISSUE from PR body metadata (primary) or branch (fallback).
+            # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every bkit-build PR body.
+            PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
+            ISSUE=$(echo "$PR_BODY" | grep -oP '(?<=bkit:issue=#)\d+' | head -1)
+            FID=$(echo "$PR_BODY" | grep -oP '(?<=bkit:fid=)[^\s>]+' | head -1)
+            if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
+              # FALLBACK: extract FID from branch (feat/{FID} or feat/{FID}-slug).
+              FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
+              ISSUE="$FID"
+            fi
+            if [ -z "$FID" ] || [ -z "$ISSUE" ]; then
+              echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            # Cheap-tier kill switch: re-check bkit:auto on the issue (live revocation).
+            ISSUE_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+            if ! echo "$ISSUE_LABELS" | grep -q 'bkit:auto'; then
+              echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # bkit:end shared-deriv
           fi
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
           echo "arg=$ARG" >> "$GITHUB_OUTPUT"
+          echo "fid=${FID:-$ARG}" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch /bkit-cloud on Claude Code runner
         if: steps.ctx.outputs.skip != 'true'
