@@ -144,11 +144,48 @@ jobs:
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
+      # Static checks first — they read the source tree and must scan it CLEAN.
+      # Vitest/build run AFTER (below): they write coverage, dist/, and other
+      # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
+      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # the test/build group if you reorder.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         env:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm typecheck
+
+      - name: Run Prettier Format Check
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: pnpm format:check
+
+      - name: Run Vale Prose Lint
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm lint:prose
+
+      - name: Run Slop Scan
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm lint:slop
+
+      - name: Run Bkit Check
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm bkit check
+
+      # --- Test / build group: install-dependent, tree-dirtying. Runs after all
+      # static checks above so coverage/dist artifacts never reach slop or bkit check. ---
+
+      # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
+      # - name: Apply Supabase Migrations to Dev
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache.outputs.skip != 'true'
+      #   env:
+      #     SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      #     SUPABASE_DB_PASSWORD: \${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      #     SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+      #   run: |
+      #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      #     pnpm dlx supabase db push --linked --include-all
 
       # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
       # - name: Test Presence Audit
@@ -178,35 +215,6 @@ jobs:
           else
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
-
-      # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
-      # - name: Apply Supabase Migrations to Dev
-      #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache.outputs.skip != 'true'
-      #   env:
-      #     SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      #     SUPABASE_DB_PASSWORD: \${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
-      #     SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_DEV_PROJECT_REF }}
-      #   run: |
-      #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
-      #     pnpm dlx supabase db push --linked --include-all
-
-      - name: Run Prettier Format Check
-        if: steps.cache.outputs.skip != 'true'
-        env:
-          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
-        run: pnpm format:check
-
-      - name: Run Vale Prose Lint
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm lint:prose
-
-      - name: Run Slop Scan
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm lint:slop
-
-      - name: Run Bkit Check
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm bkit check
 
       # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
       # - name: Await Vercel Preview
