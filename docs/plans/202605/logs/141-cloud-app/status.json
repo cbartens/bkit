@@ -337,7 +337,7 @@
   {
     "workflow": "ship",
     "startedAt": "2026-05-27T07:25:37Z",
-    "status": "IN_PROGRESS",
+    "status": "DONE",
     "steps": [
       {
         "step": "ship-start-workflow",
@@ -401,6 +401,20 @@
         "status": "DONE",
         "at": "2026-05-27T07:36:24Z",
         "parentSha": "44d7109757e12005c05b1e60ebdc2861a0e8efe8",
+        "artifacts": []
+      },
+      {
+        "step": "ship-worktree-cleanup",
+        "status": "DONE",
+        "at": "2026-05-27T07:41:22Z",
+        "parentSha": "76386747f0f477cf69fe636ef00eb8009d9965c6",
+        "artifacts": []
+      },
+      {
+        "step": "ship-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-27T07:43:12Z",
+        "parentSha": "76386747f0f477cf69fe636ef00eb8009d9965c6",
         "artifacts": []
       }
     ]
