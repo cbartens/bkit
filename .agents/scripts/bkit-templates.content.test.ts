@@ -175,6 +175,16 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
       /\$schema:\s*"https:\/\/docs\.renovatebot\.com\/renovate-schema\.json"/,
     );
   });
+
+  it("carries NO hostRules token anchor — private-registry auth lives in renovate-local.json5 (#199)", () => {
+    // The npm.pkg.github.com read-auth token must NOT live in this canonical-
+    // overwrite file: it would re-clobber a consumer's activation on every
+    // `bkit upgrade`. It is seeded into the consumer-owned renovate-local.json5
+    // instead (RENOVATE_LOCAL_STUB), which bkit never overwrites. Guard the
+    // config KEY + the secret ref (prose may still reference `hostRules`).
+    expect(content).not.toMatch(/^\s*hostRules:/m);
+    expect(content).not.toMatch(/secrets\.GH_BKIT_TOKEN/);
+  });
 });
 
 describe("consumer .prettierignore template (.agents/templates/.prettierignore)", () => {

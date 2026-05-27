@@ -84,33 +84,16 @@
   ],
 
   // ─────────────────────────────────────────────────────────────────────
-  // Private-registry read auth — `@cbartens/bkit` lives on GitHub Packages
-  // (npm.pkg.github.com, restricted). Renovate must authenticate to RESOLVE it
-  // when regenerating `pnpm-lock.yaml` for ANY dependency bump. Without a token
-  // the regen fails, every dependency PR lands with a stale lockfile, and CI
-  // then fails `pnpm install --frozen-lockfile` (ERR_PNPM_OUTDATED_LOCKFILE).
-  // The GitHub-Actions `GH_BKIT_TOKEN` repo secret used for CI is NOT visible
-  // to Mend's hosted runner — the token must be provisioned on Renovate's side.
-  // This rule is an inert anchor until you add the token. Full recipe:
-  // docs/deployments.md § GitHub Actions pinning (Renovate read-auth).
+  // Private-registry read auth (`@cbartens/bkit` on npm.pkg.github.com) is
+  // configured in the consumer-owned `.github/renovate-local.json5`, NOT here.
+  // Renovate merges `hostRules` across extended presets, so the token set there
+  // SURVIVES every `bkit upgrade` — whereas this file is canonical-overwrite and
+  // would clobber a token added here on the next install.
+  // Without that token Renovate's lockfile regen 401s, every dependency PR lands
+  // with a stale lockfile, and CI fails `pnpm install --frozen-lockfile`
+  // (ERR_PNPM_OUTDATED_LOCKFILE). Activation recipe: `.github/renovate-local.json5`
+  // and docs/deployments.md § Renovate read-auth.
   // ─────────────────────────────────────────────────────────────────────
-  hostRules: [
-    {
-      matchHost: "npm.pkg.github.com",
-      hostType: "npm",
-      // Provide a PAT with `read:packages`. Pick ONE path, then this rule
-      // authenticates Renovate's lockfile regeneration:
-      //   - Mend hosted: add `GH_BKIT_TOKEN` as a Mend repository secret
-      //     (https://developer.mend.io/github/<owner>/<repo> → Settings →
-      //     Secrets). In the secret dialog you MUST tick "If checked - secret
-      //     will be used during the scan as an environment variable." — without
-      //     it the secret is never exposed to the scan and regen still 401s.
-      //     Then uncomment the next line:
-      // token: "{{ secrets.GH_BKIT_TOKEN }}",
-      //   - Self-hosted: inject via the `RENOVATE_HOST_RULES` env var or an
-      //     `encrypted` block — no edit needed here.
-    },
-  ],
 
   // Cap concurrent PRs so a major-version flood doesn't drown the repo.
   prConcurrentLimit: 10,

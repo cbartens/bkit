@@ -464,6 +464,39 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     expect(local).toMatch(/bkit does NOT manage/i);
   });
 
+  it("seeds the npm.pkg.github.com hostRules token anchor in renovate-local.json5, COMMENTED (#199)", () => {
+    // The private-registry read-auth token must live in the consumer-owned
+    // renovate-local.json5 — NOT the canonical-overwrite renovate.json5 — so a
+    // consumer's activation survives `bkit upgrade` (Renovate merges hostRules
+    // across extended presets; verified honored live, Mend job ef4c504e).
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    const local = fs.readFileSync(path.join(tmpDir, ".github", "renovate-local.json5"), "utf-8");
+    // The hostRules entry is present (active, inert shell) ...
+    expect(local).toMatch(/hostRules:\s*\[/);
+    expect(local).toMatch(/matchHost:\s*"npm\.pkg\.github\.com"/);
+    // ... but the token line ships COMMENTED so an un-provisioned consumer is
+    // non-breaking (a `{{ secrets.* }}` ref errors if the Mend secret is unset).
+    expect(local).toMatch(/\/\/\s*token:\s*"\{\{ secrets\.GH_BKIT_TOKEN \}\}"/);
+  });
+
+  it("canonical renovate.json5 ships NO hostRules token anchor — it lives only in renovate-local.json5 (#199)", () => {
+    // Regression guard for #199: the token must not be carried in the Tier-1
+    // canonical-overwrite file, which re-clobbers a consumer's activation on
+    // every `bkit upgrade`.
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws });
+    runRenovateModule(ctx);
+
+    const renovate = fs.readFileSync(path.join(tmpDir, ".github", "renovate.json5"), "utf-8");
+    // Guard the active config KEY + secret ref — the explanatory comment may
+    // still mention `hostRules` in prose.
+    expect(renovate).not.toMatch(/^\s*hostRules:/m);
+    expect(renovate).not.toMatch(/secrets\.GH_BKIT_TOKEN/);
+  });
+
   it("substitutes REPO_SLUG into renovate.json5's local-preset extends entry", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws, tokens: { ...makeCtx().tokens, REPO_SLUG: "acme/widget" } });

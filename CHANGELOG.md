@@ -6,11 +6,11 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
-
-### Changed
+## [2.8.4] — 2026-05-27
 
 ### Fixed
+
+- **The Renovate private-registry `hostRules` token anchor was trapped in the canonical-overwrite `renovate.json5`, so a consumer's activation was reverted by bkit's canonical rewrite — silently breaking lockfile regen for all dependency PRs (issue [#199](https://github.com/cbartens/bkit/issues/199)).** `.github/renovate.json5` is Tier-1 canonical-overwrite, but the `token: "{{ secrets.GH_BKIT_TOKEN }}"` line consumers must uncomment for Renovate's hosted lockfile regen to authenticate to `npm.pkg.github.com` lived there — so bkit's canonical rewrite kept reverting it (the `bkit install` overwrite path strips it unconditionally; `bkit upgrade` now conflict-flags such drift instead of silently overwriting), after which `renovate/artifacts` failed, `pnpm-lock.yaml` went stale, and consumer CI failed `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE`) on every bumped package. Observed on a 2.8.3 consumer across three upgrade commits. Fixed by moving the `hostRules` anchor out of the canonical file and seeding it (token line commented) into the consumer-owned `.github/renovate-local.json5` — which bkit creates once and never overwrites — so activation survives every upgrade. Renovate merges `hostRules` across extended presets; verified live on a consumer (Mend job, Renovate 43.194.0) that a secret-bearing token in the `local>` preset is honored ("Adding token authentication for npm.pkg.github.com" → lockfile regen succeeded, no 401). The Phase B activation checklist, `docs/deployments.md` (§ Renovate read-auth + the `GH_BKIT_TOKEN` presence matrix), and the consumer-facing template docs now point activation at `renovate-local.json5`. Consumers re-run `pnpm bkit upgrade` to drop the dead anchor from `renovate.json5`; if you had already uncommented the token there, move it to `renovate-local.json5` (the stub now seeds the commented line for you on a fresh install).
 
 ---
 
