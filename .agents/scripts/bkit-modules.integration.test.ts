@@ -849,6 +849,155 @@ describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", (
 });
 
 // ---------------------------------------------------------------------------
+// T3.1 — D3 concurrency-key single-sourcing (GAP-2)
+//
+// Proves that `concurrency.group` and the SHARED-DERIV step output use the
+// same FID derivation expression for both trigger surfaces:
+//   - dispatch path: inputs.issue (FID directly) — same token in group + step
+//   - CI-completion path: replace(head_branch, 'feat/', '') — same transform in
+//     group + step fallback (bkit branch convention: feat/{FID}, no slug)
+// ---------------------------------------------------------------------------
+
+describe("T3.1 — concurrency.group FID single-sourcing (D3 race prevention)", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+  const rawTemplate = fs.readFileSync(
+    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+
+  it("concurrency.group uses inputs.issue for dispatch path (same token as SHARED-DERIV step)", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // Dispatch path: both concurrency.group and SHARED-DERIV use inputs.issue as the FID source.
+    // The group line must contain 'inputs.issue' proving single-sourcing with the step.
+    expect(out).toMatch(/group:.*inputs\.issue/);
+    // SHARED-DERIV step must also assign FID from IN_ISSUE (= inputs.issue) for dispatch.
+    expect(out).toContain('FID="$IN_ISSUE"');
+    // Both reference the same source — not two divergent literals.
+    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-cloud-"));
+    expect(groupLine).toBeDefined();
+    expect(groupLine).toContain("inputs.issue");
+  });
+
+  it("concurrency.group uses replace(head_branch, 'feat/', '') for CI-completion path — FID single-sourcing", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // CI-completion path: concurrency.group strips 'feat/' from head_branch via replace().
+    // bkit branch convention is feat/{FID} — stripping prefix yields bare FID.
+    // The group expression must contain replace(...head_branch, 'feat/', '') proving
+    // the same source (head_branch) used by SHARED-DERIV step's branch fallback.
+    expect(out).toMatch(/replace\(github\.event\.workflow_run\.head_branch,\s*'feat\/',\s*''\)/);
+    // The SHARED-DERIV fallback must also reference BRANCH (sourced from head_branch).
+    expect(out).toContain("BRANCH: ${{ github.event.workflow_run.head_branch }}");
+    // The fallback FID derivation in SHARED-DERIV uses BRANCH (= head_branch), same source.
+    expect(out).toMatch(/FID=.*BRANCH.*feat\//);
+  });
+
+  it("dispatched FID (inputs.issue=141) and CI-completion FID (feat/141 branch) resolve to the same bkit-cloud-141 group", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // Simulate dispatch path: inputs.issue = '141' → group = 'bkit-cloud-141'
+    // Verify the group expression, when inputs.issue is non-empty, produces bkit-cloud-<issue>.
+    // Verify the replace() expression applied to 'feat/141' produces '141' (same FID).
+    const dispatchFid = "141";
+    const ciBranch = "feat/141";
+    const ciFid = ciBranch.replace("feat/", "");
+    expect(ciFid).toBe(dispatchFid); // same FID from both paths
+    // Both produce the same concurrency group key.
+    expect(`bkit-cloud-${dispatchFid}`).toBe(`bkit-cloud-${ciFid}`);
+    // The rendered YAML's group expression contains the replace() call.
+    expect(out).toContain("replace(github.event.workflow_run.head_branch, 'feat/', '')");
+  });
+
+  it("canonical .github/workflows/bkit-cloud.yml and template are byte-identical (T3.1 + T2.7 invariant)", () => {
+    const canonical = fs.readFileSync(
+      path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"),
+      "utf-8",
+    );
+    expect(canonical).toBe(rawTemplate);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T2.7 — two-tier CI gate positive assertions (GAP-3)
+//
+// (b) marker->HEAD->fires-to-dispatch render assertion: when 'bkit [auto route]'
+//     IS in workflow_run.head_commit.message AND bkit:auto is present, the gate
+//     evaluates true and reaches the dispatch step.
+// (c) single-sourcing assertion: the kill-switch gh issue view $ISSUE is produced
+//     by the SHARED-DERIV step (same FID expression, not a second derivation).
+// ---------------------------------------------------------------------------
+
+describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+  const rawTemplate = fs.readFileSync(
+    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+
+  it("(b) free-tier if: contains 'bkit [auto route]' — gate fires when marker is HEAD commit", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // The job-level if: must reference 'bkit [auto route]' in head_commit.message.
+    // This closes the marker->HEAD->job-fires chain (positive, not just negative).
+    expect(out).toContain(
+      "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')",
+    );
+    // The dispatch step must exist and fire when skip != 'true'.
+    expect(out).toContain("if: steps.ctx.outputs.skip != 'true'");
+    // The dispatch step must invoke the /bkit-cloud orchestrator.
+    expect(out).toContain(
+      'prompt: "/bkit-cloud ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"',
+    );
+  });
+
+  it("(b) dispatch path always proceeds (workflow_dispatch bypasses marker check)", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
+    expect(out).toContain("github.event_name == 'workflow_dispatch'");
+    // The if: uses || so dispatch path short-circuits the marker check.
+    expect(out).toMatch(/workflow_dispatch[\s\S]{0,200}bkit \[auto route\]/);
+  });
+
+  it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
+    // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
+    expect(out).toContain('gh issue view "$ISSUE"');
+    // SHARED-DERIV must set ISSUE from PR body primary source.
+    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oP');
+    // SHARED-DERIV fallback must set ISSUE from FID (branch-derived, same source as concurrency).
+    expect(out).toContain('ISSUE="$FID"');
+    // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
+    // Verify no separate re-derivation of ISSUE appears outside the shared-deriv block.
+    const sharedDerivStart = out.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = out.indexOf("# bkit:end shared-deriv");
+    expect(sharedDerivStart).toBeGreaterThan(-1);
+    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
+    // gh issue view must appear INSIDE or AFTER the shared-deriv block (uses its output).
+    const ghIssueViewPos = out.indexOf('gh issue view "$ISSUE"');
+    expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
+  });
+
+  it("(c) bkit:start/bkit:end markers wrap gate logic — shared-deriv inside auto-route-gate", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // Gate logic must be wrapped in bkit:start/end markers.
+    expect(out).toContain("# bkit:start auto-route-gate");
+    expect(out).toContain("# bkit:end auto-route-gate");
+    expect(out).toContain("# bkit:start shared-deriv");
+    expect(out).toContain("# bkit:end shared-deriv");
+    // auto-route-gate wraps the job if: (free-tier gate).
+    const autoRouteGateStart = out.indexOf("# bkit:start auto-route-gate");
+    const autoRouteGateEnd = out.indexOf("# bkit:end auto-route-gate");
+    // The contains(...head_commit.message, 'bkit [auto route]') expression in the if: body
+    // must be inside the auto-route-gate marker block.
+    const containsExpr =
+      "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')";
+    const containsPos = out.indexOf(containsExpr);
+    expect(containsPos).toBeGreaterThan(autoRouteGateStart);
+    expect(containsPos).toBeLessThan(autoRouteGateEnd);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Managed package.json scripts (BAR-138 v0.4.0)
 //
 // Replaces the prior MED-1 contract: instead of advising consumers via

@@ -62,11 +62,10 @@ concurrency:
   #
   # SHARED-DERIV: both paths resolve to bkit-cloud-<FID> where FID = issue number:
   #   - dispatch path: inputs.issue IS the FID directly (numeric issue number).
-  #   - CI-completion path: FID derived from PR-body metadata marker (bkit:fid=N) in
-  #     the Resolve-phase step (SHARED-DERIV); expressed here as head_branch since
-  #     YAML concurrency cannot reference step outputs. The SHARED-DERIV step enforces
-  #     FID consistency at runtime and cancels in-flight runs via the same group key.
-  group: bkit-cloud-${{ inputs.issue || github.event.workflow_run.head_branch }}
+  #   - CI-completion path: head_branch is always feat/{FID} (bkit branch convention);
+  #     stripping the 'feat/' prefix with replace() yields the bare FID. This is the
+  #     same FID derivation used by the SHARED-DERIV step (single source, not duplicated).
+  group: bkit-cloud-${{ inputs.issue || replace(github.event.workflow_run.head_branch, 'feat/', '') }}
   cancel-in-progress: true
 
 permissions:
