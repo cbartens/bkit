@@ -5,7 +5,7 @@
 # work. Refuses the session if the issue isn't approved for automation.
 #
 # Trigger:  LINEAR_ISSUE_ID env var present (proxy for non-IDE session).
-# Guards:   `Auto` label present; issue state not in {Cancelled, Done}.
+# Guards:   `bkit:auto` label present; issue state not in {Cancelled, Done}.
 # Setup:    See `.agents/README.md` § Linear setup.
 #
 # IMPORTANT — Claude Code SessionStart hooks CANNOT block the session: any
@@ -106,9 +106,9 @@ print(ident, state, labels if labels else "-")
 
 FAIL_REASON=""
 
-# Guard 1: `Auto` label must be present.
-if [[ ",${LABELS}," != *",Auto,"* ]]; then
-  FAIL_REASON="Auto label missing (labels: ${LABELS})"
+# Guard 1: `bkit:auto` label must be present.
+if [[ ",${LABELS}," != *",bkit:auto,"* ]]; then
+  FAIL_REASON="bkit:auto label missing (labels: ${LABELS})"
 fi
 
 # Guard 2: Issue must not be in a terminal state.
