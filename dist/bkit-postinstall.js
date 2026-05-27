@@ -23,6 +23,44 @@ export function detectShellToken() {
     return "present";
 }
 /**
+ * Detect whether GH_TOKEN is set in the shell environment. Mirrors
+ * detectShellToken but for the token that authenticates the GitHub MCP server
+ * (`Authorization: Bearer ${GH_TOKEN}` in .mcp.json). Where GH_BKIT_TOKEN only
+ * gates `pnpm install` from GH Packages, GH_TOKEN powers the entire tracker +
+ * PR + Projects MCP surface — so its absence is more functionally severe, yet
+ * historically had no shell-env advisory (only the `.env`-gated preflight check).
+ */
+export function detectShellGhToken() {
+    if (process.env.GH_TOKEN === undefined)
+        return "missing";
+    if (process.env.GH_TOKEN === "")
+        return "empty";
+    return "present";
+}
+/**
+ * True when a `github` MCP server is configured in `.mcp.json` or
+ * `.cursor/mcp.json` — i.e. GH_TOKEN is actually consumed for MCP auth. Used to
+ * gate the GH_TOKEN shell advisory so it never fires in repos that use bkit for
+ * CI only (no agent workflows / MCP servers).
+ */
+export function hasGithubMcpServer(cwd) {
+    for (const rel of [".mcp.json", path.join(".cursor", "mcp.json")]) {
+        const p = path.join(cwd, rel);
+        if (!fs.existsSync(p))
+            continue;
+        try {
+            const cfg = JSON.parse(fs.readFileSync(p, "utf-8"));
+            const servers = cfg.mcpServers;
+            if (servers?.github)
+                return true;
+        }
+        catch {
+            // Malformed config — ignore; a JSON-drift advisory covers that separately.
+        }
+    }
+    return false;
+}
+/**
  * Detect whether .npmrc has both required GH Packages registry lines.
  * - "present"  → both `@cbartens:registry=` and `_authToken=${GH_BKIT_TOKEN}` present
  * - "missing"  → .npmrc exists but lacks one or both lines (emit advisory)
@@ -78,6 +116,33 @@ export function detectMainBranchProtection() {
         if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
             return "missing";
         }
+        return "unknown";
+    }
+}
+/**
+ * Detect whether the repo's default GitHub Actions workflow permissions let the
+ * bkit-cloud workflow push status commits and open/merge PRs. Reads
+ * `repos/{owner}/{repo}/actions/permissions/workflow`:
+ *   - default_workflow_permissions: "read" | "write"
+ *   - can_approve_pull_request_reviews: boolean
+ * Returns "present" only when permissions are "write" AND PR creation/approval is
+ * allowed; "missing" otherwise; "unknown" if gh CLI is unavailable / unauthed.
+ * Repo-level only — org-level defaults are not reliably readable with a repo token
+ * (an org policy can still override a correct-looking repo setting).
+ */
+export function detectActionsWritePermissions() {
+    try {
+        const out = execFileSync("gh", ["api", "repos/{owner}/{repo}/actions/permissions/workflow"], {
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 5000,
+        });
+        const parsed = JSON.parse(out);
+        const canWrite = parsed.default_workflow_permissions === "write";
+        const canApprovePrs = parsed.can_approve_pull_request_reviews === true;
+        return canWrite && canApprovePrs ? "present" : "missing";
+    }
+    catch {
         return "unknown";
     }
 }
@@ -467,11 +532,14 @@ export function detectGhaFloatingTags(cwd) {
     };
 }
 /**
- * Detect whether the consumer composed any sibling workflow on bkit's `Detect
- * Direct Push` step outputs (`should_force_build`, `should_run_e2e`,
- * `cache.outputs.skip`). The bkit ci.yml ships primitives only — without a
- * consumer-side gate referencing the outputs, the force-tag system documented
- * in deployments.md is documentation-only.
+ * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
+ * outputs (`should_force_build` / `should_run_e2e`). The bkit ci.yml ships these
+ * primitives only — without a consumer-side gate reading the outputs, the force-tag
+ * system documented in deployments.md is documentation-only.
+ *
+ * "Composition" = a `steps.detect.outputs.should_*` READ on an uncommented line, in a
+ * sibling workflow or in ci.yml itself. bkit's shipped steps only SET these outputs and
+ * the example E2E gate ships commented (`bkit-stub:e2e`), so neither false-positives.
  */
 export function detectRunLevelsNotComposed(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -482,28 +550,37 @@ export function detectRunLevelsNotComposed(cwd) {
     if (!ciContent.includes("Detect Direct Push"))
         return null;
     const workflowsDir = path.join(cwd, ".github", "workflows");
-    const refTokens = ["should_force_build", "should_run_e2e", "cache.outputs.skip"];
-    // The bkit-managed block in ci.yml already references the tokens internally.
-    // We want to know if any OTHER workflow file (or a step OUTSIDE the bkit:start/end
-    // markers in ci.yml) references them. Scan all sibling .yml files for any token hit.
+    // A consumer "composes" run-levels by READING bkit's force-tag outputs in a gate
+    // (`steps.detect.outputs.should_*`). bkit's own shipped ci.yml only SETS those outputs
+    // (`echo "should_force_build=true" >> $GITHUB_OUTPUT`) and gates internal steps on
+    // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
+    // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
+    // commented out by default — enabling it correctly counts as composition).
+    // ci.yml is Tier-3 (seed-or-print, no bkit:start/end markers), so we can no longer fence
+    // off "bkit's region"; matching the read form is what distinguishes a consumer gate.
+    const readTokens = [
+        "steps.detect.outputs.should_force_build",
+        "steps.detect.outputs.should_run_e2e",
+    ];
+    const composesRunLevels = (content) => content
+        .split("\n")
+        .some((line) => !/^\s*#/.test(line) && readTokens.some((tok) => line.includes(tok)));
     let composed = false;
+    // Any sibling workflow that gates on the outputs.
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile() || !/\.ya?ml$/.test(entry.name))
             continue;
         if (entry.name === "ci.yml")
-            continue; // skip — checked separately
-        const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
-        if (refTokens.some((tok) => content.includes(tok))) {
+            continue; // checked below
+        if (composesRunLevels(fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8"))) {
             composed = true;
             break;
         }
     }
-    // Also check ci.yml content outside the bkit:start/end block.
-    if (!composed) {
-        const outside = ciContent.replace(/# bkit:start[\s\S]*?# bkit:end/g, "");
-        if (refTokens.some((tok) => outside.includes(tok)))
-            composed = true;
-    }
+    // Or a consumer-added gate inside ci.yml itself (e.g. an enabled bkit-stub:e2e block,
+    // or a deploy/job step reading the outputs).
+    if (!composed && composesRunLevels(ciContent))
+        composed = true;
     if (composed)
         return null;
     return {
@@ -591,6 +668,121 @@ function hasExplicitIssueTrackerField(cwd) {
     catch {
         return false;
     }
+}
+/**
+ * Classify the `bkit.githubProject` board-sync config in package.json:
+ *   - "configured" → object with at least `owner` + `number` (the lookup keys)
+ *   - "opted-out"  → set to `false` (deliberate "no board sync" — stay quiet)
+ *   - "absent"     → missing, malformed, or unreadable
+ */
+function readGithubProjectConfig(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return "absent";
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const bkitField = pkg.bkit;
+        const gp = bkitField?.githubProject;
+        if (gp === false)
+            return "opted-out";
+        if (gp && typeof gp === "object" && !Array.isArray(gp)) {
+            const obj = gp;
+            if (obj.owner !== undefined && obj.number !== undefined)
+                return "configured";
+        }
+        return "absent";
+    }
+    catch {
+        return "absent";
+    }
+}
+/**
+ * Inspect the root `.mcp.json` github server's `X-MCP-Toolsets` header for the
+ * `projects` toolset (required for Projects v2 board sync):
+ *   - "present" → header lists `projects`
+ *   - "missing" → github server has a toolset header that omits `projects`
+ *                 (the real-world drift: installs predating the toolset addition)
+ *   - "unknown" → no `.mcp.json`, no github server, or no header (can't judge)
+ *
+ * Scoped to root `.mcp.json` only — bkit deliberately omits the header from
+ * `.cursor/mcp.json`, so its absence there is not drift.
+ */
+export function detectProjectsToolset(cwd) {
+    const mcpPath = path.join(cwd, ".mcp.json");
+    if (!fs.existsSync(mcpPath))
+        return "unknown";
+    try {
+        const cfg = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
+        const servers = cfg.mcpServers;
+        const gh = servers?.github;
+        const headers = gh?.headers;
+        const toolsets = headers?.["X-MCP-Toolsets"];
+        if (typeof toolsets !== "string")
+            return "unknown";
+        return toolsets
+            .split(",")
+            .map((s) => s.trim())
+            .includes("projects")
+            ? "present"
+            : "missing";
+    }
+    catch {
+        return "unknown";
+    }
+}
+/**
+ * GitHub Projects v2 board-sync prerequisite advisory. Board status sync needs
+ * THREE things, none of which install seeds or verifies end-to-end:
+ * `bkit.githubProject` config, the `projects` MCP toolset, and an org-scoped
+ * Projects R/W PAT. Absent any of the first two (the detectable ones), board
+ * sync silently no-ops — `bkit.githubProject` alone is useless if the toolset
+ * lacks `projects`, and vice versa. Emits one advisory naming what's missing.
+ *
+ * Gates: workflows installed (.claude/ or .cursor/) AND tracker === "github".
+ * Stays quiet on explicit opt-out (`bkit.githubProject: false`) or when both
+ * detectable prerequisites are satisfied (PAT scope can't be checked locally).
+ */
+export function buildGithubProjectAdvisory(cwd) {
+    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
+    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
+    if (!hasClaude && !hasCursor)
+        return null;
+    if (readConsumerIssueTracker(cwd) !== "github")
+        return null;
+    const configState = readGithubProjectConfig(cwd);
+    if (configState === "opted-out")
+        return null;
+    const toolset = detectProjectsToolset(cwd);
+    const configOk = configState === "configured";
+    const toolsetOk = toolset === "present";
+    if (configOk && toolsetOk)
+        return null;
+    const missing = [];
+    if (!configOk)
+        missing.push("`bkit.githubProject` is absent from package.json");
+    if (toolset === "missing")
+        missing.push("the `projects` toolset is missing from `.mcp.json` `X-MCP-Toolsets`");
+    const missingPhrase = missing.length > 0 ? `: ${missing.join("; ")}` : "";
+    return {
+        id: "github-project-board-sync-unconfigured",
+        severity: "advisory",
+        detect: `GitHub tracker is active but Projects v2 board status sync is not fully configured${missingPhrase}. ` +
+            "Board sync silently no-ops — workflows never reflect phase on the project board.",
+        action: "Board status sync is optional (workflows never gate on it) but invisible when half-configured. All three prerequisites are required:\n\n" +
+            "1. Add `bkit.githubProject` to package.json (org-owned board only — fine-grained PATs cannot reach user-owned projects):\n\n" +
+            '       "bkit": {\n' +
+            '         "githubProject": {\n' +
+            '           "owner": "<org>", "number": <project-number>,\n' +
+            '           "statusFieldId": "<id>", "progressOptionId": "<id>",\n' +
+            '           "reviewOptionId": "<id>", "doneOptionId": "<id>"\n' +
+            "         }\n" +
+            "       }\n\n" +
+            "   Discover the field + single-select option IDs: `gh project field-list <number> --owner <org> --format json`.\n\n" +
+            "2. Ensure the root `.mcp.json` github server enables the `projects` toolset (older installs predate it):\n\n" +
+            '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"\n\n' +
+            "3. The `GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
+            "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
+    };
 }
 /**
  * Read `bkit.depUpdater` from the consumer's package.json. Returns the value
@@ -1071,6 +1263,30 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
+    // GH_TOKEN shell env — authenticates the GitHub MCP server
+    // (`Authorization: Bearer ${GH_TOKEN}` in .mcp.json), which powers the entire
+    // tracker + PR + Projects MCP surface. Only flag when a github MCP server is
+    // actually configured, and never in CI (no MCP server consumes it there — it
+    // would be log noise, not signal).
+    if (hasGithubMcpServer(cwd) && !process.env.CI) {
+        const ghTokenStatus = detectShellGhToken();
+        if (ghTokenStatus === "missing") {
+            phase3.push({
+                id: "gh-token-unset-shell",
+                severity: "advisory",
+                detect: "GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
+                action: "Set GH_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+            });
+        }
+        else if (ghTokenStatus === "empty") {
+            phase3.push({
+                id: "gh-token-empty-shell",
+                severity: "advisory",
+                detect: 'GH_TOKEN is set to an empty string (GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
+                action: "Set a non-empty GH_TOKEN in .agents/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
+            });
+        }
+    }
     // .npmrc auth
     const npmrcStatus = detectNpmrcAuth(cwd);
     if (npmrcStatus === "missing") {
@@ -1159,6 +1375,11 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const trackerSetup = buildTrackerSetupAdvisory(cwd);
     if (trackerSetup)
         phase3.push(trackerSetup);
+    // GitHub Projects v2 board-sync prerequisites (config + toolset + PAT scope) —
+    // the whole feature was unadvised; absent any prerequisite it silently no-ops.
+    const githubProjectSetup = buildGithubProjectAdvisory(cwd);
+    if (githubProjectSetup)
+        phase3.push(githubProjectSetup);
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);
@@ -1168,6 +1389,20 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // bkit-cloud workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
     for (const f of detectCiRouterSecrets(cwd))
         phase3.push(f);
+    // bkit-cloud workflow also needs repo Actions write permissions + PR-creation
+    // allowance, else `actions/checkout` and `gh pr create` 403. Detectable at the
+    // repo level via the Actions API; org-level policy can still override.
+    if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"))) {
+        if (detectActionsWritePermissions() === "missing") {
+            phase3.push({
+                id: "actions-write-permissions-missing",
+                severity: "advisory",
+                detect: "GitHub Actions default workflow permissions on this repo are read-only and/or PR creation by Actions is disabled. `.github/workflows/bkit-cloud.yml` cannot push status commits or open/merge PRs — `actions/checkout` and `gh pr create` will 403.",
+                action: "Grant Actions write access at BOTH org and repo level:\n\n    Settings -> Actions -> General -> Workflow permissions\n    - Read and write permissions\n    - Allow GitHub Actions to create and approve pull requests\n\nOr via CLI (repo level):\n\n    gh api -X PUT repos/{owner}/{repo}/actions/permissions/workflow -f default_workflow_permissions=write -F can_approve_pull_request_reviews=true\n\nThe org-level toggle is not readable with a repo-scoped token — if the repo setting looks correct but workflows still 403, check the organization Actions policy (it can override the repo).",
+            });
+        }
+        // "unknown" -> silent skip (gh CLI unavailable / unauthenticated).
+    }
     // Cloud / IDE-online dashboards — Cursor Background Agents + Claude Code on the web
     // read env vars from their respective online dashboards, NOT from repo files.
     // The same three secrets that GitHub Actions needs must be mirrored there.

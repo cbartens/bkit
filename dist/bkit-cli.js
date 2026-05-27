@@ -214,7 +214,8 @@ Module flags (composable — same for install and uninstall):
   --core          .agents/ payload pass + .gitignore block + rules.md block + .bkit-version.
   --claude        .claude/commands/ + .claude/agents/ (byte-identical mirror).
   --cursor        .cursor/commands/ + .cursor/agents/ (T1/T2/T3 transforms).
-  --ci            .github/workflows/ci.yml (Tier 2 managed-block, tokens substituted).
+  --ci            .github/workflows/ci.yml (Tier 3 seed-or-print: byte-equal, tokens
+                  substituted; seeded once, never overwritten).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
   --renovate      .github/renovate.json5 (opt-in, phase-gated — NOT in install --full;

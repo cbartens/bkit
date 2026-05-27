@@ -106,19 +106,24 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
-// ci.yml: markers wrap Install Dependencies + Run Bkit Check (inclusive)
+// ci.yml: Tier-3 (seed-or-print). Consumer-owned; bkit seeds once and never
+//   rewrites. The only marker is the NAMED `verbose-ci-env` block, which the
+//   preflight (detectCiYmlVerboseCiBlockMissing) checks by name. The bare
+//   whole-file `# bkit:start`/`# bkit:end` markers were removed in the
+//   v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because consumers
+//   misread them as "bkit owns/syncs these steps".
 // .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Helper: extract content between indented YAML markers (ci.yml style)
-// Markers are indented (6-space) so extractManagedBlock (which requires
+// Helper: extract content of the named verbose-ci-env block (ci.yml style).
+// Marker is indented (4-space) so extractManagedBlock (which requires
 // line-anchored col-0 or comment-prefix markers) cannot be used directly.
 // ---------------------------------------------------------------------------
 
-function extractCiYmlBlock(content: string): string | null {
-  const startMarker = "      # bkit:start";
-  const endMarker = "      # bkit:end";
+function extractCiYmlVerboseBlock(content: string): string | null {
+  const startMarker = "    # bkit:start verbose-ci-env";
+  const endMarker = "    # bkit:end verbose-ci-env";
   const startIdx = content.indexOf(startMarker);
   const endIdx = content.indexOf(endMarker);
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
@@ -127,44 +132,35 @@ function extractCiYmlBlock(content: string): string | null {
   return content.slice(startLineEnd + 1, endIdx);
 }
 
-describe("Group B templates — ci.yml partial-ownership markers", () => {
-  it("ci.yml has exactly one # bkit:start (6-space indent)", () => {
+describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () => {
+  it("ci.yml has exactly one # bkit:start verbose-ci-env (4-space indent)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
-    expect(countMatches(content, /^      # bkit:start$/m)).toBe(1);
+    expect(countMatches(content, /^    # bkit:start verbose-ci-env$/m)).toBe(1);
   });
 
-  it("ci.yml has exactly one # bkit:end (6-space indent)", () => {
+  it("ci.yml has exactly one # bkit:end verbose-ci-env (4-space indent)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
-    expect(countMatches(content, /^      # bkit:end$/m)).toBe(1);
+    expect(countMatches(content, /^    # bkit:end verbose-ci-env$/m)).toBe(1);
   });
 
-  it("ci.yml bkit:start appears before bkit:end", () => {
+  it("ci.yml carries no bare whole-file bkit markers (Tier-3 regression guard)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
-    const startIdx = content.indexOf("      # bkit:start");
-    const endIdx = content.indexOf("      # bkit:end");
-    expect(startIdx).toBeGreaterThanOrEqual(0);
-    expect(endIdx).toBeGreaterThan(startIdx);
+    expect(countMatches(content, /^\s*# bkit:start$/m)).toBe(0);
+    expect(countMatches(content, /^\s*# bkit:end$/m)).toBe(0);
   });
 
-  it("ci.yml Install Dependencies step is inside the marker block", () => {
+  it("ci.yml carries the Tier-3 seed-or-print ownership header", () => {
     const content = readTemplate(".github/workflows/ci.yml");
-    const block = extractCiYmlBlock(content);
+    expect(content).toContain("yours to own");
+    expect(content).toContain("Tier-3");
+  });
+
+  it("ci.yml verbose-ci-env block contains the verbose-CI env wiring", () => {
+    const content = readTemplate(".github/workflows/ci.yml");
+    const block = extractCiYmlVerboseBlock(content);
     expect(block).not.toBeNull();
-    expect(block!).toContain("Install Dependencies");
-  });
-
-  it("ci.yml Run Bkit Check step is inside the marker block", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    const block = extractCiYmlBlock(content);
-    expect(block).not.toBeNull();
-    expect(block!).toContain("Run Bkit Check");
-    expect(block!).toContain("pnpm bkit check");
-  });
-
-  it("ci.yml GH_BKIT_TOKEN env is inside the marker block", () => {
-    const content = readTemplate(".github/workflows/ci.yml");
-    const block = extractCiYmlBlock(content);
-    expect(block).not.toBeNull();
+    expect(block!).toContain("VERBOSE_CI");
+    expect(block!).toContain("TURBO_LOG_LEVEL");
     expect(block!).toContain("GH_BKIT_TOKEN");
   });
 });

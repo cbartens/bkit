@@ -1,7 +1,11 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`consumer CI template (.agents/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
-"name: CI
+"# This workflow is yours to own — bkit seeds it once and never rewrites it (Tier-3
+# seed-or-print). Edit freely. The one exception is the \`# bkit:start verbose-ci-env\`
+# block below: bkit's preflight checks for it by name to confirm the \`[verbose ci]\`
+# marker still works, so keep that named block intact if you want verbose-CI support.
+name: CI
 
 on:
   workflow_dispatch:
@@ -53,7 +57,6 @@ jobs:
       # Do NOT add \`with: version:\` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
 
-      # bkit:start
       # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
       # $GITHUB_ENV. Note that steps with their own \`env:\` block override $GITHUB_ENV —
       # those steps must inline these vars in their env: declaration to stay verbose-aware.
@@ -263,7 +266,6 @@ jobs:
       #       blob-report/
       #     retention-days: 14
       #     if-no-files-found: ignore
-      # bkit:end
 
 # bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
 # name: Smoke
