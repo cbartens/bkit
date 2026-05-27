@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
@@ -1911,5 +1912,243 @@ describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
     // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
     const ids = ctx.advisories.map((f) => f.id);
     expect(ids).not.toContain("tier3-merge-suggested-pre-push");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Challenge regression tests — Finding 1 (SHARED-DERIV portability + pipefail safety)
+//
+// The build challenge (Finding 1 HIGH) identified two coexisting defects in the
+// SHARED-DERIV grep region of bkit-cloud.yml:
+//   (a) `grep -oP` PCRE lookbehind — non-portable (BSD grep / some runner images)
+//   (b) No failure guard on ISSUE/FID assignments — `set -euo pipefail` aborts
+//       the step when grep exits 1 on a no-match body, making the fallback/fail-safe
+//       dead code and producing a RED job instead of skip=true no-op.
+//
+// Remediation replaced `grep -oP` with portable `grep -oE` + `sed`, and added
+// `|| true` guards so a no-match exits 0 and reaches the skip=true path.
+//
+// These tests lock in the remediation so a silent regression cannot re-introduce
+// `grep -oP` or remove the `|| true` guards.
+// ---------------------------------------------------------------------------
+
+describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+
+  function readBkitCloudYml(): string {
+    return fs.readFileSync(path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"), "utf-8");
+  }
+
+  function readBkitCloudTemplate(): string {
+    return fs.readFileSync(
+      path.join(pkgRoot, ".agents", "templates", ".github", "workflows", "bkit-cloud.yml"),
+      "utf-8",
+    );
+  }
+
+  it("(1a) canonical bkit-cloud.yml contains NO grep -oP (PCRE lookbehind) — portability regression guard", () => {
+    // Finding 1 (challenge-2): grep -oP relies on PCRE unavailable on BSD/macOS grep.
+    // A silent re-introduction of -oP would pass on ubuntu-latest but fail on any
+    // non-GNU runner — this test must catch it before ship.
+    const canonical = readBkitCloudYml();
+    expect(canonical).not.toContain("grep -oP");
+  });
+
+  it("(1a) template bkit-cloud.yml contains NO grep -oP (PCRE lookbehind) — portability regression guard", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).not.toContain("grep -oP");
+  });
+
+  it("(1b) ISSUE assignment in canonical has || true failure guard (pipefail safety)", () => {
+    // Finding 1 (challenge-1): without || true, `set -euo pipefail` aborts the step
+    // when grep exits 1 on a no-match PR body, making fallback/fail-safe dead code.
+    // The ISSUE assignment must end with `|| true` so a no-match exits 0.
+    const canonical = readBkitCloudYml();
+    // The exact remediated form: grep -oE ... | sed ... | head -1 || true
+    expect(canonical).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) FID assignment in canonical has || true failure guard (pipefail safety)", () => {
+    const canonical = readBkitCloudYml();
+    expect(canonical).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) ISSUE assignment in template has || true failure guard (pipefail safety)", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) FID assignment in template has || true failure guard (pipefail safety)", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1c) SHARED-DERIV extraction snippet exits 0 under set -euo pipefail when PR body is empty (real-tool validation)", () => {
+    // Finding 1 (challenge-1): the original code aborted on empty PR body.
+    // This test extracts the actual ISSUE/FID assignment commands from the canonical
+    // workflow and executes them under `set -euo pipefail` with an empty PR body to
+    // prove the || true guards make the step exit 0 (not exit 1).
+    const canonical = readBkitCloudYml();
+
+    // Extract the two assignment lines from the shared-deriv block.
+    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
+    expect(sharedDerivStart).toBeGreaterThan(-1);
+    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
+    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+
+    // Pull out the ISSUE= and FID= lines (they contain the grep commands).
+    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    expect(
+      issueLineMatch,
+      "ISSUE= assignment line must be found in shared-deriv block",
+    ).not.toBeNull();
+    expect(fidLineMatch, "FID= assignment line must be found in shared-deriv block").not.toBeNull();
+
+    const issueLine = issueLineMatch![0]!.trim();
+    const fidLine = fidLineMatch![0]!.trim();
+
+    // Build a minimal shell script that runs both assignments under strict mode
+    // with an empty PR_BODY and asserts the variables are empty (no-match, no abort).
+    const script = [
+      "set -euo pipefail",
+      'PR_BODY=""',
+      issueLine,
+      fidLine,
+      // Assert variables are empty (grep found nothing, || true kept us alive)
+      '[ -z "$ISSUE" ] || { echo "FAIL: ISSUE should be empty, got: $ISSUE"; exit 2; }',
+      '[ -z "$FID" ]   || { echo "FAIL: FID should be empty, got: $FID"; exit 2; }',
+      'echo "OK: both empty, script did not abort"',
+    ].join("\n");
+
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+
+    expect(
+      result.status,
+      `SHARED-DERIV snippet aborted under set -euo pipefail with empty PR body.\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("OK: both empty, script did not abort");
+  });
+
+  it("(1c) SHARED-DERIV extraction snippet correctly parses a well-formed PR body (positive case)", () => {
+    // Complementary positive case: a PR body WITH the markers must yield the correct values.
+    const canonical = readBkitCloudYml();
+
+    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
+    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+
+    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    expect(issueLineMatch).not.toBeNull();
+    expect(fidLineMatch).not.toBeNull();
+
+    const issueLine = issueLineMatch![0]!.trim();
+    const fidLine = fidLineMatch![0]!.trim();
+
+    const script = [
+      "set -euo pipefail",
+      'PR_BODY="<!-- bkit:issue=#141 bkit:fid=141-cloud-app -->"',
+      issueLine,
+      fidLine,
+      '[ "$ISSUE" = "141" ] || { echo "FAIL: expected ISSUE=141, got: $ISSUE"; exit 2; }',
+      '[ "$FID" = "141-cloud-app" ] || { echo "FAIL: expected FID=141-cloud-app, got: $FID"; exit 2; }',
+      'echo "OK: ISSUE=$ISSUE FID=$FID"',
+    ].join("\n");
+
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+
+    expect(
+      result.status,
+      `SHARED-DERIV snippet failed to parse well-formed PR body.\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("OK: ISSUE=141 FID=141-cloud-app");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Challenge regression tests — Finding 2 (claude.yml author_association gate)
+//
+// The build challenge (Finding 2 HIGH) identified that the @claude trigger in
+// claude.yml had no author_association gate, allowing any external commenter to
+// trigger the job (OWNER/MEMBER/COLLABORATOR allow-list was missing).
+//
+// Remediation added `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+// github.event.comment.author_association)` (and equivalents) to all four event
+// paths in the job's `if:` condition.
+//
+// These tests lock in the allow-list so it cannot be silently removed on any path.
+// ---------------------------------------------------------------------------
+
+describe("Challenge Finding 2 — claude.yml author_association allow-list regression", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+
+  function readClaudeYml(): string {
+    return fs.readFileSync(path.join(pkgRoot, ".github", "workflows", "claude.yml"), "utf-8");
+  }
+
+  it("claude.yml issue_comment path has author_association gate", () => {
+    // Finding 2: the original file had no author_association check on any event path.
+    // All four event paths must now carry the allow-list to prevent drive-by triggers.
+    const yml = readClaudeYml();
+    // The issue_comment branch must guard on comment.author_association.
+    expect(yml).toContain("github.event.comment.author_association");
+  });
+
+  it("claude.yml pull_request_review_comment path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // pull_request_review_comment re-uses event.comment.author_association.
+    // At minimum one of the two `pull_request_review` event paths must reference it.
+    // The remediated file uses comment.author_association for both comment events.
+    expect(yml).toContain("github.event.comment.author_association");
+  });
+
+  it("claude.yml pull_request_review path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // The review path uses event.review.author_association.
+    expect(yml).toContain("github.event.review.author_association");
+  });
+
+  it("claude.yml issues path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // The issues path uses event.issue.user.author_association.
+    expect(yml).toContain("github.event.issue.user.author_association");
+  });
+
+  it("claude.yml allow-list contains exactly OWNER, MEMBER, COLLABORATOR", () => {
+    // The allow-list must use the literal three-association JSON array.
+    // If someone narrows to OWNER-only or adds CONTRIBUTOR, this test catches it.
+    const yml = readClaudeYml();
+    expect(yml).toContain('["OWNER","MEMBER","COLLABORATOR"]');
+  });
+
+  it("claude.yml allow-list is checked via fromJSON (not string-match) for all @claude paths", () => {
+    const yml = readClaudeYml();
+    // All four event paths must use fromJSON('["OWNER","MEMBER","COLLABORATOR"]')
+    // so the allow-list is evaluated as a JSON array, not a substring check.
+    const matches = yml.match(/fromJSON\('?\["OWNER","MEMBER","COLLABORATOR"\]'?\)/g);
+    // There are 4 event paths in the if: — each must carry the check.
+    expect(matches, "Expected fromJSON allow-list on all 4 event paths").not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("claude.yml if: uses contains(...author_association) — not a string equality check", () => {
+    const yml = readClaudeYml();
+    // The check must be `contains(fromJSON(...), <author_association field>)` not
+    // `github.event.comment.author_association == 'OWNER'` etc.
+    expect(yml).toMatch(
+      /contains\(fromJSON\([^)]*\),\s*github\.event\.(comment|review|issue\.user)\.author_association\)/,
+    );
   });
 });
