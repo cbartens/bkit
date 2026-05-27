@@ -55,27 +55,32 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
 - **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
 
-## Tracker Substitution (#39)
+## Tracker Blocks (#39, inline model)
 
-`.agents/workflows/bkit-*.md` source files are tracker-agnostic. Tracker-specific MCP call shapes, label semantics, and state transitions live in `.agents/trackers.md` under per-tracker `## {github|linear|none}` sections.
+`.agents/workflows/bkit-*.md` source files carry the wired tracker variants inline — `github` and `linear` — so the full per-tracker behaviour (MCP call shapes, label semantics, state transitions) is visible at the call site in one place. No substitution from `.agents/trackers.md`; the resolver only selects/strips inline blocks. Markers:
 
-**Marker pair format:**
+**Per-tracker pair.** Every tracker call site defines a consecutive `github` → `linear` pair (no authored `none` block — the no-tracker rendering is a single generic message):
 
-```markdown
-<!-- bkit:tracker {snippet-id} start -->
-
-> _Tracker not wired — skip._
-
-<!-- bkit:tracker {snippet-id} end -->
+```text
+<!-- bkit:tracker github start -->
+mcp__github__… call
+<!-- bkit:tracker github end -->
+<!-- bkit:tracker linear start -->
+mcp__linear__… call
+<!-- bkit:tracker linear end -->
 ```
 
-Source files carry the no-tracker fallback content between markers. At `bkit install` time, the installer reads `bkit.issueTracker` from the consumer manifest, looks up `### {snippet-id}` in the chosen tracker's section of `.agents/trackers.md`, and substitutes the snippet body — markers AND fallback content stripped — into `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Mirrors are clean; LLM reads tracker-specific instructions verbatim.
+At `bkit install` time the installer reads `bkit.issueTracker` from the consumer manifest, keeps the block matching the chosen tracker, and drops the other when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`. Under `none` the whole pair collapses to **`_No tracker connected, skip step._`**. A list-number prefix (`3. `) is preserved on the kept block / stub. A handful of sites that must still function without a tracker (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`) add a trailing `<!-- bkit:tracker false start/end -->` block right after the pair, which is used under `none` instead of the generic message.
 
-Re-runnable: source workflows always carry the fallback; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors.
+**Conditional blocks (`bkit:tracker true` / `bkit:tracker false`).** Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body): `true` is kept when a tracker is connected and **removed entirely under `none`** (used for shared content like comment `{BODY}` fences, identical for github/linear); `false` is kept ONLY under `none`. A removed block consumes its leading newline so no blank gap remains.
 
-Missing snippet leaves a visible debug marker in the mirror (`<!-- bkit:tracker {id} MISSING in tracker '{name}' -->`) — silent regressions unacceptable.
+```text
+<!-- bkit:tracker true start -->
+… shared content (kept when wired; removed under none) …
+<!-- bkit:tracker true end -->
+```
 
-Snippet IDs catalogued in `.agents/trackers.md` § Snippet IDs. New tracker call site → add snippet ID to ALL tracker sections in lockstep, THEN insert marker pair in workflow source.
+Re-runnable: source workflows carry the wired variants; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors. The resolver reports a lone `github`/`linear` block or an unbalanced `true`/`false` pair as an orphan — silent regressions unacceptable. New tracker call site → add the `github`/`linear` pair inline (no `trackers.md` edit; add a `none` block only if the step must do something specific without a tracker). `.agents/trackers.md` is reference-only (marker contract + cross-cutting per-tracker conventions), no longer a substitution source.
 
 ## Two-Layer Separation Rules
 
@@ -258,7 +263,7 @@ printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
 
 ### Comment Lifecycle
 
-Every workflow step posts a NEW tracker comment via the `comment-post-step` snippet (see `.agents/trackers.md`). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Each step's comment is independent — no comment-ID carry-forward, no body concatenation.
+Every workflow step posts a NEW tracker comment via its inline `comment-post-step` tracker block (per-tracker `github`/`linear`/`none`, resolved at install; see § Tracker Blocks). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Each step's comment is independent — no comment-ID carry-forward, no body concatenation.
 
 **Step 1 (first comment):**
 
@@ -812,7 +817,7 @@ pnpm install --frozen-lockfile   # symlink-only ~5s; required because pnpm per-p
 
 ## Tracker Integration
 
-Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes live in `.agents/trackers.md` under `## github` / `## linear` / `## none`. Workflows reference call sites via marker pairs; installer substitutes the chosen tracker's snippets into `.claude/commands/` + `.cursor/commands/` mirrors (see § Tracker Substitution).
+Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes are written inline at each call site as `github`/`linear`/`none` blocks; the installer keeps the chosen tracker's block and drops the others when mirroring to `.claude/commands/` + `.cursor/commands/` (see § Tracker Blocks). `.agents/trackers.md` holds the marker contract + cross-cutting conventions only.
 
 ### Phase labels (mutually exclusive)
 
@@ -840,7 +845,7 @@ Phase label is preserved through Close Workflow exit — tracker-specific state 
 
 ### Tracker-specific state
 
-Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed` + optional Projects v2 board status) are encapsulated in `trackers.md` snippet IDs:
+Issue state semantics (Linear's "In Progress" / "In Review" / "Done"; GitHub's `open` / `closed` + optional Projects v2 board status) are written inline as per-tracker blocks at these call sites:
 
 <!-- prettier-ignore -->
 | Snippet | When |

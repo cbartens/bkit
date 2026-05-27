@@ -1,209 +1,165 @@
-// bkit-trackers.ts — parse `.agents/trackers.md` + substitute snippets into
-// workflow source files at install time. Consumed by bkit-install.ts when the
-// host-pass mirrors `.agents/workflows/bkit-*.md` to `.claude/commands/` and
-// `.cursor/commands/`.
+// bkit-trackers.ts — resolve tracker-specific blocks in workflow source files at
+// install time. Consumed by bkit-modules.ts when the host-pass mirrors
+// `.agents/workflows/bkit-*.md` to `.claude/commands/` and `.cursor/commands/`.
 //
-// See `.agents/trackers.md` for the substitution contract (marker pair format,
-// snippet ID inventory).
+// Inline model (no trackers.md substitution): every tracker call site carries the
+// `github` and `linear` variants inline as a consecutive pair. The installer keeps
+// the block matching the chosen tracker and drops the other. Two boolean
+// conditional dialects gate tracker-agnostic content:
+//
+//   <!-- bkit:tracker true  start/end -->  kept when a tracker IS connected; removed under none
+//   <!-- bkit:tracker false start/end -->  kept ONLY under none; removed when wired
+//
+// Under `none` a pair collapses to its trailing `false` block if present (the
+// substantive no-tracker behaviour — e.g. `issue-id-extraction`, `fid-format`,
+// `pr-body-marker`), otherwise to one generic skip message. There is no separate
+// `none` marker — no-tracker content is always `false`.
+//
+// See `.agents/trackers.md` for the marker contract.
 
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { ISSUE_TRACKERS, type IssueTracker } from "./bkit-manifest.js";
+import type { IssueTracker } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Snippet ID → body (markdown lines, trimmed of leading/trailing blanks). */
-export type SnippetMap = Map<string, string>;
-
-/** Tracker name → snippet map. */
-export type TrackersMap = Map<IssueTracker, SnippetMap>;
-
 export interface SubstituteResult {
-  /** Workflow content with marker pairs replaced by snippet bodies. */
+  /** Workflow content with tracker blocks resolved for the chosen tracker. */
   output: string;
-  /** Number of marker pairs successfully substituted. */
-  substitutions: number;
-  /** Snippet IDs referenced in the workflow but missing from the tracker. */
-  missing: string[];
-  /** Orphan markers (start without matching end, or end without start). */
+  /** Number of github/linear pairs resolved (to a body or the none stub). */
+  pairs: number;
+  /** Number of `true`/`false` conditional blocks resolved (kept or removed). */
+  conditionals: number;
+  /** Orphan markers left after resolution (malformed/incomplete blocks). */
   orphans: string[];
 }
 
 // ---------------------------------------------------------------------------
-// Parser
+// Markers
 // ---------------------------------------------------------------------------
 
-const H2_RE = /^## (.+?)\s*$/;
-const H3_RE = /^### (.+?)\s*$/;
-const SNIPPET_ID_RE = /^[a-z0-9-]+$/;
+/** Generic message rendered in place of a github/linear pair when no tracker is wired. */
+const NONE_STUB = "_No tracker connected, skip step._";
 
 /**
- * Parse `.agents/trackers.md` content into Tracker → SnippetID → body.
+ * Per-tracker group: a consecutive `github` → `linear` pair, each
+ * `<!-- bkit:tracker {name} start -->` … `<!-- bkit:tracker {name} end -->`,
+ * with an OPTIONAL trailing `false` block. Inter-block whitespace is absorbed by
+ * `\s*`. A list-number prefix (`3. `) precedes the first marker and is left
+ * untouched, so the kept body / none stub attaches to it cleanly.
  *
- * Recognises:
- *   - H2 (`## github`, `## linear`, `## none`) — tracker section start. Other
- *     H2 names (e.g. `## Substitution contract`) are ignored as preamble.
- *   - H3 (`### rule-block`, `### issue-id-extraction`, ...) — snippet boundaries
- *     within the current tracker section.
- *   - Horizontal rule (`---`) and trailing blank lines are stripped from
- *     snippet bodies during flush.
- *
- * Tracker names must be members of `ISSUE_TRACKERS`. Snippet IDs must be
- * kebab-case-lowercase (matches `^[a-z0-9-]+$`).
+ * `none` resolution: if a trailing `false` block is present (substantive
+ * no-tracker behaviour — e.g. `issue-id-extraction`, `fid-format`,
+ * `pr-body-marker`), use its body; otherwise emit the generic skip message.
+ * (Standalone `false` blocks not attached to a pair are handled in pass 2.)
  */
-export function parseTrackersMd(content: string): TrackersMap {
-  const trackers: TrackersMap = new Map();
-  const lines = content.split("\n");
+const PAIR_RE = new RegExp(
+  [
+    /<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->/
+      .source,
+    /<!--\s*bkit:tracker\s+linear\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+linear\s+end\s*-->/
+      .source,
+    /(?:<!--\s*bkit:tracker\s+false\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+false\s+end\s*-->)?/
+      .source,
+  ].join("\\s*"),
+  "g",
+);
 
-  let currentTracker: IssueTracker | null = null;
-  let currentSnippet: string | null = null;
-  let buffer: string[] = [];
-
-  const flush = (): void => {
-    if (currentTracker !== null && currentSnippet !== null) {
-      const trimmed = trimSnippetBody(buffer);
-      let map = trackers.get(currentTracker);
-      if (!map) {
-        map = new Map();
-        trackers.set(currentTracker, map);
-      }
-      map.set(currentSnippet, trimmed);
-    }
-    buffer = [];
-  };
-
-  for (const line of lines) {
-    const h2 = H2_RE.exec(line);
-    if (h2) {
-      flush();
-      currentSnippet = null;
-      const name = h2[1].trim();
-      currentTracker = (ISSUE_TRACKERS as readonly string[]).includes(name)
-        ? (name as IssueTracker)
-        : null;
-      continue;
-    }
-
-    const h3 = H3_RE.exec(line);
-    if (h3 && currentTracker !== null) {
-      flush();
-      const id = h3[1].trim();
-      currentSnippet = SNIPPET_ID_RE.test(id) ? id : null;
-      continue;
-    }
-
-    if (currentSnippet !== null) buffer.push(line);
-  }
-  flush();
-
-  return trackers;
+/** Conditional-keep block, KEEP form (markers stripped, content trimmed in place). */
+function condKeepRe(name: "true" | "false"): RegExp {
+  return new RegExp(
+    `<!--\\s*bkit:tracker\\s+${name}\\s+start\\s*-->([\\s\\S]*?)<!--\\s*bkit:tracker\\s+${name}\\s+end\\s*-->`,
+    "g",
+  );
+}
+/** Conditional-keep block, REMOVE form (consumes the leading newline + indent). */
+function condDropRe(name: "true" | "false"): RegExp {
+  return new RegExp(
+    `\\n?[ \\t]*<!--\\s*bkit:tracker\\s+${name}\\s+start\\s*-->[\\s\\S]*?<!--\\s*bkit:tracker\\s+${name}\\s+end\\s*-->`,
+    "g",
+  );
 }
 
-function trimSnippetBody(buffer: readonly string[]): string {
-  const lines = [...buffer];
-  // Strip leading blank lines
-  while (lines.length > 0 && lines[0].trim() === "") lines.shift();
-  // Strip trailing blank + horizontal-rule lines (section separators)
-  while (
-    lines.length > 0 &&
-    (lines[lines.length - 1].trim() === "" || lines[lines.length - 1].trim() === "---")
-  ) {
-    lines.pop();
-  }
-  return lines.join("\n");
+// Any tracker marker surviving resolution is an orphan (lone github/linear, or
+// unbalanced true/false).
+const ORPHAN_RE = /<!--\s*bkit:tracker\s+(github|linear|true|false)\s+(?:start|end)\s*-->/g;
+
+/**
+ * When keeping in-place content, drop the newline (and its indentation)
+ * immediately after `start -->` and immediately before the `end` marker, so the
+ * kept content attaches to the pre-marker indentation cleanly instead of gaining
+ * a blank line / double indent. Author markers at the same indent as their
+ * content for aligned output.
+ */
+function trimKeptContent(s: string): string {
+  return s.replace(/^\r?\n[ \t]*/, "").replace(/\r?\n[ \t]*$/, "");
 }
 
 // ---------------------------------------------------------------------------
-// Substitution
+// Resolution
 // ---------------------------------------------------------------------------
 
 /**
- * Matches `<!-- bkit:tracker {snippet-id} start -->` … `<!-- bkit:tracker {snippet-id} end -->`
- * pairs across multiple lines. Lazy match between start and end. Backreference
- * ensures the end marker's snippet ID matches the start marker's.
- */
-const MARKER_PAIR_RE =
-  /<!--\s*bkit:tracker\s+([a-z0-9-]+)\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+\1\s+end\s*-->/g;
-
-const ORPHAN_START_RE = /<!--\s*bkit:tracker\s+([a-z0-9-]+)\s+start\s*-->/g;
-const ORPHAN_END_RE = /<!--\s*bkit:tracker\s+([a-z0-9-]+)\s+end\s*-->/g;
-
-/**
- * Substitute marker pairs in a workflow source file with snippet bodies from
- * the chosen tracker.
+ * Resolve tracker blocks in a workflow source file for the chosen tracker.
  *
- * Replaces both the markers AND the content between them with the snippet
- * body. Mirror output (`.claude/commands/bkit-*.md`) is clean — no markers
- * remain after substitution.
+ * Pass 1 collapses each github/linear pair to the chosen tracker's body, or — for
+ * `none` — to the generic skip message. Pass 2 resolves the `true`/`false`
+ * conditional blocks (kept when their condition matches the chosen tracker,
+ * removed otherwise) — run AFTER pass 1 so pairs nested inside a kept conditional
+ * are resolved first. Mirror output is clean — no markers remain.
  *
- * Re-substitution: always operates on workflow SOURCE (which has markers).
- * Mirror output is regenerated from source each install.
+ * Always operates on workflow SOURCE (which has markers). Mirror output is
+ * regenerated from source each install.
  */
 export function substituteWorkflow(
   workflowContent: string,
   tracker: IssueTracker,
-  trackers: TrackersMap,
 ): SubstituteResult {
-  const snippets = trackers.get(tracker);
-  if (!snippets) {
-    throw new Error(
-      `Tracker '${tracker}' not found in .agents/trackers.md — expected one of: ${ISSUE_TRACKERS.join(", ")}`,
-    );
+  const wired = tracker !== "none";
+
+  // Pass 1: github/linear pairs → chosen tracker's body; none → the pair's
+  // trailing `false` block if present, else the generic skip message.
+  let pairs = 0;
+  let output = workflowContent.replace(
+    PAIR_RE,
+    (_match, gh: string, ln: string, falseBody: string | undefined) => {
+      pairs++;
+      if (tracker === "github") return trimKeptContent(gh);
+      if (tracker === "linear") return trimKeptContent(ln);
+      return falseBody !== undefined ? trimKeptContent(falseBody) : NONE_STUB;
+    },
+  );
+
+  // Pass 2: standalone conditional `true`/`false` blocks (any `false` attached to
+  // a pair was already consumed in pass 1).
+  let conditionals = 0;
+  for (const name of ["true", "false"] as const) {
+    const active = name === "true" ? wired : !wired;
+    if (active) {
+      output = output.replace(condKeepRe(name), (_m, content: string) => {
+        conditionals++;
+        return trimKeptContent(content);
+      });
+    } else {
+      output = output.replace(condDropRe(name), () => {
+        conditionals++;
+        return "";
+      });
+    }
   }
 
-  const missing: string[] = [];
-  let substitutions = 0;
-
-  const output = workflowContent.replace(MARKER_PAIR_RE, (_match, snippetId: string) => {
-    const body = snippets.get(snippetId);
-    if (body === undefined) {
-      missing.push(snippetId);
-      return `<!-- bkit:tracker ${snippetId} MISSING in tracker '${tracker}' -->`;
-    }
-    substitutions++;
-    return body;
-  });
-
-  const orphans = findOrphanMarkers(output);
-
-  return { output, substitutions, missing, orphans };
+  return { output, pairs, conditionals, orphans: findOrphanMarkers(output) };
 }
 
 /**
- * Find marker tokens that didn't participate in a successful pair substitution.
- * Operates on the OUTPUT (post-substitution) — any remaining `start` or `end`
- * marker is an orphan since paired markers were already consumed.
+ * Find tracker markers that didn't participate in a successful resolution — a
+ * lone github/linear block (not part of a complete pair) or an unbalanced
+ * true/false pair.
  */
 function findOrphanMarkers(content: string): string[] {
   const orphans: string[] = [];
-  ORPHAN_START_RE.lastIndex = 0;
-  ORPHAN_END_RE.lastIndex = 0;
-
+  ORPHAN_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = ORPHAN_START_RE.exec(content)) !== null) {
-    orphans.push(`start:${m[1]}`);
-  }
-  while ((m = ORPHAN_END_RE.exec(content)) !== null) {
-    orphans.push(`end:${m[1]}`);
-  }
+  while ((m = ORPHAN_RE.exec(content)) !== null) orphans.push(m[1]);
   return orphans;
-}
-
-// ---------------------------------------------------------------------------
-// Loader (convenience)
-// ---------------------------------------------------------------------------
-
-/**
- * Load + parse `.agents/trackers.md` from a package root.
- * `pkgRoot` is the bkit package root (in dogfood, the bkit repo root; in
- * consumers, the resolved `node_modules/bkit/` location).
- */
-export function loadTrackers(pkgRoot: string): TrackersMap {
-  const trackersPath = path.join(pkgRoot, ".agents", "trackers.md");
-  if (!fs.existsSync(trackersPath)) {
-    throw new Error(`.agents/trackers.md not found at ${trackersPath}`);
-  }
-  return parseTrackersMd(fs.readFileSync(trackersPath, "utf-8"));
 }

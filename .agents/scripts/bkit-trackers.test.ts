@@ -1,329 +1,190 @@
-// bkit-trackers.test.ts — parse `.agents/trackers.md` + substitution unit tests.
+// bkit-trackers.test.ts — inline tracker-block resolution unit tests (true/false model).
 import { describe, expect, it } from "vitest";
-import {
-  parseTrackersMd,
-  substituteWorkflow,
-  loadTrackers,
-  type TrackersMap,
-} from "./bkit-trackers";
+import { substituteWorkflow } from "./bkit-trackers";
+import * as fs from "node:fs";
 import * as path from "node:path";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
-// ---------------------------------------------------------------------------
-// parseTrackersMd
-// ---------------------------------------------------------------------------
-
-describe("parseTrackersMd", () => {
-  it("extracts tracker sections and snippet bodies", () => {
-    const md = `# Trackers
-
-## Substitution contract
-
-Preamble text (ignored — not a tracker name).
-
----
-
-## github
-
-### rule-block
-
-> - **Tracker:** github line 1.
-> - **Labels:** github line 2.
-
-### issue-read
-
-\`mcp__github__issue_read(...)\` body.
-
----
-
-## linear
-
-### rule-block
-
-> - **Tracker:** linear line 1.
-
-### issue-read
-
-\`mcp__linear__get_issue(...)\` body.
-
----
-
-## none
-
-### rule-block
-
-> _Tracker not wired — skip._
-
-### issue-read
-
-_Tracker not wired — skip issue read._
-`;
-    const trackers = parseTrackersMd(md);
-
-    expect(trackers.size).toBe(3);
-    expect(trackers.has("github")).toBe(true);
-    expect(trackers.has("linear")).toBe(true);
-    expect(trackers.has("none")).toBe(true);
-    // Preamble H2s are ignored
-    expect(trackers.has("Substitution contract" as never)).toBe(false);
-
-    const github = trackers.get("github");
-    expect(github).toBeDefined();
-    expect(github!.get("rule-block")).toBe(
-      "> - **Tracker:** github line 1.\n> - **Labels:** github line 2.",
-    );
-    expect(github!.get("issue-read")).toBe("`mcp__github__issue_read(...)` body.");
-
-    expect(trackers.get("none")!.get("rule-block")).toBe("> _Tracker not wired — skip._");
-  });
-
-  it("strips trailing `---` separators from snippet bodies", () => {
-    const md = `## github
-
-### rule-block
-
-body line one
-body line two
-
----
-
-## linear
-
-### rule-block
-
-linear body
-`;
-    const trackers = parseTrackersMd(md);
-    expect(trackers.get("github")!.get("rule-block")).toBe("body line one\nbody line two");
-  });
-
-  it("ignores H3 headings that are not valid snippet IDs (kebab-case-lowercase)", () => {
-    const md = `## github
-
-### Rule Block
-
-Not a snippet — heading has spaces / capitals.
-
-### rule-block
-
-Valid snippet body.
-`;
-    const trackers = parseTrackersMd(md);
-    const github = trackers.get("github")!;
-    expect(github.has("rule-block")).toBe(true);
-    expect(github.has("Rule Block")).toBe(false);
-    expect(github.get("rule-block")).toBe("Valid snippet body.");
-  });
-
-  it("returns an empty map when no recognised tracker sections are present", () => {
-    const md = `# Trackers
-
-## Substitution contract
-
-No tracker H2s here.
-`;
-    expect(parseTrackersMd(md).size).toBe(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// substituteWorkflow
-// ---------------------------------------------------------------------------
-
-function makeTrackers(): TrackersMap {
-  const m: TrackersMap = new Map();
-  const github = new Map<string, string>();
-  github.set("rule-block", "GH RULE BLOCK BODY");
-  github.set("issue-read", "GH ISSUE READ BODY");
-  m.set("github", github);
-
-  const none = new Map<string, string>();
-  none.set("rule-block", "> _Tracker not wired — skip._");
-  none.set("issue-read", "_Tracker not wired — skip issue read._");
-  m.set("none", none);
-
-  return m;
+function pair(gh: string, ln: string): string {
+  return [
+    `<!-- bkit:tracker github start -->\n${gh}\n<!-- bkit:tracker github end -->`,
+    `<!-- bkit:tracker linear start -->\n${ln}\n<!-- bkit:tracker linear end -->`,
+  ].join("\n");
 }
 
-describe("substituteWorkflow", () => {
-  it("replaces marker pair + fallback with snippet body", () => {
-    const workflow = `# Workflow
+// ---------------------------------------------------------------------------
+// github/linear pairs
+// ---------------------------------------------------------------------------
 
-Header line.
+describe("substituteWorkflow — github/linear pairs", () => {
+  it("keeps the chosen tracker's block; none collapses to the generic skip message", () => {
+    const wf = `Step.\n${pair("GH BODY", "LN BODY")}\nTail.\n`;
 
-<!-- bkit:tracker rule-block start -->
-> _Tracker not wired — skip._
-<!-- bkit:tracker rule-block end -->
+    const gh = substituteWorkflow(wf, "github");
+    expect(gh.pairs).toBe(1);
+    expect(gh.orphans).toEqual([]);
+    expect(gh.output).toContain("GH BODY");
+    expect(gh.output).not.toContain("LN BODY");
+    expect(gh.output).not.toContain("bkit:tracker");
 
-Trailing line.
-`;
-    const { output, substitutions, missing, orphans } = substituteWorkflow(
-      workflow,
-      "github",
-      makeTrackers(),
+    expect(substituteWorkflow(wf, "linear").output).toContain("LN BODY");
+
+    const no = substituteWorkflow(wf, "none");
+    expect(no.output).toContain("_No tracker connected, skip step._");
+    expect(no.output).not.toContain("GH BODY");
+    expect(no.output).not.toContain("LN BODY");
+  });
+
+  it("preserves a list-number prefix on the resolved pair", () => {
+    const wf = `3. ${pair("gh-call", "ln-call")}\n4. Next.\n`;
+    expect(substituteWorkflow(wf, "github").output).toContain("3. gh-call");
+    expect(substituteWorkflow(wf, "none").output).toContain(
+      "3. _No tracker connected, skip step._",
     );
-
-    expect(substitutions).toBe(1);
-    expect(missing).toEqual([]);
-    expect(orphans).toEqual([]);
-    expect(output).toContain("GH RULE BLOCK BODY");
-    expect(output).not.toContain("bkit:tracker rule-block start");
-    expect(output).not.toContain("bkit:tracker rule-block end");
-    expect(output).not.toContain("Tracker not wired");
   });
 
-  it("substitutes multiple marker pairs in one workflow", () => {
-    const workflow = `Step 1.
-
-<!-- bkit:tracker rule-block start -->
-fallback A
-<!-- bkit:tracker rule-block end -->
-
-Step 2.
-
-<!-- bkit:tracker issue-read start -->
-fallback B
-<!-- bkit:tracker issue-read end -->
+  it("uses a pair's trailing false block under none instead of the generic stub", () => {
+    const wf = `1. ${pair("gh", "ln")}
+<!-- bkit:tracker false start -->
+ISSUE_ID="" — derive FID from branch.
+<!-- bkit:tracker false end -->
 `;
-    const { output, substitutions, missing } = substituteWorkflow(
-      workflow,
-      "github",
-      makeTrackers(),
-    );
-    expect(substitutions).toBe(2);
-    expect(missing).toEqual([]);
-    expect(output).toContain("GH RULE BLOCK BODY");
-    expect(output).toContain("GH ISSUE READ BODY");
+    const no = substituteWorkflow(wf, "none");
+    expect(no.output).toContain('ISSUE_ID="" — derive FID from branch.');
+    expect(no.output).not.toContain("_No tracker connected, skip step._");
+    // wired ignores the trailing false block
+    expect(substituteWorkflow(wf, "github").output).toContain("1. gh");
+    expect(substituteWorkflow(wf, "github").output).not.toContain("derive FID from branch");
   });
 
-  it("tolerates whitespace variations inside marker tokens", () => {
-    const workflow = `<!--    bkit:tracker   rule-block   start   -->
-fallback
-<!--bkit:tracker rule-block end-->
-`;
-    const { output, substitutions } = substituteWorkflow(workflow, "github", makeTrackers());
-    expect(substitutions).toBe(1);
-    expect(output).toContain("GH RULE BLOCK BODY");
+  it("resolves multiple pairs", () => {
+    const wf = `${pair("g1", "l1")}\n\n${pair("g2", "l2")}\n`;
+    const r = substituteWorkflow(wf, "github");
+    expect(r.pairs).toBe(2);
+    expect(r.output).toContain("g1");
+    expect(r.output).toContain("g2");
   });
 
-  it("reports missing snippets without throwing", () => {
-    const workflow = `<!-- bkit:tracker phase-labels start -->
-fallback
-<!-- bkit:tracker phase-labels end -->
-`;
-    const { output, substitutions, missing } = substituteWorkflow(
-      workflow,
-      "github",
-      makeTrackers(),
-    );
-    expect(substitutions).toBe(0);
-    expect(missing).toEqual(["phase-labels"]);
-    expect(output).toContain("MISSING in tracker 'github'");
-  });
-
-  it("detects orphan start marker without matching end", () => {
-    const workflow = `<!-- bkit:tracker rule-block start -->
-unclosed body
-`;
-    const { substitutions, orphans } = substituteWorkflow(workflow, "github", makeTrackers());
-    expect(substitutions).toBe(0);
-    expect(orphans).toContain("start:rule-block");
-  });
-
-  it("detects orphan end marker without matching start", () => {
-    const workflow = `<!-- bkit:tracker rule-block end -->
-`;
-    const { substitutions, orphans } = substituteWorkflow(workflow, "github", makeTrackers());
-    expect(substitutions).toBe(0);
-    expect(orphans).toContain("end:rule-block");
-  });
-
-  it("does not match mismatched-id marker pairs", () => {
-    const workflow = `<!-- bkit:tracker rule-block start -->
-body
-<!-- bkit:tracker issue-read end -->
-`;
-    const { substitutions, orphans } = substituteWorkflow(workflow, "github", makeTrackers());
-    expect(substitutions).toBe(0);
-    expect(orphans).toEqual(expect.arrayContaining(["start:rule-block", "end:issue-read"]));
-  });
-
-  it("throws when tracker name is not present in the parsed map", () => {
-    const empty: TrackersMap = new Map();
-    expect(() =>
-      substituteWorkflow(
-        "<!-- bkit:tracker rule-block start -->\n\n<!-- bkit:tracker rule-block end -->\n",
-        "github",
-        empty,
-      ),
-    ).toThrow(/Tracker 'github' not found/);
-  });
-
-  it("uses 'none' tracker for the no-tracker-wired install path", () => {
-    const workflow = `<!-- bkit:tracker rule-block start -->
-default fallback
-<!-- bkit:tracker rule-block end -->
-`;
-    const { output, substitutions } = substituteWorkflow(workflow, "none", makeTrackers());
-    expect(substitutions).toBe(1);
-    expect(output).toContain("> _Tracker not wired — skip._");
+  it("flags a lone github block (no linear) as an orphan", () => {
+    const wf = `<!-- bkit:tracker github start -->\nbody\n<!-- bkit:tracker github end -->\n`;
+    const r = substituteWorkflow(wf, "github");
+    expect(r.pairs).toBe(0);
+    expect(r.orphans).toContain("github");
   });
 });
 
 // ---------------------------------------------------------------------------
-// loadTrackers — integration with the real .agents/trackers.md
+// true / false conditional blocks
 // ---------------------------------------------------------------------------
 
-describe("loadTrackers (real file)", () => {
-  it("parses the shipped .agents/trackers.md and exposes all three trackers", () => {
-    const trackers = loadTrackers(REPO_ROOT);
-    expect(trackers.has("github")).toBe(true);
-    expect(trackers.has("linear")).toBe(true);
-    expect(trackers.has("none")).toBe(true);
+describe("substituteWorkflow — true/false conditionals", () => {
+  it("`true` keeps content when wired, removes it entirely under none (no stub)", () => {
+    const wf = `3. Step.
+   <!-- bkit:tracker true start -->
+   \`{BODY}\` = fenced block below:
+   kept line
+   <!-- bkit:tracker true end -->
+4. Next.
+`;
+    const gh = substituteWorkflow(wf, "github");
+    expect(gh.conditionals).toBe(1);
+    expect(gh.orphans).toEqual([]);
+    expect(gh.output).toContain(
+      "3. Step.\n   `{BODY}` = fenced block below:\n   kept line\n4. Next.",
+    );
+
+    const no = substituteWorkflow(wf, "none");
+    // removed entirely — no stub, no blank gap
+    expect(no.output).toContain("3. Step.\n4. Next.");
+    expect(no.output).not.toContain("kept line");
+    expect(no.output).not.toContain("bkit:tracker");
   });
 
-  it("every tracker defines the full snippet inventory", () => {
-    const required = [
-      "rule-block",
-      "issue-id-extraction",
-      "fid-format",
-      "issue-read",
-      "issue-update-phase",
-      "issue-update-review",
-      "issue-update-failed",
-      "issue-update-debug",
-      "issue-update-merged",
-      "comment-post-step",
-      "comment-on-issue",
-      "list-sub-issues",
-      "create-sub-issue",
-      "set-blocked-by",
-      "phase-labels",
-      "kill-switch-check",
-      "pr-body-metadata",
-    ];
-    const trackers = loadTrackers(REPO_ROOT);
+  it("`false` keeps content only under none, removes it when wired", () => {
+    const wf = `x
+   <!-- bkit:tracker false start -->
+   none-only note
+   <!-- bkit:tracker false end -->
+y
+`;
+    expect(substituteWorkflow(wf, "none").output).toContain("none-only note");
+    const gh = substituteWorkflow(wf, "github");
+    expect(gh.output).not.toContain("none-only note");
+    expect(gh.output).toContain("x\ny");
+  });
+
+  it("resolves a pair nested inside a `true` block", () => {
+    const wf = `   <!-- bkit:tracker true start -->
+   ${pair("GH", "LN")}
+   Set VAR. If empty -> Failure Path.
+   <!-- bkit:tracker true end -->
+`;
+    const gh = substituteWorkflow(wf, "github");
+    expect(gh.pairs).toBe(1);
+    expect(gh.conditionals).toBe(1);
+    expect(gh.orphans).toEqual([]);
+    expect(gh.output).toContain("GH");
+    expect(gh.output).toContain("Set VAR. If empty -> Failure Path.");
+    expect(gh.output).not.toContain("bkit:tracker");
+
+    const no = substituteWorkflow(wf, "none");
+    expect(no.output).not.toContain("Failure Path");
+    expect(no.output).not.toContain("GH");
+    expect(no.output).not.toContain("bkit:tracker");
+  });
+
+  it("flags an unbalanced true marker as an orphan", () => {
+    expect(substituteWorkflow("<!-- bkit:tracker true start -->\nb\n", "github").orphans).toContain(
+      "true",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real workflow sources — resolve cleanly for every tracker
+// ---------------------------------------------------------------------------
+
+describe("real workflow sources", () => {
+  const workflows = [
+    "bkit-build",
+    "bkit-ship",
+    "bkit-debug",
+    "bkit-design",
+    "bkit-plan",
+    "bkit-cloud",
+  ];
+
+  for (const wf of workflows) {
     for (const tracker of ["github", "linear", "none"] as const) {
-      const snippets = trackers.get(tracker);
-      expect(snippets, `${tracker} section missing`).toBeDefined();
-      for (const id of required) {
-        expect(snippets!.has(id), `${tracker} missing snippet '${id}'`).toBe(true);
-        const body = snippets!.get(id)!;
-        expect(body.length, `${tracker}.${id} body empty`).toBeGreaterThan(0);
-      }
+      it(`${wf} resolves cleanly for ${tracker}`, () => {
+        const src = fs.readFileSync(
+          path.join(REPO_ROOT, ".agents", "workflows", `${wf}.md`),
+          "utf-8",
+        );
+        const r = substituteWorkflow(src, tracker);
+        expect(r.orphans, `orphans in ${wf}/${tracker}`).toEqual([]);
+        expect(r.output, `leftover markers in ${wf}/${tracker}`).not.toMatch(
+          /<!--\s*bkit:tracker\b/,
+        );
+        expect(r.pairs, `${wf} should have github/linear pairs`).toBeGreaterThan(0);
+      });
     }
-  });
+  }
 
-  it("`none` snippet bodies are short stubs (sanity check)", () => {
-    const trackers = loadTrackers(REPO_ROOT);
-    const none = trackers.get("none")!;
-    // Most `none` stubs are single-line; allow a small margin for prose
-    for (const [id, body] of none.entries()) {
-      // Skip snippets that legitimately carry no-tracker prose (more than a single-line stub)
-      if (id === "pr-body-metadata" || id === "fid-format" || id === "issue-id-extraction")
-        continue;
-      expect(body.split("\n").length, `${id} body too long for 'none'`).toBeLessThanOrEqual(3);
+  it("every github block has a matching linear block; no legacy none markers remain", () => {
+    for (const wf of workflows) {
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".agents", "workflows", `${wf}.md`),
+        "utf-8",
+      );
+      const count = (re: RegExp) => (src.match(re) ?? []).length;
+      const gh = count(/<!--\s*bkit:tracker\s+github\s+start\s*-->/g);
+      const ln = count(/<!--\s*bkit:tracker\s+linear\s+start\s*-->/g);
+      // `none` markers are retired — no-tracker content uses `false`.
+      const legacyNone = count(/<!--\s*bkit:tracker\s+none\s+(?:start|end)\s*-->/g);
+      expect(gh, `${wf} unbalanced github/linear`).toBe(ln);
+      expect(legacyNone, `${wf} has retired bkit:tracker none markers`).toBe(0);
     }
   });
 });

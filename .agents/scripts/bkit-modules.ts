@@ -32,7 +32,7 @@ import {
   type CloudAgents,
 } from "./bkit-manifest.js";
 import type { CloudVariant } from "./bkit-cli.js";
-import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
+import { substituteWorkflow } from "./bkit-trackers.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -535,8 +535,6 @@ export function runClaudeModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
-  // Load tracker snippets once for this module run (reads from bkit package root).
-  const trackers = loadTrackers(getPkgRoot());
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
 
   const pairs: Array<[string, string]> = [
@@ -550,10 +548,10 @@ export function runClaudeModule(ctx: ModuleContext): void {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      // Apply tracker substitution for workflow files; prompts are byte-identical.
+      // Resolve tracker blocks for workflow files; prompts are byte-identical.
       const transform: ((c: string) => string) | null =
         src === ".agents/workflows"
-          ? (c: string) => substituteWorkflow(c, issueTracker, trackers).output
+          ? (c: string) => substituteWorkflow(c, issueTracker).output
           : null;
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
@@ -709,11 +707,9 @@ export function runCursorModule(ctx: ModuleContext): void {
   const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
 
-  // Load tracker snippets once for this module run.
-  const trackers = loadTrackers(getPkgRoot());
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
 
-  // Commands: tracker substitution → T1 → T2
+  // Commands: tracker block resolution → T1 → T2
   {
     const src = ".agents/workflows";
     const dest = ".cursor/commands";
@@ -722,8 +718,7 @@ export function runCursorModule(ctx: ModuleContext): void {
     const sourceSet = new Set(files);
 
     for (const f of files) {
-      const transform = (c: string) =>
-        applyT2(applyT1(substituteWorkflow(c, issueTracker, trackers).output));
+      const transform = (c: string) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
       if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
         console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
       }

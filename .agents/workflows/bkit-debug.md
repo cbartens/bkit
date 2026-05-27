@@ -18,7 +18,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
@@ -28,11 +28,20 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
-<!-- bkit:tracker rule-block start -->
+<!-- bkit:tracker github start -->
 
-> _Tracker not wired — skip._
+> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
-<!-- bkit:tracker rule-block end -->
+<!-- bkit:tracker github end -->
+<!-- bkit:tracker linear start -->
+
+> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. No edit-in-place.
+
+<!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 > - **Limits:** Reference constants `MAX_DEBUG_ATTEMPT` = 3 and `MAX_TEST_ATTEMPT` = 3 in retry checks below.
@@ -57,12 +66,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git -C "$REPO_ROOT" commit -m "chore({FID}): debug FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. <!-- bkit:tracker issue-update-failed start -->
-   _Tracker not wired — skip._
-   <!-- bkit:tracker issue-update-failed end -->
-3. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+2. <!-- bkit:tracker github start -->
+   Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+   <!-- bkit:tracker linear end -->
+3. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -70,6 +86,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
+   <!-- bkit:tracker true end -->
 4. **If** failure triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_DEBUG_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **or** `OBSERVE_MODE` = analyse **or** rebase failure sentinel previously existed → step 5. **Else** → step 12.
 5. **Subagent:** Invoke `@bkit-debug-abort-handover` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
@@ -79,16 +96,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip build] bkit [skip ci]"`.
-10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on Linear.
-11. <!-- bkit:tracker comment-post-step start -->
-    _Tracker not wired — skip comment post._
-    <!-- bkit:tracker comment-post-step end -->
+10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on the tracker.
+11. <!-- bkit:tracker github start -->
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
     ### Workflow Handover
     [debug-handover.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-handover.md)
     {FID-debug-handover.md content verbatim}
     ```
+    <!-- bkit:tracker true end -->
 12. **STOP**, no further downstream steps.
 
 ---
@@ -125,13 +147,25 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. <!-- bkit:tracker issue-id-extraction start -->
-   _Tracker not wired — skip ISSUE_ID resolution._
-   <!-- bkit:tracker issue-id-extraction end -->
+4. <!-- bkit:tracker github start -->
+   **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design", "bkit:auto"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__linear__save_issue({ title: "{task}", description: "{input}", team: "{LINEAR_TEAM}", assignee: "me", state: "In Progress", labels: ["bkit:design", "bkit:auto"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**. `LINEAR_TEAM` = `bkit.linearTeam` from manifest.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker false start -->
+   **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** scan prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
+   <!-- bkit:tracker false end -->
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   <!-- bkit:tracker issue-read start -->
-   _Tracker not wired — skip issue read._
-   <!-- bkit:tracker issue-read end -->
+   <!-- bkit:tracker github start -->
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker false start -->
+   No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
+   <!-- bkit:tracker false end -->
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. **If** `PR_NUMBER` non-empty → `DEBUG_MODE` = pr. **Else** → `DEBUG_MODE` = local.
 7. Extract `DEBUG_ATTEMPT` and `PRIOR_OBSERVE_MODE` from most recent `workflow == "debug"` entry:
    ```bash
@@ -145,28 +179,61 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    - **Else** → `OBSERVE_MODE` = off.
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
-    <!-- bkit:tracker fid-format start -->
-    _Tracker not wired — skip FID regex assert._
-    <!-- bkit:tracker fid-format end -->
-11. <!-- bkit:tracker issue-update-debug start -->
-    _Tracker not wired — skip._
-    <!-- bkit:tracker issue-update-debug end -->
-    <!-- bkit:tracker issue-update-status start -->
-    _Tracker not wired — skip status/state update._
-    <!-- bkit:tracker issue-update-status end -->
-12. <!-- bkit:tracker comment-post-step start -->
-    _Tracker not wired — skip comment post._
-    <!-- bkit:tracker comment-post-step end -->
+    <!-- bkit:tracker github start -->
+
+    **Format:** `{ISSUE_ID}-{slug}` — no prefix, slug ≤3 tokens, kebab, lowercase, no stopwords (e.g. `123-add-foo-bar`). Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+
+    **Format:** `{ISSUE_ID}-{slug}` — Linear ISSUE_ID lowercased (e.g. `bar-123-add-foo`), slug ≤3 tokens, kebab, lowercase, no stopwords. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
+
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker false start -->
+
+    **Format:** `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug ≤3 tokens, kebab, lowercase. No strict regex assert.
+    <!-- bkit:tracker false end -->
+
+11. <!-- bkit:tracker github start -->
+
+    Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+
+    Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker github start -->
+
+    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+    1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+    2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+    3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
+
+    **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+
+    No separate project board; issue state carries the status. No-op (log `Board status carried by issue state — no separate update.`).
+    <!-- bkit:tracker linear end -->
+
+12. <!-- bkit:tracker github start -->
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below:
     ```comment
     ## Debug Workflow
     ### Step 1 — Start Workflow - Debug: {DEBUG_MODE} - Observe: {OBSERVE_MODE} - Attempt: {DEBUG_ATTEMPT}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     ```
+    <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
+- [ ] `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] `DEBUG_MODE` decided
@@ -174,8 +241,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `DEBUG_ATTEMPT` read from status.json (`0` if first run)
 - [ ] `PRIOR_OBSERVE_MODE` read from prior worktree-setup step (`off` if none)
 - [ ] `OBSERVE_MODE` decided (off | instrument | analyse)
+<!-- bkit:tracker true start -->
 - [ ] Issue update attempted (additive label `bkit:debug`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -250,15 +319,20 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-8. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+8. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
    [docs/plans/{YYYYMM}/logs/{FID}/status.json](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/status.json)
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 2 — Worktree Setup
 
@@ -268,7 +342,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Counters initialised (`TEST_ATTEMPT` = 0)
 - [ ] Artifact written (`debug-input-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `debug-start-workflow` and `debug-worktree-setup` recorded with `parentSha`, `debug-worktree-setup` with `debugMode`, `observeMode`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 2` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -356,9 +432,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-9. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+9. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below — ONLY add artifact links if present:
    ```comment
    ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
@@ -368,6 +448,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
    [debug-context-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md)
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 3 — Fetch Context
 
@@ -381,7 +462,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifacts written (if output available, `debug-context-ci-{DEBUG_ATTEMPT}.md`, `debug-context-diff-{DEBUG_ATTEMPT}.md`, `debug-context-tests-local-{DEBUG_ATTEMPT}.md`, `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`, `debug-context-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
 - [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -415,13 +498,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): failure-diagnose attempt ${TEST_ATTEMPT}"
    ```
-7. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+7. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Failure Diagnose - Verdict: {DIAGNOSE_VERDICT} - Strategy: {STRATEGY} - Attempt: {TEST_ATTEMPT}
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 4 — Failure Diagnose
 
@@ -432,7 +520,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 4` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -463,13 +553,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "fix({FID}): ${FIX_DESC}${VERBOSE_SUFFIX}"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Failure Remediate - Verdict: {REMEDIATE_VERDICT} - Attempt: {TEST_ATTEMPT}
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 5 — Failure Remediate
 
@@ -478,7 +573,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Source files modified
 - [ ] `REMEDIATE_VERDICT` extracted
 - [ ] Workflow status updated (step `debug-failure-remediate` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 5` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -507,13 +604,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      '.[-1].steps += [{step:"debug-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
    ```
+   <!-- bkit:tracker true end -->
 6. **If** all tests PASS → Step 7.
 7. **If** some tests FAIL:
    - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 4.
@@ -526,7 +628,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Tests executed (PR debug or full suite)
 - [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
 - [ ] Workflow status updated (step `debug-run-tests` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 6` section)
+<!-- bkit:tracker true end -->
 - [ ] Loop branch decided (FAIL and `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 4)
 
 ---
@@ -556,13 +660,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 4. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Push Remediation - Attempt: {DEBUG_ATTEMPT}
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 7 — Push Remediation
 
@@ -571,7 +680,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] `debugAttempt` persisted to status.json (no PR-body marker write)
 - [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 7` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -596,24 +707,34 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
 5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-6. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+6. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [debug-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md)
    {FID-debug-summary.md content verbatim}
    ```
+   <!-- bkit:tracker true end -->
 7. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-   <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+   <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Recommended Next Step
    {NEXT_STEP}
    ```
+   <!-- bkit:tracker true end -->
 8. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
 9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
 10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
@@ -627,8 +748,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 8` section)
 - [ ] Next-step handoff comment attempted (dedicated `Recommended Next Step` comment)
+<!-- bkit:tracker true end -->
 - [ ] `{NEXT_STEP}` surfaced verbatim in the final return to the user (advisory, not auto-invoked)
 
 ---
@@ -676,14 +799,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 6. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
-7. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+7. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Observe Instrument - Verdict: {OBSERVE_INSTRUMENT_VERDICT}
    [observe-instrument-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-observe-instrument-{DEBUG_ATTEMPT}.md)
    ```
+   <!-- bkit:tracker true end -->
 8. Close workflow → Step 12.
 
 ### 🔒 Gate 9 — Observe Instrument
@@ -697,7 +825,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Commit pushed to branch (no `bkit [skip ci]`)
 - [ ] PR title contains `[verbose ci]` (if `DEBUG_MODE` = pr)
 - [ ] Workflow status updated (step `debug-observe-instrument` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 9` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -720,14 +850,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-analyse attempt ${DEBUG_ATTEMPT}"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Observe Analyse - Verdict: {OBSERVE_ANALYSE_VERDICT}
    [observe-analyse-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-observe-analyse-{DEBUG_ATTEMPT}.md)
    ```
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 10 — Observe Analyse
 
@@ -737,7 +872,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict valid (`OBSERVE_ANALYSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`debug-observe-analyse-{DEBUG_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-observe-analyse` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 10` section)
+<!-- bkit:tracker true end -->
 
 ---
 
@@ -771,14 +908,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): observe-revert attempt ${DEBUG_ATTEMPT}"
    ```
-5. <!-- bkit:tracker comment-post-step start -->
-   _Tracker not wired — skip comment post._
-   <!-- bkit:tracker comment-post-step end -->
+5. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Observe Revert - Verdict: {OBSERVE_REVERT_VERDICT}
    ```
-6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `bkit [skip ci]`, posts handover content to Linear, and terminates the workflow.
+   <!-- bkit:tracker true end -->
+6. → **Failure Path**. Failure Path's `debug-abort-handover` writes the canonical `{FID}-handover.md`, commits with `bkit [skip ci]`, posts handover content to the tracker, and terminates the workflow.
 
 ### 🔒 Gate 11 — Observe Revert
 
@@ -787,7 +929,9 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Markers cleared (`git grep 'DEBUG-OBSERVE'` → no matches)
 - [ ] `OBSERVE_REVERT_VERDICT` extracted
 - [ ] Workflow status updated (step `debug-observe-revert` recorded with `parentSha`, `verdict`)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 11` section)
+<!-- bkit:tracker true end -->
 - [ ] Routed to **Failure Path**
 
 ---
@@ -806,14 +950,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    ```
 3. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
-   <!-- bkit:tracker issue-read start -->
-   _Tracker not wired — skip._
-   <!-- bkit:tracker issue-read end -->
+   <!-- bkit:tracker github start -->
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
+   <!-- bkit:tracker linear end -->
    ```bash
    # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
    AUTO_ROUTE_SUFFIX=""
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   # Persist AUTO_ROUTE_SUFFIX for the create-pr block (step 10) via a temp file — shell vars don't survive block boundaries.
+   # Persist AUTO_ROUTE_SUFFIX for the create-pr block below via a temp file — shell vars don't survive block boundaries.
    BKIT_AUTO_ROUTE_FILE=$(mktemp)
    printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
    echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
@@ -826,7 +973,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    # PR-mode: close-workflow commit IS the loud HEAD at CI time — carry the auto-route marker here.
-   # local-mode: the create-pr commit (step 9 below) is the CI-triggering HEAD — marker goes there instead.
+   # local-mode: the create-pr commit below is the CI-triggering HEAD — marker goes there instead.
    PR_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "pr" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}${PR_MODE_AUTO_SUFFIX}"
    # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
@@ -901,22 +1048,48 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 ```
 
 11. **If** `OBSERVE_MODE` = off:
-    <!-- bkit:tracker issue-update-review start -->
-    _Tracker not wired — skip._
-    <!-- bkit:tracker issue-update-review end -->
-    <!-- bkit:tracker issue-update-status start -->
-    _Tracker not wired — skip status/state update._
-    <!-- bkit:tracker issue-update-status end -->
+    <!-- bkit:tracker github start -->
+
+    No issue-state change; the phase label set in `issue-update-phase` carries the completion signal.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+
+    Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker github start -->
+
+    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+    1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+    2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+    3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
+
+    **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+
+    No separate project board; issue state carries the status. No-op (log `Board status carried by issue state — no separate update.`).
+    <!-- bkit:tracker linear end -->
+
 12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
-    <!-- bkit:tracker issue-read start -->
-    _Tracker not wired — skip._
-    <!-- bkit:tracker issue-read end -->
-    <!-- bkit:tracker kill-switch-check start -->
-    _Tracker not wired — kill switch inactive._
-    <!-- bkit:tracker kill-switch-check end -->
-13. <!-- bkit:tracker comment-post-step start -->
-    _Tracker not wired — skip comment post._
-    <!-- bkit:tracker comment-post-step end -->
+    <!-- bkit:tracker github start -->
+    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker github start -->
+    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml`.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live CI kill switch for cloud auto-routing is the in-job issue-label re-check inside `bkit-cloud.yml`.
+    <!-- bkit:tracker linear end -->
+13. <!-- bkit:tracker github start -->
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
     ```comment
     ### Step 12 — Close Workflow
@@ -924,21 +1097,28 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
     [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
     [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/run/{RUN_ID})
     ```
+    <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 12 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
+<!-- bkit:tracker true start -->
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+<!-- bkit:tracker true end -->
 - [ ] HEAD-Subject Assertion passed
+<!-- bkit:tracker true start -->
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
+<!-- bkit:tracker true end -->
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)
 - [ ] If PR created, changes pushed to `feat/{FID}`
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`)
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
+<!-- bkit:tracker true start -->
 - [ ] If `OBSERVE_MODE` = off issue update attempted (phase label `bkit:debug` preserved, status/state `In Review`)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Issue comment attempted (`Step 12` section)
+<!-- bkit:tracker true end -->

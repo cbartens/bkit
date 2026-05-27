@@ -13,7 +13,7 @@ import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import { getPkgRoot } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
-import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
+import { substituteWorkflow } from "./bkit-trackers.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -429,8 +429,6 @@ const BKIT_PREFIX = "bkit-";
 export function runClaudeModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    // Load tracker snippets once for this module run (reads from bkit package root).
-    const trackers = loadTrackers(getPkgRoot());
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
     const pairs = [
         [".agents/workflows", ".claude/commands"],
@@ -441,9 +439,9 @@ export function runClaudeModule(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            // Apply tracker substitution for workflow files; prompts are byte-identical.
+            // Resolve tracker blocks for workflow files; prompts are byte-identical.
             const transform = src === ".agents/workflows"
-                ? (c) => substituteWorkflow(c, issueTracker, trackers).output
+                ? (c) => substituteWorkflow(c, issueTracker).output
                 : null;
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
@@ -566,10 +564,8 @@ export function runClaudeModule(ctx) {
 export function runCursorModule(ctx) {
     const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    // Load tracker snippets once for this module run.
-    const trackers = loadTrackers(getPkgRoot());
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    // Commands: tracker substitution → T1 → T2
+    // Commands: tracker block resolution → T1 → T2
     {
         const src = ".agents/workflows";
         const dest = ".cursor/commands";
@@ -577,7 +573,7 @@ export function runCursorModule(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker, trackers).output));
+            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
             }

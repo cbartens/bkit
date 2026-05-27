@@ -14,7 +14,7 @@
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls. **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, read status.json — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`; **If** `failures` field present → cross-field invariants apply: `PASS ⇒ failures=0`, `FAIL ⇒ failures>0`, `CONCERNS ⇒ failures≥0`. Step `strategy` = `STANDARD | PIVOT | FINAL`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's `status.json` via `cat "$REPO_ROOT/$STATUS_REL"`: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step ≥30min idle → stale, clean.
@@ -24,10 +24,10 @@
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
+
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
-
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
 
 ---
@@ -48,9 +48,7 @@
    git -C "$REPO_ROOT" commit -m "chore({FID}): design FAILED bkit [skip ci]" 2>/dev/null || true
    git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
-2. Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+2. Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.3. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
@@ -94,20 +92,20 @@
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design", "bkit:auto"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, ≤3 tokens, lowercase; one `FID` for all artifacts once set.
+   
    **Format:** `{ISSUE_ID}-{slug}` — no prefix, slug ≤3 tokens, kebab, lowercase, no stopwords (e.g. `123-add-foo-bar`). Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-8. Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
+
+8. 
+   Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+   1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+   2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+   3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
 
-1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
-2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
-3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
-
-**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+   **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ## Design Workflow
    ### Step 1 — Start Workflow
@@ -116,7 +114,8 @@
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `ISSUE_ID`, `FID`)
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
+- [ ] `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Issue update attempted (phase label `bkit:design`, status/state `In Progress`)
@@ -182,8 +181,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
    ```
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Worktree Setup
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
@@ -226,8 +224,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
    ```
-4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Brainstorm & Ideate
    ```
@@ -258,8 +255,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-generate"
    ```
-4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 4 — Generate Design
    [design-v1-draft.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md)
@@ -289,6 +285,7 @@
 3. Read `design-review-1.md` and `design-review-2.md` (until `<!-- verdict:end -->` each) → extract `Verdict` from each → compute `REVIEW_VERDICT` = worst of the two (`FAIL > CONCERNS > PASS`).
 4. **If** any `Verdict` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-review-{N}.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 5. **If** `REVIEW_VERDICT` = FAIL → **Failure Path**.
+
 6. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -299,8 +296,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-review"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Design Review - Verdict: {REVIEW_VERDICT}
    ```
@@ -336,8 +332,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): apply-review"
    ```
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 6 — Apply Review - Verdict: {APPLY_REVIEW_VERDICT}
    [design-v2-reviewed.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md)
@@ -373,8 +368,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-organise"
    ```
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 7 — Design Organise - Verdict: {ORGANISE_VERDICT}
    [design-v3-organised.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md)
@@ -414,16 +408,14 @@
    ```bash
    git push origin $(git branch --show-current)
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 8 — Summary - Verdict: {SUMMARY_VERDICT}
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
    {design-summary.md content verbatim}
    ```
 8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Recommended Next Step
    {NEXT_STEP}
@@ -453,12 +445,11 @@
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. Read `design-v3-organised.md` section `Design Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
-2. `mcp__github__issue_read({ method: "get_sub_issues", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract sub-issues array. Each entry has `number` (user-facing #N), `id` (internal node ID for sub-issue attach calls), `title`, `state`.
-   → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
-3. Per workstream `WS-{N}` in `WORKSTREAMS`:
+2. `mcp__github__issue_read({ method: "get_sub_issues", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract sub-issues array. Each entry has `number` (user-facing #N), `id` (internal node ID for sub-issue attach calls), `title`, `state`.→ `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
+3. 
+   Per workstream `WS-{N}` in `WORKSTREAMS`:
    - **If** `EXISTING[WS-{N}]` present → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{N}].id`.
-     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
-     `{BODY}` = fenced block below:
+     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).`{BODY}` = fenced block below:
      ```comment
      ## Workstream Update — {FID}
      **Parent issue:** {ISSUE_ID}
@@ -472,11 +463,11 @@
      ```
      Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
    - **Else** → set `{SUB_TITLE}` = `WS-{N}: {NAME}`, `{SUB_BODY}` = description block below.
+       
      Two-step (GitHub has no `parentId` field on issue create):
+     1. `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}`.
+     2. `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.Description block:
 
-1. `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}`.
-2. `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
-     Description block:
      ```description
      ## Workstream Create — {FID}
      **Parent issue:** {ISSUE_ID}
@@ -488,24 +479,27 @@
      ### Rationale
      {RATIONALE}
      ```
+
      Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `{SUB_ISSUE_NUMBER}`. **If** `{SUB_ISSUE_NUMBER}` empty → **Failure Path**.
+
 4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{K}].id`.
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
-   `{BODY}` = fenced block below:
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).`{BODY}` = fenced block below:
    ```comment
    ## Workstream Delete — {FID}
    **Parent issue:** {ISSUE_ID}
    **Parent design:** [docs/plans/{YYYYMM}/{FID}-design.md](https://github.com/{OWNER_REPO}/blob/main/docs/plans/{YYYYMM}/{FID}-design.md)
    No longer in current design. Body left unchanged.
    ```
-5. **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `{BLOCKED_BY_LIST}` from `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. Set `{ISSUE_ID}` = `{WORKSTREAM_ISSUE_ID[WS-{N}]}` for this call.
+5. 
+   **For** each workstream `WS-{N}` with non-empty `Requires` → resolve `{BLOCKED_BY_LIST}` from `[WORKSTREAM_ISSUE_ID[WS-X] for X in Requires]`. **If** any entry empty → **Failure Path**. Set `{ISSUE_ID}` = `{WORKSTREAM_ISSUE_ID[WS-{N}]}` for this call.
+      
    GitHub Issues have no native `blockedBy` field. Encode via issue body marker block:
+   1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `body` as `{CURRENT_BODY}`.
+   2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
+   3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
 
-1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `body` as `{CURRENT_BODY}`.
-2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
-3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
+   `/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body via `issue-blockers-check`.
 
-`/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body via `issue-blockers-check`.
 6. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
@@ -516,8 +510,7 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues bkit [skip build]"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 9 — Design Workstream Issues
    ```
@@ -577,16 +570,14 @@
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    ```
-5. GitHub no-op. Issue stays `open`; phase label set in `issue-update-phase` carries the completion signal until the next phase or terminal ship close (`issue-update-merged`).
+5. 
+   No issue-state change; the phase label set in `issue-update-phase` carries the completion signal.
    GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
+   1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
+   2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
+   3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
 
-1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
-2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
-3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
-
-**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
+   **If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Close Workflow
    ```

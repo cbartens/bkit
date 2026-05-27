@@ -1,382 +1,95 @@
 # Trackers
 
 > [!CAUTION]
-> **Purpose:** Per-tracker definitions consumed by `bkit install --tracker=<name>` to substitute tracker-specific prose into `.agents/workflows/bkit-*.md` during the mirror pass to `.claude/commands/` and `.cursor/commands/`.
+> **Purpose:** Reference for the inline tracker-block model used by `.agents/workflows/bkit-*.md`. **Not consumed by the installer** — there is no `trackers.md` substitution. The full per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents the marker contract and the cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
-> - Token-efficient dense phrasing; agent / installer readers only.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
+> - Token-efficient dense phrasing; agent / maintainer readers only.
+> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.agents/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Three trackers supported: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - Every tracker section MUST define ALL snippet IDs in the same order. Missing snippet = install-time substitution gap.
-> - When a workflow gains a new tracker-specific call site, add the matching snippet ID to **every** tracker section before inserting the marker pair in the workflow source.
-> - Adding a new tracker (Jira, etc.): append a `## <name>` section, add the enum value to `.agents/scripts/bkit-manifest.ts`, document the MCP server config under `mcpServers.<name>` in `.agents/templates/.mcp.json` and `.agents/templates/.cursor/mcp.json`. No workflow rewrites.
+> - Adding a new tracker (Jira, etc.): add the enum value to `.agents/scripts/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.agents/templates/.mcp.json` and `.agents/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.agents/scripts/bkit-trackers.ts`). There is no `none` marker — no-tracker content is `false`.
 
-## Substitution contract
+## Marker contract
 
-Workflow source files mark substitution points with HTML-comment marker pairs:
+Workflow sources carry the wired tracker variants inline. The installer reads `bkit.issueTracker` from the consumer manifest and resolves the markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (see `.agents/scripts/bkit-trackers.ts`). Mirrors are clean — no markers survive.
 
-```markdown
-<!-- bkit:tracker {snippet-id} start -->
+### Per-tracker pair (`github` / `linear`)
 
-> _Tracker not wired — skip._
+Every tracker call site is a consecutive `github` → `linear` pair, optionally followed by a `false` block (the substantive no-tracker rendering — see below). With no `false` block, the no-tracker rendering is a single generic message inserted at resolution time.
 
-<!-- bkit:tracker {snippet-id} end -->
+```text
+<!-- bkit:tracker github start -->
+mcp__github__… call
+<!-- bkit:tracker github end -->
+<!-- bkit:tracker linear start -->
+mcp__linear__… call
+<!-- bkit:tracker linear end -->
 ```
 
-At install time, the installer:
+Resolution: `github` → github block; `linear` → linear block; `none` → the pair's trailing `false` block if present, else collapses to **`_No tracker connected, skip step._`**. A list-number prefix (`3. `) before the pair is preserved on the kept block / stub. A lone `github` or `linear` block (no matching partner) is reported as an orphan.
 
-1. Reads `bkit.issueTracker` from the consumer manifest (`github` | `linear` | `none`, default `none`)
-2. Finds each `<!-- bkit:tracker {snippet-id} start -->` marker in a workflow source
-3. Extracts the `### {snippet-id}` sub-section body from the chosen tracker's `## {tracker}` section below
-4. Replaces everything between the marker pair with that body
-5. Writes the result to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md`
+### Conditional blocks (`bkit:tracker true` / `bkit:tracker false`)
 
-Re-runnable: source `.agents/workflows/*.md` always has the no-tracker fallback content between markers. Switching trackers (`bkit install --tracker=linear` after running with `github`) does a fresh substitution against the source. Idempotent.
+Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body). These are the ONLY no-tracker markers — there is no `none` marker.
 
-## Snippet IDs
+- `<!-- bkit:tracker true start/end -->` — kept when a tracker IS connected (`github` or `linear`); **removed entirely under `none`** (no stub). Used for shared content like a comment `{BODY}` fence that is identical for github and linear.
+- `<!-- bkit:tracker false start/end -->` — kept ONLY under `none`; removed when wired. For substantive no-tracker behaviour (`issue-id-extraction`, `fid-format`, `pr-body-marker`, `pr-body-metadata`). A `false` block placed directly after a `github`/`linear` pair is consumed by the pair (it is the pair's `none` rendering); a standalone `false` block is resolved on its own.
 
-Every tracker section MUST define these sub-sections (snippet IDs):
+```text
+<!-- bkit:tracker true start -->
+… shared content (kept when wired; removed under none) …
+<!-- bkit:tracker true end -->
+```
+
+Conditionals are resolved AFTER the pair pass, so a pair nested inside a kept `true` block is resolved first. A removed block consumes its leading newline + indentation so no blank gap remains. An unbalanced `start`/`end` is reported as an orphan.
+
+**Numbered-step rule:** never wrap a numbered list item's NUMBER inside a `true` block — under `none` the whole item (number included) vanishes and leaves a numbering gap (`1, 6, 7`). For a numbered step whose entire body is tracker-only, keep the `N.` outside the markers and pair a `true` body with a trailing `false` stub:
+
+```text
+N. <!-- bkit:tracker true start -->
+   … tracker-only body (github/linear pairs allowed inside) …
+   <!-- bkit:tracker true end -->
+   <!-- bkit:tracker false start -->
+   _No tracker connected, skip step._
+   <!-- bkit:tracker false end -->
+```
+
+Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — the number always survives. (The bare-`true` "removed, no stub" form is for **checklist `- [ ]` gate items**, where vanishing is correct — a stub bullet would be noise.)
+
+## Interaction catalog
+
+The per-tracker call sites are referenced across `.agents/workflows.md` by these names. Each is an inline `github`/`linear` pair at its call site; this table maps the name to its tracker tooling (reference only — the authoritative bodies are inline in the workflows). The `none` column shows the no-tracker rendering: most sites have no `false` block and collapse to the generic `_No tracker connected, skip step._`; a few carry a substantive trailing `false` block (shown) because they must still function without a tracker.
 
 <!-- prettier-ignore -->
-| Snippet ID | What it provides |
-| --- | --- |
-| `rule-block` | Header rule lines (Tracker / Labels / Comments) for the workflow's CAUTION block |
-| `issue-id-extraction` | Step 1 ISSUE_ID extraction patterns + fallback create-issue call |
-| `fid-format` | FID slug format regex and example |
-| `issue-read` | Read issue state + labels + body + comments |
-| `issue-update-phase` | Set phase label + tracker-specific "active" state for current workflow |
-| `issue-update-review` | Close Workflow hand-off (design/plan/build/debug) — non-terminal state transition |
-| `issue-update-failed` | Failure Path additive label + state update |
-| `issue-update-debug` | Debug additive label + state update |
-| `issue-update-merged` | Ship terminal state update (`bkit:merged`, close issue if tracker supports) |
-| `issue-update-status` | Move project board item to the workflow's status/state (Start → "In progress"; phase Close → "In review"; Ship Close → "Done"). Best-effort |
-| `comment-post-step` | Per-step comment post (NEW comment, MCP-only, no edit) — targets `{ISSUE_ID}` |
-| `comment-on-issue` | Comment on an arbitrary issue (not the workflow's main one) — targets `{TARGET_ISSUE_ID}` |
-| `list-sub-issues` | Enumerate sub-issues of a parent (design Step 9 workstream sync) |
-| `create-sub-issue` | Create a new sub-issue attached to a parent |
-| `set-blocked-by` | Set `blockedBy` edges on an issue (workstream `Requires` propagation) |
-| `issue-blockers-check` | Read blocked-by relations/markers; gate workflow if any blocker still open |
-| `phase-labels` | Mapping of workflow names to phase labels |
-| `kill-switch-check` | After `issue-read`: detect missing `bkit:auto` and terminate current workflow (live kill switch for CI auto-routing is in `bkit-cloud.yml` YAML, not here) |
-| `pr-body-metadata` | PR body marker — parsing/read instructions for cross-workflow issue/FID resolution |
-| `pr-body-marker` | PR body marker — literal HTML comment line for inclusion in PR body during creation |
-
-`none` defines the same snippet IDs, but every body is a single-line stub.
-
----
-
-## github
-
-GitHub Issues + Projects v2. Default tracker.
-
-**Project board sync (optional, #137):** the `issue-update-status` snippet reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover the ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields` (Status field's numeric `id` → `statusFieldId`; each option's raw `id` → the option id, e.g. `47fc9ee4`). Requires the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects.
-
-### rule-block
-
-> - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
-> - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
-
-### issue-id-extraction
-
-**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design", "bkit:auto"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
-
-### fid-format
-
-**Format:** `{ISSUE_ID}-{slug}` — no prefix, slug ≤3 tokens, kebab, lowercase, no stopwords (e.g. `123-add-foo-bar`). Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-
-### issue-read
-
-`mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-
-### issue-update-phase
-
-Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-
-### issue-update-review
-
-GitHub no-op. Issue stays `open`; phase label set in `issue-update-phase` carries the completion signal until the next phase or terminal ship close (`issue-update-merged`).
-
-### issue-update-failed
-
-Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-
-### issue-update-debug
-
-Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
-
-### issue-update-merged
-
-Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}], state: "closed", state_reason: "completed" })`.
-
-### issue-update-status
-
-GitHub Projects v2 board status. Best-effort, NEVER gate. Target option depends on call site (mirrors Linear state): **Start** (Step 1 of design/plan/build/debug/ship) → "In progress" (`progressOptionId`); **phase Close** (design/plan/build/debug) → "In review" (`reviewOptionId`); **Ship Close** → "Done" (`doneOptionId`). Requires the `projects` toolset (`.mcp.json` `X-MCP-Toolsets`) + `package.json` `bkit.githubProject`. **If** `bkit.githubProject` absent → skip (log `Project board sync not configured — skipping status update.`). **Else** read `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` from it, then:
-
-1. Ensure on board (idempotent): `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })`.
-2. Resolve numeric item id (`update_project_item` needs the numeric `item_id`, NOT the node id returned by step 1): `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}`.
-3. Set status: `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{TARGET_OPTION_ID}" } })` — `{TARGET_OPTION_ID}` = `progressOptionId` at phase Start, `reviewOptionId` at phase Close, `doneOptionId` at Ship Close.
-
-**If** any call fails → retry once after 5s, then continue. `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name.
-
-### comment-post-step
-
-`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-
-### comment-on-issue
-
-`mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
-
-### list-sub-issues
-
-`mcp__github__issue_read({ method: "get_sub_issues", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract sub-issues array. Each entry has `number` (user-facing #N), `id` (internal node ID for sub-issue attach calls), `title`, `state`.
-
-### create-sub-issue
-
-Two-step (GitHub has no `parentId` field on issue create):
-
-1. `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}`.
-2. `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
-
-### set-blocked-by
-
-GitHub Issues have no native `blockedBy` field. Encode via issue body marker block:
-
-1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `body` as `{CURRENT_BODY}`.
-2. Compute `{NEW_BODY}`: **If** `{CURRENT_BODY}` contains `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` → replace between markers. **Else** → append `\n\n<!-- bkit:blocked-by start -->\n## Blocked by\n{BLOCKED_BY_LIST}\n<!-- bkit:blocked-by end -->` where each `{BLOCKED_BY_LIST}` entry is `- #N` on its own line.
-3. `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{NEW_BODY}" })`.
-
-`/bkit-build` Step 1's issue-blockers gate parses the same marker block from the issue body via `issue-blockers-check`.
-
-### issue-blockers-check
-
-Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
-
-### phase-labels
-
-<!-- prettier-ignore -->
-| Workflow | Phase label |
-| --- | --- |
-| `bkit-design` | `bkit:design` |
-| `bkit-plan` | `bkit:plan` |
-| `bkit-build` | `bkit:build` |
-| `bkit-debug` | `bkit:debug` (additive — phase label persists) |
-| `bkit-ship` | `bkit:ship` (→ `bkit:merged` on close) |
-
-### kill-switch-check
-
-After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml` — the orchestrator kill-switch is for non-CI paths only.
-
-### pr-body-metadata
-
-When `bkit-build` opens the PR, the body template includes a metadata marker:
-
-```html
-<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
-```
-
-HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
-
-**Fail-closed:** missing or malformed marker → terminate workflow (no-op exit; the live kill switch for CI auto-routing is the in-job `bkit:auto` label re-check in `bkit-cloud.yml`).
-
-### pr-body-marker
-
-<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
-
----
-
-## linear
-
-Linear (opt-in). Keep available for consumers who prefer Linear as the canonical tracker.
-
-### rule-block
-
-> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
-> - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Uniform with GitHub provider — no edit-in-place.
-
-### issue-id-extraction
-
-**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{ID}</id>`, `<linear_issue>{ID}</linear_issue>`, `Linear issue: {ID}`, `ISSUE-{ID}`, or scan for `[A-Z]+-\d+` pattern → first match → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__linear__save_issue({ title: "{task}", description: "{input}", team: "{LINEAR_TEAM}", assignee: "me", state: "In Progress", labels: ["bkit:design", "bkit:auto"] })` → extract `id` and use as `ISSUE_ID`. **If** `id` empty → **Failure Path**. `LINEAR_TEAM` = `bkit.linearTeam` from manifest.
-
-### fid-format
-
-**Format:** `{ISSUE_ID}-{slug}` — Linear ISSUE_ID lowercased (e.g. `bar-123-add-foo`), slug ≤3 tokens, kebab, lowercase, no stopwords. Assert format `[[ "{FID}" =~ ^[a-z]+-[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
-
-> Note: Linear ISSUE_IDs carry a team prefix (e.g. `BAR-123`) — FID inherits it. GitHub FIDs are numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes.
-
-### issue-read
-
-`mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
-
-### issue-update-phase
-
-Add `bkit:{phase}` to `{LABELS}` and drop other `bkit:design|plan|build|ship|merged` phase labels (additive `bkit:debug`, `bkit:auto`, `bkit:failed` preserved) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Progress", labels: [{LABELS}] })`.
-
-### issue-update-review
-
-Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
-
-### issue-update-failed
-
-Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-
-### issue-update-debug
-
-Add `bkit:debug` to `{LABELS}` (additive — phase label persists) → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })`.
-
-### issue-update-merged
-
-Drop all `bkit:*` phase labels, add `bkit:merged`, drop `bkit:failed` if present → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "Done", labels: [{LABELS}] })`.
-
-### issue-update-status
-
-Linear has no separate project board — issue state is already moved by `issue-update-phase` (In Progress) / `issue-update-merged` (Done). No-op (log `Linear: board status carried by issue state — no separate update.`).
-
-### comment-post-step
-
-`mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
-
-### comment-on-issue
-
-`mcp__linear__save_comment({ issueId: "{TARGET_ISSUE_ID}", body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}` (caller sets, distinct from the workflow's main `{ISSUE_ID}`).
-
-### list-sub-issues
-
-`mcp__linear__list_issues({ parentId: "{ISSUE_ID}", limit: 250 })` → extract sub-issues array. Each entry has `id` (Linear team-prefixed e.g. `BAR-124`), `title`, `state.name`.
-
-### create-sub-issue
-
-`mcp__linear__save_issue({ parentId: "{ISSUE_ID}", team: "{LINEAR_TEAM}", title: "{SUB_TITLE}", description: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `id` as `{SUB_ISSUE_NUMBER}`. Linear handles parent attachment via `parentId` in the create call (no second call needed).
-
-### set-blocked-by
-
-`mcp__linear__save_issue({ id: "{ISSUE_ID}", blockedBy: [{BLOCKED_BY_LIST}] })` — `{BLOCKED_BY_LIST}` is an array of Linear issue IDs (e.g. `["BAR-123", "BAR-124"]`). Linear treats `blockedBy` as append-only; re-runs with unchanged edges are no-ops.
-
-### issue-blockers-check
-
-`mcp__linear__get_issue({ id: "{ISSUE_ID}", includeRelations: true })` → extract `relations` where `type` = `"blocked_by"` → for each entry extract `state.name` as `{BLOCKER_STATE}`. **If** any `{BLOCKER_STATE}` NOT IN `Done | Cancelled` → **Failure Path**.
-
-### phase-labels
-
-<!-- prettier-ignore -->
-| Workflow | Phase label |
-| --- | --- |
-| `bkit-design` | `bkit:design` |
-| `bkit-plan` | `bkit:plan` |
-| `bkit-build` | `bkit:build` |
-| `bkit-debug` | `bkit:debug` (additive — phase label persists) |
-| `bkit-ship` | `bkit:ship` (→ `bkit:merged` on close) |
-
-### kill-switch-check
-
-After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live CI kill switch for cloud auto-routing is the in-job issue-label re-check inside `bkit-cloud.yml` — no PR-label propagation required.
-
-### pr-body-metadata
-
-When `bkit-build` opens the GitHub PR, the body template includes a metadata marker:
-
-```html
-<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
-```
-
-(Linear ISSUE_ID like `BAR-123` — no `#` prefix since it's not a GitHub issue number.) HTML comment, invisible in rendered PR body. Downstream workflows resolve via `mcp__github__pull_request_read` + marker parsing.
-
-**Fail-closed:** missing or malformed marker → terminate workflow (no-op exit).
-
-### pr-body-marker
-
-<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
-
----
-
-## none
-
-No tracker wired. Base `bkit install` (without `--tracker=`) lands this. Workflows run, but every tracker call is a no-op + one-line log.
-
-### rule-block
-
-> - **Tracker:** not configured. Run `bkit install --tracker=github` (or `--tracker=linear`) to enable tracker integration. Workflows will continue to run without tracker comments / state updates.
-
-### issue-id-extraction
-
-**If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** scan prompt for `<id>{ID}</id>` or `ISSUE-{ID}` → first match → `ISSUE_ID`. **If** no `ID` found → set `ISSUE_ID=""` and log `Tracker not wired — proceeding without issue ID.` Workflow continues with FID derived from branch name.
-
-### fid-format
-
-**Format:** `{ISSUE_ID}-{slug}` if `ISSUE_ID` set, else `{branch-suffix}-{slug}`. Slug ≤3 tokens, kebab, lowercase. No strict regex assert.
-
-### issue-read
-
-_Tracker not wired — skip issue read. Log `Tracker not wired — STATE/LABELS/DESCRIPTION/COMMENTS empty.`_
-
-### issue-update-phase
-
-_Tracker not wired — skip._
-
-### issue-update-review
-
-_Tracker not wired — skip._
-
-### issue-update-failed
-
-_Tracker not wired — skip._
-
-### issue-update-debug
-
-_Tracker not wired — skip._
-
-### issue-update-merged
-
-_Tracker not wired — skip._
-
-### issue-update-status
-
-_Tracker not wired — skip status/state update._
-
-### comment-post-step
-
-_Tracker not wired — skip comment post._
-
-### comment-on-issue
-
-_Tracker not wired — skip._
-
-### list-sub-issues
-
-_Tracker not wired — sub-issues list empty._
-
-### create-sub-issue
-
-_Tracker not wired — skip sub-issue creation._
-
-### set-blocked-by
-
-_Tracker not wired — skip blocked-by._
-
-### issue-blockers-check
-
-_Tracker not wired — skip blocker check._
-
-### phase-labels
-
-_Tracker not wired — phase labels not applied._
-
-### kill-switch-check
-
-_Tracker not wired — kill switch inactive (workflow proceeds unconditionally)._
-
-### pr-body-metadata
-
-PR body still gets the marker, just without verified issue resolution:
-
-```html
-<!-- bkit:fid={FID} -->
-```
-
-(`bkit:issue=` omitted when `ISSUE_ID` is empty.) Downstream workflows read FID; tracker calls remain no-ops.
-
-### pr-body-marker
-
-<!-- bkit:fid={FID} -->
+| Interaction | Purpose | github | linear | none |
+| --- | --- | --- | --- | --- |
+| `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | "not configured" stub |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | prompt scan / `issue_write` create | prompt scan / `save_issue` create | scan prompt; else `ISSUE_ID=""` |
+| `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
+| `issue-read` | Read state + labels + body + comments | `issue_read` get / get_comments | `get_issue` / `list_comments` | skip (vars empty) |
+| `issue-update-phase` | Step 1: set phase label + active state | `issue_write` labels | `save_issue` state+labels | skip |
+| `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |
+| `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue` In Review | skip |
+| `issue-update-debug` | `/bkit-debug` Step 1 additive `bkit:debug` | `issue_write` labels | `save_issue` In Review | skip |
+| `issue-update-merged` | Ship terminal close | `issue_write` `bkit:merged` + closed | `save_issue` Done | skip |
+| `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
+| `comment-post-step` | NEW comment per workflow step | `add_issue_comment` | `save_comment` | skip |
+| `comment-on-issue` | NEW comment on an arbitrary issue | `add_issue_comment` (`{TARGET_ISSUE_ID}`) | `save_comment` (`{TARGET_ISSUE_ID}`) | skip |
+| `list-sub-issues` | Enumerate sub-issues of a parent | `issue_read` get_sub_issues | `list_issues` parentId | empty |
+| `create-sub-issue` | Create + attach a sub-issue | `issue_write` create + `sub_issue_write` add | `save_issue` parentId | skip |
+| `set-blocked-by` | Set `blockedBy` edges | issue-body marker block | `save_issue` blockedBy | skip |
+| `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | skip |
+| `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | inactive |
+| `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | FID-only, no fail-closed |
+| `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
+
+Phase-label set + additive-label semantics are documented in `.agents/workflows.md` § Tracker Integration.
+
+## github — Projects v2 board (optional, #137)
+
+The `issue-update-status` block reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover the ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields` (Status field's numeric `id` → `statusFieldId`; each option's raw `id` → the option id, e.g. `47fc9ee4`). Requires the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` is the single-select **option id**, not the option name. On failure → retry once after 5s, then continue.
+
+## linear — notes
+
+Linear `ISSUE_ID`s carry a team prefix (e.g. `BAR-123`) — FID inherits it (`bar-123-slug`). GitHub FIDs are numeric-only (`123-slug`). Cross-provider scripts MUST tolerate both shapes. `LINEAR_TEAM` = `bkit.linearTeam` from manifest. Linear has no separate project board — issue state (`In Progress` / `In Review` / `Done`) carries the status, so `issue-update-status` is a no-op.

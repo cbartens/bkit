@@ -810,11 +810,12 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     };
     expect(pkg.bkit?.issueTracker).toBe("github");
 
-    // workflow mirror must have no remaining bkit:tracker markers
+    // workflow mirror must have no remaining bkit:tracker OR bkit:when-tracker markers
     const claudeCmd = path.join(tmpDir, ".claude", "commands", "bkit-build.md");
     if (fs.existsSync(claudeCmd)) {
       const content = fs.readFileSync(claudeCmd, "utf-8");
       expect(content).not.toMatch(/<!--\s*bkit:tracker\s+\S+\s+(?:start|end)\s*-->/);
+      expect(content).not.toMatch(/<!--\s*bkit:when-tracker\s+(?:start|end)\b[^>]*-->/);
       expect(content).toContain("mcp__github__");
     }
   });
