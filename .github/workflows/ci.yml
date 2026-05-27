@@ -58,13 +58,12 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # Static checks (typecheck → prettier → vale → slop → verify-dist → bkit check)
+      # run first so they scan a CLEAN tree. Vitest runs LAST — it writes coverage and
+      # other artifacts that would otherwise pollute the Slop Scan / bkit check inputs.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
-
-      - name: Run Vitest Tests
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm test
 
       - name: Run Prettier Format Check
         if: steps.cache.outputs.skip != 'true'
@@ -89,3 +88,7 @@ jobs:
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+
+      - name: Run Vitest Tests
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm test
