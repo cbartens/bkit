@@ -64,7 +64,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` § Acceptance Scenario → Spec? Missing/vague → CONCERNS + concrete action items; initially set to `PENDING`.]
+[Summarise scenario narrative, success criteria, and key edge cases (1-3 lines); add verdict on adherence to `docs/plans/template.md` § Acceptance Scenario spec; initially set to `PENDING`.]
+
+## Breaking Changes
+
+[Summarise breaking changes & proposed naming implied by `Architecture`, `Data Model`, and `Decisions`. If none then `None`; initially set to `PENDING`.]
 
 ## Feasibility
 

@@ -42,7 +42,7 @@ maxTurns: 25
 8. Update **Create** output - set `Verdict` via `Edit`; mapping:
    - `PASS` = plan ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope or completeness gaps.
-   - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, scope gaps).
+   - `CONCERNS` = revisions needed before building; content-level issues (vague/missing `Acceptance Scenario`, unscoped breaking changes/naming the design implies, scope gaps).
 
 **Output format:**
 
@@ -67,7 +67,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` `Acceptance Scenario` spec? — terse verdict. Note unchecked human-confirmation gates as expected pre-review state, NOT a downgrade trigger; initially set to `PENDING`.]
+[Summarise scenario narrative, success criteria, and key edge cases (1-3 lines); add verdict on adherence to `docs/plans/template.md` § Acceptance Scenario spec; initially set to `PENDING`.]
+
+## Breaking Changes
+
+[Summarise `Breaking Changes & Naming Review`. If none declared then `None`; initially set to `PENDING`.]
 
 ## Design Alignment
 
