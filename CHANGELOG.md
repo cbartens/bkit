@@ -6,11 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
-
-### Changed
+## [2.8.4] — 2026-05-27
 
 ### Fixed
+
+- **The Renovate private-registry `hostRules` token anchor was trapped in the canonical-overwrite `renovate.json5`, so a consumer's activation was reverted by bkit's canonical rewrite — silently breaking lockfile regen for all dependency PRs (issue [#199](https://github.com/cbartens/bkit/issues/199)).** `.github/renovate.json5` is Tier-1 canonical-overwrite, but the `token: "{{ secrets.GH_BKIT_TOKEN }}"` line consumers must uncomment for Renovate's hosted lockfile regen to authenticate to `npm.pkg.github.com` lived there — so bkit's canonical rewrite kept reverting it (the `bkit install` overwrite path strips it unconditionally; `bkit upgrade` now conflict-flags such drift instead of silently overwriting), after which `renovate/artifacts` failed, `pnpm-lock.yaml` went stale, and consumer CI failed `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE`) on every bumped package. Observed on a 2.8.3 consumer across three upgrade commits. Fixed by moving the `hostRules` anchor out of the canonical file and seeding it (token line commented) into the consumer-owned `.github/renovate-local.json5` — which bkit creates once and never overwrites — so activation survives every upgrade. Renovate merges `hostRules` across extended presets; verified live on a consumer (Mend job, Renovate 43.194.0) that a secret-bearing token in the `local>` preset is honored ("Adding token authentication for npm.pkg.github.com" → lockfile regen succeeded, no 401). The Phase B activation checklist, `docs/deployments.md` (§ Renovate read-auth + the `GH_BKIT_TOKEN` presence matrix), and the consumer-facing template docs now point activation at `renovate-local.json5`. Consumers re-run `pnpm bkit upgrade` to drop the dead anchor from `renovate.json5`; if you had already uncommented the token there, move it to `renovate-local.json5` (the stub now seeds the commented line for you on a fresh install).
+
+---
+
+## [2.8.3] — 2026-05-26
+
+### Fixed
+
+- **Shipped `renovate.json5` referenced the consumer-overrides preset without the `.json5` extension, disabling the entire Renovate config (regression in 2.7.0, issue [#179](https://github.com/cbartens/bkit/issues/179)).** The generated `extends` entry was `local>OWNER/REPO//.github/renovate-local` (extensionless), but `bkit install --renovate` seeds the overrides file as `.github/renovate-local.json5`. Per Renovate's preset resolution an extensionless local preset defaults to `.json`, so Renovate fetched the nonexistent `renovate-local.json`, 404'd, and aborted the run with a `config-validation` error — disabling the whole repo config and raising an "Action Required: Fix Renovate Configuration" issue. Affected 2.7.0–2.8.2; found on a consumer running 2.8.2 (Renovate 43.194.0, Mend hosted), and bkit's own dogfood repo was affected too. Fixed by adding the explicit `.json5` extension to the preset reference everywhere bkit emits it (canonical template, regenerated dogfood config, the `RENOVATE_LOCAL_STUB` comment, and the `docs/deployments.md` / `docs/knowledge.md` references). The `.json5` seed file is kept (its comments are load-bearing and Renovate parses JSONC presets fine with the explicit extension); renaming the file to `.json` was rejected because bkit never overwrites the already-seeded `renovate-local.json5`, so it would re-break every existing consumer. Consumers re-run `pnpm bkit upgrade` to reconverge `renovate.json5` with zero drift (the `.json5` seed is already present and untouched). Tests now assert the `.json5` extension and that no extensionless reference survives.
+
+### Removed
+
+- **Removed the orphaned `lint:no-tier-terms` script.** The Phase-3 regression guard (`.agents/scripts/bkit-lint-no-tier-terms.ts` + its `package.json` script) was not wired into CI or any git hook, so it enforced nothing while still failing on pre-existing doc terminology. Dropped entirely.
 
 ---
 

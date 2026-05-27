@@ -1401,6 +1401,32 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 //   ],
 {
   $schema: "https://docs.renovatebot.com/renovate-schema.json",
+
+  // Private-registry read auth for the restricted \`@cbartens/bkit\` package on
+  // npm.pkg.github.com. Renovate resolves the WHOLE workspace (incl. this package)
+  // to regenerate pnpm-lock.yaml for ANY dependency bump — without a token the regen
+  // 401s, every dependency PR lands with a stale lockfile, and CI fails
+  // \`pnpm install --frozen-lockfile\` (ERR_PNPM_OUTDATED_LOCKFILE). The GitHub-Actions
+  // \`GH_BKIT_TOKEN\` CI secret is NOT visible to Mend's hosted runner — provision it
+  // on Renovate's side, then activate the token below. This anchor lives here
+  // (consumer-owned) and NOT in renovate.json5 (canonical-overwrite, clobbered every
+  // \`bkit upgrade\`): Renovate merges hostRules across presets, so the token SURVIVES
+  // upgrades.
+  //   - Mend hosted: add \`GH_BKIT_TOKEN\` (a PAT with \`read:packages\`) as a Mend
+  //     repository secret (https://developer.mend.io/github/<owner>/<repo> → Settings →
+  //     Secrets). You MUST tick "If checked - secret will be used during the scan as an
+  //     environment variable." — without it the secret is never exposed to the scan and
+  //     regen still 401s. Then uncomment the \`token:\` line below.
+  //   - Self-hosted: inject via the \`RENOVATE_HOST_RULES\` env var or an \`encrypted\`
+  //     block — no edit needed here.
+  hostRules: [
+    {
+      matchHost: "npm.pkg.github.com",
+      hostType: "npm",
+      // token: "{{ secrets.GH_BKIT_TOKEN }}",
+    },
+  ],
+
   packageRules: [],
 }
 `;
@@ -1492,8 +1518,8 @@ export function runRenovateModule(ctx) {
         action: "Phase B — activate Renovate by installing the GitHub App (one-time, manual, free; bkit cannot automate this — no `gh api` equivalent exists):\n\n" +
             "  1. Open https://github.com/apps/renovate and click Install.\n" +
             '  2. Choose "Only select repositories" → pick this repo.\n' +
-            "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `GH_BKIT_TOKEN` secret is NOT visible to Mend's runner. The shipped config has an inert `hostRules` anchor for `npm.pkg.github.com` — finish it:\n" +
-            '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `GH_BKIT_TOKEN` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.GH_BKIT_TOKEN }}"` in `.github/renovate.json5`.\n' +
+            "  3. Grant Renovate read-auth to the private `@cbartens/bkit` package — REQUIRED, else every dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE`. Renovate resolves the whole workspace (incl. the GitHub Packages `@cbartens/bkit`) to regenerate `pnpm-lock.yaml`; the CI `GH_BKIT_TOKEN` secret is NOT visible to Mend's runner. Your consumer-owned `.github/renovate-local.json5` ships a commented `hostRules` token anchor for `npm.pkg.github.com` — activate it (it survives `bkit upgrade`; the canonical `renovate.json5` deliberately holds no token):\n" +
+            '     - Mend hosted: dashboard → https://developer.mend.io/github/<owner>/<repo> → Settings → Secrets → add `GH_BKIT_TOKEN` (PAT with `read:packages`). CRITICAL: in the secret dialog, tick "If checked - secret will be used during the scan as an environment variable." — without it the secret is not exposed to the scan and lockfile regen still 401s. Then uncomment `token: "{{ secrets.GH_BKIT_TOKEN }}"` in `.github/renovate-local.json5`.\n' +
             "     - Self-hosted: set the `RENOVATE_HOST_RULES` env var (or an `encrypted` block). See docs/deployments.md § GitHub Actions pinning.\n" +
             '  4. Wait ~5 minutes for Renovate\'s onboarding PR. Verify it targets your integration branch (the shipped config sets `baseBranches: ["dev"]`).\n' +
             "     - If the onboarding PR targets a different branch, adds a redundant root `renovate.json`, or proposes 40+ ungrouped PRs: close it. Renovate scanned a stale commit. Re-trigger from the Mend dashboard at https://developer.mend.io/github/<owner>/<repo>.\n" +

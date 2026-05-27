@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "2.8.3",
+  "pinnedVersion": "2.8.4",
   "tier3Hashes": {
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
@@ -7,7 +7,7 @@
     ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "a36863c230aa6d206b5cdf5f64a71036d99e1a0b7cb9e85191c8c040d4287c8d",
+    "docs/deployments.md": "351ff9c2bbedd33bac3da2c54d3597d7f7b7c0606855f2dfe830546e71b5d3d7",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "5a07bba2ae7b29166d2934c32dcaff3ab39097f677734a48c5b3f2afe7bf64c7",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
