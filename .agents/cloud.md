@@ -241,7 +241,7 @@ Everything sits **in the repo** under `.cursor/`. bkit ships canonical content f
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 22 + pnpm `10.33.0` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
-| `.cursor/hooks/preflight.sh` | Tracker opt-in guard — Auto label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
+| `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
 
 ## How GitHub dispatch works
 

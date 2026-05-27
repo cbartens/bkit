@@ -360,6 +360,41 @@
         "at": "2026-05-27T07:26:40Z",
         "parentSha": "fdba07ee7fd22c67ff55c8310875447f8a594482",
         "artifacts": []
+      },
+      {
+        "step": "ship-merge-pr",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "failures": 0,
+        "at": "2026-05-27T07:30:12Z",
+        "parentSha": "86e24cfcdde8a3a5b8176f7b16d1e7c10b7fccdd",
+        "artifacts": []
+      },
+      {
+        "step": "ship-switch-to-dev",
+        "status": "DONE",
+        "at": "2026-05-27T07:32:22Z",
+        "parentSha": "acfce670a0db0cfc79e122f975e1d84cbb7e1518",
+        "artifacts": []
+      },
+      {
+        "step": "ship-update-docs",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T07:35:38Z",
+        "parentSha": "acfce670a0db0cfc79e122f975e1d84cbb7e1518",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/ship-update-docs.md"]
+      },
+      {
+        "step": "ship-summary",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "at": "2026-05-27T07:35:38Z",
+        "parentSha": "acfce670a0db0cfc79e122f975e1d84cbb7e1518",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/ship-summary.md"]
       }
     ]
   }
