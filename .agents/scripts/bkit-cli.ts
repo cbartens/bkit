@@ -16,6 +16,17 @@ export type ModuleFlag =
   | "full";
 export type { IssueTracker };
 
+/** Cloud-agent variant chosen via `--cloud=<variant>`. */
+export const CLOUD_VARIANTS = ["claude", "cursor"] as const;
+export type CloudVariant = (typeof CLOUD_VARIANTS)[number];
+
+/** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
+export function parseCloudVariant(value: unknown): CloudVariant | null {
+  return typeof value === "string" && (CLOUD_VARIANTS as readonly string[]).includes(value)
+    ? (value as CloudVariant)
+    : null;
+}
+
 export type Verb = "install" | "check" | "doctor" | "uninstall" | "upgrade" | "help";
 
 export interface ParsedArgs {
@@ -27,6 +38,10 @@ export interface ParsedArgs {
   upgradeFlags: UpgradeFlags;
   /** Issue tracker selected via `--tracker=<name>`. null = not specified (use manifest field or default). */
   tracker: IssueTracker | null;
+  /** Cloud variant selected via `--cloud=claude|cursor`. null = not specified. */
+  cloudVariant: CloudVariant | null;
+  /** Install-context force: allows switching an established issue tracker. */
+  force: boolean;
 }
 
 export interface UninstallFlags {
@@ -172,6 +187,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const uninstallFlags = defaultUninstallFlags();
   const upgradeFlags = defaultUpgradeFlags();
   let tracker: IssueTracker | null = null;
+  let cloudVariant: CloudVariant | null = null;
+  let force = false;
 
   for (const arg of args) {
     if (arg.startsWith("--")) {
@@ -191,6 +208,35 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
+      // Value-bearing flag: --cloud=<claude|cursor>
+      // Bare `--cloud` (no value) is accepted for uninstall (variant not needed — reads from
+      // package.json). For install/check/upgrade it requires an explicit variant; future
+      // improvement: resolve variant from recorded bkit.cloudAgents for check/upgrade too.
+      if (flag === "cloud") {
+        if (verb !== "uninstall") {
+          console.error(
+            `[bkit] --cloud requires an explicit variant: --cloud=claude or --cloud=cursor. Run \`bkit help\` for usage.`,
+          );
+          process.exit(1);
+        }
+        // uninstall --cloud: add the module flag without setting a cloudVariant.
+        moduleFlags.add("cloud");
+        continue;
+      }
+      if (flag.startsWith("cloud=")) {
+        const value = flag.slice("cloud=".length);
+        const parsed = parseCloudVariant(value);
+        if (parsed === null) {
+          console.error(
+            `[bkit] Unknown cloud variant: "${value}". Valid values: ${CLOUD_VARIANTS.join(", ")}`,
+          );
+          process.exit(1);
+        }
+        cloudVariant = parsed;
+        moduleFlags.add("cloud");
+        continue;
+      }
+
       // Uninstall-specific flags (accepted for all verbs that use them)
       if (flag === "dry-run") {
         uninstallFlags.dryRun = true;
@@ -199,6 +245,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
       if (flag === "force") {
         uninstallFlags.force = true;
+        force = true;
         continue;
       }
       if (flag === "nuke") {
@@ -231,7 +278,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
-      // Module flags
+      // Module flags (bare --cloud handled above; skip it here)
       const moduleFlag = flag as ModuleFlag;
       if (!MODULE_FLAGS.has(moduleFlag)) {
         console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
@@ -259,7 +306,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   // Full uninstall removes opt-in add-ons too (leave zero footprint); full install does not.
   const modules = resolveModules(moduleFlags, { optInModulesInFull: verb === "uninstall" });
 
-  return { verb, modules, uninstallFlags, upgradeFlags, tracker };
+  return { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force };
 }
 
 export function printUsage(): void {
@@ -298,12 +345,14 @@ Module flags (composable — same for install and uninstall):
   --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
                   NOT in install --full; IS removed by uninstall --full). First-party
                   GitHub feature; no App install or phase gate. Mutually exclusive with --renovate.
-  --cloud         .github/workflows/bkit-cloud.yml (opt-in — NOT in install --full;
-                  IS removed by uninstall --full). Post-CI auto-routing: dispatches
-                  bkit-ship on CI pass / bkit-debug on CI fail. Inert without
-                  ANTHROPIC_API_KEY + LINEAR_API_KEY repo secrets, GitHub Actions write
-                  permissions, and (Cursor half) a dashboard trigger. Records
-                  bkit.cloudAgents in package.json.
+  --cloud=claude  Install Claude cloud integration (opt-in — NOT in install --full;
+                  IS removed by uninstall --full). Requires tracker=github.
+                  Ships: .github/workflows/bkit-cloud.yml + .claude/hooks/cloud-bootstrap.sh.
+                  Requires ANTHROPIC_API_KEY repo secret and the Claude GitHub App
+                  (run /install-github-app once). Records bkit.cloudAgents=claude.
+  --cloud=cursor  Install Cursor cloud integration (opt-in). Requires tracker=linear.
+                  Ships: .cursor/Dockerfile + .cursor/environment.json.
+                  Records bkit.cloudAgents=cursor.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
@@ -319,6 +368,8 @@ Install flags:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, none (default).
                         Writes bkit.issueTracker to package.json and substitutes tracker snippets
                         into workflow mirrors (.claude/commands/, .cursor/commands/).
+  --force               Allow switching an established issue tracker (first-set is free;
+                        subsequent switches require --force to prevent accidental reconfiguration).
 
 Upgrade flags:
   --non-interactive  Auto-apply non-conflicting changes; emit conflict list to stderr;
@@ -331,7 +382,8 @@ Examples:
   bkit install --ci --lint      CI + lint stack + core; nothing else.
   bkit install --renovate       Renovate config only (phase-gated; opt-in).
   bkit install --dependabot     Dependabot config + helper script (opt-in; alternative to --renovate).
-  bkit install --cloud          Post-CI auto-routing workflow only (opt-in; cloud agents).
+  bkit install --cloud=claude   Claude cloud integration (GitHub tracker required; opt-in).
+  bkit install --cloud=cursor   Cursor cloud integration (Linear tracker required; opt-in).
   bkit install --full --renovate  Full stack + Renovate opt-in.
   bkit install --full           Explicit full stack (equivalent to no flags).
   bkit check --full             Drift detection across full stack (CI gate).

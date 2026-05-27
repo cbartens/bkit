@@ -4,9 +4,105 @@ import {
   getInstallManifest,
   getModuleManifest,
   getManagedPackageJsonKeys,
+  CLOUD_MANIFEST_CLAUDE,
+  CLOUD_MANIFEST_CURSOR,
+  parseCloudAgents,
   type ManifestEntry,
   type ModuleName,
 } from "./bkit-manifest";
+
+// ---------------------------------------------------------------------------
+// CLOUD_MANIFEST_CLAUDE / CLOUD_MANIFEST_CURSOR — variant-split (T1.5 / DECISION-D)
+// Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
+// ---------------------------------------------------------------------------
+
+describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + cloud-bootstrap.sh", () => {
+  it("contains bkit-cloud.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("contains cloud-bootstrap.sh as markered-text", () => {
+    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("does NOT contain .cursor/Dockerfile or .cursor/environment.json (cursor variant only)", () => {
+    expect(CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".cursor/Dockerfile")).toBeUndefined();
+    expect(
+      CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".cursor/environment.json"),
+    ).toBeUndefined();
+  });
+
+  it("contains exactly 2 entries (bkit-cloud.yml + cloud-bootstrap.sh)", () => {
+    expect(CLOUD_MANIFEST_CLAUDE.length).toBe(2);
+  });
+});
+
+describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile + environment.json", () => {
+  it("contains .cursor/Dockerfile as markered-text", () => {
+    const entry = CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".cursor/Dockerfile");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("contains .cursor/environment.json as byte-equal-text with seedOrPrint=true", () => {
+    const entry = CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".cursor/environment.json");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.seedOrPrint).toBe(true);
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("does NOT contain bkit-cloud.yml or cloud-bootstrap.sh (claude variant only)", () => {
+    expect(
+      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-cloud.yml"),
+    ).toBeUndefined();
+    expect(
+      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
+    ).toBeUndefined();
+  });
+
+  it("contains exactly 2 entries (Dockerfile + environment.json)", () => {
+    expect(CLOUD_MANIFEST_CURSOR.length).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseCloudAgents — value-space + back-compat (DECISION-C AMENDED: single field)
+// ---------------------------------------------------------------------------
+
+describe("parseCloudAgents — value space and back-compat", () => {
+  it("parses 'claude' → 'claude'", () => {
+    expect(parseCloudAgents("claude")).toBe("claude");
+  });
+
+  it("parses 'cursor' → 'cursor'", () => {
+    expect(parseCloudAgents("cursor")).toBe("cursor");
+  });
+
+  it("parses 'none' → 'none'", () => {
+    expect(parseCloudAgents("none")).toBe("none");
+  });
+
+  it("back-compat: legacy 'enabled' → 'claude' (DECISION-C AMENDED)", () => {
+    expect(parseCloudAgents("enabled")).toBe("claude");
+  });
+
+  it("returns null for unknown values", () => {
+    expect(parseCloudAgents("linear")).toBeNull();
+    expect(parseCloudAgents("github")).toBeNull();
+    expect(parseCloudAgents("")).toBeNull();
+    expect(parseCloudAgents(null)).toBeNull();
+    expect(parseCloudAgents(undefined)).toBeNull();
+    expect(parseCloudAgents(42)).toBeNull();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // getInstallManifest — snapshot / structural contract

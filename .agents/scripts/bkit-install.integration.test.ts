@@ -1058,3 +1058,125 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Challenge regression tests — Finding 3 (constraint-before-write)
+//
+// The build challenge (Finding 3 MEDIUM) identified that the tracker value was
+// persisted to package.json BEFORE the cloud/tracker constraint check ran.
+// For `bkit install --tracker=github --cloud=cursor`:
+//   1. Tracker-switch block passed.
+//   2. bkit.issueTracker="github" WRITTEN to package.json.
+//   3. Cloud/tracker constraint fired (cursor requires linear != github) → exit 1.
+// Net effect: a failed install recorded the tracker, stranding the user.
+//
+// Remediation hoisted the cloud/tracker constraint check ABOVE the package.json
+// write, preserving the "no state written on hard error" invariant.
+//
+// These tests lock in the invariant:
+//   (a) `bkit install --tracker=github --cloud=cursor` exits non-zero.
+//   (b) package.json is NOT mutated (issueTracker NOT written on mismatch).
+// ---------------------------------------------------------------------------
+
+describe("Challenge Finding 3 — cloud/tracker constraint-before-write regression", () => {
+  const getInstallPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
+  const getTsxBin = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
+
+  it("--tracker=github --cloud=cursor exits non-zero (constraint mismatch)", () => {
+    // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    const initialPkg = { name: "constraint-test", version: "0.0.0" };
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const result = spawnSync(
+      tsxBin,
+      [getInstallPath(), "install", "--tracker=github", "--cloud=cursor"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 30_000,
+      },
+    );
+
+    // Must exit non-zero (the constraint hard-error path).
+    expect(
+      result.status,
+      `Expected non-zero exit for tracker/cloud mismatch.\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    ).not.toBe(0);
+
+    // Error output must mention the mismatch.
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined).toMatch(/cloud=cursor.*tracker.*linear|cursor.*requires.*linear/i);
+  });
+
+  it("--tracker=github --cloud=cursor does NOT write bkit.issueTracker to package.json (no partial write)", () => {
+    // Finding 3 (b): the "no state written on hard error" invariant.
+    // The pre-remediation code wrote issueTracker BEFORE the constraint check,
+    // meaning package.json was mutated even on a failed install.
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    const initialPkg = { name: "constraint-test", version: "0.0.0" };
+    const initialPkgJson = JSON.stringify(initialPkg);
+    fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkgJson, "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    spawnSync(tsxBin, [getInstallPath(), "install", "--tracker=github", "--cloud=cursor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 30_000,
+    });
+
+    // package.json must NOT have bkit.issueTracker set (no partial write).
+    const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { issueTracker?: string };
+    };
+
+    expect(
+      afterPkg.bkit?.issueTracker,
+      "bkit.issueTracker must NOT be written when the install exits due to a cloud/tracker constraint mismatch",
+    ).toBeUndefined();
+  });
+
+  it("--tracker=linear --cloud=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
+    // Complementary positive case: the matching pair must succeed and persist state.
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    const initialPkg = { name: "constraint-test", version: "0.0.0" };
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(initialPkg), "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const result = spawnSync(
+      tsxBin,
+      [getInstallPath(), "install", "--tracker=linear", "--cloud=cursor"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(
+      result.status,
+      `Expected exit 0 for matching tracker/cloud pair.\n` + `stdout: ${combined}`,
+    ).toBe(0);
+
+    const afterPkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { issueTracker?: string; cloudAgents?: string };
+    };
+
+    expect(afterPkg.bkit?.issueTracker).toBe("linear");
+    expect(afterPkg.bkit?.cloudAgents).toBe("cursor");
+  });
+});

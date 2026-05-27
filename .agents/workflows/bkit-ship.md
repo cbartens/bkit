@@ -374,7 +374,17 @@ description: "Ship Feature — Autonomous merge and archive"
      git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
    fi
    ```
-3. Merge with empty body:
+3. Run the HEAD-Subject Assertion (PR-title clause) before merge — the squash subject becomes `dev` HEAD:
+   ```bash
+   PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+     echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+     exit 1
+   fi
+   ```
+   **If** assertion fails → **Failure Path**.
+4. Merge with empty body:
    ```bash
    (
      cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
@@ -389,9 +399,9 @@ description: "Ship Feature — Autonomous merge and archive"
      --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
    [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
    ```
-4. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
-6. Update status and commit:
+5. `gh pr view {PR_NUMBER} --json state` → extract `state`.
+6. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
+7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -400,22 +410,23 @@ description: "Ship Feature — Autonomous merge and archive"
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
-7. <!-- bkit:tracker comment-post-step start -->
+8. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-8. **If** `state` = MERGED → Step 8.
-9. **If** `state` != MERGED:
-   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 6.
-   - **Else** → **Failure Path**.
-10. **Else** → **Failure Path**.
+9. **If** `state` = MERGED → Step 8.
+10. **If** `state` != MERGED:
+    - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 6.
+    - **Else** → **Failure Path**.
+11. **Else** → **Failure Path**.
 
 ### 🔒 Gate 5 — Merge PR
 
 - [ ] `MERGE_ATTEMPT` incremented
+- [ ] HEAD-Subject Assertion passed (PR-title clause invoked before merge; PR title free of CI-suppressor and `[skip build]` tokens — squash subject becomes `dev` HEAD)
 - [ ] PR merge attempted
 - [ ] `state` extracted (MERGED or not)
 - [ ] CI run triggered on dev (`RUN_ID` captured)

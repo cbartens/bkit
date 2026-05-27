@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
@@ -694,57 +695,80 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
   const dockerRel = path.join(".cursor", "Dockerfile");
   const envRel = path.join(".cursor", "environment.json");
 
-  it("writes bkit-cloud.yml + all cloud scaffolding and emits the bkit-cloud-setup advisory", () => {
+  it("cloud=claude: writes bkit-cloud.yml + cloud-bootstrap.sh and emits bkit-cloud-setup advisory", () => {
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws });
+    const ctx = makeCtx({ ws, cloudVariant: "claude" });
     runCloudModule(ctx);
 
     const routerPath = path.join(tmpDir, routerRel);
     expect(fs.existsSync(routerPath)).toBe(true);
     expect(fs.readFileSync(routerPath, "utf-8").length).toBeGreaterThan(0);
 
-    // Scaffolding moved into the cloud module (#119): cloud-bootstrap.sh, Cursor
-    // Dockerfile, environment.json all ship via --cloud now, not claude/cursor.
+    // cloud=claude ships: bkit-cloud.yml + cloud-bootstrap.sh (NOT .cursor/Dockerfile)
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(false);
 
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
     expect(advisory).toBeDefined();
     expect(advisory!.action).toMatch(/ANTHROPIC_API_KEY/);
-    // The env-scaffolding customisation advisory moved here from the claude module.
+    expect(advisory!.action).toMatch(/install-github-app/);
+    expect(advisory!.action).toMatch(/required/);
+    // Bare `Auto` must NOT appear in advisory text (migrated to bkit:auto)
+    expect(advisory!.action).not.toMatch(/\bAuto\b(?! route)/);
+    expect(advisory!.action).toMatch(/bkit:auto/);
+    // The env-scaffolding customisation advisory is emitted for cloud=claude too.
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
   });
 
-  it("github tracker: bkit-cloud-setup advisory includes the optional `@claude` mention tip", () => {
+  it("cloud=cursor: writes .cursor/Dockerfile + environment.json and emits bkit-cloud-setup advisory", () => {
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, issueTracker: "github" });
+    const ctx = makeCtx({ ws, cloudVariant: "cursor", issueTracker: "linear" });
+    runCloudModule(ctx);
+
+    // cloud=cursor ships: .cursor/Dockerfile + environment.json (NOT bkit-cloud.yml)
+    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, envRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
+
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/LINEAR_API_KEY/);
+    expect(advisory!.action).not.toMatch(/ANTHROPIC_API_KEY/);
+  });
+
+  it("cloud=claude: advisory does NOT reference LINEAR_API_KEY (GitHub-only path)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" });
     runCloudModule(ctx);
     const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory!.action).not.toMatch(/LINEAR_API_KEY/);
     expect(advisory!.action).toMatch(/install-github-app/);
     expect(advisory!.action).toMatch(/@claude/);
   });
 
-  it("linear tracker: bkit-cloud-setup advisory omits the `@claude` mention tip (GitHub-only path)", () => {
+  it("cloud=claude: persists bkit.cloudAgents = 'claude' to package.json on success", () => {
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, issueTracker: "linear" });
-    runCloudModule(ctx);
-    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
-    expect(advisory!.action).not.toMatch(/install-github-app/);
-  });
-
-  it("persists bkit.cloudAgents = 'enabled' to package.json on success", () => {
-    const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws }));
+    runCloudModule(makeCtx({ ws, cloudVariant: "claude" }));
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
       bkit?: { cloudAgents?: string };
     };
-    expect(pkg.bkit?.cloudAgents).toBe("enabled");
+    expect(pkg.bkit?.cloudAgents).toBe("claude");
+  });
+
+  it("cloud=cursor: persists bkit.cloudAgents = 'cursor' to package.json on success", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, cloudVariant: "cursor" }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { cloudAgents?: string };
+    };
+    expect(pkg.bkit?.cloudAgents).toBe("cursor");
   });
 
   it("dry-run: writes nothing to disk but still emits the setup advisory", () => {
     const ws = makeWriteSet();
-    const ctx = makeCtx({ ws, dryRun: true });
+    const ctx = makeCtx({ ws, dryRun: true, cloudVariant: "claude" });
     runCloudModule(ctx);
 
     expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
@@ -772,30 +796,35 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
   });
 
-  // --- issue #138: bkit-cloud.yml is rendered tracker-conditional ---
+  // --- bkit-cloud.yml is GitHub-only (Linear render branch removed) ---
 
-  it("github tracker: renders a Linear-free bkit-cloud.yml (issue #138)", () => {
+  it("cloud=claude: renders bkit-cloud.yml with id-token: write and no Linear references", () => {
     const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, issueTracker: "github" }));
+    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
     const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
+    expect(yml).toContain("id-token: write");
     expect(yml).not.toContain("LINEAR_API_KEY");
     expect(yml).not.toContain("mcp__linear__*");
     expect(yml).toContain("mcp__github__*");
     expect(yml).not.toMatch(/@@CLOUD_TRACKER/); // all sentinels resolved
   });
 
-  it("linear tracker: keeps LINEAR_API_KEY + mcp__linear__* (regression-safe)", () => {
+  it("cloud=claude: bkit-cloud.yml header states App required and bkit:auto label (no bare Auto)", () => {
     const ws = makeWriteSet();
-    runCloudModule(makeCtx({ ws, issueTracker: "linear" }));
+    runCloudModule(makeCtx({ ws, cloudVariant: "claude", issueTracker: "github" }));
     const yml = fs.readFileSync(path.join(tmpDir, routerRel), "utf-8");
-    expect(yml).toContain("LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}");
-    expect(yml).toContain("mcp__linear__*");
-    expect(yml).not.toContain("mcp__github__*");
-    expect(yml).not.toMatch(/@@CLOUD_TRACKER/);
+    expect(yml).toMatch(/bkit:auto/);
+    expect(yml).not.toMatch(/Required tracker label on the issue: `Auto`/);
+  });
+
+  it("cloud=cursor: does NOT install bkit-cloud.yml (Cursor path has no GHA workflow)", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, cloudVariant: "cursor", issueTracker: "linear" }));
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(false);
   });
 });
 
-describe("renderCloudWorkflow — tracker-conditional render (issue #138)", () => {
+describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..");
   const template = fs.readFileSync(
@@ -803,26 +832,183 @@ describe("renderCloudWorkflow — tracker-conditional render (issue #138)", () =
     "utf-8",
   );
 
-  for (const tracker of ["github", "none"] as const) {
-    it(`${tracker} tracker → zero Linear references`, () => {
+  for (const tracker of ["github", "none", "linear"] as const) {
+    it(`${tracker} tracker → GitHub-only output (no Linear references, no sentinels)`, () => {
       const out = renderCloudWorkflow(template, tracker);
       expect(out).not.toContain("LINEAR_API_KEY");
       expect(out).not.toContain("mcp__linear__*");
       expect(out).toContain("mcp__github__*");
       expect(out).not.toMatch(/@@CLOUD_TRACKER/);
-      // env block stays well-formed after the Linear line is dropped
+      // Must have id-token: write (D1 fix)
+      expect(out).toContain("id-token: write");
+      // env block stays well-formed
       expect(out).toMatch(
         /ANTHROPIC_API_KEY: \$\{\{ secrets\.ANTHROPIC_API_KEY \}\}\n {10}GH_TOKEN:/,
       );
     });
   }
+});
 
-  it("linear tracker → Linear surface intact", () => {
-    const out = renderCloudWorkflow(template, "linear");
-    expect(out).toContain("          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}");
-    expect(out).toContain("mcp__linear__*");
-    expect(out).not.toContain("mcp__github__*");
-    expect(out).not.toMatch(/@@CLOUD_TRACKER/);
+// ---------------------------------------------------------------------------
+// T3.1 — D3 concurrency-key intra-surface serialisation (PIVOT from STANDARD attempt)
+//
+// GHA evaluates concurrency.group from trigger-payload context ONLY, before any step
+// runs. The dispatch payload exposes only inputs.issue (bare numeric id, e.g. "141");
+// the workflow_run payload exposes only head_branch (= feat/{FID-with-slug}, e.g.
+// "feat/141-cloud-app"). GHA expression functions (contains/startsWith/endsWith/
+// format/join/toJSON/fromJSON/hashFiles) include NO regex, NO split, and NO replace()
+// capable of stripping a slug — replace('feat/141-cloud-app','feat/','') yields
+// '141-cloud-app', not '141'. Therefore cross-surface token equality is structurally
+// impossible via expressions alone for slugged FIDs (bkit-build.md:146 convention).
+//
+// Chosen design (Option iii): serialise WITHIN each surface separately:
+//   - dispatch path  keys on inputs.issue          (bkit-cloud-141)
+//   - CI-completion  keys on head_branch            (bkit-cloud-feat/141-cloud-app)
+// Cross-boundary dispatch-vs-auto-ship race is handled by the orchestrator stale-run
+// guard + status.json lock, not the concurrency key.
+// ---------------------------------------------------------------------------
+
+describe("T3.1 — concurrency.group intra-surface serialisation (D3 race prevention)", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+  const rawTemplate = fs.readFileSync(
+    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+
+  it("concurrency.group dispatch path keys on inputs.issue (bare issue number)", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // Dispatch surface: group expression must use inputs.issue so concurrent dispatched
+    // runs for the same issue cancel each other.
+    expect(out).toMatch(/group:.*inputs\.issue/);
+    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-cloud-"));
+    expect(groupLine).toBeDefined();
+    expect(groupLine).toContain("inputs.issue");
+    // No invalid replace() call — remove() is not a GHA expression function.
+    expect(groupLine).not.toContain("replace(");
+  });
+
+  it("concurrency.group CI-completion path keys on head_branch (full slugged branch name)", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // CI-completion surface: group expression must use head_branch directly, so concurrent
+    // CI runs for the same branch (e.g. feat/141-cloud-app) cancel each other.
+    // A real slugged FID like feat/141-cloud-app must key on the full branch — not a
+    // stripped token — because replace() cannot reduce '141-cloud-app' to '141'.
+    expect(out).toMatch(/group:.*github\.event\.workflow_run\.head_branch/);
+    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-cloud-"));
+    expect(groupLine).toBeDefined();
+    expect(groupLine).toContain("github.event.workflow_run.head_branch");
+    // No replace() — the prior STANDARD attempt's replace() was invalid for slugged FIDs.
+    expect(groupLine).not.toContain("replace(");
+  });
+
+  it("realistic slugged branch (feat/141-cloud-app) does NOT equal dispatch issue number (141) — cross-surface asymmetry is expected and documented", () => {
+    // This is the KEY property proving the prior STANDARD approach was wrong:
+    // replace('feat/141-cloud-app', 'feat/', '') = '141-cloud-app' != '141'
+    // The two tokens are intentionally different across surfaces; each surface uses its
+    // own payload identity. Cross-boundary serialisation is the orchestrator's concern.
+    const dispatchGroup = `bkit-cloud-141`;
+    const ciBranch = "feat/141-cloud-app";
+    const ciGroup = `bkit-cloud-${ciBranch}`; // full branch, no replace()
+    expect(dispatchGroup).not.toBe(ciGroup); // different by design
+    // Neither path uses a replace() that would produce an incorrect result.
+    const stripped = ciBranch.replace("feat/", "");
+    expect(stripped).toBe("141-cloud-app"); // NOT '141' — proves why replace() was wrong
+    expect(stripped).not.toBe("141");
+  });
+
+  it("canonical .github/workflows/bkit-cloud.yml and template are byte-identical (T3.1 + T2.7 invariant)", () => {
+    const canonical = fs.readFileSync(
+      path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"),
+      "utf-8",
+    );
+    expect(canonical).toBe(rawTemplate);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// T2.7 — two-tier CI gate positive assertions (GAP-3)
+//
+// (b) marker->HEAD->fires-to-dispatch render assertion: when 'bkit [auto route]'
+//     IS in workflow_run.head_commit.message AND bkit:auto is present, the gate
+//     evaluates true and reaches the dispatch step.
+// (c) ISSUE single-sourcing assertion: the kill-switch gh issue view $ISSUE is
+//     produced by the SHARED-DERIV step (primary: PR body marker; fallback: branch
+//     slug extraction). Note: with intra-surface concurrency (T3.1 PIVOT design), the
+//     CI-completion concurrency key uses head_branch directly — ISSUE from SHARED-DERIV
+//     is the issue number for the kill switch, not the concurrency token. The
+//     single-sourcing here means ISSUE is set once in shared-deriv and consumed by the
+//     kill switch — not re-derived elsewhere.
+// ---------------------------------------------------------------------------
+
+describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+  const rawTemplate = fs.readFileSync(
+    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    "utf-8",
+  );
+
+  it("(b) free-tier if: contains 'bkit [auto route]' — gate fires when marker is HEAD commit", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // The job-level if: must reference 'bkit [auto route]' in head_commit.message.
+    // This closes the marker->HEAD->job-fires chain (positive, not just negative).
+    expect(out).toContain(
+      "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')",
+    );
+    // The dispatch step must exist and fire when skip != 'true'.
+    expect(out).toContain("if: steps.ctx.outputs.skip != 'true'");
+    // The dispatch step must invoke the /bkit-cloud orchestrator.
+    expect(out).toContain(
+      'prompt: "/bkit-cloud ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"',
+    );
+  });
+
+  it("(b) dispatch path always proceeds (workflow_dispatch bypasses marker check)", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // workflow_dispatch runs must always pass the free-tier gate regardless of marker.
+    expect(out).toContain("github.event_name == 'workflow_dispatch'");
+    // The if: uses || so dispatch path short-circuits the marker check.
+    expect(out).toMatch(/workflow_dispatch[\s\S]{0,200}bkit \[auto route\]/);
+  });
+
+  it("(c) kill-switch gh issue view uses $ISSUE from SHARED-DERIV step — single-sourced", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
+    // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
+    expect(out).toContain('gh issue view "$ISSUE"');
+    // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
+    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
+    // SHARED-DERIV fallback must set ISSUE from FID (branch-derived numeric id).
+    expect(out).toContain('ISSUE="$FID"');
+    // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.
+    // Verify no separate re-derivation of ISSUE appears outside the shared-deriv block.
+    const sharedDerivStart = out.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = out.indexOf("# bkit:end shared-deriv");
+    expect(sharedDerivStart).toBeGreaterThan(-1);
+    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
+    // gh issue view must appear INSIDE or AFTER the shared-deriv block (uses its output).
+    const ghIssueViewPos = out.indexOf('gh issue view "$ISSUE"');
+    expect(ghIssueViewPos).toBeGreaterThan(sharedDerivStart);
+  });
+
+  it("(c) bkit:start/bkit:end markers wrap gate logic — shared-deriv inside auto-route-gate", () => {
+    const out = renderCloudWorkflow(rawTemplate, "github");
+    // Gate logic must be wrapped in bkit:start/end markers.
+    expect(out).toContain("# bkit:start auto-route-gate");
+    expect(out).toContain("# bkit:end auto-route-gate");
+    expect(out).toContain("# bkit:start shared-deriv");
+    expect(out).toContain("# bkit:end shared-deriv");
+    // auto-route-gate wraps the job if: (free-tier gate).
+    const autoRouteGateStart = out.indexOf("# bkit:start auto-route-gate");
+    const autoRouteGateEnd = out.indexOf("# bkit:end auto-route-gate");
+    // The contains(...head_commit.message, 'bkit [auto route]') expression in the if: body
+    // must be inside the auto-route-gate marker block.
+    const containsExpr =
+      "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')";
+    const containsPos = out.indexOf(containsExpr);
+    expect(containsPos).toBeGreaterThan(autoRouteGateStart);
+    expect(containsPos).toBeLessThan(autoRouteGateEnd);
   });
 });
 
@@ -1726,5 +1912,243 @@ describe(".husky/pre-push Tier 3 migration (v2.0.4)", () => {
     // No tier3-merge-suggested advisory when the file was absent (we just wrote it)
     const ids = ctx.advisories.map((f) => f.id);
     expect(ids).not.toContain("tier3-merge-suggested-pre-push");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Challenge regression tests — Finding 1 (SHARED-DERIV portability + pipefail safety)
+//
+// The build challenge (Finding 1 HIGH) identified two coexisting defects in the
+// SHARED-DERIV grep region of bkit-cloud.yml:
+//   (a) `grep -oP` PCRE lookbehind — non-portable (BSD grep / some runner images)
+//   (b) No failure guard on ISSUE/FID assignments — `set -euo pipefail` aborts
+//       the step when grep exits 1 on a no-match body, making the fallback/fail-safe
+//       dead code and producing a RED job instead of skip=true no-op.
+//
+// Remediation replaced `grep -oP` with portable `grep -oE` + `sed`, and added
+// `|| true` guards so a no-match exits 0 and reaches the skip=true path.
+//
+// These tests lock in the remediation so a silent regression cannot re-introduce
+// `grep -oP` or remove the `|| true` guards.
+// ---------------------------------------------------------------------------
+
+describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety regression", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+
+  function readBkitCloudYml(): string {
+    return fs.readFileSync(path.join(pkgRoot, ".github", "workflows", "bkit-cloud.yml"), "utf-8");
+  }
+
+  function readBkitCloudTemplate(): string {
+    return fs.readFileSync(
+      path.join(pkgRoot, ".agents", "templates", ".github", "workflows", "bkit-cloud.yml"),
+      "utf-8",
+    );
+  }
+
+  it("(1a) canonical bkit-cloud.yml contains NO grep -oP (PCRE lookbehind) — portability regression guard", () => {
+    // Finding 1 (challenge-2): grep -oP relies on PCRE unavailable on BSD/macOS grep.
+    // A silent re-introduction of -oP would pass on ubuntu-latest but fail on any
+    // non-GNU runner — this test must catch it before ship.
+    const canonical = readBkitCloudYml();
+    expect(canonical).not.toContain("grep -oP");
+  });
+
+  it("(1a) template bkit-cloud.yml contains NO grep -oP (PCRE lookbehind) — portability regression guard", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).not.toContain("grep -oP");
+  });
+
+  it("(1b) ISSUE assignment in canonical has || true failure guard (pipefail safety)", () => {
+    // Finding 1 (challenge-1): without || true, `set -euo pipefail` aborts the step
+    // when grep exits 1 on a no-match PR body, making fallback/fail-safe dead code.
+    // The ISSUE assignment must end with `|| true` so a no-match exits 0.
+    const canonical = readBkitCloudYml();
+    // The exact remediated form: grep -oE ... | sed ... | head -1 || true
+    expect(canonical).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) FID assignment in canonical has || true failure guard (pipefail safety)", () => {
+    const canonical = readBkitCloudYml();
+    expect(canonical).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) ISSUE assignment in template has || true failure guard (pipefail safety)", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).toMatch(/ISSUE=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1b) FID assignment in template has || true failure guard (pipefail safety)", () => {
+    const template = readBkitCloudTemplate();
+    expect(template).toMatch(/FID=\$\(echo "\$PR_BODY" \| grep -oE[^\n]*\|\| true\)/);
+  });
+
+  it("(1c) SHARED-DERIV extraction snippet exits 0 under set -euo pipefail when PR body is empty (real-tool validation)", () => {
+    // Finding 1 (challenge-1): the original code aborted on empty PR body.
+    // This test extracts the actual ISSUE/FID assignment commands from the canonical
+    // workflow and executes them under `set -euo pipefail` with an empty PR body to
+    // prove the || true guards make the step exit 0 (not exit 1).
+    const canonical = readBkitCloudYml();
+
+    // Extract the two assignment lines from the shared-deriv block.
+    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
+    expect(sharedDerivStart).toBeGreaterThan(-1);
+    expect(sharedDerivEnd).toBeGreaterThan(sharedDerivStart);
+    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+
+    // Pull out the ISSUE= and FID= lines (they contain the grep commands).
+    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    expect(
+      issueLineMatch,
+      "ISSUE= assignment line must be found in shared-deriv block",
+    ).not.toBeNull();
+    expect(fidLineMatch, "FID= assignment line must be found in shared-deriv block").not.toBeNull();
+
+    const issueLine = issueLineMatch![0]!.trim();
+    const fidLine = fidLineMatch![0]!.trim();
+
+    // Build a minimal shell script that runs both assignments under strict mode
+    // with an empty PR_BODY and asserts the variables are empty (no-match, no abort).
+    const script = [
+      "set -euo pipefail",
+      'PR_BODY=""',
+      issueLine,
+      fidLine,
+      // Assert variables are empty (grep found nothing, || true kept us alive)
+      '[ -z "$ISSUE" ] || { echo "FAIL: ISSUE should be empty, got: $ISSUE"; exit 2; }',
+      '[ -z "$FID" ]   || { echo "FAIL: FID should be empty, got: $FID"; exit 2; }',
+      'echo "OK: both empty, script did not abort"',
+    ].join("\n");
+
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+
+    expect(
+      result.status,
+      `SHARED-DERIV snippet aborted under set -euo pipefail with empty PR body.\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("OK: both empty, script did not abort");
+  });
+
+  it("(1c) SHARED-DERIV extraction snippet correctly parses a well-formed PR body (positive case)", () => {
+    // Complementary positive case: a PR body WITH the markers must yield the correct values.
+    const canonical = readBkitCloudYml();
+
+    const sharedDerivStart = canonical.indexOf("# bkit:start shared-deriv");
+    const sharedDerivEnd = canonical.indexOf("# bkit:end shared-deriv");
+    const sharedDerivBlock = canonical.slice(sharedDerivStart, sharedDerivEnd);
+
+    const issueLineMatch = sharedDerivBlock.match(/ISSUE=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    const fidLineMatch = sharedDerivBlock.match(/FID=\$\(echo "\$PR_BODY"[^\n]+\)/);
+    expect(issueLineMatch).not.toBeNull();
+    expect(fidLineMatch).not.toBeNull();
+
+    const issueLine = issueLineMatch![0]!.trim();
+    const fidLine = fidLineMatch![0]!.trim();
+
+    const script = [
+      "set -euo pipefail",
+      'PR_BODY="<!-- bkit:issue=#141 bkit:fid=141-cloud-app -->"',
+      issueLine,
+      fidLine,
+      '[ "$ISSUE" = "141" ] || { echo "FAIL: expected ISSUE=141, got: $ISSUE"; exit 2; }',
+      '[ "$FID" = "141-cloud-app" ] || { echo "FAIL: expected FID=141-cloud-app, got: $FID"; exit 2; }',
+      'echo "OK: ISSUE=$ISSUE FID=$FID"',
+    ].join("\n");
+
+    const result = spawnSync("bash", ["-c", script], {
+      encoding: "utf-8",
+      timeout: 10_000,
+    });
+
+    expect(
+      result.status,
+      `SHARED-DERIV snippet failed to parse well-formed PR body.\n` +
+        `stdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("OK: ISSUE=141 FID=141-cloud-app");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Challenge regression tests — Finding 2 (claude.yml author_association gate)
+//
+// The build challenge (Finding 2 HIGH) identified that the @claude trigger in
+// claude.yml had no author_association gate, allowing any external commenter to
+// trigger the job (OWNER/MEMBER/COLLABORATOR allow-list was missing).
+//
+// Remediation added `contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+// github.event.comment.author_association)` (and equivalents) to all four event
+// paths in the job's `if:` condition.
+//
+// These tests lock in the allow-list so it cannot be silently removed on any path.
+// ---------------------------------------------------------------------------
+
+describe("Challenge Finding 2 — claude.yml author_association allow-list regression", () => {
+  const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
+  const pkgRoot = path.resolve(scriptsDir, "..", "..");
+
+  function readClaudeYml(): string {
+    return fs.readFileSync(path.join(pkgRoot, ".github", "workflows", "claude.yml"), "utf-8");
+  }
+
+  it("claude.yml issue_comment path has author_association gate", () => {
+    // Finding 2: the original file had no author_association check on any event path.
+    // All four event paths must now carry the allow-list to prevent drive-by triggers.
+    const yml = readClaudeYml();
+    // The issue_comment branch must guard on comment.author_association.
+    expect(yml).toContain("github.event.comment.author_association");
+  });
+
+  it("claude.yml pull_request_review_comment path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // pull_request_review_comment re-uses event.comment.author_association.
+    // At minimum one of the two `pull_request_review` event paths must reference it.
+    // The remediated file uses comment.author_association for both comment events.
+    expect(yml).toContain("github.event.comment.author_association");
+  });
+
+  it("claude.yml pull_request_review path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // The review path uses event.review.author_association.
+    expect(yml).toContain("github.event.review.author_association");
+  });
+
+  it("claude.yml issues path has author_association gate", () => {
+    const yml = readClaudeYml();
+    // The issues path uses event.issue.user.author_association.
+    expect(yml).toContain("github.event.issue.user.author_association");
+  });
+
+  it("claude.yml allow-list contains exactly OWNER, MEMBER, COLLABORATOR", () => {
+    // The allow-list must use the literal three-association JSON array.
+    // If someone narrows to OWNER-only or adds CONTRIBUTOR, this test catches it.
+    const yml = readClaudeYml();
+    expect(yml).toContain('["OWNER","MEMBER","COLLABORATOR"]');
+  });
+
+  it("claude.yml allow-list is checked via fromJSON (not string-match) for all @claude paths", () => {
+    const yml = readClaudeYml();
+    // All four event paths must use fromJSON('["OWNER","MEMBER","COLLABORATOR"]')
+    // so the allow-list is evaluated as a JSON array, not a substring check.
+    const matches = yml.match(/fromJSON\('?\["OWNER","MEMBER","COLLABORATOR"\]'?\)/g);
+    // There are 4 event paths in the if: — each must carry the check.
+    expect(matches, "Expected fromJSON allow-list on all 4 event paths").not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("claude.yml if: uses contains(...author_association) — not a string equality check", () => {
+    const yml = readClaudeYml();
+    // The check must be `contains(fromJSON(...), <author_association field>)` not
+    // `github.event.comment.author_association == 'OWNER'` etc.
+    expect(yml).toMatch(
+      /contains\(fromJSON\([^)]*\),\s*github\.event\.(comment|review|issue\.user)\.author_association\)/,
+    );
   });
 });

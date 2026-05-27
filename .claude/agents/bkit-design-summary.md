@@ -43,6 +43,7 @@ maxTurns: 25
    - `PASS` = design ready; do NOT downgrade for unchecked human-confirmation gates alone.
    - `FAIL` = CRITICAL scope concerns.
    - `CONCERNS` = revisions needed; content-level issues (Acceptance Scenario violates `docs/plans/template.md` § Acceptance Scenario → Spec).
+9. **Outstanding Questions (advisory, verdict-neutral):** Extract each open question from the design artifact's `## Risks & Open Questions` section. For each, generate a best-judgement **recommended answer** (the default to take if no human responds). This is a NEW output confined to the `Outstanding Questions` section; the recommendations are **advisory ONLY and MUST NOT influence the `Verdict`** — per step 6 the verdict stays based solely on read files.
 
 **Output format:**
 
@@ -63,7 +64,11 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Acceptance Scenario
 
-[Adheres to `docs/plans/template.md` § Acceptance Scenario → Spec? Missing/vague → CONCERNS + concrete action items; initially set to `PENDING`.]
+[Summarise scenario narrative, success criteria, and key edge cases (1-3 lines); add verdict on adherence to `docs/plans/template.md` § Acceptance Scenario spec; initially set to `PENDING`.]
+
+## Breaking Changes
+
+[Summarise breaking changes & proposed naming implied by `Architecture`, `Data Model`, and `Decisions`. If none then `None`; initially set to `PENDING`.]
 
 ## Feasibility
 
@@ -77,6 +82,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 [Unknowns, dependencies, assumptions; initially set to `PENDING`.]
 
+## Outstanding Questions
+
+[Sourced from the design artifact's `## Risks & Open Questions`. One bullet per open question, each with a subagent-generated recommended answer. **Advisory only — MUST NOT influence the `Verdict`.** If none, render `_None._`. Format per item: `- **Q:** <question> — **Recommended:** <best-judgement default>`; initially set to `PENDING`.]
+
 ## Scope
 
 [Creep vs original brief; initially set to `PENDING`.]
@@ -84,6 +93,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Action Items
 
 [Only if `CONCERNS`/`FAIL` — specific revisions needed before planning; initially set to `PENDING`.]
+
+## Recommended Next Step
+
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS`/`CONCERNS` → `/bkit-plan`; `FAIL` → `/bkit-design` (revise). Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <plan focus, caveat, design-doc link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

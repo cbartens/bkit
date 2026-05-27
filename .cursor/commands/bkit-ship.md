@@ -25,7 +25,7 @@
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -350,7 +350,17 @@
      git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
    fi
    ```
-3. Merge with empty body:
+3. Run the HEAD-Subject Assertion (PR-title clause) before merge — the squash subject becomes `dev` HEAD:
+   ```bash
+   PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+     echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+     exit 1
+   fi
+   ```
+   **If** assertion fails → **Failure Path**.
+4. Merge with empty body:
    ```bash
    (
      cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
@@ -365,9 +375,9 @@
      --jq "[.[] | select((.createdAt | fromdateiso8601) > $PUSH_AT - 60)][0].databaseId")
    [ -z "$RUN_ID" ] && { echo "CI did not trigger on dev after merge at $PUSH_AT" >&2; exit 1; }
    ```
-4. `gh pr view {PR_NUMBER} --json state` → extract `state`.
-5. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
-6. Update status and commit:
+5. `gh pr view {PR_NUMBER} --json state` → extract `state`.
+6. Set `MERGE_VERDICT` = PASS if `state` = MERGED, else FAIL. Set `MERGE_FAILURES` = 0 if PASS, else 1.
+7. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -376,20 +386,21 @@
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): merge-pr attempt ${MERGE_ATTEMPT}"
    ```
-7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+8. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 5 — Merge PR - Verdict: {MERGE_VERDICT}
    ```
-8. **If** `state` = MERGED → Step 8.
-9. **If** `state` != MERGED:
-   - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 6.
-   - **Else** → **Failure Path**.
-10. **Else** → **Failure Path**.
+9. **If** `state` = MERGED → Step 8.
+10. **If** `state` != MERGED:
+    - **If** `MERGE_ATTEMPT` <= `MAX_MERGE_ATTEMPT` → Step 6.
+    - **Else** → **Failure Path**.
+11. **Else** → **Failure Path**.
 
 ### 🔒 Gate 5 — Merge PR
 
 - [ ] `MERGE_ATTEMPT` incremented
+- [ ] HEAD-Subject Assertion passed (PR-title clause invoked before merge; PR title free of CI-suppressor and `[skip build]` tokens — squash subject becomes `dev` HEAD)
 - [ ] PR merge attempted
 - [ ] `state` extracted (MERGED or not)
 - [ ] CI run triggered on dev (`RUN_ID` captured)
@@ -573,10 +584,18 @@
    [ship-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md)
    {FID-ship-summary.md content verbatim}
    ```
-8. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
-9. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/ship-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Recommended Next Step
+   {NEXT_STEP}
+   ```
+9. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
+10. **If** `UPDATE_DOCS_VERDICT` **and** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 10.
+11. **If** `UPDATE_DOCS_VERDICT` = FAIL → **Failure Path**.
+12. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+13. **Else** → **Failure Path**.
 
 ### 🔒 Gate 9 — Update Docs & Summary
 
@@ -589,6 +608,8 @@
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 9` section)
+- [ ] Next-step handoff comment attempted (dedicated `Recommended Next Step` comment)
+- [ ] `{NEXT_STEP}` surfaced verbatim in the final return to the user (advisory, not auto-invoked)
 
 ---
 

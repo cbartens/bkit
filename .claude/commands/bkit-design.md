@@ -29,7 +29,7 @@ description: "Design Feature — Autonomous design phase"
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -425,9 +425,17 @@ description: "Design Feature — Autonomous design phase"
    [design-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/design-summary.md)
    {design-summary.md content verbatim}
    ```
-8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
-9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-10. **Else** → **Failure Path**.
+8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Recommended Next Step
+   {NEXT_STEP}
+   ```
+9. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
+10. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
+11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+12. **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Summary
 
@@ -439,6 +447,8 @@ description: "Design Feature — Autonomous design phase"
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
+- [ ] Next-step handoff comment attempted (dedicated `Recommended Next Step` comment)
+- [ ] `{NEXT_STEP}` surfaced verbatim in the final return to the user (advisory, not auto-invoked)
 
 ---
 

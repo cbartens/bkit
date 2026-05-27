@@ -257,7 +257,7 @@ description: "Build Feature — Autonomous implementation"
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '.[-1].steps += [{step:"build-worktree-setup", status:"DONE", at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/build-input.md"]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup"
+   git add -A && git commit --allow-empty -m "chore({FID}): worktree-setup bkit [skip ci]"
    ```
 9. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
@@ -917,16 +917,26 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 4. **If** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 5. Extract `PR_URL` and `PR_NUMBER` from created PR. Assert both non-empty.
 6. `PR_BASE=$(gh pr view {PR_NUMBER} --json baseRefName --jq .baseRefName)`. **If** `PR_BASE` != dev → **Failure Path**.
-7. Update status and commit:
+7. Run the HEAD-Subject Assertion (PR-title clause) — the PR title must not contain CI-suppressing or `[skip build]` tokens:
+   ```bash
+   PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+     echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+     echo "Fix: remove the suppressing tag from the PR title." >&2
+     exit 1
+   fi
+   ```
+   **If** assertion fails → **Failure Path**.
+8. Update status and commit:
    ```bash
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      '.[-1].steps += [{step:"build-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr"
+   git add -A && git commit --allow-empty -m "chore({FID}): create-pr bkit [skip ci]"
    ```
-8. <!-- bkit:tracker comment-post-step start -->
+9. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
    `{BODY}` = fenced block below:
@@ -939,6 +949,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] PR base verified (`PR_BASE` = dev)
+- [ ] HEAD-Subject Assertion passed (PR-title clause; PR title free of CI-suppressor and `[skip build]` tokens)
 - [ ] Workflow status updated (step `build-create-pr` recorded with `parentSha`)
 - [ ] Issue comment attempted (`Step 17` section)
 
@@ -947,8 +958,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Update status, commit, and push:
+2. Re-read issue labels, run the HEAD-Subject Assertion, update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
+   <!-- bkit:tracker issue-read start -->
+   _Tracker not wired — skip._
+   <!-- bkit:tracker issue-read end -->
    ```bash
+   # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
+   AUTO_ROUTE_SUFFIX=""
+   # If the tracker snippet above populated LABELS and bkit:auto is present, set the suffix.
+   # Fallback when tracker not wired: suffix stays empty (no auto-route marker).
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   # HEAD-Subject Assertion (HEAD clause) — the close-workflow commit will be HEAD after push.
+   UPCOMING="chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
+   if echo "$UPCOMING" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "HEAD-subject assertion FAILED: '$UPCOMING' contains a CI-suppressing token." >&2; exit 1
+   fi
+   # Update status, commit, and push.
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -956,7 +981,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
      '.[-1].steps += [{step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
@@ -972,7 +997,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    <!-- bkit:tracker issue-update-status start -->
    _Tracker not wired — skip status/state update._
    <!-- bkit:tracker issue-update-status end -->
-4. Re-read issue labels to check kill-switch:
+4. Re-read issue labels post-push to check kill-switch (this read is the orchestrator-side kill switch; the marker was already set in step 2 at commit-build time):
    <!-- bkit:tracker issue-read start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-read end -->
@@ -993,10 +1018,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
+- [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+- [ ] HEAD-Subject Assertion passed (HEAD-subject clause invoked; asserts no CI-suppressor in `chore({FID}): close-workflow[AUTO_ROUTE_SUFFIX]`)
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present iff issue carried `bkit:auto` at close time
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status pushed to `dev` with `bkit [skip ci]`
 - [ ] Issue update attempted (phase label `bkit:build` preserved, status/state `In Review`)
-- [ ] Kill-switch propagation checked (`bkit:auto` label presence verified on issue)
+- [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Issue comment attempted (`Step 18` section)

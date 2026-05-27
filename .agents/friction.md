@@ -92,3 +92,27 @@
 - **Related:** 141-cloud-app, issue #141
 - **Recovery:** Re-invoked `bkit-plan-update` per Step 5.3 with the re-emit instruction; it read the completed `plan-v2-reviewed.md`, confirmed all 10 CRITICALs resolved, and set `Verdict: PASS`. No plan content changed.
 - **Status:** RECOVERED
+
+## Build Step 7 PRIOR_STRATEGY query never matches recorded step name (2026-05-27)
+
+- **Category:** tool-failure
+- **Workflow:** build
+- **Step:** 7 — Plan Gaps Remediate (sub-step 17)
+- **Source:** orchestrator
+- **Description:** During `/bkit-build issue 141`, Step 7.17's `PRIOR_STRATEGY` query selects `.steps[] | select(.step=="plan-gaps-remediate" and ...)`, but Step 7.22 records the step as `"build-plan-gaps-remediate"` (with the `build-` prefix). The exact `==` match therefore NEVER finds the prior entry, so `PRIOR_STRATEGY` is always `""` and the strategy ladder collapses to STANDARD on every remediation attempt — it never advances STANDARD -> PIVOT -> FINAL as designed. Same defect class likely exists in Step 14's `failure-diagnose` query (`select(.step=="failure-diagnose")` vs recorded `"build-failure-diagnose"`).
+- **Suggested fix:** Change the Step 7.17 query string to `"build-plan-gaps-remediate"` (and Step 14.1 to `"build-failure-diagnose"`) so the recorded step names match. Alternatively derive the prior strategy from `.steps[] | select(.step|endswith("plan-gaps-remediate"))`.
+- **Related:** 141-cloud-app, issue #141
+- **Recovery:** Orchestrator derived the next strategy from its own in-run memory (attempt 1 = STANDARD, so attempt 2 = PIVOT) rather than the buggy query result.
+- **Status:** RECOVERED
+
+## Plan T3.1 (D3 concurrency reconciliation) Done-when structurally unsatisfiable in GitHub Actions (2026-05-27)
+
+- **Category:** agent-rework
+- **Workflow:** build
+- **Step:** 6/7 — Plan Verify / Gaps Remediate (sub-plan 2)
+- **Source:** subagent (bkit-build-plan-gaps-remediate) + plan spec
+- **Description:** Sub-plan 2 T3.1 requires the `bkit-cloud.yml` `concurrency.group` to resolve to one identical FID token across BOTH the `workflow_dispatch` path (payload exposes only the bare issue number, e.g. `141`) and the `workflow_run` CI-completion path (payload exposes only `head_branch` = `feat/{slugged-FID}`, e.g. `feat/141-cloud-app`). GitHub evaluates `concurrency.group` from trigger-payload context ONLY, before any step runs — it cannot consume a step output or do a tracker/PR lookup. GHA expression functions are limited to contains/startsWith/endsWith/format/join/toJSON/fromJSON/hashFiles (NO regex, NO split, and crucially **no `replace`**). The first remediation shipped `replace(github.event.workflow_run.head_branch, 'feat/', '')` — `replace` is not a valid GHA expression function, AND even if it were, it strips only the literal `feat/` prefix, leaving the slugged FID (`141-cloud-app`), which does not equal the dispatch's bare `141`. The accompanying render test used the unrealistic fixture `feat/141` (no slug), encoding the bug as the expectation (the "validate with the real tool" memory class). Net: T3.1's "single FID-derived token equal across both surfaces, single-sourced with the SHARED-DERIV step" is not achievable with concurrency expressions when FID contains a slug.
+- **Suggested fix:** Re-scope T3.1 to the achievable reconciliation (option iii): concurrency serialises WITHIN each surface (CI path keys on `head_branch`; dispatch keys on `inputs.issue`), and the cross-boundary dispatch<->auto-ship race is mitigated by a non-concurrency mechanism (orchestrator stale-run guard / status.json lock). Document the structural limit in KN-30 and restate the plan Done-when. Replace the false-confidence test fixture with a realistic slugged branch asserting the chosen behaviour. Drop the invalid `replace()` expression. Future plans that key GHA concurrency across dispatch+`workflow_run` must account for the payload-identity asymmetry up front.
+- **Related:** 141-cloud-app, issue #141, KN-30, D3
+- **Recovery:** PIVOT remediation (Step 7 attempt 2) adopted option (iii): removed invalid replace(), intra-surface concurrency, KN-30 + plan Done-when restated, realistic test fixture. Re-verified PASS (attempt 3).
+- **Status:** RECOVERED

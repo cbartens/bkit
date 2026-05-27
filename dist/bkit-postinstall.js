@@ -904,8 +904,13 @@ function hasExplicitCloudAgentsField(cwd) {
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
  * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
- * `bkit install --cloud`; it does NOT ship with `--full`. This nudges consumers
+ * `bkit install --cloud=claude`; it does NOT ship with `--full`. This nudges consumers
  * to make the choice post-install.
+ *
+ * Also performs the cloud=claude config-consistency assertion (T1.8): when
+ * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
+ * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
+ * the `blocker` severity in bkit-preflight caller).
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * "deliberate opt-out" escape hatch):
@@ -918,16 +923,27 @@ function hasExplicitCloudAgentsField(cwd) {
  */
 export function buildCloudSetupAdvisory(cwd) {
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
-    // `LINEAR_API_KEY` is only a dependency under the Linear tracker (issue #138).
-    const secretsPhrase = readConsumerIssueTracker(cwd) === "linear"
-        ? "`ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets"
-        : "an `ANTHROPIC_API_KEY` repo secret";
     if (fs.existsSync(routerPath)) {
+        // Config-consistency assertion (T1.8): cloud=claude requires id-token: write.
+        // If the recorded variant is "claude" (or back-compat legacy "enabled" mapped to claude)
+        // and the workflow file lacks id-token: write, surface a consistency finding.
+        const recordedVariant = readConsumerCloudAgents(cwd);
+        if (recordedVariant === "claude") {
+            const workflowContent = fs.readFileSync(routerPath, "utf-8");
+            if (!workflowContent.includes("id-token: write")) {
+                return {
+                    id: "cloud-claude-missing-id-token",
+                    severity: "blocker",
+                    detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
+                    action: "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See `.agents/cloud.md` § Post-CI auto-routing.",
+                };
+            }
+        }
         return {
             id: "cloud-router",
             severity: "advisory",
-            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present).",
-            action: `The workflow is inert until its dependencies are configured: ${secretsPhrase}, GitHub Actions write permissions (org AND repo), and — for the Cursor half — a Cloud Agents dashboard trigger. See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud\`) and \`.agents/cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
+            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and \`.agents/cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
     // No router present — distinguish deliberate opt-out from undecided.
@@ -941,7 +957,8 @@ export function buildCloudSetupAdvisory(cwd) {
         id: "cloud-router-none",
         severity: "advisory",
         detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
-        action: `Optional post-install decision. Run \`pnpm bkit install --cloud\` to install the post-CI auto-routing workflow (dispatches bkit-ship on CI pass, bkit-debug on CI fail). It requires ${secretsPhrase}, GitHub Actions write permissions, and (Cursor half) a dashboard trigger — the install prints the full checklist (\`bkit-cloud-setup\`).\n\n` +
+        action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --cloud=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --cloud=cursor --tracker=linear`.\n\n" +
+            "Prerequisites for `cloud=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
             'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
     };
 }
@@ -960,50 +977,52 @@ export function buildCloudDashboardsAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasRouter && !hasClaude && !hasCursor)
         return null;
-    // `LINEAR_API_KEY` is only part of the cloud secret set under the Linear tracker —
-    // a github/none repo's workflow never references it (issue #138).
-    const isLinear = readConsumerIssueTracker(cwd) === "linear";
-    const secretList = isLinear
-        ? "`ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`"
+    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
+    // cloud=cursor path (.cursor/): LINEAR_API_KEY for Cursor dashboard.
+    // Distinguish by recorded variant; fall back to presence-based detection.
+    const recordedVariant = readConsumerCloudAgents(cwd);
+    const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
+    const secretList = isCursorCloud
+        ? "`LINEAR_API_KEY`, `GH_BKIT_TOKEN`"
         : "`ANTHROPIC_API_KEY`, `GH_BKIT_TOKEN`";
-    const ghSetLines = isLinear
-        ? "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
-            "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
+    const ghSetLines = isCursorCloud
+        ? "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
             '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
-            "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n"
+            "       Verify: `gh secret list | grep -E 'LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n"
         : "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
             '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
             "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|GH_BKIT_TOKEN'`\n\n";
-    const vendorNote = isLinear
-        ? "ANTHROPIC_API_KEY and LINEAR_API_KEY are read from their respective vendor dashboards (https://console.anthropic.com/settings/keys, https://linear.app/settings/api)."
-        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys).";
+    const vendorNote = isCursorCloud
+        ? "LINEAR_API_KEY is read from the Linear dashboard (https://linear.app/settings/api)."
+        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys). The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
     return {
         id: "cloud-secrets-three-locations",
         severity: "advisory",
-        detect: `The same secrets used by bkit's CI workflow (${secretList}) must also be set in the Cursor Background Agents and Claude Code (web) dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
-        action: "Set each secret in all THREE locations:\n\n" +
+        detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
+        action: "Set each secret in the required locations:\n\n" +
             "1. **GitHub Actions** (used by the bkit-cloud workflow and consumer workflows):\n" +
             ghSetLines +
             "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
-            "Same VALUE in all three places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
+            "Same VALUE in all places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
             vendorNote,
     };
 }
 /**
  * Detect whether the GitHub Actions secrets the bkit-cloud workflow needs are set.
  * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
- * always required (claude-code-action); `LINEAR_API_KEY` is required ONLY under the
- * Linear tracker — a `github`/`none` repo's workflow has no Linear wiring (issue #138),
- * so demanding the key there is a false positive. Returns one finding per missing secret.
+ * always required (claude-code-action) for the cloud=claude path. The workflow is
+ * GitHub-tracker only — no `LINEAR_API_KEY` dependency. Returns one finding per
+ * missing secret.
  */
 export function detectCiRouterSecrets(cwd) {
     const findings = [];
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (!fs.existsSync(routerPath))
         return findings;
-    const tracker = readConsumerIssueTracker(cwd);
-    const required = ["ANTHROPIC_API_KEY", ...(tracker === "linear" ? ["LINEAR_API_KEY"] : [])];
+    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — ANTHROPIC_API_KEY only.
+    // No LINEAR_API_KEY dependency (that was the vestigial Linear render branch, now removed).
+    const required = ["ANTHROPIC_API_KEY"];
     for (const name of required) {
         const status = detectGhSecret(name);
         if (status === "missing") {

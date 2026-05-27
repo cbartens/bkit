@@ -524,6 +524,22 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 **Failure Path routing:** rebase sentinel triggers conditional handover via `@bkit-debug-abort-handover` (same path as max-retry exhaustion), so Tier 3 unrecovered conflicts always end with a written handover doc, `Failed` label, and `In Review` state — not a silent stop.
 
+### `bkit [auto route]` Marker Propagation
+
+`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-cloud.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**) — ONLY when the issue carried `bkit:auto` at close time. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
+
+**Placement logic (mode-dependent):**
+
+- `/bkit-build` Step 18: a `bkit:auto` presence re-read happens BEFORE the close-workflow commit. If `bkit:auto` present → commit subject = `chore({FID}): close-workflow bkit [auto route]`. This close-workflow commit IS the feat-branch HEAD that fires CI → free-tier gate checks `head_commit.message` for `bkit [auto route]`.
+- `/bkit-debug` Step 12 (PR-mode): same pattern — `bkit:auto` re-read before the close-workflow commit (`:806`). Marker on close-workflow commit. The create-pr commit (`:844`) does NOT run in PR-mode (`TRIGGER_PR=0`).
+- `/bkit-debug` Step 12 (local-mode): `bkit:auto` re-read before the create-pr commit (`:844`). Marker on create-pr commit (the CI-triggering HEAD in local-mode, not close-workflow).
+
+**Why the re-read must precede the commit (R2-1/R2-2 ordering fix):** the existing kill-switch re-read at build `:963-970` / debug `:863-870` runs AFTER the commit + push — it cannot source the marker on a commit that already exists. A fresh `bkit:auto` read BEFORE the commit construction is the authoritative "at close time" signal.
+
+**Coexistence with `bkit [verbose ci]`:** in debug local-mode, both markers may appear on the same commit subject: `chore({FID}): close-workflow bkit [verbose ci] bkit [auto route]`. The HEAD-Subject Assertion treats both as legitimate (neither is a suppressor). The two-tier CI gate reads `bkit [auto route]` via `contains(head_commit.message, 'bkit [auto route]')` — the `bkit [verbose ci]` suffix does not interfere.
+
+**Cleanup:** the marker is self-clearing per push — only close-workflow + debug re-trigger commits carry it; all other workflow commits never have it. No PR-title edit needed (unlike `bkit [verbose ci]` in debug PR-mode); the CI auto-route fires on the commit message, not the PR title.
+
 ### `bkit [verbose ci]` Marker Propagation
 
 `bkit [verbose ci]` is a CI commit-message / PR-title marker (registered in `docs/deployments.md` § Commit-message force tags) that escalates log detail for one run. `/bkit-debug` auto-applies it on every CI-triggering push so retry attempts have rich evidence to read; `/bkit-build` and `/bkit-ship` never apply it. Read template ci.yml § `bkit:start verbose-ci-env` for the env block that consumes the marker, and `docs/testing.md` § "CI verbosity" for the full knob list.
@@ -903,9 +919,49 @@ Precedence: `bkit [force build]` on head commit wins.
 | `fix({FID}): {description}` (debug Step 5 failure-remediate) | none — Step 7 pushes this commit directly so `fix(...)` becomes the CI-triggering HEAD (dodges `^chore:`-prefix Vercel-ignore rules and partial-tier `decide`-step demotion). `{description}` derived from first `DONE — Step` line in `debug-failure-remediate-{TEST_ATTEMPT}-log.md`. Debug Step 7 adds NO intermediate `chore(...)` commit before push. |
 | `docs({FID}): ship DONE` (ship Step 12 close-workflow on `dev`) | `bkit [skip ci]` |
 | `docs({FID}): {phase} aborted` (Failure Path handover) | `bkit [skip build] bkit [skip ci]` |
-| `chore({FID}): close-workflow` (build Step 18, debug Step 12 — only commit on PR ref without skip tags) | none — final HEAD on push, fires `pull_request` synchronize |
+| `chore({FID}): close-workflow` (build Step 18 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
+| `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
+| `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
 
-**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject.
+**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject. The shared HEAD-subject assertion below is the enforcement mechanism — see § HEAD-Subject Assertion.
+
+### HEAD-Subject Assertion (shared, single source — #184)
+
+A single deterministic assertion enforces the CI-trigger contract at the orchestrator layer. It is **invoked by orchestrators** (NOT a git hook — the invariant is contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
+
+- **Build Gate 18 (HEAD clause):** fires on the close-workflow final push (HEAD must be clean and may carry `bkit [auto route]`).
+- **Build Step 17 + Debug Step 12 create-pr (PR-title clause):** fires on PR creation — HEAD is the `[skip ci]` create-pr commit by D2 design, so the HEAD clause does NOT run here; only PR title is checked.
+- **Debug Gate 12 (HEAD clause):** fires on the close-workflow commit / create-pr commit per mode (see § `bkit [auto route]` Marker Propagation).
+- **Ship Gate 5 + squash `--body ""` (PR-title clause):** fires at merge — squash subject becomes `dev` HEAD.
+
+**Contract (DENY-LIST — never an allow-list):**
+
+```bash
+# HEAD-subject clause: run at the final CI-triggering push
+HEAD_SUBJECT=$(git log -1 --pretty=%s)
+if echo "$HEAD_SUBJECT" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+  echo "HEAD-subject assertion FAILED: '$HEAD_SUBJECT' contains a CI-suppressing token." >&2
+  echo "Fix: ensure the final commit before push is the loud close-workflow commit (no [skip ci])." >&2
+  echo "Escape hatch: add 'bkit [force build]' to override Vercel-only skip tags." >&2
+  exit 1
+fi
+
+# PR-title clause: run at create-pr and ship squash
+PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
+if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+  echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
+  echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+  exit 1
+fi
+```
+
+- **Deny-list tokens — HEAD subject:** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`.
+- **Deny-list tokens — PR title additionally:** `[skip build]` (squash subject becomes `dev` HEAD; `[skip build]` there skips post-merge deploy).
+- **Legitimate loud tokens that pass automatically (deny-list, so no allow-list needed):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. None contain a suppressor substring.
+- **Hard-fail loud:** name the offending commit subject or PR title + the fix. Route to Failure Path. No silent auto-fix.
+- **Escape hatch:** `bkit [force build]` on HEAD overrides Vercel-only `[skip build]` and is not itself a suppressor.
+
+Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip ci]` HEADs intermediately (D2: `worktree-setup`/`create-pr` commits) and to `dev` (status bookkeeping). A blanket pre-push hook would wrongly block those legitimate pushes. Only the orchestrator knows which push is the final loud one.
 
 <!-- prettier-ignore -->
 | Workflow | Step | Mechanic | Why this form |

@@ -131,23 +131,40 @@ describe("parseArgs — module flags", () => {
     expect([...result.modules].sort()).toEqual(["ci", "core", "renovate"]);
   });
 
-  it("--cloud alone → cloud + core only (not full stack)", () => {
-    const result = parseArgs(["install", "--cloud"]);
+  it("--cloud=claude alone → cloud + core only (not full stack)", () => {
+    const result = parseArgs(["install", "--cloud=claude"]);
     expect([...result.modules].sort()).toEqual(["cloud", "core"]);
+    expect(result.cloudVariant).toBe("claude");
   });
 
-  it("--full --cloud → all modules + cloud (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--cloud"]);
+  it("--cloud=cursor alone → cloud + core only (not full stack)", () => {
+    const result = parseArgs(["install", "--cloud=cursor"]);
+    expect([...result.modules].sort()).toEqual(["cloud", "core"]);
+    expect(result.cloudVariant).toBe("cursor");
+  });
+
+  it("bare --cloud (install) → error (must use --cloud=claude or --cloud=cursor)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    expect(() => parseArgs(["install", "--cloud"])).toThrow();
+    exitSpy.mockRestore();
+  });
+
+  it("--full --cloud=claude → all modules + cloud (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--cloud=claude"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("ci")).toBe(true);
     expect(result.modules.has("cloud")).toBe(true);
     expect(result.modules.has("renovate")).toBe(false);
     expect(result.modules.has("dependabot")).toBe(false);
+    expect(result.cloudVariant).toBe("claude");
   });
 
-  it("--ci --cloud → ci + core + cloud (compose without --full)", () => {
-    const result = parseArgs(["install", "--ci", "--cloud"]);
+  it("--ci --cloud=claude → ci + core + cloud (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--cloud=claude"]);
     expect([...result.modules].sort()).toEqual(["ci", "cloud", "core"]);
+    expect(result.cloudVariant).toBe("claude");
   });
 
   it("--dependabot alone → dependabot + core only (mirror of --renovate single-purpose UX)", () => {
@@ -396,9 +413,11 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect(unin.modules.has("cloud")).toBe(true);
   });
 
-  it("uninstall --cloud alone → core + cloud only (targeted is symmetric, not full stack)", () => {
+  it("uninstall --cloud alone → core + cloud only (bare --cloud accepted for uninstall)", () => {
     const result = parseArgs(["uninstall", "--cloud"]);
     expect([...result.modules].sort()).toEqual(["cloud", "core"]);
+    // uninstall doesn't need a variant — it reads from package.json
+    expect(result.cloudVariant).toBeNull();
   });
 
   it("uninstall with --ci --lint resolves to core + ci + lint", () => {
