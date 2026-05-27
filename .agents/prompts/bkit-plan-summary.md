@@ -80,6 +80,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Action Items
 
 [Only if `CONCERNS`/`FAIL` — specific revisions needed before building; initially set to `PENDING`.]
+
+## Recommended Next Step
+
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS` → `/bkit-build`; `CONCERNS`/`FAIL` → `/bkit-plan` (revise). Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <build focus, caveat, plan-doc link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

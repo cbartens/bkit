@@ -538,9 +538,19 @@ description: "Plan Feature — Autonomous plan generation"
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
    ```
-8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-10. **Else** → **Failure Path**.
+8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
+   <!-- bkit:tracker comment-post-step start -->
+   _Tracker not wired — skip comment post._
+   <!-- bkit:tracker comment-post-step end -->
+   `{BODY}` = fenced block below:
+   ```comment
+   ### Recommended Next Step
+   {NEXT_STEP}
+   ```
+9. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
+10. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+12. **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
 
@@ -552,6 +562,8 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 10` section)
+- [ ] Next-step handoff comment attempted (dedicated `Recommended Next Step` comment)
+- [ ] `{NEXT_STEP}` surfaced verbatim in the final return to the user (advisory, not auto-invoked)
 
 ---
 
