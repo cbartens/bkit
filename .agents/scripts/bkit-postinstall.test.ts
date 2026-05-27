@@ -1257,7 +1257,9 @@ describe("detectCiRouterSecrets", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("Linear tracker: emits ANTHROPIC + LINEAR findings when both secrets missing", () => {
+  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
+    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no LINEAR_API_KEY.
+    // This supersedes the old "Linear tracker: emits ANTHROPIC + LINEAR" behavior.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
@@ -1269,10 +1271,7 @@ describe("detectCiRouterSecrets", () => {
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
     const findings = detectCiRouterSecrets(tmpDir);
-    expect(findings.map((f) => f.id).sort()).toEqual([
-      "anthropic-api-key-secret-missing",
-      "linear-api-key-secret-missing",
-    ]);
+    expect(findings.map((f) => f.id)).toEqual(["anthropic-api-key-secret-missing"]);
   });
 
   it("github tracker: emits ONLY ANTHROPIC — no LINEAR_API_KEY advisory (issue #138)", () => {
@@ -1355,18 +1354,22 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.action).toContain("ANTHROPIC_API_KEY");
   });
 
-  it("linear tracker: keeps LINEAR_API_KEY in the checklist (regression-safe)", () => {
+  it("cloud=cursor variant: LINEAR_API_KEY appears in the checklist (cursor path)", () => {
+    // LINEAR_API_KEY belongs to cloud=cursor (Linear tracker), not cloud=claude.
+    // Simulate: no bkit-cloud.yml, but .cursor/ exists + cloudAgents=cursor recorded.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
-      JSON.stringify({ name: "c", version: "1.0.0", bkit: { issueTracker: "linear" } }),
+      JSON.stringify({
+        name: "c",
+        version: "1.0.0",
+        bkit: { issueTracker: "linear", cloudAgents: "cursor" },
+      }),
     );
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
-    );
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
     expect(result!.action).toContain("LINEAR_API_KEY");
+    expect(result!.action).not.toContain("ANTHROPIC_API_KEY");
   });
 });
 

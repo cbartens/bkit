@@ -30,6 +30,7 @@ import {
   type ManifestEntry,
   DEFAULT_ISSUE_TRACKER,
   parseIssueTracker,
+  parseCloudAgents,
   getInstallManifest,
   getModuleManifest,
 } from "./bkit-manifest.js";
@@ -687,7 +688,9 @@ function getInstallingVersion(): string {
 }
 
 async function main() {
-  const { verb, modules, uninstallFlags, upgradeFlags, tracker } = parseArgs(process.argv.slice(2));
+  const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force } = parseArgs(
+    process.argv.slice(2),
+  );
 
   if (verb === "help") {
     printUsage();
@@ -919,6 +922,7 @@ async function main() {
   // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
   // package.json; else default to "none".
   let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
+  let recordedIssueTracker: IssueTracker | null = null; // the value already stored in package.json
   {
     const consumerPkgPath = path.join(process.cwd(), "package.json");
     if (fs.existsSync(consumerPkgPath)) {
@@ -929,12 +933,31 @@ async function main() {
         >;
         const bkitField = pkg.bkit as Record<string, unknown> | undefined;
         const stored = parseIssueTracker(bkitField?.issueTracker);
-        if (stored !== null) issueTracker = stored;
+        if (stored !== null) {
+          issueTracker = stored;
+          recordedIssueTracker = stored;
+        }
       } catch {
         // non-fatal — keep default
       }
     }
     if (tracker !== null) {
+      // Tracker-switch hard-block: if a tracker is already recorded and differs from the
+      // requested one, require --force to override (FINAL SCOPE decision 4).
+      // First-set (no recorded tracker) is always free.
+      if (
+        recordedIssueTracker !== null &&
+        recordedIssueTracker !== "none" &&
+        recordedIssueTracker !== tracker &&
+        !force
+      ) {
+        console.error(
+          `[bkit] Tracker is already set to "${recordedIssueTracker}" in package.json. ` +
+            `Switching to "${tracker}" requires --force. ` +
+            `Re-run with --force to override: bkit install --tracker=${tracker} --force`,
+        );
+        process.exit(1);
+      }
       issueTracker = tracker;
       // Persist to consumer package.json so subsequent installs (without --tracker=) reuse it.
       const consumerPkgPath2 = path.join(process.cwd(), "package.json");
@@ -961,6 +984,23 @@ async function main() {
     }
   }
 
+  // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
+  // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
+  // Mismatch is a hard error before any module dispatch — no files written.
+  if (cloudVariant !== null && modules.has("cloud")) {
+    const requiredTracker: IssueTracker = cloudVariant === "claude" ? "github" : "linear";
+    if (issueTracker !== requiredTracker) {
+      console.error(
+        `[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
+          `but the resolved tracker is "${issueTracker}". ` +
+          (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
+            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --cloud=${cloudVariant}`
+            : `Use the matching cloud variant or reconfigure the tracker with --force.`),
+      );
+      process.exit(1);
+    }
+  }
+
   const ctx: ModuleContext = {
     dryRun,
     tokens,
@@ -970,6 +1010,7 @@ async function main() {
     logPrefix: LOG_PREFIX,
     postDispatch,
     issueTracker,
+    cloudVariant,
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---
