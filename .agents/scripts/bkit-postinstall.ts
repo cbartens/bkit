@@ -596,11 +596,14 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
 }
 
 /**
- * Detect whether the consumer composed any sibling workflow on bkit's `Detect
- * Direct Push` step outputs (`should_force_build`, `should_run_e2e`,
- * `cache.outputs.skip`). The bkit ci.yml ships primitives only — without a
- * consumer-side gate referencing the outputs, the force-tag system documented
- * in deployments.md is documentation-only.
+ * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
+ * outputs (`should_force_build` / `should_run_e2e`). The bkit ci.yml ships these
+ * primitives only — without a consumer-side gate reading the outputs, the force-tag
+ * system documented in deployments.md is documentation-only.
+ *
+ * "Composition" = a `steps.detect.outputs.should_*` READ on an uncommented line, in a
+ * sibling workflow or in ci.yml itself. bkit's shipped steps only SET these outputs and
+ * the example E2E gate ships commented (`bkit-stub:e2e`), so neither false-positives.
  */
 export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null {
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -610,25 +613,36 @@ export function detectRunLevelsNotComposed(cwd: string): PreflightFinding | null
   if (!ciContent.includes("Detect Direct Push")) return null;
 
   const workflowsDir = path.join(cwd, ".github", "workflows");
-  const refTokens = ["should_force_build", "should_run_e2e", "cache.outputs.skip"];
-  // The bkit-managed block in ci.yml already references the tokens internally.
-  // We want to know if any OTHER workflow file (or a step OUTSIDE the bkit:start/end
-  // markers in ci.yml) references them. Scan all sibling .yml files for any token hit.
+  // A consumer "composes" run-levels by READING bkit's force-tag outputs in a gate
+  // (`steps.detect.outputs.should_*`). bkit's own shipped ci.yml only SETS those outputs
+  // (`echo "should_force_build=true" >> $GITHUB_OUTPUT`) and gates internal steps on
+  // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
+  // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
+  // commented out by default — enabling it correctly counts as composition).
+  // ci.yml is Tier-3 (seed-or-print, no bkit:start/end markers), so we can no longer fence
+  // off "bkit's region"; matching the read form is what distinguishes a consumer gate.
+  const readTokens = [
+    "steps.detect.outputs.should_force_build",
+    "steps.detect.outputs.should_run_e2e",
+  ];
+  const composesRunLevels = (content: string): boolean =>
+    content
+      .split("\n")
+      .some((line) => !/^\s*#/.test(line) && readTokens.some((tok) => line.includes(tok)));
+
   let composed = false;
+  // Any sibling workflow that gates on the outputs.
   for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
     if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) continue;
-    if (entry.name === "ci.yml") continue; // skip — checked separately
-    const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
-    if (refTokens.some((tok) => content.includes(tok))) {
+    if (entry.name === "ci.yml") continue; // checked below
+    if (composesRunLevels(fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8"))) {
       composed = true;
       break;
     }
   }
-  // Also check ci.yml content outside the bkit:start/end block.
-  if (!composed) {
-    const outside = ciContent.replace(/# bkit:start[\s\S]*?# bkit:end/g, "");
-    if (refTokens.some((tok) => outside.includes(tok))) composed = true;
-  }
+  // Or a consumer-added gate inside ci.yml itself (e.g. an enabled bkit-stub:e2e block,
+  // or a deploy/job step reading the outputs).
+  if (!composed && composesRunLevels(ciContent)) composed = true;
   if (composed) return null;
   return {
     id: "run-levels-not-composed",

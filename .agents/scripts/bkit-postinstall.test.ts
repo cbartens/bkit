@@ -1213,6 +1213,39 @@ describe("detectRunLevelsNotComposed", () => {
     );
     expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
   });
+
+  it("flags when ci.yml only SETS the outputs (echo to $GITHUB_OUTPUT), no gate reads them", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n" +
+        '        run: echo "should_force_build=true" >> "$GITHUB_OUTPUT"\n',
+    );
+    const result = detectRunLevelsNotComposed(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("run-levels-not-composed");
+  });
+
+  it("flags when the example E2E gate is present but commented out (shipped bkit-stub:e2e)", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n" +
+        "      #   if: steps.detect.outputs.should_run_e2e == 'true'\n",
+    );
+    expect(detectRunLevelsNotComposed(tmpDir)).not.toBeNull();
+  });
+
+  it("returns null when a consumer enables an in-ci.yml gate reading the outputs", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n" +
+        "      - name: Run E2E Tests\n" +
+        "        if: steps.detect.outputs.should_run_e2e == 'true'\n",
+    );
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

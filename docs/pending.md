@@ -186,10 +186,11 @@
 - **Type:** issue
 - **Category:** agentic
 - **Severity:** low
-- **Status:** deferred
+- **Status:** resolved
 - **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
+- **Resolution:** WONTFIX-by-design. The `ci.yml` Tier-2→Tier-3 migration was finished — the decorative whole-file `# bkit:start` / `# bkit:end` markers were removed from `.agents/templates/.github/workflows/ci.yml` (only the named `verbose-ci-env` block remains). `ci.yml` is now byte-equal seed-or-print: seeded once, fully consumer-owned afterward, so drift is expected and is correctly NOT flagged. No indented-marker parser is needed. Legacy consumers seeded with the old markers keep their files unchanged (seed-or-print never overwrites); `detectTier2TextDrift` returning `null` for them is now the intended Tier-3 contract, not a gap.
 - **Source:** phase
-- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`
+- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`, `.agents/templates/.github/workflows/ci.yml`
 
 ## CI lint guarding against `.agents/scripts`/`.agents/templates` source-literal re-introduction in `.bkit/src` (2026-05-26)
 

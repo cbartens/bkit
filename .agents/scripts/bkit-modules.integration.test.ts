@@ -1631,13 +1631,12 @@ describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check st
     fs.writeFileSync(path.join(tmpDir, relPath), consumerContent, "utf-8");
 
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // NOTE: ci.yml uses 6-space-indented markers (# bkit:start at 6-space indent),
-    // which are NOT line-anchored at col-0 or allowed-prefix positions.
-    // extractManagedBlock returns null for these — detectTier2TextDrift returns null.
-    // This is a documented limitation: indented-YAML-marker drift detection is deferred
-    // to a future iteration (see docs/pending.md "BAR-167 Phase 2 — indented YAML marker
-    // drift detection not implemented"). The test documents the current boundary.
-    // When indented marker support lands, update this to expect non-null tier2-text-drift.
+    // NOTE: ci.yml is Tier-3 (seed-or-print, byte-equal) and carries NO whole-file
+    // bkit:start/end managed-block markers — only the named `verbose-ci-env` block, which
+    // extractManagedBlock does not treat as a Tier-2 managed block. With no col-0 managed
+    // block to extract, detectTier2TextDrift returns null: drift inside a Tier-3 file is
+    // expected (the consumer owns it after the one-time seed), not flagged. The test
+    // documents that boundary.
     expect(result).toBeNull();
   });
 
@@ -1653,12 +1652,10 @@ describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check st
     fs.writeFileSync(path.join(tmpDir, relPath), templateContent, "utf-8");
 
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // The ci.yml markers are indented, so extractManagedBlock won't find them
-    // (the YAML indented markers are not at column-0 or comment-prefix positions).
-    // detectTier2TextDrift returns null (no markers detected → not a drift case).
-    // This is correct — ci.yml uses indented markers not supported by extractManagedBlock.
-    // Drift detection for ci.yml will be handled by a dedicated partial-block detector
-    // in a future sub-plan iteration. For now: null is the expected result.
+    // ci.yml is Tier-3 (seed-or-print, byte-equal) with no whole-file managed-block
+    // markers, so extractManagedBlock finds no col-0 block and detectTier2TextDrift
+    // returns null (no managed block → not a Tier-2 drift case). Correct for a Tier-3
+    // file: the consumer owns it after the one-time seed.
     expect(result).toBeNull();
   });
 });
