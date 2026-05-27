@@ -592,7 +592,7 @@ function getInstallingVersion() {
     return "0.0.0";
 }
 async function main() {
-    const { verb, modules, uninstallFlags, upgradeFlags, tracker } = parseArgs(process.argv.slice(2));
+    const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
         printUsage();
         return;
@@ -796,6 +796,7 @@ async function main() {
     // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
     // package.json; else default to "none".
     let issueTracker = DEFAULT_ISSUE_TRACKER;
+    let recordedIssueTracker = null; // the value already stored in package.json
     {
         const consumerPkgPath = path.join(process.cwd(), "package.json");
         if (fs.existsSync(consumerPkgPath)) {
@@ -803,33 +804,65 @@ async function main() {
                 const pkg = JSON.parse(fs.readFileSync(consumerPkgPath, "utf-8"));
                 const bkitField = pkg.bkit;
                 const stored = parseIssueTracker(bkitField?.issueTracker);
-                if (stored !== null)
+                if (stored !== null) {
                     issueTracker = stored;
+                    recordedIssueTracker = stored;
+                }
             }
             catch {
                 // non-fatal — keep default
             }
         }
         if (tracker !== null) {
+            // Tracker-switch hard-block: if a tracker is already recorded and differs from the
+            // requested one, require --force to override (FINAL SCOPE decision 4).
+            // First-set (no recorded tracker) is always free.
+            if (recordedIssueTracker !== null &&
+                recordedIssueTracker !== "none" &&
+                recordedIssueTracker !== tracker &&
+                !force) {
+                console.error(`[bkit] Tracker is already set to "${recordedIssueTracker}" in package.json. ` +
+                    `Switching to "${tracker}" requires --force. ` +
+                    `Re-run with --force to override: bkit install --tracker=${tracker} --force`);
+                process.exit(1);
+            }
             issueTracker = tracker;
-            // Persist to consumer package.json so subsequent installs (without --tracker=) reuse it.
-            const consumerPkgPath2 = path.join(process.cwd(), "package.json");
-            if (fs.existsSync(consumerPkgPath2) && !dryRun) {
-                try {
-                    const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
-                    const pkg = JSON.parse(raw);
-                    const bkit = (pkg.bkit ?? {});
-                    bkit.issueTracker = tracker;
-                    pkg.bkit = bkit;
-                    const indentMatch = raw.match(/\n([ \t]+)"/);
-                    const indent = indentMatch ? indentMatch[1] : "  ";
-                    const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-                    fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
-                    console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
-                }
-                catch {
-                    // non-fatal
-                }
+        }
+    }
+    // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
+    // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
+    // Mismatch is a hard error — checked BEFORE any package.json write so no state
+    // is recorded on mismatch ("no files written on hard error" invariant).
+    if (cloudVariant !== null && modules.has("cloud")) {
+        const requiredTracker = cloudVariant === "claude" ? "github" : "linear";
+        if (issueTracker !== requiredTracker) {
+            console.error(`[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
+                `but the resolved tracker is "${issueTracker}". ` +
+                (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
+                    ? `Set the tracker first: bkit install --tracker=${requiredTracker} --cloud=${cloudVariant}`
+                    : `Use the matching cloud variant or reconfigure the tracker with --force.`));
+            process.exit(1);
+        }
+    }
+    // Persist tracker to consumer package.json AFTER all hard-error gates pass.
+    // This preserves the "no files written on mismatch" invariant.
+    if (tracker !== null) {
+        const consumerPkgPath2 = path.join(process.cwd(), "package.json");
+        if (fs.existsSync(consumerPkgPath2) && !dryRun) {
+            try {
+                const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
+                const pkg = JSON.parse(raw);
+                const bkit = (pkg.bkit ?? {});
+                bkit.issueTracker = tracker;
+                pkg.bkit = bkit;
+                const indentMatch = raw.match(/\n([ \t]+)"/);
+                const indent = indentMatch ? indentMatch[1] : "  ";
+                const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+                fs.writeFileSync(consumerPkgPath2, JSON.stringify(pkg, null, indent) + trailingNewline, "utf-8");
+                console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+            }
+            catch {
+                // non-fatal
             }
         }
     }
@@ -842,6 +875,7 @@ async function main() {
         logPrefix: LOG_PREFIX,
         postDispatch,
         issueTracker,
+        cloudVariant,
     };
     // --- Phase 2: Install (current behaviour — dispatch modules) ---
     dispatchModules(modules, ctx);

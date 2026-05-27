@@ -17,8 +17,6 @@ Action SHA-pinning and the dependency-update pipeline — Renovate / Dependabot 
 
 **Token isolation:** Renovate PRs run with a restricted `GITHUB_TOKEN` and have no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — `bkit-cloud` will not dispatch on them by design. A compromised or malicious dependency PR therefore cannot reach the agent's API credentials.
 
-**PR-body marker trust:** The `bkit-cloud.yml` SHARED-DERIV block parses `bkit:issue=#N` / `bkit:fid=X` from the PR body to resolve which issue's `bkit:auto` label to re-check (kill switch). The PR body is editable by anyone with triage/write on the PR — it is collaborator-trusted, not commit-signed. A collaborator who edits the PR body to point at a different issue could defeat the live kill switch for the original issue (if the replacement issue still carries `bkit:auto`). Mitigation: the `bkit [auto route]` commit marker (free tier) must still be present on HEAD; editing the PR body cannot forge a commit marker. The trust gap is collaborator-vs-collaborator only (not external), and the branch-derived FID fallback fires when body markers are absent. Future hardening: cross-check `bkit:issue` against `gh pr view --json closingIssuesReferences`.
-
 <!-- bkit:end -->
 
 ## Scope
@@ -49,6 +47,10 @@ execSync(`vercel env ls ${env}`); // PROHIBITED
 ```
 
 Add runtime type-guards for any string passed to subprocess arguments, even TypeScript-typed ones (type erasure at runtime). See `docs/knowledge.md` KN-6.
+
+## CI Auto-Route Trust (bkit-cloud)
+
+**PR-body marker trust:** The `bkit-cloud.yml` SHARED-DERIV block parses `bkit:issue=#N` / `bkit:fid=X` from the PR body to resolve which issue's `bkit:auto` label to re-check (kill switch). The PR body is editable by anyone with triage/write on the PR — it is collaborator-trusted, not commit-signed. A collaborator who edits the PR body to point at a different issue could defeat the live kill switch for the original issue (if the replacement issue still carries `bkit:auto`). Mitigation: the `bkit [auto route]` commit marker (free tier) must still be present on HEAD; editing the PR body cannot forge a commit marker. The trust gap is collaborator-vs-collaborator only (not external), and the branch-derived FID fallback fires when body markers are absent. Future hardening: cross-check `bkit:issue` against `gh pr view --json closingIssuesReferences`.
 
 ## PII
 

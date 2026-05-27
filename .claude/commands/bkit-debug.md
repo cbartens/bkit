@@ -29,7 +29,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 > - **Timeouts:** **If** workflow or subagent run > 3600 seconds → **Failure Path**.
@@ -759,8 +759,16 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-3. Update status, commit, and push:
+3. Re-read issue labels and update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
+   # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
+   AUTO_ROUTE_SUFFIX=""
+   echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   # Persist AUTO_ROUTE_SUFFIX for the create-pr block (step 10) via a temp file — shell vars don't survive block boundaries.
+   BKIT_AUTO_ROUTE_FILE=$(mktemp)
+   printf '%s' "$AUTO_ROUTE_SUFFIX" > "$BKIT_AUTO_ROUTE_FILE"
+   echo "BKIT_AUTO_ROUTE_FILE=$BKIT_AUTO_ROUTE_FILE" >> "$GITHUB_ENV" 2>/dev/null || true
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -769,7 +777,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}"
+   # PR-mode: close-workflow commit IS the loud HEAD at CI time — carry the auto-route marker here.
+   # local-mode: the create-pr commit (step 9 below) is the CI-triggering HEAD — marker goes there instead.
+   PR_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "pr" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}${PR_MODE_AUTO_SUFFIX}"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
@@ -807,7 +818,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      '.[-1].steps += [{step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}]' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    VERBOSE_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
-   git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}"
+   # local-mode: create-pr commit IS the CI-triggering HEAD — carry the auto-route marker.
+   # Re-read from the temp file written in step 3 (shell vars don't survive block boundaries).
+   AUTO_ROUTE_SUFFIX=""
+   if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
+     AUTO_ROUTE_SUFFIX=$(cat "$BKIT_AUTO_ROUTE_FILE")
+     rm -f "$BKIT_AUTO_ROUTE_FILE"
+   else
+     # Fallback: re-derive from LABELS if still in scope, otherwise suffix stays empty.
+     echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
+   fi
+   LOCAL_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && LOCAL_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
+   git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}${LOCAL_MODE_AUTO_SUFFIX}"
    git push origin "$(git branch --show-current)"
    ```
 10. Update status, commit, and push:
@@ -831,7 +853,7 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 12. **If** `PR_NUMBER` is set (PR-mode only): re-read issue labels to check kill-switch:
     `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
     **If** `bkit:auto` NOT in `{LABELS}`:
-    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → remove PR label `bkit:auto` if PR exists (`mcp__github__update_pull_request({ owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER}, labels: [labels minus bkit:auto] })`) → terminate workflow normally (current run finishes, no further automation).
+    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation). The live kill switch for CI auto-routing is the in-job `gh issue view {ISSUE} --json labels` re-check inside `bkit-cloud.yml` — the orchestrator kill-switch is for non-CI paths only.
 13. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
     `{BODY}` = fenced block below — ONLY add PR link if `TRIGGER_PR` = 1:
     ```comment
@@ -846,7 +868,9 @@ git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `DEBUG_MODE` = pr and `OBSERVE_MODE` = off)
-- [ ] HEAD on remote does NOT contain `bkit [skip ci]`
+- [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+- [ ] HEAD-Subject Assertion passed (HEAD clause invoked for the CI-triggering commit per mode: PR-mode → close-workflow commit; local-mode → create-pr commit; asserts no CI-suppressor; `bkit [auto route]` + `bkit [verbose ci]` are legitimate and pass)
+- [ ] HEAD on remote does NOT contain `bkit [skip ci]`; `bkit [auto route]` present on the CI-triggering commit iff issue carried `bkit:auto` at close time
 - [ ] `TRIGGER_PR` determined
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)

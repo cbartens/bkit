@@ -25,7 +25,7 @@
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (CI-router trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
@@ -95,7 +95,7 @@
 
 HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
 
-**Fail-closed:** missing or malformed marker → terminate workflow + remove PR label `bkit:auto`.
+**Fail-closed:** missing or malformed marker → terminate workflow (no-op exit; the live kill switch for CI auto-routing is the in-job `bkit:auto` label re-check in `bkit-cloud.yml`).
     **Fallback** (`bkit-build` was run pre-metadata, or metadata missing): parse `FID`:
     ```bash
     # tracker-specific — github FIDs are `{N}-{slug}`; linear FIDs are `{prefix}-{N}-{slug}`
@@ -136,92 +136,9 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
 
 ---
 
-## 🤖 Step 2 — Stale-Run Guard
+## 🤖 Step 2 — Dispatch
 
-**Run only if** `CLASS` = ci (`ship`/`debug`). Brief-class (`design`/`plan`/`build`) skips Steps 2–3 entirely — there is no CI run to guard and the human `workflow_dispatch` is the opt-in — and goes straight to Step 4.
-
-1. `gh run list --branch "$BRANCH" --limit 1 --json headSha --jq '.[0].headSha'` → extract `LATEST_RUN_SHA`. Assert non-empty. **Else** → **Failure Path**.
-2. **If** `LATEST_RUN_SHA` != `HEAD_SHA` → set `GUARD_VERDICT` = FAIL. **Else** → `GUARD_VERDICT` = PASS.
-3. Update status:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$GUARD_VERDICT" \
-     '.[-1].steps += [{step:"cloud-stale-run-guard", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   ```
-4. **If** `GUARD_VERDICT` = FAIL → update status, commit, and push:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): cloud DONE bkit [skip ci]"
-   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
-   ```
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
-   ```comment
-   ### Step 2 — Stale-Run Guard - Verdict: {GUARD_VERDICT}
-   ```
-6. **If** `GUARD_VERDICT` = FAIL → **STOP**, no further downstream steps.
-
-### 🔒 Gate 2 — Stale-Run Guard
-
-- [ ] `LATEST_RUN_SHA` == `HEAD_SHA`
-- [ ] Verdict determined (`GUARD_VERDICT`)
-- [ ] Workflow status updated (step `cloud-stale-run-guard` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
-- [ ] On FAIL, workflow status pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue comment attempted (`Step 2` section)
-
----
-
-## 🤖 Step 3 — Opt-In Gate
-
-**Run only if** `CLASS` = ci **and** Step 2 `GUARD_VERDICT` = PASS. (Brief-class skipped Step 2, so it skips this too.)
-
-1. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
-   **If** call fails → retry once. **If** still fails → **Failure Path**.
-2. **If** `bkit:auto` not in `{LABELS}` → set `AUTO_VERDICT` = FAIL → run kill-switch propagation:
-   After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → remove PR label `bkit:auto` if PR exists (`mcp__github__update_pull_request({ owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER}, labels: [labels minus bkit:auto] })`) → terminate workflow normally (current run finishes, no further automation).
-   **Else** → `AUTO_VERDICT` = PASS.
-3. Update status:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$AUTO_VERDICT" \
-     '.[-1].steps += [{step:"cloud-opt-in-gate", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   ```
-4. **If** `AUTO_VERDICT` = FAIL → update status, commit, and push:
-   ```bash
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-   git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
-   git -C "$REPO_ROOT" commit -m "docs({FID}): cloud DONE bkit [skip ci]"
-   git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
-   ```
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
-   `{BODY}` = fenced block below:
-   ```comment
-   ### Step 3 — Opt-In Gate - Verdict: {AUTO_VERDICT}
-   ```
-6. **If** `AUTO_VERDICT` = FAIL → **STOP**, no further downstream steps.
-
-### 🔒 Gate 3 — Opt-In Gate
-
-- [ ] Label `bkit:auto` present in issue `{LABELS}` (else kill-switch propagated)
-- [ ] Verdict determined (`AUTO_VERDICT`)
-- [ ] Workflow status updated (step `cloud-opt-in-gate` recorded with `parentSha`, `verdict`; workflow closed to `DONE` on FAIL)
-- [ ] On FAIL, workflow status pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue comment attempted (`Step 3` section)
-
----
-
-## 🤖 Step 4 — Dispatch
-
-**CI-class** (`ship`/`debug`): run only if Step 2 `GUARD_VERDICT` = PASS **and** Step 3 `AUTO_VERDICT` = PASS. **Brief-class** (`design`/`plan`/`build`): runs directly after Step 1 (Steps 2–3 were skipped).
+**CI-class** (`ship`/`debug`): the stale-run guard and `bkit:auto` opt-in gate are performed inside `bkit-cloud.yml` before this orchestrator runs (free-tier YAML `if: contains(..., 'bkit [auto route]')` + in-job `gh issue view {ISSUE} --json labels` re-check). This orchestrator step runs only after both YAML gates pass. **Brief-class** (`design`/`plan`/`build`): runs directly after Step 1 (the human `workflow_dispatch` is the opt-in; YAML gates are skipped for dispatched runs).
 
 1. **CI-class only** — update status, commit, and push (brief-class skips this; the dispatched skill owns its own `status.json`):
    ```bash
@@ -239,7 +156,7 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
 2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 4 — Dispatch - Phase: {PHASE}
+   ### Step 2 — Dispatch - Phase: {PHASE}
    ```
 3. Invoke the matching phase skill via the `Task` tool, then exit so the dispatched skill owns the session. The invoked skill ingests its own brief from the tracker (issue description + comments, MCP-only). Route by `{PHASE}`:
    - `ship` → `/bkit-ship {FID}`
@@ -250,9 +167,9 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
 
    **If** `{PHASE}` matches none of the above → **Failure Path**.
 
-### 🔒 Gate 4 — Dispatch
+### 🔒 Gate 2 — Dispatch
 
 - [ ] CI-class only: workflow status updated (`cloud` `DONE`, step `cloud-dispatch` recorded with `parentSha`, `phase`) and pushed to `dev` with `bkit [skip ci]`
-- [ ] Issue comment attempted (`Step 4` section)
+- [ ] Issue comment attempted (`Step 2` section)
 - [ ] The phase skill matching `{PHASE}` was invoked with the correct argument (`{FID}` for ship/debug, `{ISSUE_ID}` for design/plan/build)
 - [ ] Orchestrator exits and the dispatched skill owns the session
