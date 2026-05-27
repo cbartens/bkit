@@ -937,11 +937,13 @@ A single deterministic assertion enforces the CI-trigger contract at the orchest
 **Contract (DENY-LIST — never an allow-list):**
 
 ```bash
-# HEAD-subject clause: run at the final CI-triggering push
-HEAD_SUBJECT=$(git log -1 --pretty=%s)
-if echo "$HEAD_SUBJECT" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
-  echo "HEAD-subject assertion FAILED: '$HEAD_SUBJECT' contains a CI-suppressing token." >&2
-  echo "Fix: ensure the final commit before push is the loud close-workflow commit (no [skip ci])." >&2
+# HEAD-subject clause: run at the final CI-triggering push. Scan the FULL message
+# (%B, body included), not just %s — GitHub reads the whole commit message for skip
+# tokens, so a suppressor in the body kills CI even with a clean subject line.
+HEAD_MSG=$(git log -1 --pretty=%B)
+if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+  echo "HEAD-subject assertion FAILED: HEAD commit message contains a CI-suppressing token." >&2
+  echo "Fix: ensure the final commit before push is the loud close-workflow commit (no skip token in subject OR body)." >&2
   echo "Escape hatch: add 'bkit [force build]' to override Vercel-only skip tags." >&2
   exit 1
 fi
@@ -955,7 +957,7 @@ if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip action
 fi
 ```
 
-- **Deny-list tokens — HEAD subject:** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`.
+- **Deny-list tokens — HEAD message (subject + body):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`.
 - **Deny-list tokens — PR title additionally:** `[skip build]` (squash subject becomes `dev` HEAD; `[skip build]` there skips post-merge deploy).
 - **Legitimate loud tokens that pass automatically (deny-list, so no allow-list needed):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. None contain a suppressor substring.
 - **Hard-fail loud:** name the offending commit subject or PR title + the fix. Route to Failure Path. No silent auto-fix.

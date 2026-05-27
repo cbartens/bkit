@@ -164,7 +164,7 @@ HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, 
    - `design` → `/bkit-design {ISSUE_ID}`
    - `plan` → `/bkit-plan {ISSUE_ID}`
    - `build` → `/bkit-build {ISSUE_ID}`
-   **IF** `{PHASE}` matches none of above → **Failure Path**.
+     **IF** `{PHASE}` matches none of above → **Failure Path**.
 
 ### 🔒 Gate 2 — Dispatch
 

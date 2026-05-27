@@ -906,17 +906,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Re-read labels, run HEAD-Subject Assertion, then update status, commit, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
+2. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
    # Auto-route marker from labels (this-block scope; empty when tracker unwired or bkit:auto absent).
    AUTO_ROUTE_SUFFIX=""
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   # HEAD-Subject Assertion (HEAD clause): close-workflow commit is HEAD after push.
-   UPCOMING="chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
-   if echo "$UPCOMING" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
-     echo "HEAD-subject assertion FAILED: '$UPCOMING' contains a CI-suppressing token." >&2; exit 1
-   fi
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -925,6 +920,12 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
       | .[-1] |= (. + {status:"DONE"})' \
      "$STATUS" > "$t" && mv "$t" "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
+   # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
+   # reads the whole commit message for skip tokens. Runs after commit, before the CI-triggering push.
+   HEAD_MSG=$(git log -1 --pretty=%B)
+   if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "HEAD-Subject Assertion FAILED: close-workflow HEAD message contains a CI-suppressing token." >&2; exit 1
+   fi
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }

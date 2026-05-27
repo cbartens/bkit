@@ -769,7 +769,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      [ -n "$CURRENT_TITLE" ] && [ "$NEW_TITLE" != "$CURRENT_TITLE" ] && gh pr edit "$PR_NUMBER" --title "$NEW_TITLE" || true
    fi
    ```
-3. Re-read labels, then update status, commit, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
+3. Re-read labels → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`), `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    ```bash
    # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
@@ -791,6 +791,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    # local-mode: the create-pr commit (step 9 below) is the CI-triggering HEAD — marker goes there instead.
    PR_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "pr" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${VERBOSE_SUFFIX}${PR_MODE_AUTO_SUFFIX}"
+   # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
+   # reads the whole commit message for skip tokens. Runs after commit, before the CI-triggering push.
+   HEAD_MSG=$(git log -1 --pretty=%B)
+   if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "HEAD-Subject Assertion FAILED: close-workflow HEAD message contains a CI-suppressing token." >&2; exit 1
+   fi
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
@@ -821,7 +827,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 7. **If** `TRIGGER_PR` = 1 **and** `gh pr create` fails → retry once. **If** still fails → **Failure Path**.
 8. **If** `TRIGGER_PR` = 1 → extract `PR_URL` and `PR_NUMBER` from created PR; assert both non-empty.
-9. **If** `TRIGGER_PR` = 1 → update status, commit, and push:
+9. **If** `TRIGGER_PR` = 1 → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    ```bash
    PARENT_SHA=$(git rev-parse HEAD)
    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
@@ -840,6 +846,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    fi
    LOCAL_MODE_AUTO_SUFFIX=""; [ "$DEBUG_MODE" = "local" ] && LOCAL_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
    git add -A && git commit --allow-empty -m "chore({FID}): create-pr${VERBOSE_SUFFIX}${LOCAL_MODE_AUTO_SUFFIX}"
+   # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) before the CI-triggering push.
+   HEAD_MSG=$(git log -1 --pretty=%B)
+   if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+     echo "HEAD-Subject Assertion FAILED: create-pr HEAD message contains a CI-suppressing token." >&2; exit 1
+   fi
    git push origin "$(git branch --show-current)"
    ```
 10. Update status, commit, and push:
