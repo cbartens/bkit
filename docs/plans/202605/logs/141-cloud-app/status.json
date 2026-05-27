@@ -333,5 +333,34 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "ship",
+    "startedAt": "2026-05-27T07:25:37Z",
+    "status": "IN_PROGRESS",
+    "steps": [
+      {
+        "step": "ship-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-27T07:25:37Z",
+        "parentSha": "b0443aa5be79b01f614c8e89ada431ec43d9ea2d",
+        "artifacts": []
+      },
+      {
+        "step": "ship-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-27T07:25:37Z",
+        "parentSha": "b0443aa5be79b01f614c8e89ada431ec43d9ea2d",
+        "artifacts": ["docs/plans/202605/logs/141-cloud-app/ship-input.md"]
+      },
+      {
+        "step": "ship-regression-guard",
+        "status": "DONE",
+        "verdict": "PASS",
+        "at": "2026-05-27T07:26:40Z",
+        "parentSha": "fdba07ee7fd22c67ff55c8310875447f8a594482",
+        "artifacts": []
+      }
+    ]
   }
 ]
