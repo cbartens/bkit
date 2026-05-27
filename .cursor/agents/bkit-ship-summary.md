@@ -61,6 +61,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Action Items
 
 [Specific follow-ups for ship completion (post-merge monitoring, deferred deploy verifications, etc.). If pure clean ship then `None`; initially set to `PENDING`.]
+
+## Recommended Next Step
+
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS`/`CONCERNS` → no command (feature merged; note any post-merge monitoring); `FAIL` → fix merge blocker, then `/bkit-ship`. Emit `text` block: `<cmd> <ref>` if any (else `_No further bkit command — feature shipped._`), then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

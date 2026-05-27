@@ -82,6 +82,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Action Items
 
 [Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution or handover instructions (distinct from Risks above); initially set to `PENDING`.]
+
+## Recommended Next Step
+
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS` → `/bkit-ship`; `CONCERNS` → `/bkit-ship` (carry caveat) or `/bkit-debug` (re-run); `FAIL` → manual handover, no command (cite handover artifact). Emit `text` block: L1 `<cmd> <ref>` (omit on `FAIL`), then `Brief: <residual risk, caveat, debug-summary link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**
