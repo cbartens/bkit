@@ -8,6 +8,11 @@ import type { PreflightFinding } from "./bkit-preflight";
 import type { WriteSet } from "./bkit-tiers";
 import {
   detectShellToken,
+  detectShellGhToken,
+  hasGithubMcpServer,
+  detectActionsWritePermissions,
+  detectProjectsToolset,
+  buildGithubProjectAdvisory,
   detectNpmrcAuth,
   detectGhSecret,
   detectMainBranchProtection,
@@ -96,6 +101,232 @@ describe("detectShellToken", () => {
   it("B4: returns 'empty' when GH_BKIT_TOKEN is set to empty string (differentiates from unset)", () => {
     process.env.GH_BKIT_TOKEN = "";
     expect(detectShellToken()).toBe("empty");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectShellGhToken (GH_TOKEN — GitHub MCP auth)
+// ---------------------------------------------------------------------------
+
+describe("detectShellGhToken", () => {
+  it("returns 'present' when GH_TOKEN is set and non-empty", () => {
+    process.env.GH_TOKEN = "ghp_value";
+    expect(detectShellGhToken()).toBe("present");
+  });
+
+  it("returns 'missing' when GH_TOKEN is not set", () => {
+    delete process.env.GH_TOKEN;
+    expect(detectShellGhToken()).toBe("missing");
+  });
+
+  it("returns 'empty' when GH_TOKEN is set to empty string", () => {
+    process.env.GH_TOKEN = "";
+    expect(detectShellGhToken()).toBe("empty");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hasGithubMcpServer
+// ---------------------------------------------------------------------------
+
+describe("hasGithubMcpServer", () => {
+  it("true when root .mcp.json declares a github server", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+    );
+    expect(hasGithubMcpServer(tmpDir)).toBe(true);
+  });
+
+  it("true when only .cursor/mcp.json declares a github server", () => {
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".cursor", "mcp.json"),
+      JSON.stringify({ mcpServers: { github: { type: "http" } } }),
+    );
+    expect(hasGithubMcpServer(tmpDir)).toBe(true);
+  });
+
+  it("false when no mcp config exists", () => {
+    expect(hasGithubMcpServer(tmpDir)).toBe(false);
+  });
+
+  it("false when mcp config has no github server", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { linear: { type: "http" } } }),
+    );
+    expect(hasGithubMcpServer(tmpDir)).toBe(false);
+  });
+
+  it("false (does not throw) on malformed JSON", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ not json");
+    expect(hasGithubMcpServer(tmpDir)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectProjectsToolset
+// ---------------------------------------------------------------------------
+
+describe("detectProjectsToolset", () => {
+  const writeMcp = (toolsets: string | null) => {
+    const github: Record<string, unknown> = { type: "http" };
+    if (toolsets !== null) github.headers = { "X-MCP-Toolsets": toolsets };
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), JSON.stringify({ mcpServers: { github } }));
+  };
+
+  it("'present' when X-MCP-Toolsets includes projects", () => {
+    writeMcp("context,issues,pull_requests,repos,users,projects");
+    expect(detectProjectsToolset(tmpDir)).toBe("present");
+  });
+
+  it("'missing' when header present but omits projects (old-install drift)", () => {
+    writeMcp("context,issues,pull_requests,repos,users");
+    expect(detectProjectsToolset(tmpDir)).toBe("missing");
+  });
+
+  it("'unknown' when .mcp.json absent", () => {
+    expect(detectProjectsToolset(tmpDir)).toBe("unknown");
+  });
+
+  it("'unknown' when github server has no toolset header (can't judge)", () => {
+    writeMcp(null);
+    expect(detectProjectsToolset(tmpDir)).toBe("unknown");
+  });
+
+  it("'unknown' (does not throw) on malformed JSON", () => {
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), "{ not json");
+    expect(detectProjectsToolset(tmpDir)).toBe("unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectActionsWritePermissions
+// ---------------------------------------------------------------------------
+
+describe("detectActionsWritePermissions", () => {
+  it("'present' when write perms AND PR approval allowed", () => {
+    execFileSync.mockReturnValue(
+      JSON.stringify({
+        default_workflow_permissions: "write",
+        can_approve_pull_request_reviews: true,
+      }),
+    );
+    expect(detectActionsWritePermissions()).toBe("present");
+  });
+
+  it("'missing' when permissions are read-only", () => {
+    execFileSync.mockReturnValue(
+      JSON.stringify({
+        default_workflow_permissions: "read",
+        can_approve_pull_request_reviews: true,
+      }),
+    );
+    expect(detectActionsWritePermissions()).toBe("missing");
+  });
+
+  it("'missing' when PR creation/approval is disabled even if write", () => {
+    execFileSync.mockReturnValue(
+      JSON.stringify({
+        default_workflow_permissions: "write",
+        can_approve_pull_request_reviews: false,
+      }),
+    );
+    expect(detectActionsWritePermissions()).toBe("missing");
+  });
+
+  it("'unknown' when gh CLI throws (unavailable / unauthenticated)", () => {
+    execFileSync.mockImplementation(() => {
+      throw new Error("command not found: gh");
+    });
+    expect(detectActionsWritePermissions()).toBe("unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGithubProjectAdvisory
+// ---------------------------------------------------------------------------
+
+describe("buildGithubProjectAdvisory", () => {
+  const pkg = (bkit: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
+  const validProject = {
+    owner: "acme",
+    number: 7,
+    statusFieldId: "F",
+    progressOptionId: "p",
+    reviewOptionId: "r",
+    doneOptionId: "d",
+  };
+  const writeToolset = (toolsets: string) =>
+    fs.writeFileSync(
+      path.join(tmpDir, ".mcp.json"),
+      JSON.stringify({ mcpServers: { github: { headers: { "X-MCP-Toolsets": toolsets } } } }),
+    );
+
+  beforeEach(() => {
+    // Advisory only fires when workflows are installed.
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+  });
+
+  it("returns null when workflows are not installed", () => {
+    fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
+    pkg({ issueTracker: "github" });
+    expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("returns null when tracker is not github", () => {
+    pkg({ issueTracker: "linear", githubProject: validProject });
+    expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("flags both prerequisites when config absent and toolset missing", () => {
+    pkg({ issueTracker: "github" });
+    writeToolset("context,issues,pull_requests"); // no projects
+    const result = buildGithubProjectAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("github-project-board-sync-unconfigured");
+    expect(result!.detect).toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).toContain("`projects` toolset is missing");
+  });
+
+  it("flags only the toolset when config is present but projects toolset missing", () => {
+    pkg({ issueTracker: "github", githubProject: validProject });
+    writeToolset("context,issues,pull_requests");
+    const result = buildGithubProjectAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("`projects` toolset is missing");
+    expect(result!.detect).not.toContain("`bkit.githubProject` is absent");
+  });
+
+  it("flags only the config when toolset present but githubProject absent", () => {
+    pkg({ issueTracker: "github" });
+    writeToolset("context,issues,projects");
+    const result = buildGithubProjectAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("`bkit.githubProject` is absent");
+    expect(result!.detect).not.toContain("`projects` toolset is missing");
+  });
+
+  it("returns null when both prerequisites are satisfied", () => {
+    pkg({ issueTracker: "github", githubProject: validProject });
+    writeToolset("context,issues,projects");
+    expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("stays quiet on explicit opt-out (bkit.githubProject: false), even with toolset missing", () => {
+    pkg({ issueTracker: "github", githubProject: false });
+    writeToolset("context,issues,pull_requests");
+    expect(buildGithubProjectAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("treats an object lacking owner/number as absent (config not usable)", () => {
+    pkg({ issueTracker: "github", githubProject: { statusFieldId: "F" } });
+    writeToolset("context,issues,projects");
+    const result = buildGithubProjectAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("`bkit.githubProject` is absent");
   });
 });
 
