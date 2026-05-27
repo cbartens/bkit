@@ -157,8 +157,8 @@ jobs:
             # SHARED-DERIV: derive FID + ISSUE from PR body metadata (primary) or branch (fallback).
             # PRIMARY: parse the bkit:issue / bkit:fid markers shipped in every bkit-build PR body.
             PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
-            ISSUE=$(echo "$PR_BODY" | grep -oP '(?<=bkit:issue=#)\d+' | head -1)
-            FID=$(echo "$PR_BODY" | grep -oP '(?<=bkit:fid=)[^\s>]+' | head -1)
+            ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
+            FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
             if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
               # FALLBACK: extract FID from branch (feat/{FID} or feat/{FID}-slug).
               FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
@@ -182,7 +182,6 @@ jobs:
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
           echo "arg=$ARG" >> "$GITHUB_OUTPUT"
-          echo "fid=${FID:-$ARG}" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch /bkit-cloud on Claude Code runner
         if: steps.ctx.outputs.skip != 'true'

@@ -210,7 +210,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --cloud=<claude|cursor>
       // Bare `--cloud` (no value) is accepted for uninstall (variant not needed — reads from
-      // package.json); for install/check/upgrade it requires an explicit variant.
+      // package.json). For install/check/upgrade it requires an explicit variant; future
+      // improvement: resolve variant from recorded bkit.cloudAgents for check/upgrade too.
       if (flag === "cloud") {
         if (verb !== "uninstall") {
           console.error(

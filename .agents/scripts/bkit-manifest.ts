@@ -231,7 +231,11 @@ export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
   },
 ];
 
-// Combined manifest used by uninstall when no variant is recorded (removes all cloud files).
+// Combined manifest used by MODULE_MANIFESTS.cloud (install dispatch + uninstall).
+// Uninstall intentionally removes the union (zero-footprint): each variant's files are
+// physically absent on an install of the other variant, so removing absent files is a no-op.
+// DECISION-D states the split exists for install EMISSION (variant-correct write), not for
+// variant-correct uninstall listing — union removal is the correct uninstall behaviour.
 const CLOUD_MANIFEST: ManifestEntry[] = [...CLOUD_MANIFEST_CLAUDE, ...CLOUD_MANIFEST_CURSOR];
 
 // Renovate is opt-in via `bkit install --renovate` — phase-gated against the

@@ -498,3 +498,15 @@
 - **Severity:** high (D1 blocked all cloud CI usage; D2 mid-build fires caused confirmed CI run #202/PR #102 phantom; D3 latent race)
 - **Source:** live-dispatch
 - **Related:** #141, #184, DE-21, KN-11 (`[skip ci]` HEAD → empty rollup)
+
+## KN-31: `grep -oP` PCRE lookbehind fails under `set -euo pipefail` on non-GNU environments (2026-05-27)
+
+- **Category:** infra
+- **Symptom:** A `bkit-cloud.yml` step using `grep -oP '(?<=bkit:issue=#)\d+'` under `set -euo pipefail` exits with code 1 on a PR body that lacks the marker pattern. The whole step is aborted; the documented fallback (`feat/{FID}` branch extraction) and fail-safe `skip=true` path become dead code. The job shows RED instead of a clean no-op skip.
+- **Root cause:** (1) `grep` exits 1 when the pattern has no match; `pipefail` propagates that exit code through the pipe; `set -e` aborts the script at the assignment line. (2) `grep -oP` relies on PCRE (`-P`), unavailable on BSD/macOS grep and some minimal CI runner images. On `ubuntu-latest` GNU grep has `-P` so it works today, but any runner-image change silently falls through to the branch fallback, which may resolve the wrong issue number if the branch slug and issue number diverge.
+- **Fix or rule:** Two independent fixes applied together: (a) append `|| true` to each assignment so a no-match exit code does not abort the step — `ISSUE=$(... || true)`; (b) replace PCRE lookbehind with portable POSIX ERE: `grep -oE 'bkit:issue=#[0-9]+'  | sed 's/bkit:issue=#//'` (match the whole token, then strip the prefix with sed). This is robust across GNU grep, BSD grep, and minimal images. Applied to both `.github/workflows/bkit-cloud.yml` and `.agents/templates/.github/workflows/bkit-cloud.yml` (must stay byte-identical per the T3.1 test). Pattern: NEVER use `grep -oP` in shipped CI YAML — always use `grep -oE` + `sed` for portability.
+- **Type:** gotcha
+- **Confidence:** high (root cause confirmed in code; both files fixed)
+- **Severity:** high (breaks the auto-route fail-safe; any bkit:auto repo with a malformed/missing PR body marker hits a red job)
+- **Source:** build-challenge (challenge-1 + challenge-2 merged finding)
+- **Related:** #141, DE-21, `.github/workflows/bkit-cloud.yml`

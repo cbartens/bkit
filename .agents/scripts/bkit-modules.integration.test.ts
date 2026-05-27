@@ -976,8 +976,8 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     // The kill-switch gh issue view must use $ISSUE (not a re-derived value).
     // $ISSUE must be set by the SHARED-DERIV step (primary: PR body; fallback: branch).
     expect(out).toContain('gh issue view "$ISSUE"');
-    // SHARED-DERIV must set ISSUE from PR body primary source.
-    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oP');
+    // SHARED-DERIV must set ISSUE from PR body primary source (portable grep -oE, not PCRE -oP).
+    expect(out).toContain('ISSUE=$(echo "$PR_BODY" | grep -oE');
     // SHARED-DERIV fallback must set ISSUE from FID (branch-derived numeric id).
     expect(out).toContain('ISSUE="$FID"');
     // The ISSUE variable used by gh issue view is the SAME one set by SHARED-DERIV.

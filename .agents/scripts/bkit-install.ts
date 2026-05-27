@@ -959,34 +959,13 @@ async function main() {
         process.exit(1);
       }
       issueTracker = tracker;
-      // Persist to consumer package.json so subsequent installs (without --tracker=) reuse it.
-      const consumerPkgPath2 = path.join(process.cwd(), "package.json");
-      if (fs.existsSync(consumerPkgPath2) && !dryRun) {
-        try {
-          const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
-          const pkg = JSON.parse(raw) as Record<string, unknown>;
-          const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-          bkit.issueTracker = tracker;
-          pkg.bkit = bkit;
-          const indentMatch = raw.match(/\n([ \t]+)"/);
-          const indent = indentMatch ? indentMatch[1] : "  ";
-          const trailingNewline = raw.endsWith("\n") ? "\n" : "";
-          fs.writeFileSync(
-            consumerPkgPath2,
-            JSON.stringify(pkg, null, indent) + trailingNewline,
-            "utf-8",
-          );
-          console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
-        } catch {
-          // non-fatal
-        }
-      }
     }
   }
 
   // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
   // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
-  // Mismatch is a hard error before any module dispatch — no files written.
+  // Mismatch is a hard error — checked BEFORE any package.json write so no state
+  // is recorded on mismatch ("no files written on hard error" invariant).
   if (cloudVariant !== null && modules.has("cloud")) {
     const requiredTracker: IssueTracker = cloudVariant === "claude" ? "github" : "linear";
     if (issueTracker !== requiredTracker) {
@@ -998,6 +977,32 @@ async function main() {
             : `Use the matching cloud variant or reconfigure the tracker with --force.`),
       );
       process.exit(1);
+    }
+  }
+
+  // Persist tracker to consumer package.json AFTER all hard-error gates pass.
+  // This preserves the "no files written on mismatch" invariant.
+  if (tracker !== null) {
+    const consumerPkgPath2 = path.join(process.cwd(), "package.json");
+    if (fs.existsSync(consumerPkgPath2) && !dryRun) {
+      try {
+        const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
+        const pkg = JSON.parse(raw) as Record<string, unknown>;
+        const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
+        bkit.issueTracker = tracker;
+        pkg.bkit = bkit;
+        const indentMatch = raw.match(/\n([ \t]+)"/);
+        const indent = indentMatch ? indentMatch[1] : "  ";
+        const trailingNewline = raw.endsWith("\n") ? "\n" : "";
+        fs.writeFileSync(
+          consumerPkgPath2,
+          JSON.stringify(pkg, null, indent) + trailingNewline,
+          "utf-8",
+        );
+        console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+      } catch {
+        // non-fatal
+      }
     }
   }
 

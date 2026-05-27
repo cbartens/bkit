@@ -958,26 +958,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 ## 🤖 Step 18 — Close Workflow
 
 1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
-2. Re-read issue labels to determine `bkit [auto route]` marker (**before** the close-workflow commit — this is the authoritative "at close time" signal):
+2. Re-read issue labels, run the HEAD-Subject Assertion, update status, commit, and push (all in one block so `AUTO_ROUTE_SUFFIX` is set and consumed in the same shell):
    <!-- bkit:tracker issue-read start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-read end -->
    ```bash
+   # Derive auto-route marker from issue labels (set and used in this block — no cross-block variable leakage).
    AUTO_ROUTE_SUFFIX=""
    # If the tracker snippet above populated LABELS and bkit:auto is present, set the suffix.
    # Fallback when tracker not wired: suffix stays empty (no auto-route marker).
    echo "${LABELS:-}" | grep -q 'bkit:auto' && AUTO_ROUTE_SUFFIX=" bkit [auto route]" || true
-   ```
-3. Run the HEAD-Subject Assertion (HEAD clause) — the close-workflow commit will be HEAD after push:
-   ```bash
-   # Assert the upcoming commit subject is clean (deny-list check on the constructed subject).
+   # HEAD-Subject Assertion (HEAD clause) — the close-workflow commit will be HEAD after push.
    UPCOMING="chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    if echo "$UPCOMING" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "HEAD-subject assertion FAILED: '$UPCOMING' contains a CI-suppressing token." >&2; exit 1
    fi
-   ```
-4. Update status, commit, and push:
-   ```bash
+   # Update status, commit, and push.
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -995,13 +991,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    git -C "$REPO_ROOT" commit -m "chore({FID}): build DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-5. <!-- bkit:tracker issue-update-review start -->
+3. <!-- bkit:tracker issue-update-review start -->
    _Tracker not wired — skip issue update._
    <!-- bkit:tracker issue-update-review end -->
    <!-- bkit:tracker issue-update-status start -->
    _Tracker not wired — skip status/state update._
    <!-- bkit:tracker issue-update-status end -->
-6. Re-read issue labels post-push to check kill-switch (this read is the orchestrator-side kill switch; the marker was already set in step 2 at commit-build time):
+4. Re-read issue labels post-push to check kill-switch (this read is the orchestrator-side kill switch; the marker was already set in step 2 at commit-build time):
    <!-- bkit:tracker issue-read start -->
    _Tracker not wired — skip._
    <!-- bkit:tracker issue-read end -->
@@ -1009,7 +1005,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    <!-- bkit:tracker kill-switch-check start -->
    _Tracker not wired — kill switch inactive._
    <!-- bkit:tracker kill-switch-check end -->
-7. <!-- bkit:tracker comment-post-step start -->
+5. <!-- bkit:tracker comment-post-step start -->
    _Tracker not wired — skip comment post._
    <!-- bkit:tracker comment-post-step end -->
    `{BODY}` = fenced block below:
