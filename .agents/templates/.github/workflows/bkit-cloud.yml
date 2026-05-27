@@ -56,16 +56,21 @@ run-name: >-
       || format('bkit cloud {0}', github.event.workflow_run.head_commit.message) }}
 
 concurrency:
-  # Key on the FID (issue number) — a newer trigger cancels an in-flight run for the
-  # same issue/branch. Ship squash-merge is a single GitHub-atomic API call, so a
-  # mid-run cancel cannot leave a PR in a partial state.
+  # Serialises concurrent runs WITHIN each trigger surface:
+  #   - dispatch path  keys on inputs.issue     (e.g. bkit-cloud-141)
+  #   - CI-completion  keys on head_branch       (e.g. bkit-cloud-feat/141-cloud-app)
   #
-  # SHARED-DERIV: both paths resolve to bkit-cloud-<FID> where FID = issue number:
-  #   - dispatch path: inputs.issue IS the FID directly (numeric issue number).
-  #   - CI-completion path: head_branch is always feat/{FID} (bkit branch convention);
-  #     stripping the 'feat/' prefix with replace() yields the bare FID. This is the
-  #     same FID derivation used by the SHARED-DERIV step (single source, not duplicated).
-  group: bkit-cloud-${{ inputs.issue || replace(github.event.workflow_run.head_branch, 'feat/', '') }}
+  # Cross-surface collapse (dispatch vs the auto-ship it triggers) is NOT achievable
+  # via a concurrency expression: GitHub evaluates concurrency.group from trigger-payload
+  # context only, before any step runs. The dispatch payload exposes only the bare issue
+  # number (inputs.issue); the workflow_run payload exposes only head_branch
+  # (= feat/{FID-with-slug}, e.g. feat/141-cloud-app). GHA expressions have no regex /
+  # split / replace-to-numeric — stripping 'feat/' from a slugged FID yields
+  # '141-cloud-app', not '141', so the two tokens can never be made identical by
+  # expression functions alone. Cross-boundary races between a dispatched build and the
+  # auto-ship it triggers are handled by the orchestrator stale-run guard + status.json
+  # lock (not this concurrency key).
+  group: bkit-cloud-${{ inputs.issue || github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions:
