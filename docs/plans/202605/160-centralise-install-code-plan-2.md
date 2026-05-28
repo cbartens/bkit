@@ -185,11 +185,11 @@ Code-only — `git revert {squash-merge SHA}` restores `.agents/scripts`/`.agent
   - **Done when:** `runPayload` has no `tplSrc`/`tplDst`/`mirrorDirAlways` templates block; payload tests green.
 - [x] **WS3-T5:** Add D1 upgrade orphan-removal: `bkit upgrade` actively removes consumer `.agents/templates/`. Add a WS-3-local integration smoke test so the behaviour is independently verifiable within WS-3 (not only via the WS-4 manual gate): seed a temp dir with a `.agents/templates/` dir, run upgrade, assert the dir is removed; assert no-op when the dir is absent; assert dry-run writes nothing.
   - **Done when:** upgrade removes an existing consumer `.agents/templates/` (dry-run aware), no-op when absent; a WS-3-local integration test asserts all three (present→removed, absent→no-op, dry-run→no-write) and is green; end-to-end coverage remains the WS-4 upgrade assertion (Sub-Plan 3 WS4-T4).
-- [ ] **WS3-T6:** Update `tsconfig.json` (`rootDir`/`include` → `.bkit/src`; drop `.agents/skills` exclude; keep `outDir: dist`, `**/*.test.ts` exclude).
+- [x] **WS3-T6:** Update `tsconfig.json` (`rootDir`/`include` → `.bkit/src`; drop `.agents/skills` exclude; keep `outDir: dist`, `**/*.test.ts` exclude).
   - **Done when:** `pnpm build` emits to flat `dist/`; `check:dist` green; `bin` unchanged.
 - [x] **WS3-T7:** Re-target `vitest.config.ts` `include` globs (both) to `.bkit/src/**`.
   - **Done when:** `pnpm test` discovers the relocated test files (non-zero test count); no test runs from `.agents/scripts`.
-- [ ] **WS3-T8:** Update `package.json` `files[]` (add `.bkit`, keep `.agents`, re-target exclusions to `.bkit/src`) and `lint:no-tier-terms` path; record `lint:prose` needs no change.
+- [x] **WS3-T8:** Update `package.json` `files[]` (add `.bkit`, keep `.agents`, re-target exclusions to `.bkit/src`) and `lint:no-tier-terms` path; record `lint:prose` needs no change.
   - **Done when:** `files[]` = `dist`, `.bkit`, `.agents`, `README.md`, `CHANGELOG.md` + `!.bkit/src/*.test.ts`, `!.bkit/src/*.integration.test.ts`, `!.bkit/src/__snapshots__`; `lint:no-tier-terms` points at `.bkit/src/bkit-lint-no-tier-terms.ts`.
 - [x] **WS3-T9:** Confirm `NPM_STRIP_REMAP` unchanged; verify `.bkit/templates/gitignore` stored dot-less.
   - **Done when:** `.bkit/templates/gitignore` exists (no dot); `NPM_STRIP_REMAP` byte-identical to pre-move.
@@ -200,7 +200,7 @@ Code-only — `git revert {squash-merge SHA}` restores `.agents/scripts`/`.agent
 
 ### 🔒 Gate WS-3: move complete, build + tests green
 
-- [ ] **Gate WS-3 - Verified:** `pnpm build`, `check:dist`, `pnpm test` all green post-move; `rg '\.agents/(scripts|templates)' .bkit/src tsconfig.json vitest.config.ts package.json` returns ONLY dest-relative / dest-layout-describing hits (the `.agents/` segment inside `.bkit/templates/.agents/`, `CORE_TEMPLATE_DIRS`) — i.e. WS3-T3 (literals) AND WS3-T11 (strings/comments) BOTH applied so no source-root reference survives; any residual non-dest hit means a WS3-T3/T11 item was missed.
+- [x] **Gate WS-3 - Verified:** `pnpm build`, `check:dist`, `pnpm test` all green post-move; `rg '\.agents/(scripts|templates)' .bkit/src tsconfig.json vitest.config.ts package.json` returns ONLY dest-relative / dest-layout-describing hits (the `.agents/` segment inside `.bkit/templates/.agents/`, `CORE_TEMPLATE_DIRS`) — i.e. WS3-T3 (literals) AND WS3-T11 (strings/comments) BOTH applied so no source-root reference survives; any residual non-dest hit means a WS3-T3/T11 item was missed.
 
 ### Phase WS-5 — Doctor observability (#165; requires WS-1; lands within the same PR)
 
