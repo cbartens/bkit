@@ -52,6 +52,17 @@ function resolveNodeVersion(cwd: string, pkg: Record<string, unknown>): string {
   return "22";
 }
 
+// Strip git hook environment variables so child git processes use the repo at
+// `cwd` rather than whatever GIT_DIR/GIT_WORK_TREE the hook runner injected.
+function gitEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env["GIT_DIR"];
+  delete env["GIT_WORK_TREE"];
+  delete env["GIT_INDEX_FILE"];
+  delete env["GIT_OBJECT_DIRECTORY"];
+  return env;
+}
+
 // Resolve DEFAULT_BRANCH: git symbolic-ref refs/remotes/origin/HEAD → "main"
 function resolveDefaultBranch(cwd: string): string {
   try {
@@ -59,6 +70,7 @@ function resolveDefaultBranch(cwd: string): string {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv(),
     }).trim();
     // raw is like "refs/remotes/origin/main"
     const parts = raw.split("/");
@@ -81,6 +93,7 @@ function resolveRepoSlug(cwd: string): string {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
+      env: gitEnv(),
     }).trim();
     // Strip a trailing `.git`, then capture the final `owner/repo` segment after
     // the last `/` or `:` (covers both URL and scp-style remotes).

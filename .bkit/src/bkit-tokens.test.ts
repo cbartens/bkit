@@ -116,7 +116,12 @@ describe("resolveTokens — PROJECT_NAME", () => {
 describe("resolveTokens — REPO_SLUG", () => {
   function initRepoWithOrigin(url: string): void {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    const opts = { cwd: tmpDir, stdio: "ignore" as const };
+    // Strip git hook env vars so these commands operate on the temp dir,
+    // not on the parent repo injected via GIT_DIR during pre-push hooks.
+    const env = { ...process.env };
+    delete env["GIT_DIR"];
+    delete env["GIT_WORK_TREE"];
+    const opts = { cwd: tmpDir, stdio: "ignore" as const, env };
     execSync("git init", opts);
     execSync(`git remote add origin ${url}`, opts);
   }
