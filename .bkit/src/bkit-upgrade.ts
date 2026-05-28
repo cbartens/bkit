@@ -363,6 +363,11 @@ export function updateCanonicalHashesAfterUpgrade(
 
   const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
   for (const relPath of seedablePaths) {
+    // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
+    // .env.example etc.) from canonicalHashes — they are not consumer-facing files
+    // whose hashes bkit uses for drift detection. Mirrors the same filter applied
+    // in the install path (bkit-modules.ts postDispatch, line ~470).
+    if (relPath.startsWith(".agents" + path.sep)) continue;
     const absolutePath = path.join(cwd, relPath);
     if (!fs.existsSync(absolutePath)) continue;
     newCanonicalHashes[relPath] = sha256(fs.readFileSync(absolutePath, "utf-8"));
