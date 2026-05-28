@@ -131,12 +131,25 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
     ".cursor",
     ".claude",
 ]);
+// ---------------------------------------------------------------------------
+// guardTemplatesRoot — fail-loud guard for the resolved templates root.
+// Exported so tests can inject an arbitrary (non-existent) path and assert
+// the guard fires for ANY missing root — not just the literal ".agents/templates"
+// string. This keeps the assertion valid after the WS-3 path flip (Sub-Plan 2).
+//
+// Called by runCoreTemplates (below) before any FS access.
+// ---------------------------------------------------------------------------
+export function guardTemplatesRoot(root, logPrefix = "[bkit-modules]") {
+    if (!fs.existsSync(root)) {
+        console.error(`${logPrefix} Templates root not found at ${root} — package corrupt?`);
+        process.exit(1);
+    }
+}
 // Run templates pass only for core-owned files (top-level md files, docs/, .agents/ subtemplates).
 // Each other module handles its own template files directly.
 function runCoreTemplates(dryRun, pkgRoot, tokens, ws, logPrefix) {
     const root = path.join(pkgRoot, ".agents", "templates");
-    if (!fs.existsSync(root))
-        return;
+    guardTemplatesRoot(root, logPrefix);
     const tag = dryRun ? "[dry-run] " : "";
     // Process top-level entries
     for (const ent of fs.readdirSync(root, { withFileTypes: true })) {

@@ -625,10 +625,7 @@ function mirrorDirAlways(
 // In dogfood (running from .agents/scripts/ in the bkit repo itself), src and dst
 // resolve to the same paths, so this pass is a no-op.
 export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
-  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  const PKG_ROOT = scriptDir.endsWith(`${path.sep}.agents${path.sep}scripts`)
-    ? path.resolve(scriptDir, "..", "..")
-    : path.resolve(scriptDir, "..");
+  const PKG_ROOT = getPkgRoot();
   const PKG_AGENTS = path.join(PKG_ROOT, ".agents");
 
   let writes = 0;
