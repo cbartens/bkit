@@ -9,6 +9,7 @@ import {
   renderCloudWorkflow,
   type ModuleContext,
 } from "./bkit-modules.js";
+import { getTemplatesRoot } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
@@ -566,7 +567,7 @@ function listFilesRecursive(dir: string): string[] {
 // npm hard-excludes files literally named `.gitignore` and `.npmignore` from
 // packed tarballs (by basename, anywhere in the tree), regardless of the `files`
 // field. Those — and ONLY those — are stored without the leading dot in
-// `.agents/templates/` and remapped to their dotted dest at install/upgrade time.
+// `.bkit/templates/` and remapped to their dotted dest at install/upgrade time.
 //
 // Any OTHER dotfile (`.gitattributes`, `.prettierignore`, `.mcp.json`, …) packs
 // fine with its dot, so it is stored dotted in the template tree and needs NO
@@ -621,8 +622,7 @@ function mirrorDirAlways(
 
 // Payload pass: refresh bkit-canonical content in <cwd>/.agents/ from the package payload.
 //   - .agents/{workflows,prompts}/bkit-*.md → overwrite + prune (bkit-prefix only)
-//   - .agents/templates/** → full mirror (bkit-owned subtree)
-// In dogfood (running from .agents/scripts/ in the bkit repo itself), src and dst
+// In dogfood (running from .bkit/src/ in the bkit repo itself), src and dst
 // resolve to the same paths, so this pass is a no-op.
 export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
   const PKG_ROOT = getPkgRoot();
@@ -655,15 +655,26 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
     }
   }
 
-  const tplSrc = path.join(PKG_AGENTS, "templates");
-  const tplDst = path.join(".agents", "templates");
-  if (fs.existsSync(tplSrc) && path.resolve(tplSrc) !== path.resolve(tplDst)) {
-    writes += mirrorDirAlways(tplSrc, tplDst, dryRun, (rel) => {
-      console.log(`${LOG_PREFIX} ${tag}payload: ${path.join(tplDst, rel)}`);
-    });
-  }
-
   return { writes, deletes };
+}
+
+// ---------------------------------------------------------------------------
+// D1 upgrade orphan-removal (#160)
+//
+// Consumers who ran `bkit upgrade` on a version that shipped `.agents/templates/`
+// (pre-#160 layout) now carry an orphaned directory that no longer exists in the
+// tarball. Remove it so the consumer tree stays clean. No-op when absent.
+// Dry-run aware: logs only, no FS write.
+// ---------------------------------------------------------------------------
+
+export function removeOrphanTemplatesDir(cwd: string, dryRun: boolean): void {
+  const orphanDir = path.join(cwd, ".agents", "templates");
+  if (!fs.existsSync(orphanDir)) return;
+  const tag = dryRun ? "[dry-run] " : "";
+  console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .agents/templates/ (D1 auto-clean)`);
+  if (!dryRun) {
+    fs.rmSync(orphanDir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -697,6 +708,7 @@ async function main() {
   if (verb === "doctor") {
     LOG_PREFIX = "[bkit-doctor]";
     console.log(`${LOG_PREFIX} Running read-only advisory scan (no writes)`);
+    console.log(`${LOG_PREFIX} Templates root: ${getTemplatesRoot()}`);
     const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
     const allFindings = runPostInstallCheck(
       [...preflightAdvisories, ...blockers],
@@ -730,10 +742,16 @@ async function main() {
     // the bogus dot-less canonicalHashes key before the walk reseeds the dotted one.
     migrateStrayGitattributes(process.cwd(), upgradeFlags.dryRun);
 
+    // D1 orphan-removal: consumers who upgraded from a version that shipped
+    // `.agents/templates/` (pre-#160 layout) now carry an orphaned directory
+    // that no longer exists in the tarball. Remove it on upgrade so the
+    // consumer tree stays clean. No-op when already absent (fresh consumers).
+    // Dry-run aware: log only, no FS write.
+    removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
+
     // Collect bkit-managed template candidates from the package.
-    // Templates live in .agents/templates/ — walk the directory for all files.
-    const pkgRoot = getPkgRoot();
-    const tplRoot = path.join(pkgRoot, ".agents", "templates");
+    // Templates live in .bkit/templates/ — walk the directory for all files.
+    const tplRoot = getTemplatesRoot();
 
     // Manifest entry drives the per-file write strategy in runUpgrade:
     //   markered-text → block-merge, json → deep-merge (both preserve consumer
@@ -823,8 +841,9 @@ async function main() {
     // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
     // bumps even when every file was a no-op skip.
     if (!upgradeFlags.dryRun) {
-      const pkgVersion = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf-8"))
-        .version as string;
+      const pkgVersion = JSON.parse(
+        fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"),
+      ).version as string;
       updateCanonicalHashesAfterUpgrade(result, {
         dryRun: false,
         cwd: process.cwd(),

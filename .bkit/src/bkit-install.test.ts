@@ -294,14 +294,14 @@ describe("Orphan removal", () => {
       ".cursor/commands",
     ];
     // Verify expected dirs are present by checking the source uses them
-    const src = fs.readFileSync(".agents/scripts/bkit-install.ts", "utf-8");
+    const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
     for (const dir of allowedDirs) {
       expect(src).toContain(`"${dir}"`);
     }
   });
 
   it("install never writes to out-of-allowlist paths (source check)", () => {
-    const src = fs.readFileSync(".agents/scripts/bkit-install.ts", "utf-8");
+    const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
     // The removeOrphans fn must check against WRITE_DIRS before deleting
     expect(src).toContain("Refusing orphan removal outside allowlist");
   });
@@ -767,7 +767,7 @@ describe("B5 — LOG_PREFIX on blocker banner (source-level verification)", () =
     // Source-level check: the source must contain the LOG_PREFIX-prefixed log before
     // the formatChecklist(blockers) call. This guards against regressions where the
     // banner is printed without a log-prefix prefix line.
-    const src = fs.readFileSync(".agents/scripts/bkit-install.ts", "utf-8");
+    const src = fs.readFileSync(".bkit/src/bkit-install.ts", "utf-8");
     // Must contain LOG_PREFIX annotation before formatChecklist(blockers)
     expect(src).toContain("LOG_PREFIX} Preflight blockers detected");
     // LOG_PREFIX line must appear before the formatChecklist(blockers) call
@@ -787,12 +787,12 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
   // auth-shim (git config --global url.insteadOf). Tests updated accordingly.
 
   it("ci.yml template exists", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     expect(fs.existsSync(templatePath), `template must exist at ${templatePath}`).toBe(true);
   });
 
   it("ci.yml template does NOT contain the old git auth-shim (BAR-138 cleanup)", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     // The old auth-shim has been removed — these strings must be absent
     expect(content).not.toContain("git config --global url.");
@@ -801,7 +801,7 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
   });
 
   it("ci.yml template install step carries env: GH_BKIT_TOKEN for registry auth (BAR-138)", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     // GH_BKIT_TOKEN must be present as the env var for registry auth
     expect(content).toContain("GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}");
@@ -819,7 +819,7 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
   });
 
   it("ci.yml template after applyTokens has no {{PLACEHOLDER}} tokens remaining", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     const tokens = {
       NODE_VERSION: "22",

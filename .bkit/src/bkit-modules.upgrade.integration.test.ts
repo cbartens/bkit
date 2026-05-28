@@ -261,7 +261,7 @@ describe("heavy-customised consumer fixture (v0.5.x era) — v2.0.0 contained wr
 
 describe("cursor-v1-schema sanity", () => {
   it("template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__", () => {
-    const templatePath = path.resolve(__dirname, "../../.agents/templates/.cursor/hooks.json");
+    const templatePath = path.resolve(__dirname, "../../.bkit/templates/.cursor/hooks.json");
     expect(fs.existsSync(templatePath)).toBe(true);
     const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     expect(doc.version).toBe(1);

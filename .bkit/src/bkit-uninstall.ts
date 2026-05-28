@@ -26,7 +26,7 @@ import { stripManagedBlock, type MarkerStyle, type JsonValue } from "./bkit-tier
 import { getInstallManifest, type ManifestEntry, type ModuleName } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -421,8 +421,7 @@ export async function runUninstall(
           try {
             if (summary.format === "json") {
               // JSON deep-containment: strip bkit-owned scope, preserve consumer keys
-              const PKG_ROOT = getPkgRoot();
-              const templatePath = path.join(PKG_ROOT, ".agents", "templates", summary.file);
+              const templatePath = path.join(getTemplatesRoot(), summary.file);
               if (!fs.existsSync(templatePath)) {
                 // No template — preserve as-is
                 console.warn(`${ctx.logPrefix} no template found for ${summary.file} — preserving`);

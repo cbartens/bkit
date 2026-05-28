@@ -9,12 +9,13 @@
   },
   "files": [
     "dist",
+    ".bkit",
     ".agents",
     "README.md",
     "CHANGELOG.md",
-    "!.agents/scripts/*.test.ts",
-    "!.agents/scripts/*.integration.test.ts",
-    "!.agents/scripts/__snapshots__"
+    "!.bkit/src/*.test.ts",
+    "!.bkit/src/*.integration.test.ts",
+    "!.bkit/src/__snapshots__"
   ],
   "engines": {
     "node": ">=20"

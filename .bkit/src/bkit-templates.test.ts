@@ -3,7 +3,7 @@
 // Marker presence enforcement tests for Group A + Group B templates.
 // slop-scan.config.json required-rules enumeration (JSON deep-containment, no markers).
 //
-// These tests assert that the canonical template files in .agents/templates/
+// These tests assert that the canonical template files in .bkit/templates/
 // contain the correct bkit:start / bkit:end markers so that the install pass
 // can correctly extract and manage the bkit-owned block.
 
@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { extractManagedBlock } from "./bkit-install";
 
-const TEMPLATES_ROOT = path.resolve(".agents/templates");
+const TEMPLATES_ROOT = path.resolve(".bkit/templates");
 
 function templatePath(...parts: string[]): string {
   return path.join(TEMPLATES_ROOT, ...parts);

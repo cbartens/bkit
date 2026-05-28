@@ -26,7 +26,7 @@ beforeEach(() => {
   originalCwd = process.cwd();
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-parity-test-"));
   process.chdir(tmpDir);
-  fs.mkdirSync(path.join(tmpDir, ".agents", "templates"), { recursive: true });
+  fs.mkdirSync(path.join(tmpDir, ".bkit", "templates"), { recursive: true });
 });
 
 afterEach(() => {

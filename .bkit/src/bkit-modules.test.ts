@@ -72,11 +72,8 @@ describe("package.json manifest invariants (BAR-138)", () => {
 // Read the source file as a string to inspect the constant bodies without
 // executing the module (avoids import side-effects and keeps tests fast).
 // Note: the constants are now in bkit-postinstall.ts (Phase 3 owner), not bkit-modules.ts.
-const POSTINSTALL_SRC = fs.readFileSync(
-  path.resolve(".agents/scripts/bkit-postinstall.ts"),
-  "utf-8",
-);
-const MODULES_SRC = fs.readFileSync(path.resolve(".agents/scripts/bkit-modules.ts"), "utf-8");
+const POSTINSTALL_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-postinstall.ts"), "utf-8");
+const MODULES_SRC = fs.readFileSync(path.resolve(".bkit/src/bkit-modules.ts"), "utf-8");
 
 describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", () => {
   // The action string is now embedded in the const GH_BKIT_TOKEN_MISSING_ACTION
@@ -293,7 +290,7 @@ jobs:
   });
 
   it("canonical CI template has zero foreign `cbartens/bkit/...` uses", () => {
-    const templatePath = path.resolve(".agents/templates/.github/workflows/ci.yml");
+    const templatePath = path.resolve(".bkit/templates/.github/workflows/ci.yml");
     const content = fs.readFileSync(templatePath, "utf-8");
     expect(scanForeignBkitUses(content)).toEqual([]);
   });
@@ -303,9 +300,9 @@ jobs:
 // WS1-T5 — fail-loud templates-root guard (path-agnostic)
 //
 // This test injects a completely arbitrary non-existent path so the assertion
-// remains valid after the WS-3 templates-root flip (Sub-Plan 2). It does NOT
-// hard-code ".agents/templates" — the guard must fire for ANY missing resolved
-// root, not just the pre-move literal.
+// remains valid after any future templates-root changes. It does NOT
+// hard-code ".bkit/templates" — the guard must fire for ANY missing resolved
+// root, not just the current literal.
 // ---------------------------------------------------------------------------
 
 describe("guardTemplatesRoot — fail-loud on missing templates root", () => {

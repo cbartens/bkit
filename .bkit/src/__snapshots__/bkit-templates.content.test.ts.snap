@@ -1,6 +1,6 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`consumer CI template (.agents/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
+exports[`consumer CI template (.bkit/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
 "# This workflow is yours to own — bkit seeds it once and never rewrites it (Tier-3
 # seed-or-print). Edit freely. The one exception is the \`# bkit:start verbose-ci-env\`
 # block below: bkit's preflight checks for it by name to confirm the \`[verbose ci]\`

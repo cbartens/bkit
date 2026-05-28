@@ -1,7 +1,8 @@
 // bkit-paths.test.ts — Unit tests for getPkgRoot() across the THREE run-contexts
 // documented in the bkit-paths.ts header comment.
 //
-// WS1-T7 — authored pre-move under .agents/scripts/, travels with WS-3 git mv.
+// WS1-T7 — authored pre-move under .agents/scripts/, moved to .bkit/src/ by WS3-T1.
+// WS3-T2 — assertions updated to post-move (.bkit/src, .bkit/templates) form.
 //
 // The dist arm (context 1 + 3) is EXPLICITLY asserted here in addition to the
 // tsx-from-source arm (context 2), because WS3-T2 leaves the dist/ arm
@@ -43,8 +44,7 @@ describe("getPkgRoot() — context 1: dist/ arm (consumer context)", () => {
 
 // ---------------------------------------------------------------------------
 // Context 2 — tsx-from-source (bkit repo development)
-// __dirname = <pkgRoot>/.agents/scripts  (pre-move)
-//             <pkgRoot>/.bkit/src        (post-move, Sub-Plan 2)
+// __dirname = <pkgRoot>/.bkit/src
 // Expected: pkgRoot = __dirname/../..
 // ---------------------------------------------------------------------------
 
@@ -60,19 +60,19 @@ describe("getPkgRoot() — context 2: tsx-from-source arm (dev/test context)", (
     expect(result).toBe(path.join("/some", "pkg"));
   });
 
-  it("BKIT_SRC_SUBPATH matches the pre-move .agents/scripts suffix", () => {
-    // Pre-move value must be the .agents/scripts form.
-    expect(BKIT_SRC_SUBPATH).toBe(`.agents${path.sep}scripts`);
+  it("BKIT_SRC_SUBPATH matches the post-move .bkit/src suffix", () => {
+    // Post-move value must be the .bkit/src form.
+    expect(BKIT_SRC_SUBPATH).toBe(`.bkit${path.sep}src`);
   });
 
   it("getPkgRoot() returns the repo root when running in tsx-from-source context", () => {
-    // In the actual tsx test run, import.meta.url points at .agents/scripts/bkit-paths.ts,
+    // In the actual tsx test run, import.meta.url points at .bkit/src/bkit-paths.ts,
     // so getPkgRoot() should resolve two levels up to the repo root.
     const result = getPkgRoot();
     // Repo root contains package.json — a reliable sentinel.
     expect(fs.existsSync(path.join(result, "package.json"))).toBe(true);
-    // Must NOT be .agents/scripts itself.
-    expect(result).not.toContain(path.join(".agents", "scripts"));
+    // Must NOT be .bkit/src itself.
+    expect(result).not.toContain(path.join(".bkit", "src"));
   });
 });
 
@@ -101,10 +101,10 @@ describe("getPkgRoot() — context 3: packed-tarball arm (node_modules layout)",
 // ---------------------------------------------------------------------------
 
 describe("getTemplatesRoot()", () => {
-  it("ends with .agents/templates in the pre-move (WS-1) state", () => {
+  it("ends with .bkit/templates in the post-move (WS-3) state", () => {
     const root = getTemplatesRoot();
-    // Pre-move: must end with .agents/templates
-    expect(root.endsWith(path.join(".agents", "templates"))).toBe(true);
+    // Post-move: must end with .bkit/templates
+    expect(root.endsWith(path.join(".bkit", "templates"))).toBe(true);
   });
 
   it("is rooted at getPkgRoot()", () => {

@@ -936,7 +936,7 @@ describe("Phase 3 — bkit-tiers.ts doc-block no Tier 1/2/3 strings", () => {
 
 describe("cursor-v1-schema", () => {
   it("parsed template has version===1, hooks.sessionStart/sessionStop arrays, no __bkit__, no flat-array hooks", () => {
-    const templatePath = path.resolve(__dirname, "../../.agents/templates/.cursor/hooks.json");
+    const templatePath = path.resolve(__dirname, "../../.bkit/templates/.cursor/hooks.json");
     expect(fs.existsSync(templatePath)).toBe(true);
     const doc = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     expect(doc.version).toBe(1);

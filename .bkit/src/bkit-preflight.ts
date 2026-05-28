@@ -15,7 +15,7 @@ import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock, type JsonValue } from "./bkit-tiers.js";
 import { extractManagedBlock, type MarkerStyle } from "./bkit-install.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
 
 // ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | 
  * the new block broadens scope on this install.
  *
  * BKIT_PRETTIERIGNORE_PATHS MUST mirror the canonical block shipped in
- * `.agents/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
+ * `.bkit/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
  * If it drifts broader, this detector fires every install with a phantom
  * "broadening" that never actually happens.
  */
@@ -466,7 +466,7 @@ export function detectTier2JsonDrift(
   pkgRoot: string,
 ): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
-  const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+  const templatePath = path.join(getTemplatesRoot(), relPath);
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
   let consumerDoc: JsonValue;
   let templateDoc: JsonValue;
@@ -513,7 +513,7 @@ export function detectTier2TextDrift(
   pkgRoot: string,
 ): PreflightFinding | null {
   const absPath = path.join(cwd, relPath);
-  const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+  const templatePath = path.join(getTemplatesRoot(), relPath);
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
 
   const consumerContent = fs.readFileSync(absPath, "utf-8");

@@ -1019,7 +1019,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
 
     // Simulate the core module writing .gitignore (use the template directly)
     const pkgRoot = getPkgRoot();
-    const gitignoreTemplate = path.join(pkgRoot, ".agents", "templates", "gitignore");
+    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "templates", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
     if (fs.existsSync(gitignoreTemplate)) {
       fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
@@ -1043,7 +1043,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     process.chdir(tmpDir);
 
     const pkgRoot = getPkgRoot();
-    const gitignoreTemplate = path.join(pkgRoot, ".agents", "templates", "gitignore");
+    const gitignoreTemplate = path.join(pkgRoot, ".bkit", "templates", "gitignore");
     const gitignoreDst = path.join(tmpDir, ".gitignore");
     if (fs.existsSync(gitignoreTemplate)) {
       // First install

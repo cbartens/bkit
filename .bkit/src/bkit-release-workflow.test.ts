@@ -250,12 +250,10 @@ describe("published tarball excludes test sources (BAR-138, real `npm pack` insp
     expect(offenders).toEqual([]);
   });
 
-  it("tarball still contains the load-bearing payload (dist/, README.md, .agents/templates/)", () => {
+  it("tarball still contains the load-bearing payload (dist/, README.md, .bkit/templates/)", () => {
     expect(manifestFiles.some((p) => p === "dist/bkit-install.js")).toBe(true);
     expect(manifestFiles.some((p) => p === "README.md")).toBe(true);
-    expect(manifestFiles.some((p) => p === ".agents/templates/.github/workflows/ci.yml")).toBe(
-      true,
-    );
-    expect(manifestFiles.some((p) => p === ".agents/templates/.github/renovate.json5")).toBe(true);
+    expect(manifestFiles.some((p) => p === ".bkit/templates/.github/workflows/ci.yml")).toBe(true);
+    expect(manifestFiles.some((p) => p === ".bkit/templates/.github/renovate.json5")).toBe(true);
   });
 });

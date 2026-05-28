@@ -219,7 +219,7 @@ describe("module dispatch: --claude seeds only .claude/** + core", () => {
     // Run only core + claude modules
     dispatchModules(new Set(["core", "claude"]), ctx);
 
-    // Filter out internal payload paths (.agents/templates/** are template source copies, not consumer outputs)
+    // Filter out internal payload paths (.bkit/templates/** are template source copies, not consumer outputs)
     const consumerOutputPaths = ws.writes
       .map((e) => e.path)
       .filter((p) => !p.includes(`${path.sep}.agents${path.sep}templates${path.sep}`))
@@ -828,7 +828,7 @@ describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", (
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..");
   const template = fs.readFileSync(
-    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
     "utf-8",
   );
 
@@ -872,7 +872,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..");
   const rawTemplate = fs.readFileSync(
-    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
     "utf-8",
   );
 
@@ -945,7 +945,7 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
   const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
   const pkgRoot = path.resolve(scriptsDir, "..", "..");
   const rawTemplate = fs.readFileSync(
-    path.join(pkgRoot, ".agents/templates/.github/workflows/bkit-cloud.yml"),
+    path.join(pkgRoot, ".bkit/templates/.github/workflows/bkit-cloud.yml"),
     "utf-8",
   );
 
@@ -1170,11 +1170,11 @@ describe(".bkit-version first-run signal extra-logging", () => {
 
 describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm action", () => {
   const SCRIPTS_DIR = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-  // scripts/ is at <PKG_ROOT>/.agents/scripts — two levels up to PKG_ROOT
+  // src/ is at <PKG_ROOT>/.bkit/src — two levels up to PKG_ROOT
   const PKG_ROOT = path.resolve(SCRIPTS_DIR, "..", "..");
 
   it("ci.yml template does NOT set both `with.version:` and rely on packageManager (KN-3)", () => {
-    const tplPath = path.join(PKG_ROOT, ".agents/templates/.github/workflows/ci.yml");
+    const tplPath = path.join(PKG_ROOT, ".bkit/templates/.github/workflows/ci.yml");
     const tpl = fs.readFileSync(tplPath, "utf-8");
     // pnpm/action-setup@v4 errors if `with.version:` is set when consumer
     // also has package.json#packageManager. Template MUST NOT set `version:`
@@ -1453,10 +1453,10 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     const consumerRules = fs.readFileSync(path.join(tmpDir, ".agents", "rules.md"), "utf-8");
 
     // Template content (what consumers SHOULD get) lives in the package's
-    // .agents/templates/.agents/rules.md — resolve from the running package root.
+    // .bkit/templates/.agents/rules.md — resolve from the running package root.
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const templatePath = path.join(pkgRoot, ".agents", "templates", ".agents", "rules.md");
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
     const template = fs.readFileSync(templatePath, "utf-8");
 
     // Both files have markers — the inner block content must match (modulo
@@ -1490,7 +1490,7 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
   it("rules.md is reachable via the templates pass — no additive leak path", () => {
     // Simulates a brand-new consumer: no .agents/ exists. After runCoreModule,
     // the only writer of `.agents/rules.md` should be the templates pass
-    // (sourced from `.agents/templates/.agents/rules.md`), not copyAdditive.
+    // (sourced from `.bkit/templates/.agents/rules.md`), not copyAdditive.
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
@@ -1568,7 +1568,7 @@ describe("detectTier2JsonDrift advisory", () => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const relPath = ".cursor/hooks.json";
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
     // Copy template as-is to consumer
     fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
     fs.copyFileSync(templatePath, path.join(tmpDir, relPath));
@@ -1750,7 +1750,7 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const relPath = "slop-scan.config.json";
     // Read template and drop one key to trigger drift
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
     const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
       rules?: Record<string, unknown>;
       [k: string]: unknown;
@@ -1772,7 +1772,7 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const relPath = "slop-scan.config.json";
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
     // Consumer has template content + extra consumer rule
     const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
       rules?: Record<string, unknown>;
@@ -1802,7 +1802,7 @@ describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check st
     const relPath = path.join(".github", "workflows", "ci.yml");
 
     // Build consumer ci.yml: template with bkit check step removed from inside marker block
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
     const templateContent = fs.readFileSync(templatePath, "utf-8");
 
     // Remove the Run Bkit Check step from inside the marker block
@@ -1830,7 +1830,7 @@ describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check st
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
     const relPath = path.join(".github", "workflows", "ci.yml");
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
     const templateContent = fs.readFileSync(templatePath, "utf-8");
 
     const consumerDir = path.join(tmpDir, ".github", "workflows");
@@ -1942,7 +1942,7 @@ describe("Challenge Finding 1 — SHARED-DERIV portability and pipefail safety r
 
   function readBkitCloudTemplate(): string {
     return fs.readFileSync(
-      path.join(pkgRoot, ".agents", "templates", ".github", "workflows", "bkit-cloud.yml"),
+      path.join(pkgRoot, ".bkit", "templates", ".github", "workflows", "bkit-cloud.yml"),
       "utf-8",
     );
   }

@@ -7,11 +7,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const CONSUMER_CI_TEMPLATE = path.resolve(".agents/templates/.github/workflows/ci.yml");
-const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".agents/templates/.prettierignore");
-const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".agents/templates/.github/renovate.json5");
+const CONSUMER_CI_TEMPLATE = path.resolve(".bkit/templates/.github/workflows/ci.yml");
+const CONSUMER_PRETTIERIGNORE_TEMPLATE = path.resolve(".bkit/templates/.prettierignore");
+const CONSUMER_RENOVATE_TEMPLATE = path.resolve(".bkit/templates/.github/renovate.json5");
 
-describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", () => {
+describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () => {
   let content: string;
   content = fs.readFileSync(CONSUMER_CI_TEMPLATE, "utf-8");
 
@@ -63,7 +63,7 @@ describe("consumer CI template (.agents/templates/.github/workflows/ci.yml)", ()
   });
 });
 
-describe("consumer renovate template (.agents/templates/.github/renovate.json5)", () => {
+describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", () => {
   const content = fs.readFileSync(CONSUMER_RENOVATE_TEMPLATE, "utf-8");
 
   it("template file exists", () => {
@@ -209,7 +209,7 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
   });
 });
 
-describe("consumer .prettierignore template (.agents/templates/.prettierignore)", () => {
+describe("consumer .prettierignore template (.bkit/templates/.prettierignore)", () => {
   const content = fs.readFileSync(CONSUMER_PRETTIERIGNORE_TEMPLATE, "utf-8");
 
   it("template file exists", () => {

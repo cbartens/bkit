@@ -533,7 +533,7 @@ describe("detectPrettierignoreScopeBroadening", () => {
     expect(f).toBeNull();
   });
 
-  it("does NOT flag for the canonical template's .agents/skills/ entry (regression: BKIT_PRETTIERIGNORE_PATHS must mirror .agents/templates/.prettierignore)", () => {
+  it("does NOT flag for the canonical template's .agents/skills/ entry (regression: BKIT_PRETTIERIGNORE_PATHS must mirror .bkit/templates/.prettierignore)", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".prettierignore"),
       "# bkit:start\nnode_modules/\n.agents/skills/\n# bkit:end\n",

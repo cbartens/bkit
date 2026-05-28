@@ -24,7 +24,7 @@ import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import {
   getInstallManifest,
   type IssueTracker,
@@ -190,8 +190,8 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
 // ---------------------------------------------------------------------------
 // guardTemplatesRoot — fail-loud guard for the resolved templates root.
 // Exported so tests can inject an arbitrary (non-existent) path and assert
-// the guard fires for ANY missing root — not just the literal ".agents/templates"
-// string. This keeps the assertion valid after the WS-3 path flip (Sub-Plan 2).
+// the guard fires for ANY missing root — not just the literal ".bkit/templates"
+// string. This keeps the assertion valid across any future path changes.
 //
 // Called by runCoreTemplates (below) before any FS access.
 // ---------------------------------------------------------------------------
@@ -207,12 +207,11 @@ export function guardTemplatesRoot(root: string, logPrefix = "[bkit-modules]"): 
 // Each other module handles its own template files directly.
 function runCoreTemplates(
   dryRun: boolean,
-  pkgRoot: string,
   tokens: TokenMap,
   ws: WriteSet,
   logPrefix: string,
 ): void {
-  const root = path.join(pkgRoot, ".agents", "templates");
+  const root = getTemplatesRoot();
   guardTemplatesRoot(root, logPrefix);
 
   const tag = dryRun ? "[dry-run] " : "";
@@ -296,7 +295,7 @@ function processCoreTemplateDir(
 // write when the file already matches pkgVersion).
 //
 // Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded
-// because they ship as templates under `.agents/templates/.agents/` and are
+// because they ship as templates under `.bkit/templates/.agents/` and are
 // installed by the templates pass. Copying them here additively would dump
 // bkit's own out-of-block content (e.g. bkit's `## Project Rules` body in
 // `rules.md`, bkit's friction-log entries) onto consumers on first install.
@@ -310,7 +309,7 @@ const COPY_EXCLUDE = new Set([
   "docs.md",
   "skills.md",
   // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
-  // template at .agents/templates/.agents/.env.example). Including it in the
+  // template at .bkit/templates/.agents/.env.example). Including it in the
   // payload copy would double-handle the same destination — Tier 3 sees the
   // file already written by payload copy in live mode, skips its own write,
   // and dry-run vs install writesets diverge. Tier 3 owns this file.
@@ -324,7 +323,7 @@ const COPY_EXCLUDE = new Set([
 // release adds a new prompt. Force-overwrite keeps the on-disk index in sync
 // with the installed package version.
 //
-// BAR-165: every path here MUST also be listed in .agents/templates/.prettierignore
+// BAR-165: every path here MUST also be listed in .bkit/templates/.prettierignore
 // (the bkit:start/end block) so consumer prettier — which may resolve a different
 // printWidth than bkit's 100 — does not lint canonical content that the consumer
 // cannot edit. The invariant is asserted by bkit-templates.content.test.ts.
@@ -431,7 +430,7 @@ export function runCoreModule(ctx: ModuleContext): void {
   // 3. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
   // Each other module handles its own template files directly.
   console.log(`${logPrefix} ${tag}Running core templates pass`);
-  runCoreTemplates(dryRun, PKG_ROOT, ctx.tokens, ws, logPrefix);
+  runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
 
   // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
   // This ensures a mid-install crash in a subsequent module does not suppress the first-install
@@ -579,8 +578,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  const PKG_ROOT = getPkgRoot();
-  const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
+  const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
 
   // Tier 2 JSON (contained) — deep-containment: settings.json
   // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
@@ -642,7 +640,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // Byte-equal-text — .mcp.json root-level MCP config — Tier 3 seed-or-print.
   // Content is filtered by issueTracker: only the selected tracker's mcpServers entry is seeded.
   {
-    const mcpSrc = path.join(PKG_ROOT, ".agents", "templates", ".mcp.json");
+    const mcpSrc = path.join(getTemplatesRoot(), ".mcp.json");
     const mcpDst = ".mcp.json";
     const prevLen = ws.writes.length;
     const result = seedMcpJson(
@@ -667,7 +665,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // module is the default-runs-everywhere module — appropriate home for
   // consumer-setup scaffolding that all environments need.
   {
-    const envExampleSrc = path.join(PKG_ROOT, ".agents", "templates", ".agents", ".env.example");
+    const envExampleSrc = path.join(getTemplatesRoot(), ".agents", ".env.example");
     const envExampleDst = ".agents/.env.example";
     if (fs.existsSync(envExampleSrc)) {
       const prevLen = ws.writes.length;
@@ -692,7 +690,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // Byte-equal-text — .envrc — Tier 3 seed-or-print.
   // Seeds a single-line dotenv_if_exists directive for direnv auto-load.
   {
-    const envrcSrc = path.join(PKG_ROOT, ".agents", "templates", ".envrc");
+    const envrcSrc = path.join(getTemplatesRoot(), ".envrc");
     const envrcDst = ".envrc";
     if (fs.existsSync(envrcSrc)) {
       const prevLen = ws.writes.length;
@@ -767,8 +765,7 @@ export function runCursorModule(ctx: ModuleContext): void {
 
   // Tier 2 JSON (contained) — deep-containment: hooks.json
   // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
-  const PKG_ROOT = getPkgRoot();
-  const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
+  const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
   const hooksSrc = path.join(cursorTemplates, "hooks.json");
   const hooksDst = ".cursor/hooks.json";
   if (fs.existsSync(hooksSrc)) {
@@ -1247,16 +1244,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 export function runCiModule(ctx: ModuleContext): void {
   const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
 
-  const templatePath = path.join(
-    PKG_ROOT,
-    ".agents",
-    "templates",
-    ".github",
-    "workflows",
-    "ci.yml",
-  );
+  const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "ci.yml");
   if (!fs.existsSync(templatePath)) {
     console.warn(`${logPrefix} CI template not found at ${templatePath} — skipping CI module`);
     return;
@@ -1274,7 +1263,7 @@ export function runCiModule(ctx: ModuleContext): void {
   const foreignUses = scanForeignBkitUses(templateContent);
   if (foreignUses.length > 0) {
     throw new Error(
-      `${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .agents/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`,
+      `${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .bkit/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`,
     );
   }
 
@@ -1366,8 +1355,7 @@ export function runCiModule(ctx: ModuleContext): void {
 export function runLintModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
-  const templatesBase = path.join(PKG_ROOT, ".agents", "templates");
+  const templatesBase = getTemplatesRoot();
 
   // .vale.ini — Tier 3 (seed-or-print) since v0.2.1
   // Was Tier 2 but appending a managed-block at EOF puts core options after
@@ -1550,8 +1538,7 @@ const HUSKY_MERGE_INSTRUCTIONS: Record<"pre-commit" | "pre-push", string> = {
 export function runGitHooksModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
-  const huskyTemplatesDir = path.join(PKG_ROOT, ".agents", "templates", ".husky");
+  const huskyTemplatesDir = path.join(getTemplatesRoot(), ".husky");
 
   if (!fs.existsSync(huskyTemplatesDir)) {
     console.warn(
@@ -1747,7 +1734,6 @@ function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): bo
 export function runRenovateModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
 
   // Mutually exclusive with --dependabot — refuse if Dependabot config exists.
   // Both opening PRs against the same packages is silly and creates noise.
@@ -1770,7 +1756,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
     return;
   }
 
-  const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
+  const renovateSrc = path.join(getTemplatesRoot(), ".github", "renovate.json5");
   if (!fs.existsSync(renovateSrc)) return;
 
   const renovateDst = path.join(".github", "renovate.json5");
@@ -1853,7 +1839,6 @@ export function runRenovateModule(ctx: ModuleContext): void {
 export function runDependabotModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
 
   // Mutually exclusive with --renovate — refuse if Renovate config exists.
   const renovateJson5 = path.join(process.cwd(), ".github", "renovate.json5");
@@ -1876,15 +1861,8 @@ export function runDependabotModule(ctx: ModuleContext): void {
   }
 
   // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
-  const ymlSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "dependabot.yml");
-  const scriptSrc = path.join(
-    PKG_ROOT,
-    ".agents",
-    "templates",
-    "scripts",
-    "ci",
-    "bkit-set-dependabot.sh",
-  );
+  const ymlSrc = path.join(getTemplatesRoot(), ".github", "dependabot.yml");
+  const scriptSrc = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-set-dependabot.sh");
   if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc)) return;
 
   const ymlDst = path.join(".github", "dependabot.yml");
@@ -1960,8 +1938,7 @@ export function renderCloudWorkflow(raw: string, _tracker: IssueTracker): string
 export function runCloudModule(ctx: ModuleContext): void {
   const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
-  const PKG_ROOT = getPkgRoot();
-  const templates = path.join(PKG_ROOT, ".agents", "templates");
+  const templates = getTemplatesRoot();
   // Default to "claude" when cloudVariant is not set (back-compat: the old bare --cloud
   // always meant the Claude/GitHub path). Callers should always pass cloudVariant.
   const variant: CloudAgents = ctx.cloudVariant ?? "claude";

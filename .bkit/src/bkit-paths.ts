@@ -11,10 +11,10 @@ import { fileURLToPath } from "node:url";
 // constant so a single edit flips every resolver.
 //
 // Value (WS-1 pre-move, OLD form):  ".agents/scripts"
-// Value (WS-3 post-move, NEW form): ".bkit/src"   ← Sub-Plan 2 flips this
+// Value (WS-3 post-move, NEW form): ".bkit/src"
 // ---------------------------------------------------------------------------
 
-export const BKIT_SRC_SUBPATH = `.agents${path.sep}scripts`;
+export const BKIT_SRC_SUBPATH = `.bkit${path.sep}src`;
 
 // ---------------------------------------------------------------------------
 // getPkgRoot — resolve the bkit package root at runtime
@@ -26,8 +26,7 @@ export const BKIT_SRC_SUBPATH = `.agents${path.sep}scripts`;
 //     → pkgRoot = __dirname/..
 //
 //  2. tsx-from-source (bkit repo dev / integration tests):
-//     __dirname = <pkgRoot>/.agents/scripts  (pre-move)
-//                 <pkgRoot>/.bkit/src        (post-move, Sub-Plan 2)
+//     __dirname = <pkgRoot>/.bkit/src
 //     → pkgRoot = __dirname/../..
 //
 //  3. packed-tarball install (node_modules layout):
@@ -51,11 +50,11 @@ export function getPkgRoot(): string {
 // The ONLY place in the codebase that encodes the templates sub-path literal.
 //
 // WS-1 (pre-move): resolves to <pkgRoot>/.agents/templates
-// WS-3 (post-move): resolves to <pkgRoot>/.bkit/templates  ← Sub-Plan 2 flips this
+// WS-3 (post-move): resolves to <pkgRoot>/.bkit/templates
 // ---------------------------------------------------------------------------
 
 export function getTemplatesRoot(): string {
-  return path.join(getPkgRoot(), ".agents", "templates");
+  return path.join(getPkgRoot(), ".bkit", "templates");
 }
 
 // ---------------------------------------------------------------------------
