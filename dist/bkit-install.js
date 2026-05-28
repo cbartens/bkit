@@ -725,8 +725,7 @@ async function main() {
         // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
         // bumps even when every file was a no-op skip.
         if (!upgradeFlags.dryRun) {
-            const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"))
-                .version;
+            const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")).version;
             updateCanonicalHashesAfterUpgrade(result, {
                 dryRun: false,
                 cwd: process.cwd(),
