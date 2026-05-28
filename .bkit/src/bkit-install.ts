@@ -670,6 +670,25 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
 export function removeOrphanTemplatesDir(cwd: string, dryRun: boolean): void {
   const orphanDir = path.join(cwd, ".agents", "templates");
   if (!fs.existsSync(orphanDir)) return;
+  // Gate on bkit-origin sentinel: verify at least one known bkit-managed path
+  // exists inside the directory before deleting. This guards against silently
+  // destroying a consumer-owned .agents/templates/ directory that bkit never wrote.
+  const BKIT_SENTINELS = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    path.join(".github", "workflows"),
+    path.join(".github", "renovate.json5"),
+    path.join(".github", "dependabot.yml"),
+    "gitignore",
+    ".vale.ini",
+  ];
+  const isBkitOrigin = BKIT_SENTINELS.some((s) => fs.existsSync(path.join(orphanDir, s)));
+  if (!isBkitOrigin) {
+    console.log(
+      `${LOG_PREFIX} upgrade: skipping .agents/templates/ removal — no bkit-origin sentinel found; directory appears consumer-owned`,
+    );
+    return;
+  }
   const tag = dryRun ? "[dry-run] " : "";
   console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .agents/templates/ (D1 auto-clean)`);
   if (!dryRun) {
