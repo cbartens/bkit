@@ -1442,9 +1442,15 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 const RENOVATE_CUSTOMIZE_NOTE = "Customizing Renovate: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`/`bkit upgrade`, so changes there are lost on the next run. Put repo-specific rules in `.github/renovate-local.json5` instead (consumer-owned; bkit never overwrites it). On conflict renovate-local ADDS to bkit's rules and can set keys bkit leaves unset (notably `enabled: false` to fence a package) but canNOT override a key bkit sets explicitly (e.g. `automerge`). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.";
 function isRenovateConfigOnDefaultBranch(defaultBranch, cwd) {
     try {
+        // Strip git hook env vars so this git command operates on the repo at `cwd`
+        // rather than the GIT_DIR injected by the pre-push hook runner.
+        const env = { ...process.env };
+        delete env["GIT_DIR"];
+        delete env["GIT_WORK_TREE"];
         execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
             cwd,
             stdio: ["ignore", "ignore", "ignore"],
+            env,
         });
         return true;
     }

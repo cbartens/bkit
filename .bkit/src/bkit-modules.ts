@@ -1721,9 +1721,15 @@ const RENOVATE_CUSTOMIZE_NOTE =
 
 function isRenovateConfigOnDefaultBranch(defaultBranch: string, cwd: string): boolean {
   try {
+    // Strip git hook env vars so this git command operates on the repo at `cwd`
+    // rather than the GIT_DIR injected by the pre-push hook runner.
+    const env = { ...process.env };
+    delete env["GIT_DIR"];
+    delete env["GIT_WORK_TREE"];
     execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
       cwd,
       stdio: ["ignore", "ignore", "ignore"],
+      env,
     });
     return true;
   } catch {
