@@ -27,7 +27,7 @@ No server, no database, no network service. bkit is a build-time / developer-exp
 
 ```
 cbartens/bkit (this repo)
-├── .agents/scripts/        # TypeScript source for the bkit CLI
+├── .bkit/src/              # TypeScript source for the bkit CLI
 │   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3 + staging primitives
 │   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | uninstall | upgrade | help)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
@@ -45,7 +45,7 @@ cbartens/bkit (this repo)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .agents/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
 ├── .agents/prompts/        # Subagent prompt files
-├── .agents/templates/      # Files templated into consumer repos on install
+├── .bkit/templates/        # Files templated into consumer repos on install
 └── package.json            # bin: bkit → dist/bkit-install.js
 ```
 

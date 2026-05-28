@@ -34,7 +34,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 ## Stack
 
 - **Runner:** Vitest 2 (`pnpm test` → `vitest run`).
-- **Test files** colocated with source under `.agents/scripts/`. No separate `tests/` tree.
+- **Test files** colocated with source under `.bkit/src/`. No separate `tests/` tree.
 - **No mocking framework.** Prefer real filesystem against `os.tmpdir()` over mocked `fs`. `vi.spyOn(process, "exit", ...)` only where production code calls `process.exit(1)` (T1/T2/T3 hard-fails).
 
 ## Tiers
@@ -48,7 +48,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 
 ## Consumer-runtime parity rule
 
-bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit install`. The repo and its consumers run the same `.agents/scripts/*` code, so a release tag must not ship an install path the repo's own CI hasn't exercised end-to-end.
+bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit install`. The repo and its consumers run the same `.bkit/src/*` code, so a release tag must not ship an install path the repo's own CI hasn't exercised end-to-end.
 
 **Required coverage for every consumer-runtime hard-fail** (any `process.exit(1)` reachable from `bkit install` / `bkit check`):
 

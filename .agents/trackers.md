@@ -8,11 +8,11 @@
 > - Token-efficient dense phrasing; agent / maintainer readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.agents/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Three trackers supported: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - Adding a new tracker (Jira, etc.): add the enum value to `.agents/scripts/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.agents/templates/.mcp.json` and `.agents/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.agents/scripts/bkit-trackers.ts`). There is no `none` marker — no-tracker content is `false`.
+> - Adding a new tracker (Jira, etc.): add the enum value to `.bkit/src/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.bkit/src/bkit-trackers.ts`). There is no `none` marker — no-tracker content is `false`.
 
 ## Marker contract
 
-Workflow sources carry the wired tracker variants inline. The installer reads `bkit.issueTracker` from the consumer manifest and resolves the markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (see `.agents/scripts/bkit-trackers.ts`). Mirrors are clean — no markers survive.
+Workflow sources carry the wired tracker variants inline. The installer reads `bkit.issueTracker` from the consumer manifest and resolves the markers when mirroring to `.claude/commands/bkit-*.md` and `.cursor/commands/bkit-*.md` (see `.bkit/src/bkit-trackers.ts`). Mirrors are clean — no markers survive.
 
 ### Per-tracker pair (`github` / `linear`)
 

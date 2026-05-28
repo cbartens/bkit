@@ -98,10 +98,11 @@
 
 ### bkit Repo Authoring
 
+- **Install source of truth:** Install engine lives in `.bkit/src/`; install payload lives in `.bkit/templates/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — never conflate the two.
 - **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
 - **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
+- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.bkit/templates/.agents/rules.md` and vice versa.
 - **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
 - **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
 - **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.
-- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.agents/scripts/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
+- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.

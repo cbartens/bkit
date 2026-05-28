@@ -99,17 +99,17 @@ Code-only — `git revert {squash-merge SHA}`. This sub-plan adds no shipped beh
 
 ### Automated Tests (carried from umbrella Gate 4 — assert here)
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`), `pnpm lint:no-tier-terms`, `pnpm lint:prose`, `pnpm lint:slop` green.
-- [ ] **Build freshness:** `pnpm build` + `pnpm check:dist` green (dist/ flat at root, bin unchanged).
-- [ ] **Test discovery:** `pnpm test` reports a NON-ZERO test count from `.bkit/src/**` (guards against the green-but-empty vitest-glob failure).
-- [ ] **Run all tests:** `pnpm test` green including the NEW dogfood-noop (WS1-T6) and getPkgRoot 3-context (WS1-T7) and WS-7 rules-sync tests, the WS3-T5 orphan-removal smoke test, and the EXISTING (re-pointed) dry-run-parity and doctor tests.
+- [x] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`), `pnpm lint:no-tier-terms`, `pnpm lint:prose`, `pnpm lint:slop` green.
+- [x] **Build freshness:** `pnpm build` + `pnpm check:dist` green (dist/ flat at root, bin unchanged).
+- [x] **Test discovery:** `pnpm test` reports a NON-ZERO test count from `.bkit/src/**` (guards against the green-but-empty vitest-glob failure).
+- [x] **Run all tests:** `pnpm test` green including the NEW dogfood-noop (WS1-T6) and getPkgRoot 3-context (WS1-T7) and WS-7 rules-sync tests, the WS3-T5 orphan-removal smoke test, and the EXISTING (re-pointed) dry-run-parity and doctor tests.
 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** resolve build/test failures via the design's mechanisms (single seam, fail-loud guard), never silent skips or path hacks. Halt if stuck.
 
 ### 🔒 Gate 4: Automated Verification Confirmed
 
-- [ ] **Gate 4 - Verified:** All Automated Tests checked with explicit proof (test counts, CLI output).
+- [x] **Gate 4 - Verified:** All Automated Tests checked with explicit proof (test counts, CLI output).
 
 ## Agent Execution Runbook — WS-4 Two-Axis Verification Gate (#164; requires Sub-Plan 1 baseline + Sub-Plan 2 move)
 
@@ -123,22 +123,22 @@ Code-only — `git revert {squash-merge SHA}`. This sub-plan adds no shipped beh
 
 > Every task MUST include a `**Done when:**` line — terse, testable, codebase-verifiable.
 
-- [ ] **WS4-T1 (install, axis 1):** `pnpm pack` post-move → install into clean dir → `bkit install` → diff `.bkit-version` `canonicalHashes`/`tier3Hashes` vs `baseline/bkit-version-hashes.json`. **Use the SAME install flags in baseline (WS2-T1) and verify** — the default (non-`--renovate`) flow. The hash set is keyed by consumer-relative DESTINATION path and populated ONLY from files actually written in the run (`bkit-modules.ts:434-454`); the WS-6 `renovate.json5` `ignorePaths` edit changes the SOURCE template `.agents/templates/.github/renovate.json5`, which is opt-in (`bkit install --renovate`) and is NOT written by the default flow — so it never enters the hashed set on the default-flow axis and the empty-diff gate stays satisfiable.
+- [x] **WS4-T1 (install, axis 1):** `pnpm pack` post-move → install into clean dir → `bkit install` → diff `.bkit-version` `canonicalHashes`/`tier3Hashes` vs `baseline/bkit-version-hashes.json`. **Use the SAME install flags in baseline (WS2-T1) and verify** — the default (non-`--renovate`) flow. The hash set is keyed by consumer-relative DESTINATION path and populated ONLY from files actually written in the run (`bkit-modules.ts:434-454`); the WS-6 `renovate.json5` `ignorePaths` edit changes the SOURCE template `.agents/templates/.github/renovate.json5`, which is opt-in (`bkit install --renovate`) and is NOT written by the default flow — so it never enters the hashed set on the default-flow axis and the empty-diff gate stays satisfiable.
   - **Done when:** hash-set diff is empty for install on the default (non-`--renovate`) flow. **If `--renovate` is exercised** (optional), the ONLY permitted non-empty entry is `.github/renovate.json5` whose recorded hash reflects the rendered consumer-tree content with `ignorePaths: [".bkit/templates/**", …]` (the intended WS-6 delta) — any OTHER hash delta fails the gate.
-- [ ] **WS4-T2 (install, axis 2):** recursive `.agents/` consumer-tree listing of the clean install vs `baseline/agents-tree.txt`.
+- [x] **WS4-T2 (install, axis 2):** recursive `.agents/` consumer-tree listing of the clean install vs `baseline/agents-tree.txt`.
   - **Done when:** tree diff shows ONLY the intended removal of `.agents/templates/` (fresh consumer never receives it — D1); all other paths identical.
-- [ ] **WS4-T3 (upgrade, axis 1):** install tarball over a consumer that had pre-move state → `bkit upgrade` → diff hashes vs baseline. Same flag-parity rule as WS4-T1 (default, non-`--renovate` flow; `renovate.json5` is opt-in and out of the hashed set on this axis).
+- [x] **WS4-T3 (upgrade, axis 1):** install tarball over a consumer that had pre-move state → `bkit upgrade` → diff hashes vs baseline. Same flag-parity rule as WS4-T1 (default, non-`--renovate` flow; `renovate.json5` is opt-in and out of the hashed set on this axis).
   - **Done when:** hash-set diff is empty for upgrade on the default (non-`--renovate`) flow; if `--renovate` is exercised, the only permitted delta is the intended `.github/renovate.json5` `ignorePaths` change (`.bkit/templates/**`), any other delta fails.
-- [ ] **WS4-T4 (upgrade, axis 2 + D1 orphan assertion):** recursive `.agents/` tree of the upgraded consumer vs baseline. Construct the stale consumer per `baseline/stale-consumer-setup.md` (from Sub-Plan 1 WS2-T5) so the input deterministically HAS `.agents/templates/` pre-move.
+- [x] **WS4-T4 (upgrade, axis 2 + D1 orphan assertion):** recursive `.agents/` tree of the upgraded consumer vs baseline. Construct the stale consumer per `baseline/stale-consumer-setup.md` (from Sub-Plan 1 WS2-T5) so the input deterministically HAS `.agents/templates/` pre-move.
   - **Done when:** tree diff confirms the orphaned `.agents/templates/` is GONE after upgrade on a consumer that HAD it pre-move; all tracked paths identical.
-- [ ] **WS4-T5 (pack-filelist):** `npm pack --dry-run` file-list diff vs `baseline/pack-filelist.txt`.
+- [x] **WS4-T5 (pack-filelist):** `npm pack --dry-run` file-list diff vs `baseline/pack-filelist.txt`.
   - **Done when:** the ONLY removals are `.agents/scripts/**` + `.agents/templates/**` (now under `.bkit/`); `.bkit/templates/gitignore` ships; `.agents/` runtime reads (`trackers.md`, `IDEs.md`, `cloud.md`, `prompts.md`, `workflows.md`, `skills/**`, `workflows/bkit-*.md`, `prompts/bkit-*.md`) still ship.
-- [ ] **WS4-T6 (dry-run-parity gate):** `bkit install --dry-run` diff empty on a clean consumer clone before/after. This is a re-point + re-verify of the EXISTING `bkit-dry-run-parity.integration.test.ts` (present today under `.agents/scripts/`, moved by Sub-Plan 2 WS3-T1 `git mv`, embedded literals re-pointed by WS3-T10) — NOT a new authoring task.
+- [x] **WS4-T6 (dry-run-parity gate):** `bkit install --dry-run` diff empty on a clean consumer clone before/after. This is a re-point + re-verify of the EXISTING `bkit-dry-run-parity.integration.test.ts` (present today under `.agents/scripts/`, moved by Sub-Plan 2 WS3-T1 `git mv`, embedded literals re-pointed by WS3-T10) — NOT a new authoring task.
   - **Done when:** the moved test file at `.bkit/src/bkit-dry-run-parity.integration.test.ts` (re-pointed) passes; dry-run produces no spurious writes; no copy remains under `.agents/scripts/`.
 
 ### 🔒 Gate WS-4: byte-identical confirmed on BOTH engines
 
-- [ ] **Gate WS-4 - Verified:** Both install AND upgrade produce baseline-identical hashes AND recursive `.agents/` trees on a packed tarball in a clean dir, using the SAME (default, non-`--renovate`) flags in baseline and verify so the WS-6 `renovate.json5` source edit does not perturb the hashed set (renovate is opt-in and absent from the default-flow `ws.writes`); orphan `.agents/templates/` removed on upgrade; pack-filelist removals-only diff confirmed.
+- [x] **Gate WS-4 - Verified:** Both install AND upgrade produce baseline-identical hashes AND recursive `.agents/` trees on a packed tarball in a clean dir, using the SAME (default, non-`--renovate`) flags in baseline and verify so the WS-6 `renovate.json5` source edit does not perturb the hashed set (renovate is opt-in and absent from the default-flow `ws.writes`); orphan `.agents/templates/` removed on upgrade; pack-filelist removals-only diff confirmed.
 
 > [!IMPORTANT]
 > **Hand-off:** Gate WS-4 green is the byte-identical quality gate. It and Sub-Plan 4's Gate WS-6 / Gate 2 / Gate 3 must ALL pass before the single squash PR merges.

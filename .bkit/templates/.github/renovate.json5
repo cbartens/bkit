@@ -63,11 +63,9 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  // `.agents/templates/**` and `.agents/skills/**` are bkit-owned mirrors written
-  // into the consumer working tree by `bkit install`/`bkit upgrade` (not consumer
-  // source). Their workflow SHAs, Cursor Dockerfile, and vendored skill manifests
-  // are refreshed by bkit, NOT consumer Renovate — scanning them only produces
-  // onboarding noise (and an unauthable `@cbartens/bkit` lookup). See issue #132.
+  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
+  // by consumer Renovate — scanning them only produces onboarding noise (and an
+  // unauthable `@cbartens/bkit` lookup). See issue #132.
   // `bkit-cloud.yml` is bkit-owned too and tag-pinned by design (new SHAs arrive
   // via `bkit install`). It MUST be ignored here, not merely fenced by the
   // packageRule below: `enabled: false` suppresses version bumps but the
@@ -78,7 +76,7 @@
     "**/node_modules/**",
     "**/dist/**",
     "**/build/**",
-    ".agents/templates/**",
+    ".bkit/templates/**",
     ".agents/skills/**",
     ".github/workflows/bkit-cloud.yml",
   ],

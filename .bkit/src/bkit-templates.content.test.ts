@@ -126,10 +126,9 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
-    // `.agents/templates/**` and `.agents/skills/**` are mirrored into the consumer
-    // working tree by bkit; consumer Renovate must not enumerate their workflow
-    // SHAs / Dockerfile / vendored skill manifests.
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/templates\/\*\*"/);
+    // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
+    // by consumer Renovate; scanning them only produces onboarding noise.
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.bkit\/templates\/\*\*"/);
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
   });
 
@@ -142,10 +141,9 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {
-    // `.agents/templates/**` and `.agents/skills/**` are mirrored into the consumer
-    // working tree by bkit; consumer Renovate must not enumerate their workflow
-    // SHAs / Dockerfile / vendored skill manifests.
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/templates\/\*\*"/);
+    // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
+    // by consumer Renovate; scanning them only produces onboarding noise.
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.bkit\/templates\/\*\*"/);
     expect(content).toMatch(/ignorePaths:[\s\S]*"\.agents\/skills\/\*\*"/);
   });
 

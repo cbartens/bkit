@@ -19,7 +19,7 @@
 | Technology | Version | Usage |
 | --- | --- | --- |
 | Node.js | `>=20` (engines field) | Runtime for all CLI scripts |
-| TypeScript | `^5.4` | Source language for `.agents/scripts/*.ts` |
+| TypeScript | `^5.4` | Source language for `.bkit/src/*.ts` |
 | ESM | `"type": "module"` in `package.json` | All scripts are native ESM modules |
 | `tsx` | `^4.19` | Used by integration tests to spawn `bkit` without a pre-build step |
 
@@ -36,7 +36,7 @@
 <!-- prettier-ignore -->
 | Technology | Config | Usage |
 | --- | --- | --- |
-| `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.agents/scripts/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
+| `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/src/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
 | `check:dist` npm script | CI step 6 | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale |
 
 ## Testing

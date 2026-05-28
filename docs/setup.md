@@ -50,8 +50,8 @@ echo "len=${#GH_TOKEN}"                 # non-zero → loaded
 
 ```bash
 pnpm install --frozen-lockfile                              # workspace deps + husky git hooks
-pnpm tsx .agents/scripts/bkit-install.ts install            # dogfood install (this repo only)
-pnpm tsx .agents/scripts/bkit-install.ts check              # drift gate
+pnpm tsx .bkit/src/bkit-install.ts install                  # dogfood install (this repo only)
+pnpm tsx .bkit/src/bkit-install.ts check                    # drift gate
 vale sync                                                   # one-off; pulls lint:prose styles
 ```
 
