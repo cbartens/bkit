@@ -382,10 +382,12 @@ description: "Ship Feature — Autonomous merge and archive"
    fi
    ```
    **If** assertion fails → **Failure Path**.
-4. Merge with empty body:
+4. Refresh PR head against `dev` and merge with empty body:
    ```bash
    (
      cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+     git fetch origin dev
+     gh pr update-branch {PR_NUMBER} 2>/dev/null || true
      gh pr merge {PR_NUMBER} --squash --delete-branch \
        --subject "$(gh pr view {PR_NUMBER} --json title --jq .title) (#{PR_NUMBER})" \
        --body ""
