@@ -161,9 +161,31 @@ describe("consumer renovate template (.agents/templates/.github/renovate.json5)"
     expect(content).toMatch(/matchManagers:\s*\[\s*"github-actions"\s*\][\s\S]*pinDigests:\s*true/);
   });
 
-  it("groups non-major devDependencies bumps with automerge", () => {
-    expect(content).toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
-    expect(content).toMatch(/automerge:\s*true/);
+  it("collapses auto-mergeable non-major bumps into one shared group with automerge", () => {
+    // devDeps non-major + prod patch + @types + eslint share a single
+    // groupName so they land in ONE PR — every Renovate PR rewrites
+    // pnpm-lock.yaml, so several auto-merge PRs in the same window force a
+    // serial rebase cascade. One group = one lockfile mutation = no cascade.
+    expect(content).toMatch(
+      /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"bkit: renovate non-major dependencies"[\s\S]*?automerge:\s*true/,
+    );
+    // Old per-type group names are gone — proof the four collapsed into one.
+    expect(content).not.toMatch(/groupName:\s*"devDependencies \(non-major\)"/);
+    expect(content).not.toMatch(/groupName:\s*"type definitions"/);
+    expect(content).not.toMatch(/groupName:\s*"linters \(eslint\)"/);
+  });
+
+  it("scopes multi-package ecosystem groups to majors only (non-majors fold into the unified group)", () => {
+    // vitest/playwright/tanstack non-major bumps ride the unified auto-merge PR;
+    // only a coordinated MAJOR bump gets a dedicated lockstep PR (reviewed,
+    // never auto-merged). Guards against regressing to separate-named ecosystem
+    // groups that auto-merge non-majors and re-enter the lockfile cascade.
+    expect(content).toMatch(
+      /matchPackagePatterns:\s*\[\s*"\^vitest"[\s\S]*?matchUpdateTypes:\s*\[\s*"major"\s*\][\s\S]*?automerge:\s*false/,
+    );
+    // The bare auto-merging ecosystem group names must not reappear.
+    expect(content).not.toMatch(/groupName:\s*"vitest"\s*,/);
+    expect(content).not.toMatch(/groupName:\s*"playwright"\s*,/);
   });
 
   it("declares weekly schedule (before 6am on Monday)", () => {
