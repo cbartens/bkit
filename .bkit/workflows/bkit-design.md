@@ -18,11 +18,11 @@ description: "Design Feature — Autonomous design phase"
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
-> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
+> - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, `{WORKTREE_PATH}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`; `{WORKTREE_PATH}` = absolute worktree path set at worktree setup, required for subagent `Context` cwd). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; set ONCE at first workflow start (`date +%Y%m`) and discovered by downstream workflows via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
 > - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`), `failures`, `attempt`, `strategy` (`STANDARD | PIVOT | FINAL`). **If** `failures` present → `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0`.
 > - **Locks:** Acquire `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` in first step right after `mkdir -p` of logs dir; release in last step and Failure Path; assert lock file is absent before exiting (else **Failure Path** with `Lock removal failed`). **If** existing lock — cross-check its owning workflow's folded status.jsonl: `DONE` or `FAILED` → clean silently; `IN_PROGRESS` + last step <30min idle → **Failure Path**; `IN_PROGRESS` + last step >=30min idle → stale, clean.
-> - **Status branch:** design status.jsonl is dev-located (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`). `dev` commit + push ONCE per run: Close Workflow → `docs({FID}): design DONE bkit [skip ci]`; Failure Path → `chore({FID}): design FAILED bkit [skip ci]`.
+> - **Status branch:** design status.jsonl is committed on `feat/{FID}` (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`); per-step commits, NO mid-lifecycle `dev` push. State reaches `dev` once via the Close Workflow squash-merge → `docs({FID}): design DONE bkit [skip ci]`. Failure Path appends `workflow-failed` to the retained worktree copy (NO `dev` push); the tracker comment carries the failure signal.
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
@@ -52,16 +52,13 @@ description: "Design Feature — Autonomous design phase"
 1. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$REPO_ROOT/.worktrees/{FID}/$REL"; [ -f "$STATUS" ] || STATUS="$REPO_ROOT/$REL"
    [ -f "$STATUS" ] && jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed",workflow:"design",at:$t}' >> "$STATUS"
    git rebase --abort 2>/dev/null || true
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
-   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" 2>/dev/null || true
-   git -C "$REPO_ROOT" commit -m "chore({FID}): design FAILED bkit [skip ci]" 2>/dev/null || true
-   git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    ```
 2. <!-- bkit:tracker github start -->
    Add `bkit:failed` to `{LABELS}` (prior phase label persists, additive) → `mcp__github__issue_write({ method: "update", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, labels: [{LABELS}] })`.
@@ -102,9 +99,10 @@ description: "Design Feature — Autonomous design phase"
    STATUS_REL="docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
    if [ -f "$LOCK" ]; then
      LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
+     SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
      FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
-     if [ -f "$REPO_ROOT/$STATUS_REL" ]; then
-       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo 'null')
+     if [ -f "$SRC" ]; then
+       LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
      else
        LAST=$(jq --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" 2>/dev/null || echo 'null')
      fi
@@ -241,16 +239,17 @@ description: "Design Feature — Autonomous design phase"
 4. Create: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md` = session prompt + `DESCRIPTION` + `COMMENTS`.
 5. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   mkdir -p "$(dirname "$STATUS")"
-   if [ -f "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json" ] && [ ! -f "$STATUS" ]; then
+   DIR="docs/plans/{YYYYMM}/logs/{FID}"
+   WT=$(git rev-parse --show-toplevel)
+   STATUS="$WT/$DIR/status.jsonl"
+   mkdir -p "$WT/$DIR"
+   if [ -f "$WT/$DIR/status.json" ] && [ ! -f "$STATUS" ]; then
      jq -c '.[] as $w | ($w.workflow) as $wf
        | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
        , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
        , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
           elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
-          else empty end)' "$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json" > "$STATUS"
+          else empty end)' "$WT/$DIR/status.json" > "$STATUS"
    fi
    [ -f "$STATUS" ] || : > "$STATUS"
    FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
@@ -298,22 +297,21 @@ description: "Design Feature — Autonomous design phase"
 
 1. Launch all three subagents in parallel using `Agent` tool. Each carries a distinct lens; the synthesiser merges across them:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-2`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`.
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-3`
-     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-brainstorm-ideate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md","docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md","docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md"]}' \
@@ -347,14 +345,13 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 4 — Generate Design
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-generate", status:"DONE", attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md"]}' \
@@ -390,11 +387,11 @@ description: "Design Feature — Autonomous design phase"
 
 1. Launch both subagents in parallel using `Agent` tool:
    - **Subagent:** Invoke `@bkit-design-review-1`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`.
    - **Subagent:** Invoke `@bkit-design-review-2`
-     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+     Context: You are a subagent in the Design phase running in parallel with another agent. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
 2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -404,8 +401,7 @@ description: "Design Feature — Autonomous design phase"
 
 6. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$REVIEW_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md","docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md"]}' \
@@ -443,15 +439,14 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 6 — Apply Review
 
 1. **Subagent:** Invoke `@bkit-design-update` using `Agent` tool:
-   Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase applying review critiques. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-review-2.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Read `design-v2-reviewed.md` until `<!-- verdict:end -->` → extract `Verdict` as `APPLY_REVIEW_VERDICT`. **If** `APPLY_REVIEW_VERDICT` not in `PASS|CONCERNS|FAIL` → invoke offending **subagent** again with `"Your prior output 'design-v2-reviewed.md' has an invalid verdict. Re-emit ONLY 'Verdict: PASS|CONCERNS|FAIL' + '<!-- verdict:end -->' at top of that file. Do NOT redo work."` → wait for subagent and re-extract → **If** still invalid → **Failure Path**.
 4. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$APPLY_REVIEW_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-apply-review", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md"]}' \
@@ -488,7 +483,7 @@ description: "Design Feature — Autonomous design phase"
 ## 🧠 Step 7 — Design Organise
 
 1. **Subagent:** Invoke `@bkit-design-organise` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `docs/plans/{YYYYMM}/logs/{FID}/design-v2-reviewed.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
@@ -496,8 +491,7 @@ description: "Design Feature — Autonomous design phase"
 4. **If** `ORGANISE_VERDICT` = FAIL → **Failure Path**.
 5. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$ORGANISE_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-organise", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-v3-organised.md"]}' \
@@ -535,15 +529,14 @@ description: "Design Feature — Autonomous design phase"
 
 1. Resolve highest design version: `DESIGN_FINAL=$(ls docs/plans/{YYYYMM}/logs/{FID}/design-v*.md 2>/dev/null | sort -V | tail -1)`. **If** empty → **Failure Path**.
 2. **Subagent:** Invoke `@bkit-design-summary` using `Agent` tool:
-   Context: You are a subagent in the Design phase. Switch into working directory `cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.worktrees/{FID}"` → verify with `pwd` → use for all subsequent file operations.
+   Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
    Read: `{DESIGN_FINAL}` (highest v{N}), `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/design-*.md`.
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-summary.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 4. Read `design-summary.md` until `<!-- verdict:end -->` → extract `Verdict` as `SUMMARY_VERDICT`.
 5. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"]}' \
@@ -681,8 +674,7 @@ description: "Design Feature — Autonomous design phase"
 
 6. Update status and commit:
    ```bash
-   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-workstream-issues", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
@@ -734,13 +726,13 @@ description: "Design Feature — Autonomous design phase"
 3. Update status and commit:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
-   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
+   STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"design", at:$t}' >> "$STATUS"
+   git add -A && git commit --allow-empty -m "chore({FID}): close-workflow"
    ```
 4. Squash-merge to dev and clean up:
    ```bash
