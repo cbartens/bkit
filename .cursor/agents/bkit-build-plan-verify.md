@@ -52,7 +52,7 @@ tools:
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
-Failures: <integer ≥ 0>
+Failures: <integer >= 0>
 
 <!-- verdict:end -->
 

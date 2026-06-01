@@ -384,7 +384,7 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 ## Operating notes
 
 - **Loop bound:** `/bkit-debug` enforces `MAX_DEBUG_ATTEMPT = 3` internally; the router never counts attempts. After three red CI runs, debug fires its handover path and stops dispatching.
-- **GHA 6 h cap:** `3 × ~3600s` per debug attempt = well under the GHA runner ceiling. Ship is short.
+- **GHA 6 h cap:** `3 x ~3600s` per debug attempt = well under the GHA runner ceiling. Ship is short.
 - **Concurrency:** the GHA workflow uses `cancel-in-progress: true`; the Cursor dashboard trigger should be set to "latest-supersedes." Ship squash-merge is atomic, so mid-run cancels cannot corrupt PR state.
 - **Both clouds together:** there's nothing stopping both Claude and Cursor from dispatching against the same PR — they'd race. Pick one IDE per repo as the auto-router (recommended: Claude via GHA, since it's runner-resident and Anthropic-maintained). Leave Cursor for ad-hoc Linear-dispatch work.
 

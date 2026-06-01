@@ -10,4 +10,12 @@ docs/decisions.md   merge=union
 docs/completed.md   merge=union
 .agents/friction.md merge=union
 
+# Append-only NDJSON workflow status logs: union auto-concatenates both branches'
+# appended lines server-side so a per-FID status log never blocks a merge.
+# Safe iff strictly append-only (prior lines never mutated); the reader folds + dedupes
+# by (workflow, step, parentSha, at) and orders by `at`, tolerating interleave/duplication.
+# Scoped to bkit's status files only — NOT a blanket *.jsonl (union would corrupt a
+# consumer's non-append-only .jsonl data on merge).
+docs/plans/**/status.jsonl merge=union
+
 # <!-- bkit:end -->

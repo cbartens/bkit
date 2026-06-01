@@ -34,7 +34,7 @@ tools:
 3. Count tasks via `grep -cE '^- \[ \] **Task'` or equivalent task markers. Count 🔒 Gates and domain areas (API, DB, web UI, mobile, infra).
 4. Estimate total agent tokens required to execute the plan.
 5. Verdict mapping:
-   - `SINGLE` = estimated tokens ≤ 100K and task count ≤ 15.
+   - `SINGLE` = estimated tokens <= 100K and task count <= 15.
    - `SPLIT` = estimated tokens > 100K or task count > 15.
 6. Produce **Create** output.
 

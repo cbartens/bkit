@@ -36,7 +36,7 @@ maxTurns: 50
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Propose 2–3 approaches framed by failure-mode (NOT happy-path shape). Lead with recommended. Per approach, include additive risk-mitigation guidance to layer onto whichever approach is picked (NOT a separate "safer" approach). Do NOT contradict existing approved decisions. Per approach, run premortems across:
-   - 10× scale: Bottlenecks, hotspots, fan-out, blast radius.
+   - 10x scale: Bottlenecks, hotspots, fan-out, blast radius.
    - 6 months later: Drift, undocumented invariants, magic numbers, brittle integrations.
    - On-call at 3am: Page shape, diagnosability, recovery path, observability.
    - Author leaves: Knowledge concentration, bus factor, load-bearing tribal knowledge.
@@ -52,11 +52,11 @@ Lens: Risk premortem — failure modes, scale, time, handover.
 
 ## Approach A — [Name (failure-mode oriented)] ⭐ Recommended
 
-[Summary (one sentence), Premortems (10× scale, 6 months later, on-call at 3am, author leaves — each: what breaks, observability, recovery), Risk-mitigation guidance (folded-in changes to layer onto this approach)]
+[Summary (one sentence), Premortems (10x scale, 6 months later, on-call at 3am, author leaves — each: what breaks, observability, recovery), Risk-mitigation guidance (folded-in changes to layer onto this approach)]
 
 ## Approach B — [Name]
 
-[Summary, Premortems (10× scale, 6 months later, on-call at 3am, author leaves), Risk-mitigation guidance]
+[Summary, Premortems (10x scale, 6 months later, on-call at 3am, author leaves), Risk-mitigation guidance]
 
 ## Approach C — [Name (optional)]
 

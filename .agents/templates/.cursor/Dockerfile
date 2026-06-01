@@ -14,7 +14,7 @@
 FROM ubuntu:24.04
 
 # --- Consumer-owned: base system + Node ------------------------------------
-# bkit's toolchain assumes curl, ca-certificates, and Node ≥20 are on PATH
+# bkit's toolchain assumes curl, ca-certificates, and Node >=20 are on PATH
 # before the bkit block runs. Pin Node to match your repo's `engines.node`.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates \

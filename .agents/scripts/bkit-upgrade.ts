@@ -15,7 +15,7 @@
 //
 //   Conflict = a bkit-managed file where:
 //     - The template content has changed (new bkit version ships an update), AND
-//     - The consumer has modified the file since last install (on-disk hash ≠ canonical hash).
+//     - The consumer has modified the file since last install (on-disk hash != canonical hash).
 //
 // Dependency: P4.T4 `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
 //             BAR-167 v2.0.0: `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before

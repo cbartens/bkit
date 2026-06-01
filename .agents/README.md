@@ -54,7 +54,7 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 | --- | --- | --- |
 | `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .agents/scripts/bkit-install.ts` in bkit's own dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
-| `git` ≥ 2.5 | — | Worktree operations |
+| `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | `status.json` mutations in workflow Bash |
 | Claude Code CLI | latest | Local-IDE workflow execution |
 | Cursor (optional) | 2.4+ | Cloud Agent execution; honours `tools:` frontmatter allowlist |

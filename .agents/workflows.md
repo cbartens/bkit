@@ -53,6 +53,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 - **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
 - **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
+- **ASCII operators:** Use ASCII comparison/logic operators only — `!=`, `>=`, `<=`, `=>` — and `x` for "times"/dimensions. NEVER Unicode math glyphs (not-equal, greater-or-equal, less-or-equal, implies, multiplication). The flow-arrow `→` in procedural conditionals / dispatch tables is the **sole intentional non-ASCII glyph** — deliberately kept (it is the uniform, documented flow notation used in every conditional, not a stray operator; it reads clearer than `->`, which is also overloaded as member-access). Do NOT convert `→`.
 - **Variable references:** In prose, variable names / field labels / placeholder identifiers go in backticks. Two forms with distinct meaning: bare `VAR` = reference (conditionals, schema); `{VAR}` = interpolation site (orchestrator substitutes value — paths, JSON, commit msgs, Context payloads). Operators stay outside (`VERIFY_ATTEMPT` = 0). Singular literal enum values stay plain when compared (**If** `VERDICT` = PASS); enum unions are one backticked unit (`PASS|CONCERNS|FAIL`). Inside fenced output-format blocks: keep plain. NEVER use `${VAR}` outside bash code fences.
 
 ## Tracker Blocks (#39, inline model)
@@ -104,7 +105,7 @@ Re-runnable: source workflows carry the wired variants; switching trackers (`--t
 | Read/write source | via subagent delegation | ✅ (gated by tool surface) |
 | Run `git` | ✅ (`add`, `commit`, `push`, worktree ops) | read-only checks (`status`, `branch`, `log`) only |
 | Invoke subagents | ✅ via `@agent-name` (Agent tool) | ❌ leaves only |
-| Write `status.json` / hold `.lock` | ✅ | ❌ |
+| Write `status.jsonl` / hold `.lock` | ✅ | ❌ |
 
 **Why:** agent must be runnable standalone (`@bkit-build-challenge .worktrees/xxx-123` works without a live tracker issue). All inputs arrive via filesystem paths from orchestrator. All outputs land on disk under `docs/plans/{YYYYMM}/logs/{FID}/`, plan/design doc, source files, or structured docs at `docs/{knowledge,decisions,completed,pending}.md`. Workflow reads agent outputs and decides what (if anything) to mirror to the tracker.
 
@@ -128,9 +129,9 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 **Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/ .agents/friction.md` only; guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
 
-**Pre-worktree divergence guard (BAR-184):** ALL phase workflows (`design`, `plan`, `build`, `debug`, `ship`) Step 1 makes ZERO commits on `dev` and asserts `git rev-list --count origin/dev..dev` = 0 as a pre-flight. Step 1's `start-workflow` status.json entry is deferred to Step 2 inside `.worktrees/{FID}`. `bkit-ship` Step 8 (Switch to Dev) additionally re-asserts the guard and uses `git pull --ff-only`, routing to Failure Path on divergence. Rationale: workflow commits on local `dev` pre-worktree never reach `origin/dev` directly — they accumulate locally until the feature PR squash-merges, at which point local `dev` diverges from the squash commit and any subsequent ship's `git pull` hits status.json rebase conflicts. Six ship-cycle friction recurrences surfaced the symptom; the divergence accumulates silently in plan/design/build/debug runs and surfaces at the next ship pre-flight.
+**Pre-worktree divergence guard (BAR-184):** ALL phase workflows (`design`, `plan`, `build`, `debug`, `ship`) Step 1 makes ZERO commits on `dev` and asserts `git rev-list --count origin/dev..dev` = 0 as a pre-flight. Step 1's `start-workflow` event is deferred to Step 2 inside `.worktrees/{FID}`. `bkit-ship` Step 8 (Switch to Dev) additionally re-asserts the guard and uses `git pull --ff-only`, routing to Failure Path on divergence. Rationale: workflow commits on local `dev` pre-worktree never reach `origin/dev` directly — they accumulate locally until the feature PR squash-merges, at which point local `dev` diverges from the squash commit and a subsequent ship's `git pull` hits conflicts. (#209's NDJSON `status.jsonl` + `docs/plans/**/status.jsonl merge=union` removes the status-file class of those conflicts; the guard still holds for other shared files.)
 
-**Extension under BAR-183 + BAR-187 (status.json on dev for ALL workflows):** all five workflows write `status.json` to `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` (dev's working copy) — file-only between steps, uncommitted. Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success) OR Failure Path (failure). Mid-workflow dev pushes = 0. BAR-184 holds: per-step commits happen INSIDE the worktree on `feat/{FID}`, never on `dev`. Outside-worktree progress reads: `cat $REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` — works from anywhere on the machine without git knowledge.
+**Branch placement (#209 — supersedes BAR-187's universal-dev model):** `build`/`debug` write + commit `status.jsonl` on `feat/{FID}` (the worktree) with NO mid-lifecycle `dev` push; `ship` writes Steps 1-7 on `feat/{FID}` and Steps 8-12 on `dev`; `design`/`plan`/`cloud`/`audit` are dev-located and push once per run (Close/Dispatch or Failure Path). See § `status.jsonl` — workflow state SoT for the full table, event model, and fold.
 
 ### Execution Protocol — canonical invariants
 
@@ -142,107 +143,88 @@ Lifted verbatim into every workflow's caution block. If you change one wording, 
 | **Order** | Execute sequentially unless step explicitly says "in parallel". |
 | **Placeholders** | Assert `{FID}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{PR_NUMBER}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}` non-empty before any tool call → else **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. |
 | **Tools** | Verify every return; do NOT assume success. |
-| **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions ≠ compliance. |
+| **Subagents** | Invoke via `@name` with Agent tool. Orchestrator provides Read paths and context; subagent executes and writes directly. **PROHIBITED:** inlining subagent steps or producing artifact yourself — same filenames/conclusions != compliance. |
 | **Artifacts** | `Write:` artifact IS the deliverable; always emit; assert non-empty; empty → **Failure Path**. |
 | **Gates** | Verify all checkboxes before next step. Skipped gate = invalid work. |
 | **No improv** | No ad-hoc task lists, no skipping, no alternative approaches, no scope beyond the file. |
 | **Narrate** | Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent. |
 | **Git** | Pre `add`/`commit`: log `git status --short`; NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Pre `push`: assert `{BRANCH}` non-empty. |
 | **Worktree** | Step 2 `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. If any later step finds `pwd` outside worktree → **Failure Path**. |
-| **Status** | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` is central state file (dev's working copy, all workflows); ONE entry per step with `parentSha` captured at step START (see § status.json). |
-| **Resume** | On start, read `status.json` and pick up after last `done` step in active `in_progress` workflow. |
+| **Status** | `status.jsonl` (append-only NDJSON event log) is the state file; placement per § `status.jsonl` (build/debug/ship→`feat/{FID}`, design/plan/cloud→`dev`). Fold the log to derive the run array; `parentSha` captured at step START. |
+| **Resume** | On start, fold status.jsonl and pick up after last `done` step in active `in_progress` workflow. |
 | **Labels** | Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:ship`, `bkit:merged` mutually exclusive — drop old phase before adding new. `bkit:failed` (Failure Path), `bkit:debug` (Debug Workflow), `bkit:auto` (cloud CI-class trigger gate) are additive — added without dropping phase (see § Tracker Integration). |
 | **Comments** | NEW comment per workflow step via tracker MCP. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content (see § Comment Lifecycle). |
 | **Failures** | Any step, tool, command failure, or gate that cannot pass → **Failure Path**. |
 | **Timeouts** | Any workflow or subagent run > 3600 seconds → **Failure Path**. |
-| **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Lock path is **absolute** (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, anchored to main repo working tree via `git rev-parse --path-format=absolute --git-common-dir`) so acquire/release resolve to the same inode regardless of cwd. Existing lock → Step 1 cross-checks its owning workflow's `status.json`: `DONE`/`FAILED` → clean silently; `IN_PROGRESS` + last step <30min → Failure Path with `Workflow already running for {FID}`; `IN_PROGRESS` + last step ≥30min → stale, clean. Released in Close Workflow and Failure Path; **both must assert the lock file is absent before exiting** (else Failure Path with `Lock removal failed`). |
+| **Locks** | Acquire `.lock` in Step 1 right after `mkdir -p` of logs dir. Lock path is **absolute** (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock`, anchored to main repo working tree via `git rev-parse --path-format=absolute --git-common-dir`) so acquire/release resolve to the same inode regardless of cwd. Existing lock → Step 1 cross-checks its owning workflow's folded status.jsonl: `DONE`/`FAILED` → clean silently; `IN_PROGRESS` + last step <30min → Failure Path with `Workflow already running for {FID}`; `IN_PROGRESS` + last step >=30min → stale, clean. Released in Close Workflow and Failure Path; **both must assert the lock file is absent before exiting** (else Failure Path with `Lock removal failed`). |
 
-### `status.json` — workflow state SoT
+### `status.jsonl` — workflow state SoT (#209)
 
-`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` is canonical workflow-state source of truth. Written by workflows only; agents MUST NOT read or write it. Enables resume of interrupted run without re-reading the plan.
+`docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` is the canonical workflow-state source of truth: an **append-only NDJSON event log** (one JSON event per line; prior lines NEVER mutated). Written by workflows only; agents MUST NOT read or write it. Enables resume of an interrupted run without re-reading the plan. Current state is derived by **folding** the log (see Fold below); the canonical reducer is `.agents/scripts/bkit-status.ts` (`fold` / `parseStatus`, unit-tested in `bkit-status.test.ts`), and each workflow inlines a jq filter that mirrors it.
 
-**Branch placement (BAR-187 — universal invariant):**
+**Why an event log + `merge=union` (#209):** the prior single `status.json` (a mutated JSON array) for one FID was committed on **both** `dev` (design/plan/build dev commits) and `feat/{FID}` (per-step worktree commits) → divergent content on the same path → the feature PR became unmergeable → GitHub never built `refs/pull/N/merge` → `pull_request` CI never ran (a `dev`-push status commit could also become the PR-branch tip and suppress CI). Append-only NDJSON + `docs/plans/**/status.jsonl merge=union` (`.gitattributes`, template at `.agents/templates/.gitattributes` — path-scoped, NOT a blanket `*.jsonl`) lets git concatenate both branches' appended lines **server-side** — the per-FID log can never block a merge. Union may interleave or duplicate lines, so the reader de-dupes by `(workflow, step, parentSha, at)` and orders by `at` before reducing.
+
+**Branch placement (#209 — §3):**
 
 <!-- prettier-ignore -->
 | Workflow | Location | Mechanism |
 | --- | --- | --- |
-| **ALL workflows** (`plan`, `design`, `build`, `debug`, `ship`, `audit`, `cloud`, and any future workflow) | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` (dev's working copy) | Per-step writes are file-only (uncommitted between steps). Committed + pushed to `dev` exactly ONCE per workflow run: at close-workflow (success), at any early-exit branch (e.g. SKIP / no-op), OR at Failure Path (failure). Outside-worktree progress reads via `cat`. |
+| `build`, `debug` | `feat/{FID}` worktree (`$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`) | Written + committed on `feat/{FID}` via the per-step commits. NO mid-lifecycle `dev` push (Close or Failure Path). State reaches `dev` once, at ship's PR squash-merge. |
+| `ship` | Steps 1-7 on `feat/{FID}` (worktree); Steps 8-12 on `dev` (`$REPO_ROOT/...`) post-merge | Steps 1-7 commit on `feat/{FID}` (reach `dev` via the Step-5 squash-merge); Steps 8-12 append to dev's copy. Ship is terminal, so its `dev` commit + push (Close / Failure Path) is the legitimate state landing. |
+| `design`, `plan`, `cloud`, `audit` | `dev`'s working copy (`$REPO_ROOT/...`) | No persistent feat branch — dev-located cheap archive. `dev` commit + push exactly ONCE per run: at Close/Dispatch (success) OR Failure Path. |
 
-Rationale: single canonical location enables `cat $REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` outside-worktree progress reads from anywhere on the machine without git knowledge. Per-step writes accumulate locally; one dev push at termination with `bkit [skip ci]` (except plan/design close-workflow on success, which is the substantive feature commit and runs CI). Resume reads the on-disk file directly — works across crashes.
+Rationale: relocating `build`/`debug`/`ship`-pre-merge state onto `feat/{FID}` removes the dev↔feat divergence at its source; the NDJSON+union change makes it merge-safe regardless. `design`/`plan` stay dev-located because they have no persistent branch (their doc squash-merges to `dev` at close); one dev push at termination with `bkit [skip ci]` (except plan/design close-workflow on success, which is the substantive feature commit and runs CI).
 
-**Shape (JSON array — one element per workflow run):**
-
-<!-- prettier-ignore -->
-```json
-[
-  {
-    "workflow": "build",
-    "startedAt": "2026-04-27T14:02:11Z",
-    "status": "IN_PROGRESS",
-    "steps": [
-      { "step": "start-workflow", "status": "DONE", "at": "2026-04-27T14:02:11Z", "parentSha": "a1b2c3d", "artifacts": [] },
-      {
-        "step": "worktree-setup",
-        "status": "DONE",
-        "at": "2026-04-27T14:02:34Z",
-        "parentSha": "a1b2c3d",
-        "artifacts": ["docs/plans/logs/xxx-123/build-input.md"]
-      },
-      {
-        "step": "verify-plan",
-        "status": "DONE",
-        "verdict": "PASS",
-        "at": "2026-04-27T14:08:02Z",
-        "parentSha": "f4e5d6c",
-        "artifacts": ["docs/plans/logs/xxx-123/build-verify-plan-N-1.md"]
-      }
-    ]
-  }
-]
-```
-
-**Field semantics:**
+**Event types (one per line):**
 
 <!-- prettier-ignore -->
-| Field | Values |
-| --- | --- |
-| `workflow` | `design`, `plan`, `build`, `debug`, `ship`, `audit` |
-| `status` | `IN_PROGRESS`, `DONE`, `FAILED` |
-| `steps[].step` | kebab-case slug of step name (e.g. `start-workflow`, `plan-verify`, `update-docs-summary`) |
-| `steps[].status` | `DONE` (only `DONE` is appended; in-progress is implicit by absence of next step) |
-| `steps[].parentSha` | `git rev-parse HEAD` captured at step START, before any commit the step produces (forensic only) |
-| `steps[].verdict` | optional — `PASS` / `CONCERNS` / `FAIL` for verdict-bearing steps |
-| `steps[].artifacts` | absolute `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL for create-pr) |
+| Event | Shape | Meaning |
+| --- | --- | --- |
+| `workflow-started` | `{type, workflow, at}` | Opens a new run of a phase workflow. |
+| `step-done` | `{type, workflow, step, status, at, parentSha, artifacts, verdict?, attempt?, subPlan?, failures?, strategy?}` | One completed step (the bulk). |
+| `workflow-meta` | `{type, workflow, at, …fields}` | Workflow-level metadata merged onto the run (e.g. `debugAttempt`). |
+| `workflow-done` | `{type, workflow, at}` | Terminal — sets the run's `status` to `DONE`. |
+| `workflow-failed` | `{type, workflow, at}` | Terminal — sets the run's `status` to `FAILED`. |
 
-**Init / append patterns** (every workflow uses these verbatim; `$STATUS` is always absolute (`$REPO_ROOT/...`)):
+`workflow` ∈ `design`/`plan`/`build`/`debug`/`ship`/`audit`/`cloud`; `step` is a kebab slug (`build-run-tests`, `plan-verify`); `parentSha` = `git rev-parse HEAD` at step START (before any commit the step produces, forensic only); `verdict` ∈ `PASS`/`CONCERNS`/`FAIL`; `strategy` ∈ `STANDARD`/`PIVOT`/`FINAL`; `artifacts` are `docs/plans/{YYYYMM}/logs/{FID}/...` paths (or PR URL). Cross-field: when `failures` present, `PASS => failures=0`, `FAIL => failures>0`, `CONCERNS => failures>=0` (`validateInvariants` in `bkit-status.ts`).
+
+**Fold** (NDJSON events → run array). De-dupe by identity (`step-done`: `(workflow, step, parentSha, at)`; workflow-level: `(type, workflow, at)`), keep first occurrence, order by `at`, then reduce: `workflow-started` pushes a run; `step-done` appends the bare step (routing fields stripped) to the latest run of that workflow; `workflow-meta` merges fields onto it; `workflow-done`/`workflow-failed` set its `status`. Canonical reducer = `bkit-status.ts`; each workflow inlines a one-line jq filter byte-equal to it.
+
+**Append / read patterns** (every workflow uses these; `$STATUS` resolves per the branch-placement table — `$(git rev-parse --show-toplevel)/...` on feat, `$REPO_ROOT/...` on dev):
 
 ```bash
-# init or append a workflow entry (idempotent guard against double-start)
-STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
-mkdir -p "$(dirname "$STATUS")"
-[ -f "$STATUS" ] || echo '[]' > "$STATUS"
-if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "build" ] \
-   || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-  t=$(mktemp); jq '. + [{workflow:"build", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
+# migrate-once: a legacy status.json array (in-flight pre-NDJSON FID) -> events
+if [ -f "$DIR/status.json" ] && [ ! -f "$STATUS" ]; then
+  jq -c '.[] as $w | ($w.workflow) as $wf
+    | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
+    , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
+    , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+       elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+       else empty end)' "$DIR/status.json" > "$STATUS"
+fi
+[ -f "$STATUS" ] || : > "$STATUS"
+
+# start a run only if one is not already in progress (FOLD = the inlined fold filter)
+LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS")
+if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "build" ] \
+   || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
+  jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-started", workflow:"build", at:$t}' >> "$STATUS"
 fi
 
 # append a step (parentSha captured BEFORE the step's commit, if any)
 PARENT_SHA=$(git rev-parse HEAD)
-t=$(mktemp); jq --arg p "$PARENT_SHA" --arg v "$VERIFY_VERDICT" \
-  '.[-1].steps += [{step:"verify-plan", status:"DONE", verdict:$v, at:(now|todate), parentSha:$p, artifacts:["..."]}]' \
-  "$STATUS" > "$t" && mv "$t" "$STATUS"
+jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$VERIFY_VERDICT" \
+  '{type:"step-done", workflow:"build", step:"verify-plan", status:"DONE", verdict:$v, at:$t, parentSha:$p, artifacts:["..."]}' \
+  >> "$STATUS"
 
-# mark workflow done (close-workflow)
-t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
+# close (two lines): final step-done, then workflow-done
+jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
 
-# mark workflow failed (Failure Path)
-t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
-
-# NO per-step dev push. status.json mutation is file-only between steps.
-# Single dev commit + push happens at close-workflow OR Failure Path (see workflow files).
+# Failure Path
+jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed", workflow:"build", at:$t}' >> "$STATUS"
 ```
 
-**Resume rule:** read last array element from `cat "$REPO_ROOT/$STATUS_REL"` (works whether the file is committed or uncommitted, since dev's working copy is canonical). `status=IN_PROGRESS` → resume after last `DONE` step (re-run if its gate artifacts missing on disk). `status=DONE` or `status=FAILED` → start new workflow entry.
+**Resume rule:** read the run array via `jq -s "$FOLD"' fold | …'`. For `build`/`debug`/`ship` prefer the `feat/{FID}` worktree copy when it exists (`SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"`), else the dev copy; `design`/`plan`/`cloud` read `$REPO_ROOT` directly. `status=IN_PROGRESS` → resume after last `DONE` step (re-run if its gate artifacts missing on disk). `status=DONE`/`FAILED` → start a new run. A legacy `status.json` (no `.jsonl` yet) is read as an already-folded array (see `parseStatus`).
 
 ### Concurrency lock
 
@@ -252,11 +234,11 @@ t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "
 REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
 mkdir -p "$REPO_ROOT/docs/plans/logs/{FID}"
 LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
-STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.json"
+STATUS_REL="docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
 if [ -f "$LOCK" ]; then
   LOCK_WORKFLOW=$(awk '{print $2}' "$LOCK")
-  STATUS_JSON=$(cat "$REPO_ROOT/$STATUS_REL" 2>/dev/null || echo '[]')
-  LAST=$(echo "$STATUS_JSON" | jq -r --arg w "$LOCK_WORKFLOW" '[.[] | select(.workflow==$w)] | last')
+  SRC="$REPO_ROOT/.worktrees/{FID}/$STATUS_REL"; [ -f "$SRC" ] || SRC="$REPO_ROOT/$STATUS_REL"
+  LAST=$(jq -s --arg w "$LOCK_WORKFLOW" "$FOLD"' fold | [.[] | select(.workflow==$w)] | last' "$SRC" 2>/dev/null || echo 'null')
   LAST_STATUS=$(echo "$LAST" | jq -r '.status // ""')
   LAST_AT=$(echo "$LAST" | jq -r '.steps | last | .at // ""')
   if [ "$LAST_STATUS" = "IN_PROGRESS" ] && [ -n "$LAST_AT" ]; then
@@ -269,7 +251,7 @@ fi
 printf '%s build\n' "$(date -u +%FT%TZ)" > "$LOCK"
 ```
 
-**Staleness rule (BAR-187):** all workflows read `status.json` via `cat "$REPO_ROOT/$STATUS_REL"` (single canonical location, no branch-dependent fallback). `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step ≥30min idle → orphaned, clean and proceed. Lock with no matching workflow entry in `status.json` is treated as stale and cleaned.
+**Staleness rule (#209):** read the owning workflow's status.jsonl via the fold (`build`/`debug`/`ship` prefer the `feat/{FID}` worktree copy, else dev; `design`/`plan`/`cloud` read `$REPO_ROOT`). `DONE` / `FAILED` status → clean silently; `IN_PROGRESS` with last step <30min idle → genuine concurrent run, Failure Path; `IN_PROGRESS` with last step >=30min idle → orphaned, clean and proceed. Lock with no matching workflow run in the folded log is treated as stale and cleaned.
 
 ### Comment Lifecycle
 
@@ -437,7 +419,7 @@ Canonical patterns:
 - `[ ] Artifact written (docs/plans/{YYYYMM}/logs/{FID}/{file}.md, non-empty)` — artifact existence
 - `[ ] {VARIABLE} extracted` — verdict / value capture
 - `[ ] Verdict valid ({VERDICT} ∈ {PASS, CONCERNS, FAIL})` — verdict-bearing-step validation
-- `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with parentSha[, verdict, attempt, …])` — status.json mutation
+- `[ ] Workflow status updated ({phase} {STATE}, step {step-name} recorded with parentSha[, verdict, attempt, …])` — status.jsonl mutation
 - `[ ] Issue update attempted (state X, label Y)` — tracker `issue-update-*` snippet
 - `[ ] Issue comment attempted (Step {N} section)` — tracker `comment-post-step` snippet
 
@@ -493,10 +475,10 @@ Then assert each Update/Create artifact exists and is non-empty. Empty → **Fai
 | --- | --- | --- |
 | `MAX_VERIFY_ATTEMPT` | 3 | `/bkit-build` per-sub-plan verify→remediate-gaps loop |
 | `MAX_TEST_ATTEMPT` | 3 | `/bkit-build` and `/bkit-debug` test→diagnose→remediate loops |
-| `MAX_DEBUG_ATTEMPT` | 3 | `/bkit-debug` debug counter (read from status.json `workflow == "debug"` entry) |
+| `MAX_DEBUG_ATTEMPT` | 3 | `/bkit-debug` debug counter (read from status.jsonl `workflow == "debug"` entry) |
 | `MAX_MERGE_ATTEMPT` | 3 | `/bkit-ship` PR merge retries |
 | Step timeout | 3600s | Any workflow or subagent run exceeding this → Failure Path |
-| Lock idle threshold | 1800s | Concurrent-run cut-off: lock with `status.json` last-step age <30min and `IN_PROGRESS` → Failure Path; ≥30min or `DONE`/`FAILED` → stale, clean (BAR-183) |
+| Lock idle threshold | 1800s | Concurrent-run cut-off: lock with `status.jsonl` last-step age <30min and `IN_PROGRESS` → Failure Path; >=30min or `DONE`/`FAILED` → stale, clean (BAR-183) |
 
 Reference these constants by name in retry checks — never use literal `3`.
 
@@ -506,7 +488,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 **Standard failure (always run):**
 
-1. Mark `status.json` last entry `status: "FAILED"`; remove `.lock` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute path); **assert lock file is absent** (else exit non-zero with `Lock removal failed`). For `plan`/`design`, the failed-status commit additionally pushes to `dev` (best-effort — `2>/dev/null || true`).
+1. Mark `status.jsonl` last entry `status: "FAILED"`; remove `.lock` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute path); **assert lock file is absent** (else exit non-zero with `Lock removal failed`). For `plan`/`design`, the failed-status commit additionally pushes to `dev` (best-effort — `2>/dev/null || true`).
 2. Add `Failed` to `{LABELS}` (additive — phase label persists) → update issue via `issue-update-failed` tracker snippet.
 3. Append `### Workflow Failure` block to workflow comment with step number, error, and last 20 lines of stderr.
 
@@ -527,13 +509,13 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 <!-- prettier-ignore -->
 | Tier | Conflict shape | Recovery | Mechanism |
 | --- | --- | --- | --- |
-| 1 | Append-only doc ledgers (`docs/{pending,knowledge,decisions,completed}.md`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.agents/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
+| 1 | Append-only doc ledgers (`docs/{pending,knowledge,decisions,completed}.md`) + per-FID `status.jsonl` (`docs/plans/**/status.jsonl`) | `merge=union` — git auto-concatenates both sides | `.gitattributes` (template at `.agents/templates/.gitattributes`, installed to consumer roots by `bkit install`); conflict never reaches the workflow |
 | 2 | `pnpm-lock.yaml` only | Inline `git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only` + `git add` + `git rebase --continue` | Bash block in Step 2 of all three workflows |
 | 3 | Code, configs, anything else | Touch sentinel `docs/plans/{YYYYMM}/logs/{FID}/.rebase-failed` → Failure Path → conditional handover | Sentinel-file pattern; `/bkit-ship` Failure Path additionally invokes `@bkit-ship-conflict-resolve` before `@bkit-debug-abort-handover` |
 
 **Why Tier 1 is `merge=union` and not a workflow step:** the trade-off is silent duplicate `KN-N` / `DE-N` IDs if both branches allocate the same number — same renumbering hazard already deferred separately, not a regression. `.gitattributes` is the standard git mechanism; pre-empts the conflict at the git layer for all callers without workflow surface area. Excludes `.agents/friction.md` (post-write edits to `Recovery` / `Status` fields break the strict-append contract that union-safety requires).
 
-**Why Tier 2 is inline bash and not a subagent:** mechanical recovery, deterministic git plumbing, no judgement call. A subagent or new Step would add status.json / gate / Linear-comment overhead for what is a 4-line shell idiom.
+**Why Tier 2 is inline bash and not a subagent:** mechanical recovery, deterministic git plumbing, no judgement call. A subagent or new Step would add status.jsonl / gate / Linear-comment overhead for what is a 4-line shell idiom.
 
 **Why Tier 3 invokes `@bkit-ship-conflict-resolve` only in `/bkit-ship`:** ship is the only workflow that rebases against an active integration target where conflicts are common. `/bkit-build` and `/bkit-debug` operate on the feature branch in isolation; conflicts there are rarer and usually point to a deeper problem worth a human glance — they keep sentinel → handover only. The resolver's verdict signal (`pnpm install` + `typecheck` + `test` + `build` all PASS) is necessary but not sufficient for a merge — tests can pass while one side's intent is silently dropped — so the resolver refuses semantic overlaps and falls through to handover on any ambiguity. `bkit-debug` itself is **not** repurposed for git plumbing because its diagnose/remediate subagents are scoped to test/runtime failures with the same insufficient verdict signal.
 
@@ -592,7 +574,7 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Read | Write | Notes |
 | --- | --- | --- | --- | --- |
-| 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve / create `{ISSUE_ID}`, set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.json` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | tracker issue | `.lock`, tracker comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve / create `{ISSUE_ID}`, set label `bkit:design`, state `In Progress`. NO commits on `dev` — `status.jsonl` init + `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, env files, `design-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). `pnpm install --frozen-lockfile`. |
 | 3 — Brainstorm & Ideate | `@bkit-design-brainstorm-ideate-1` ‖ `-2` ‖ `-3` (parallel triplet) | `design-input.md` | `design-brainstorm-ideate-1.md`, `-2.md`, `-3.md` | Pragmatic / optimal-tradeoff / risk-premortem lenses; effort-tier diversity (`high`/`medium`/`high`); sibling-blind. `BRAINSTORM_VERDICT` = worst of three. |
 | 4 — Generate Design | `@bkit-design-generate` | both brainstorms | `design-v1-draft.md` (versioned draft) | First write of deliverable design doc. |
@@ -600,7 +582,7 @@ Each subsection below documents what command actually does — step list, subage
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
 | 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary bkit [skip build] bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
-| 9 — Design Workstream Issues | — | `design-v3-organised.md` | tracker sub-issues + block-by edges, `status.json` | Per `WS-N` block in `## Design Workstreams`: list existing sub-issues → existing match → sync comment (body untouched); else create sub-issue with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
+| 9 — Design Workstream Issues | — | `design-v3-organised.md` | tracker sub-issues + block-by edges, `status.jsonl` | Per `WS-N` block in `## Design Workstreams`: list existing sub-issues → existing match → sync comment (body untouched); else create sub-issue with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
 | 10 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. |
 
 **Hard stop in Step 10 caution block:** "Design requires human review. Do NOT invoke `/bkit-plan`."
@@ -662,14 +644,14 @@ Each subsection below documents what command actually does — step list, subage
 
 **Goal:** diagnose and remediate failing test or CI run; push fix back to branch.
 
-**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev` — if a PR exists → **PR debug mode**. Else → **Local debug mode**. `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` read from status.json's most recent `workflow == "debug"` entry. Set `OBSERVE_MODE`: `PRIOR_OBSERVE_MODE = instrument` → `analyse` (Steps 10–11 + Failure Path handover). `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `instrument` (Step 9 single-shot). Else → `off` (normal Steps 4–8).
+**Mode detection (Step 1):** `gh pr list --head $(git branch --show-current) --base dev` — if a PR exists → **PR debug mode**. Else → **Local debug mode**. `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` read from status.jsonl's most recent `workflow == "debug"` entry. Set `OBSERVE_MODE`: `PRIOR_OBSERVE_MODE = instrument` → `analyse` (Steps 10–11 + Failure Path handover). `DEBUG_ATTEMPT` > `MAX_DEBUG_ATTEMPT` → `instrument` (Step 9 single-shot). Else → `off` (normal Steps 4–8).
 
 **Context fetch (Step 3):** Mode-agnostic. Five independent sub-fetches in priority order → per-source artifacts written only when content exists: (a) `gh run view "$RUN_ID" --log-failed` → `debug-context-ci-{DEBUG_ATTEMPT}.md` when a non-success CI run exists for the branch; (b) diff vs last-passing CI on `dev` (`gh run list --branch dev --workflow ci.yml --status success --limit 5` → `git diff <last-pass-sha>..HEAD --stat`) → `debug-context-diff-{DEBUG_ATTEMPT}.md` when a last-passing-CI SHA exists and diff is non-empty; (c) local test suite (`pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`) → `debug-context-tests-local-{DEBUG_ATTEMPT}.md` capturing combined stdout/stderr regardless of exit code; (d) Playwright `playwright-report` artifact via `gh run download` → `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md` when `gh run view --json jobs` reports an `e2e|playwright`-named job/step with `conclusion=failure` (every text file under `test-results/` inlined verbatim with `===== file: <relpath> =====` separators; binary artifacts — HTML viewer, screenshots, videos, `trace.zip` — listed by relpath at the end but not inlined; depends on consumer-side `bkit-stub:e2e-artifacts` upload step in `ci.yml`, missing upload = empty download = no artifact, non-fatal); (e) runtime-log query → `debug-context-runtime-{DEBUG_ATTEMPT}.md` when the **first** `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` pair **after** `<!-- bkit:end -->` exists in `docs/observability.md` (consumer section only — bkit-shipped example inside the bkit block is skipped; orchestrator uses the fenced block as template, customises by severity `>= ERROR`, freshness ~hours-since-last-commit + 30min buffer clamped `[1h, 24h]`, limit 50, tool-agnostic). Any / all / none of the five artifacts may exist; missing content = no file. Fail-soft throughout.
 
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Notes |
 | --- | --- | --- |
-| 1 — Start Workflow | — | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER`. Read `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` from status.json. Set `OBSERVE_MODE`. NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Add `Debug` additively (prior phase label persists), state `In Progress`. PR-mode: extract `PR_NUMBER`. Read `DEBUG_ATTEMPT` + `PRIOR_OBSERVE_MODE` from status.jsonl. Set `OBSERVE_MODE`. NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | Branch fallback differs from feat workflows: if no `feat/{FID}` branch exists locally or on origin → `git worktree add -b fix/{FID} origin/dev`. Branch eligibility check: `BRANCH` must be `dev` OR contain `{FID}` OR contain `{ISSUE_ID}` (case-insensitive) — else Failure Path with `Wrong branch.` Writes `debug-input-{DEBUG_ATTEMPT}.md` (session-prompt envelope only — no logs). Init `TEST_ATTEMPT` = 0. |
 | 3 — Fetch Context | — | Mode-agnostic. Five sub-fetches in priority order: CI sub-fetch (`gh run view --log-failed`) when a non-success CI run exists → `debug-context-ci-{DEBUG_ATTEMPT}.md`. Diff sub-fetch (`gh run list --branch dev --workflow ci.yml --status success --limit 5` → `git diff <last-pass-sha>..HEAD --stat`) → `debug-context-diff-{DEBUG_ATTEMPT}.md` when a last-passing-CI SHA exists. Local test sub-fetch (`pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue`) → `debug-context-tests-local-{DEBUG_ATTEMPT}.md` capturing combined stdout/stderr. Playwright sub-fetch (`gh run download -n playwright-report`) when an `e2e | playwright` job/step concluded `failure` → text files under `test-results/` inlined verbatim into `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`; binary artifacts (HTML viewer, screenshots, videos, `trace.zip`) listed at end. Depends on consumer-side `bkit-stub:e2e-artifacts` upload in ci.yml; missing upload = empty fetch = no file. Runtime sub-fetch triggered by `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` markers in `docs/observability.md` → orchestrator customises template per failure context (severity / freshness / limit) → `debug-context-runtime-{DEBUG_ATTEMPT}.md`. Per-source artifacts written only when content available; empty = no file. Fail-soft throughout. |
 | 4 — Failure Diagnose | `@bkit-debug-failure-diagnose` _(only if `OBSERVE_MODE` = off)_ | Writes `debug-failure-diagnose-{TEST_ATTEMPT}.md`. Reads prior diagnose+remediate logs + `debug-context-*.md` to avoid repeating strategies and quote concrete log evidence. |
@@ -713,11 +695,11 @@ Each subsection below documents what command actually does — step list, subage
 <!-- prettier-ignore -->
 | Step | Subagent(s) | Read | Write | Notes |
 | --- | --- | --- | --- | --- |
-| 1 — Start Workflow | — | Linear issue | `.lock`, Linear comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve argv (no-arg / glob / `BAR-NNN`) → set `SCOPE_GLOB`, `ISSUE_ID`. Create-or-reuse master Linear issue. NO phase label. FID-format invariant assertion (standard form OR `-audit-{YYYYMMDD-HHmm}` suffix for re-audits). NO commits on `dev` — `status.json` init + `audit-start-workflow` step entry deferred to Step 2 inside the worktree. |
+| 1 — Start Workflow | — | Linear issue | `.lock`, Linear comment | Pre-flight: assert `git rev-list --count origin/dev..dev` = 0 (Failure Path if non-zero — see § Pre-worktree divergence guard). Resolve argv (no-arg / glob / `BAR-NNN`) → set `SCOPE_GLOB`, `ISSUE_ID`. Create-or-reuse master Linear issue. NO phase label. FID-format invariant assertion (standard form OR `-audit-{YYYYMMDD-HHmm}` suffix for re-audits). NO commits on `dev` — `status.jsonl` init + `audit-start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | repo | `.worktrees/{FID}`, `audit-input.md` | Create or resume worktree on `feat/{FID}` (fallback: `HEAD`). Read-only — drops `pnpm install --frozen-lockfile`. |
-| 3 — Audits | `@bkit-audit-architecture` ‖ `-hotpath` ‖ `-config` ‖ `-reliability` ‖ `-observability` ‖ `-debt` ‖ `-dead-code` ‖ `-deps` ‖ `-security` ‖ `-tests` ‖ `-docs-drift` (parallel 11) | `audit-input.md` | 11 × `audit-{slug}.md` | Sibling-blind. Each auditor reads `.agents/docs.md` for project context (stack-aware report; stack-agnostic probes). Post-Step-3 assertion gate: for each slug verify file exists, non-empty, verdict header present. `LENS_VERDICT_WORST` = worst-of-11 (`FAIL > CONCERNS > PASS`); `MISSING`/`EMPTY` → `CONCERNS`-equivalent; `NO_VERDICT` → `FAIL`-equivalent → Failure Path. |
+| 3 — Audits | `@bkit-audit-architecture` ‖ `-hotpath` ‖ `-config` ‖ `-reliability` ‖ `-observability` ‖ `-debt` ‖ `-dead-code` ‖ `-deps` ‖ `-security` ‖ `-tests` ‖ `-docs-drift` (parallel 11) | `audit-input.md` | 11 x `audit-{slug}.md` | Sibling-blind. Each auditor reads `.agents/docs.md` for project context (stack-aware report; stack-agnostic probes). Post-Step-3 assertion gate: for each slug verify file exists, non-empty, verdict header present. `LENS_VERDICT_WORST` = worst-of-11 (`FAIL > CONCERNS > PASS`); `MISSING`/`EMPTY` → `CONCERNS`-equivalent; `NO_VERDICT` → `FAIL`-equivalent → Failure Path. |
 | 4 — Synthesise | `@bkit-audit-synthesise` | glob `audit-*.md` | `audit-v1-synthesis.md` | Parse standard markdown finding headings via regex `^## \[(\w+)\]\[(\w+)\] (.+) — (.+)$`; dedup on `(class, normalized_location)` with 5-line bucket; severity max-wins; cross-audit confidence upgrade one tier. `SYNTHESIS_VERDICT` = FAIL → Failure Path. |
-| 5 — Organise | `@bkit-audit-organise` | `audit-v1-synthesis.md` | `audit-v2-ranked.md` + Linear sub-issues per workstream | Render severity × class matrix + ranked list + per-class appendix + workstreams. Post-step: orchestrator parses `## Workstreams` section and `save_issue` per `WS-{N}` with `parentId: {ISSUE_ID}` (existing match → `save_comment` sync). `ORGANISE_VERDICT` = FAIL (orphan correlation_id) → Failure Path. |
+| 5 — Organise | `@bkit-audit-organise` | `audit-v1-synthesis.md` | `audit-v2-ranked.md` + Linear sub-issues per workstream | Render severity x class matrix + ranked list + per-class appendix + workstreams. Post-step: orchestrator parses `## Workstreams` section and `save_issue` per `WS-{N}` with `parentId: {ISSUE_ID}` (existing match → `save_comment` sync). `ORGANISE_VERDICT` = FAIL (orphan correlation_id) → Failure Path. |
 | 6 — Summary | `@bkit-audit-summary` | highest `audit-v*` + glob `audit-*.md` | `audit-summary.md` | Subagent emits 500-token summary. Orchestrator appends Step 6 section to master Linear comment with `audit-summary.md` content verbatim. Commit `chore({FID}): summary bkit [skip build] bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 7 — Close Workflow | — | — | `docs/audits/{FID}-audit.md` (copy of v2) | Friction sweep + copy v2 to `docs/audits/` → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; NO phase label change (audit applies no label). |
 
@@ -753,12 +735,12 @@ Human-triggered. Removes a Claude worktree (and optionally its feature branch). 
 
 ### `/bkit-cloud` — phase-routed dispatch
 
-**Goal:** phase-routed cloud dispatcher. Reads `{PHASE}` + `{ARG}` from invocation args and routes to the matching phase skill. **CI-class** (`ship`/`debug`, `{ARG}` = PR) runs Steps 1–4 (guard + opt-in gate + dispatch); **brief-class** (`design`/`plan`/`build`, `{ARG}` = issue) runs Step 1 then Step 4 — the human `workflow_dispatch` is the opt-in, and the dispatched skill ingests its own brief + owns its `status.json` / worktree / FID. No worktree, no tracker state change beyond a single comment line.
+**Goal:** phase-routed cloud dispatcher. Reads `{PHASE}` + `{ARG}` from invocation args and routes to the matching phase skill. **CI-class** (`ship`/`debug`, `{ARG}` = PR) runs Steps 1–4 (guard + opt-in gate + dispatch); **brief-class** (`design`/`plan`/`build`, `{ARG}` = issue) runs Step 1 then Step 4 — the human `workflow_dispatch` is the opt-in, and the dispatched skill ingests its own brief + owns its `status.jsonl` / worktree / FID. No worktree, no tracker state change beyond a single comment line.
 
 <!-- prettier-ignore -->
 | Step | Notes |
 | --- | --- |
-| 1 — Start Workflow | Classify `{PHASE}` → `CLASS`. CI-class: resolve `{FID}` from `gh pr view {ARG} --json headRefName` (`feat/{FID}` convention), `{ISSUE_ID}` from PR body / branch slug, init `status.json` (`cloud`). Brief-class: `{ISSUE_ID}` = `{ARG}`; no FID / no `status.json` (the skill owns them). Create fresh tracker comment header. |
+| 1 — Start Workflow | Classify `{PHASE}` → `CLASS`. CI-class: resolve `{FID}` from `gh pr view {ARG} --json headRefName` (`feat/{FID}` convention), `{ISSUE_ID}` from PR body / branch slug, init `status.jsonl` (`cloud`). Brief-class: `{ISSUE_ID}` = `{ARG}`; no FID / no `status.jsonl` (the skill owns them). Create fresh tracker comment header. |
 | 2 — Stale-Run Guard | **CI-class only.** Compare CI run `headSha` to PR `headRefOid`. Mismatch → `GUARD_VERDICT` = FAIL (newer commit in flight) → exit 0 with no-op comment line. |
 | 3 — Opt-In Gate | **CI-class only.** Require tracker `Auto` label on issue. Absent → `AUTO_VERDICT` = FAIL → exit 0 with no-op comment line + kill-switch propagation. |
 | 4 — Dispatch | Route `{PHASE}` → `/bkit-ship {FID}` / `/bkit-debug {FID}` / `/bkit-design {ISSUE_ID}` / `/bkit-plan {ISSUE_ID}` / `/bkit-build {ISSUE_ID}`. Invoke via `Skill` (Claude) / `Task` (Cursor); dispatched skill owns its session from there. The regression-gate-verification gate that catches Vercel-ignore / `decide`-step demotion lives in `/bkit-ship` Step 3 — Regression Guard (universal — also applies to manual `/bkit-ship` invocations that bypass the workflow). |
@@ -1012,7 +994,7 @@ Inline definitions for tokens used in workflow files. Keep this section in sync 
 ### FID generation
 
 1. Prefer Linear id lowercased: `xxx-123` ← `XXX-123`.
-2. Else kebab from title: strip stopwords (the/a/and/of/to/in/for), ≤3 tokens, ASCII lower → `word1-word2-word3`.
+2. Else kebab from title: strip stopwords (the/a/and/of/to/in/for), <=3 tokens, ASCII lower → `word1-word2-word3`.
 3. One FID for all artifacts once set.
 
 ### Branch eligibility
@@ -1074,7 +1056,7 @@ Commits any uncommitted local changes before creating worktree so new branch inh
 | Plan active | `docs/plans/{YYYYMM}/{FID}-plan*.md` (moved here in `/bkit-build` Step 2) |
 | Plan completed | `docs/plans/{YYYYMM}/{FID}-plan*.md` (moved here in `/bkit-ship` Step 8) |
 | Workflow logs | `docs/plans/{YYYYMM}/logs/{FID}/*.md` |
-| Workflow state | `docs/plans/{YYYYMM}/logs/{FID}/status.json` (on `dev` for all five workflows — BAR-187; see § status.json) |
+| Workflow state | `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl` (on `dev` for all five workflows — BAR-187; see § status.jsonl) |
 | Concurrency lock | `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` (absolute, main repo working tree) |
 | Per-phase input | `docs/plans/{YYYYMM}/logs/{FID}/{phase}-input.md` (or `debug-input-{DEBUG_ATTEMPT}.md`) |
 | Per-attempt logs | `docs/plans/{YYYYMM}/logs/{FID}/{phase}-{step}-{N}-*.md` (verify, remediate, diagnose loops) |

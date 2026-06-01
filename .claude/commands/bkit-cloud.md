@@ -9,7 +9,7 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 
 > **Invocation:** `/bkit-cloud {PHASE} {ARG}` — `{PHASE}` in `ship|debug|design|plan|build`; `{ARG}` is the open PR number (`ship`/`debug`) or the tracker issue number/id (`design`/`plan`/`build`). The `bkit-cloud.yml` workflow resolves both before dispatch: CI pass→`ship`, CI fail→`debug` with `{ARG}` the open PR; `workflow_dispatch` passes `{PHASE}` + issue directly.
 >
-> **Phase classes:** `ship`/`debug` = **CI-class** (Steps 1–4: guard + opt-in gate + dispatch). `design`/`plan`/`build` = **brief-class** (Step 1 resolves the issue, Step 4 invokes the skill — guard + opt-in gate are skipped; the human `workflow_dispatch` is the opt-in, and the skill owns its own `status.json`/worktree/FID).
+> **Phase classes:** `ship`/`debug` = **CI-class** (Steps 1–4: guard + opt-in gate + dispatch). `design`/`plan`/`build` = **brief-class** (Step 1 resolves the issue, Step 4 invokes the skill — guard + opt-in gate are skipped; the human `workflow_dispatch` is the opt-in, and the skill owns its own `status.jsonl`/worktree/FID).
 
 > [!CAUTION]
 > **Read in full:** `.agents/rules.md`.
@@ -23,8 +23,8 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 > - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
-> - **Status:** `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` = central state file; ONE entry per step with `parentSha` captured at step START. Workflow `status` = `IN_PROGRESS | DONE | FAILED`. Step `status` = `DONE | FAILED`. Step `verdict` = `PASS | FAIL | CONCERNS`.
-> - **Status branch:** `status.json` at `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json`. Per-step: file-only write on dev working copy + commit on `feat/{FID}`. `dev` commit + push ONCE per run: Close Workflow → `chore({FID}): cloud DONE bkit [skip ci]`; Failure Path → `chore({FID}): cloud FAILED bkit [skip ci]`.
+> - **Status:** `status.jsonl` = append-only NDJSON event log; fold to derive the run array. `step-done` carries `parentSha` captured at step START, optional `verdict` (`PASS | FAIL | CONCERNS`).
+> - **Status branch:** the `cloud` run's status.jsonl is dev-located (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`). `dev` commit + push ONCE per run: Dispatch → `docs({FID}): cloud DONE bkit [skip ci]`; Failure Path → `chore({FID}): cloud FAILED bkit [skip ci]`.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
@@ -43,11 +43,11 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 1. Update status, commit, and push:
    ```bash
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    if [ -f "$STATUS" ]; then
-     t=$(mktemp); jq '.[-1] |= (. + {status:"FAILED"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
+     jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-failed",workflow:"cloud",at:$t}' >> "$STATUS"
      git -C "$REPO_ROOT" pull --ff-only origin dev 2>/dev/null || true
-     git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json" 2>/dev/null || true
+     git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl" 2>/dev/null || true
      git -C "$REPO_ROOT" commit -m "chore({FID}): cloud FAILED bkit [skip ci]" 2>/dev/null || true
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    fi
@@ -82,7 +82,7 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
    ```
    **If** the exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-4. **Brief-class (`design`/`plan`/`build`):** brief-class dispatch is tracker-required — it is reached only when a tracker issue routes the run (`none` never applies `bkit:auto`, so CI auto-routing never gets here), so `$ARG` is always a tracker issue id. Set `ISSUE_ID="$ARG"`; assert non-empty (**Else** → **Failure Path**). Skip sub-steps 5–10 — no PR/FID/`status.json` here; the dispatched skill owns FID/worktree/`status.json` and ingests its own brief. Post the Step 1 comment (sub-step 11), then Gate 1.
+4. **Brief-class (`design`/`plan`/`build`):** brief-class dispatch is tracker-required — it is reached only when a tracker issue routes the run (`none` never applies `bkit:auto`, so CI auto-routing never gets here), so `$ARG` is always a tracker issue id. Set `ISSUE_ID="$ARG"`; assert non-empty (**Else** → **Failure Path**). Skip sub-steps 5–10 — no PR/FID/`status.jsonl` here; the dispatched skill owns FID/worktree/`status.jsonl` and ingests its own brief. Post the Step 1 comment (sub-step 11), then Gate 1.
 5. **CI-class (`CLASS` = ci — `ship`/`debug`) — sub-steps 5–10 resolve the PR context.** `{ARG}` is the open PR number: set `PR_NUMBER="$ARG"`.
 6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
 7. **If** `PR_STATE` != OPEN → **Failure Path**. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**.
@@ -116,15 +116,25 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
     YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
     [ -z "$YYYYMM" ] && { echo "No YYYYMM bucket found for {FID} — ship/debug run post-build" >&2; exit 1; }
     mkdir -p "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}"
-    STATUS="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json"
-    [ -f "$STATUS" ] || echo '[]' > "$STATUS"
-    if [ "$(jq -r '.[-1].workflow // ""' "$STATUS")" != "cloud" ] || [ "$(jq -r '.[-1].status // ""' "$STATUS")" != "IN_PROGRESS" ]; then
-      t=$(mktemp); jq '. + [{workflow:"cloud", startedAt:(now|todate), status:"IN_PROGRESS", steps:[]}]' "$STATUS" > "$t" && mv "$t" "$STATUS"
+    STATUS="$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.jsonl"
+    if [ -f "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" ] && [ ! -f "$STATUS" ]; then
+      jq -c '.[] as $w | ($w.workflow) as $wf
+        | {type:"workflow-started",workflow:$wf,at:$w.startedAt}
+        , ($w.steps[] | {type:"step-done",workflow:$wf} + .)
+        , (if $w.status=="DONE" then {type:"workflow-done",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+           elif $w.status=="FAILED" then {type:"workflow-failed",workflow:$wf,at:($w.steps[-1].at // $w.startedAt)}
+           else empty end)' "$REPO_ROOT/docs/plans/$YYYYMM/logs/{FID}/status.json" > "$STATUS"
+    fi
+    [ -f "$STATUS" ] || : > "$STATUS"
+    FOLD='def lastIdx($w):([range(0;length) as $i|select(.[$i].workflow==$w)|$i]|last);def fold:(reduce .[] as $e ({seen:{},out:[]};(if $e.type=="step-done" then "S \($e.workflow) \($e.step) \($e.parentSha) \($e.at)" else "W \($e.type) \($e.workflow) \($e.at)" end) as $k|if .seen[$k] then . else .seen[$k]=true|.out+=[$e] end)|.out|sort_by(.at)) as $ev|reduce $ev[] as $e ([];if $e.type=="workflow-started" then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[]}] elif $e.type=="step-done" then (lastIdx($e.workflow)) as $i|(if $i==null then .+[{workflow:$e.workflow,startedAt:$e.at,status:"IN_PROGRESS",steps:[($e|del(.type,.workflow))]}] else .[$i].steps+=[($e|del(.type,.workflow))] end) elif $e.type=="workflow-meta" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i]+=($e|del(.type,.workflow,.at)) end) elif $e.type=="workflow-done" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="DONE" end) elif $e.type=="workflow-failed" then (lastIdx($e.workflow)) as $i|(if $i==null then . else .[$i].status="FAILED" end) else . end);'
+    LATEST=$(jq -s "$FOLD"' fold | (.[-1] // {}) | {workflow, status}' "$STATUS" 2>/dev/null || echo '{}')
+    if [ "$(echo "$LATEST" | jq -r '.workflow // ""')" != "cloud" ] || [ "$(echo "$LATEST" | jq -r '.status // ""')" != "IN_PROGRESS" ]; then
+      jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-started", workflow:"cloud", at:$t}' >> "$STATUS"
     fi
     PARENT_SHA=$(git rev-parse HEAD)
-    t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-      '.[-1].steps += [{step:"cloud-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}]' \
-      "$STATUS" > "$t" && mv "$t" "$STATUS"
+    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
+      '{type:"step-done", workflow:"cloud", step:"cloud-start-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
+      >> "$STATUS"
     ```
 
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
@@ -150,16 +160,16 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 
 **CI-class** (`ship`/`debug`): runs only after `bkit-cloud.yml`'s two gates pass (free-tier `bkit [auto route]` marker + in-job `bkit:auto` label re-check). **Brief-class** (`design`/`plan`/`build`): runs directly after Step 1 — `workflow_dispatch` is the opt-in; YAML gates skipped.
 
-1. **CI-class only** — update status, commit, and push (brief-class skips this; the dispatched skill owns its own `status.json`):
+1. **CI-class only** — update status, commit, and push (brief-class skips this; the dispatched skill owns its own `status.jsonl`):
    ```bash
-   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json"
+   STATUS="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
-   t=$(mktemp); jq --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg ph "$PHASE" \
-     '.[-1].steps += [{step:"cloud-dispatch", status:"DONE", at:$t, parentSha:$p, phase:$ph, artifacts:[]}]' \
-     "$STATUS" > "$t" && mv "$t" "$STATUS"
-   t=$(mktemp); jq '.[-1] |= (. + {status:"DONE"})' "$STATUS" > "$t" && mv "$t" "$STATUS"
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg ph "$PHASE" \
+     '{type:"step-done", workflow:"cloud", step:"cloud-dispatch", status:"DONE", at:$t, parentSha:$p, phase:$ph, artifacts:[]}' \
+     >> "$STATUS"
+   jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"cloud", at:$t}' >> "$STATUS"
    git -C "$REPO_ROOT" pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
-   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.json"
+   git -C "$REPO_ROOT" add "docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    git -C "$REPO_ROOT" commit -m "docs({FID}): cloud DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```

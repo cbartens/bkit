@@ -107,10 +107,11 @@ jobs:
       # from consumer-side Renovate; new SHAs arrive via `bkit install`. See issue #124.
       - uses: actions/checkout@v4
         with:
-          # Check out `dev` at the workspace root so the dispatched phase's
-          # `$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/status.json` resolves to dev's
-          # working copy (BAR-187 invariant). The phase skill creates its own
-          # `feat/{FID}` worktree under `.worktrees/` as needed.
+          # Check out `dev` at the workspace root: the cloud orchestrator writes its own
+          # `cloud` run to dev's `status.jsonl`, and the dispatched phase skill creates its
+          # own `feat/{FID}` worktree under `.worktrees/` (§209). ship/debug then read+write
+          # their branch-local `status.jsonl` on `feat/{FID}` (worktree-prefer at Step 1);
+          # design/plan/build start from dev. NDJSON + `*.jsonl merge=union` keeps it merge-safe.
           ref: dev
           fetch-depth: 0
           # The auto-provided GITHUB_TOKEN inherits the `permissions:` block above.
