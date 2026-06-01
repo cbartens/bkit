@@ -205,7 +205,7 @@ description: "Design Feature — Autonomous design phase"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/plans/ .bkit/friction.md
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build]"
    fi
    ```
