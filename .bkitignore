@@ -2,7 +2,7 @@
 # or JSON keys. See README.md § .bkitignore for syntax + examples.
 #
 # Scope: filters Tier-3 advisory drift only. Does NOT skip Tier-2 core template
-# writes or payload copies — those always reflect `.agents/templates/`.
+# writes or payload copies — those always reflect `.bkit/templates/`.
 #
 # Example patterns (uncomment to use):
 #

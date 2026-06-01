@@ -78,7 +78,7 @@ jobs:
         run: pnpm lint:slop
 
       # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
-      # regenerated and committed whenever .agents/scripts/**.ts changes.
+      # regenerated and committed whenever .bkit/src/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
       - name: Verify Dist Freshness

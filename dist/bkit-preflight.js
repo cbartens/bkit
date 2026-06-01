@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
 import { extractManagedBlock } from "./bkit-install.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
 // Internal helper
@@ -233,7 +233,7 @@ export function detectGitignoreBlockDuplicates(cwd) {
  * the new block broadens scope on this install.
  *
  * BKIT_PRETTIERIGNORE_PATHS MUST mirror the canonical block shipped in
- * `.agents/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
+ * `.bkit/templates/.prettierignore` (between `# bkit:start` and `# bkit:end`).
  * If it drifts broader, this detector fires every install with a phantom
  * "broadening" that never actually happens.
  */
@@ -382,7 +382,7 @@ export function detectObservabilityDebugFetchMissing(cwd) {
         return null;
     const afterBkitEnd = content.slice(endIdx);
     // Consumer-section markers must be line-anchored to mirror the workflow's
-    // `sed`/`awk` extraction (`.agents/workflows/bkit-debug.md:298`).
+    // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md:298`).
     const hasStart = /^<!-- debug-fetch:start -->$/m.test(afterBkitEnd);
     const hasEnd = /^<!-- debug-fetch:end -->$/m.test(afterBkitEnd);
     if (hasStart && hasEnd)
@@ -426,7 +426,7 @@ export function detectLegacyBkitEnvelope(cwd, relPath) {
  */
 export function detectTier2JsonDrift(cwd, relPath, pkgRoot) {
     const absPath = path.join(cwd, relPath);
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(getTemplatesRoot(), relPath);
     if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
         return null;
     let consumerDoc;
@@ -470,7 +470,7 @@ export function detectTier2JsonDrift(cwd, relPath, pkgRoot) {
  */
 export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
     const absPath = path.join(cwd, relPath);
-    const templatePath = path.join(pkgRoot, ".agents", "templates", relPath);
+    const templatePath = path.join(getTemplatesRoot(), relPath);
     if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
         return null;
     const consumerContent = fs.readFileSync(absPath, "utf-8");

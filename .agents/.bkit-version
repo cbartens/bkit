@@ -53,7 +53,6 @@
     ".github/renovate.json5": "bbd32e18195b64407eb919610454bd4976cc93728a153a1408650f1664237b53",
     ".agents/.env.example": "1dbcfa023ec0a687532f474c8ed2cd77c9e15e1e464e61706d1ed7b87416b11e",
     ".agents/friction.md": "3cc4c98c00175efd21ea404309cdb279e9056a5c2c38c55c06c961a714e7cad8",
-    ".agents/rules.md": "81648185538f49d7f0afc8b51a31a5456c5f3dbc356176661dbb9257ecb7351a",
     ".mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     "docs/architecture.md": "e74ca6ae7e878ea694a2cb2d7355fdb64ca310a1091a7aa74c484782c0397e52",
     "docs/completed.md": "017dcb73f534603cce7583a859bb96d5466099aa7e3dc94d6c0baf0816aa5234",

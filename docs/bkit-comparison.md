@@ -7,7 +7,7 @@
 >
 > - Human-written. Not seeded to consumers — bkit-repo-specific.
 > - Keep prose factual (House / write-good linters apply to `*.md`). No hype adjectives.
-> - When the pipeline or subagents change, update Part 1 to match `.agents/workflows/*` and `.agents/prompts.md`.
+> - When the pipeline or subagents change, update Part 1 to match `.bkit/workflows/*` and `.bkit/docs/prompts.md`.
 
 ## What this is
 
@@ -170,4 +170,4 @@ Most partials are deliberate scope choices. Three are flagged in the source revi
 
 ---
 
-Source: bkit workflow and prompt definitions (`.agents/workflows/*`, `.agents/prompts.md`) and the BAR-168 differential review of Gulli, _Agentic Design Patterns_ (`docs/plans/202605/bar-168-gulli-comparison.md`).
+Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/docs/prompts.md`) and the BAR-168 differential review of Gulli, _Agentic Design Patterns_ (`docs/plans/202605/bar-168-gulli-comparison.md`).

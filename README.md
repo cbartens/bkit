@@ -158,7 +158,7 @@ echo "len=${#GH_TOKEN}"                                            # non-zero �
 
 After step 4, restart any open Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers.
 
-`.agents/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.agents/cloud.md`](.agents/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
+`.agents/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.bkit/docs/cloud.md`](.bkit/docs/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
@@ -166,7 +166,7 @@ bkit ships repo-side scaffolding for both cloud agents via the opt-in `bkit inst
 
 For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bkit also ships `.github/workflows/bkit-cloud.yml` (Claude half, via `claude-code-action`) and a `/bkit-cloud` slash command that both clouds invoke from a single source of truth (Cursor wires it up via a dashboard trigger; no GHA needed on the Cursor side).
 
-Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
+Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.bkit/docs/cloud.md`](.bkit/docs/cloud.md). Host-delta matrix: [`.bkit/docs/IDEs.md`](.bkit/docs/IDEs.md) § Runtime environment.
 
 ## JSON ownership model — deep-containment
 
@@ -486,6 +486,6 @@ This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/
 
 **Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.
 
-**Workflow internals:** [`.agents/workflows.md`](.agents/workflows.md).
+**Workflow internals:** [`.bkit/docs/workflows.md`](.bkit/docs/workflows.md).
 
-**Subagent metadata:** [`.agents/prompts.md`](.agents/prompts.md).
+**Subagent metadata:** [`.bkit/docs/prompts.md`](.bkit/docs/prompts.md).

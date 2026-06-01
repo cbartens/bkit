@@ -2,7 +2,7 @@
 
 **bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
-This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.agents/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.agents/prompts.md`.
+This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/docs/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/docs/prompts.md`.
 
 ---
 
@@ -39,9 +39,9 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
 
-**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.agents/workflows.md`.
+**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.bkit/docs/workflows.md`.
 
-**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.agents/prompts.md`.
+**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/docs/prompts.md`.
 
 ---
 
@@ -52,7 +52,7 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 <!-- prettier-ignore -->
 | Tool | Version | Used for |
 | --- | --- | --- |
-| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .agents/scripts/bkit-install.ts` in bkit's own dev). |
+| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .bkit/src/bkit-install.ts` in bkit's own dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | `status.json` mutations in workflow Bash |
@@ -124,7 +124,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | `model` | `claude-4.7-opus-high-thinking`, `composer-2.5`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
-Per-agent (subagent) model assignments live in `.agents/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.agents/IDEs.md` § Cursor model catalog.
+Per-agent (subagent) model assignments live in `.bkit/docs/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/docs/IDEs.md` § Cursor model catalog.
 
 For full Linear ↔ Cursor integration setup (webhook routing, dashboard env vars, parent-label families), see Linear's official integration docs: <https://linear.app/docs/cursor>.
 
@@ -141,8 +141,8 @@ The `.agents/` directory is **canonical**. `bkit install` regenerates host-speci
 bkit's own repo runs the install script directly via `tsx` instead of the published bin:
 
 ```bash
-pnpm tsx .agents/scripts/bkit-install.ts install
-pnpm tsx .agents/scripts/bkit-install.ts check
+pnpm tsx .bkit/src/bkit-install.ts install
+pnpm tsx .bkit/src/bkit-install.ts check
 ```
 
 The CI drift gate (`.github/workflows/ci.yml`) fails the PR if generated files diverge from what `install` would produce.
@@ -171,32 +171,33 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 <!-- prettier-ignore -->
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
-| `.agents/` (additive copy) | core | `PKG_AGENTS` (package's `.agents/`) | Additive copy — write-if-missing |
+| `.agents/{rules,docs,skills,friction}.md`, `.agents/.env.example` | core | `.bkit/templates/.agents/` | Tier 2 html-comment / Tier 3 seed (via templates pass — NOT the additive payload copy) |
+| `.agents/` (payload cleanup pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, and the moved `.bkit/docs` files) from consumers; no longer copies workflow/prompt sources in (they are read package-relative from `.bkit/`) |
 | `.bkit-version` | core | package.json version | Written LAST (so partial installs are detectable) |
-| `.gitignore` | core | `.agents/templates/gitignore` | Tier 2 html-comment |
-| `AGENTS.md`, `CLAUDE.md` | core | `.agents/templates/` | Tier 2 html-comment |
-| `docs/**` | core | `.agents/templates/docs/` | Tier 2 html-comment |
-| `.claude/commands/bkit-*.md` | claude | `.agents/workflows/` (byte-identical) | Host pass — always overwrite |
-| `.claude/agents/bkit-*.md` | claude | `.agents/prompts/` (byte-identical) | Host pass — always overwrite |
-| `.cursor/commands/bkit-*.md` | cursor | `.agents/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
-| `.cursor/agents/bkit-*.md` | cursor | `.agents/prompts/` (T3 transforms) | Host pass — always overwrite |
-| `.github/workflows/ci.yml` | ci | `.agents/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/renovate.json5` | renovate | `.agents/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --renovate`** — NOT included in `--full`. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. See issue #123 for rationale. |
-| `.github/dependabot.yml` | dependabot | `.agents/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependabot`** — NOT included in `--full`. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. See issue #109 (origin) + #123 follow-up. |
-| `scripts/ci/bkit-set-dependabot.sh` | dependabot | `.agents/templates/scripts/ci/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependabot`. |
+| `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
+| `AGENTS.md`, `CLAUDE.md` | core | `.bkit/templates/` | Tier 2 html-comment |
+| `docs/**` | core | `.bkit/templates/docs/` | Tier 2 html-comment |
+| `.claude/commands/bkit-*.md` | claude | `.bkit/workflows/` (byte-identical) | Host pass — always overwrite |
+| `.claude/agents/bkit-*.md` | claude | `.bkit/prompts/` (byte-identical) | Host pass — always overwrite |
+| `.cursor/commands/bkit-*.md` | cursor | `.bkit/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
+| `.cursor/agents/bkit-*.md` | cursor | `.bkit/prompts/` (T3 transforms) | Host pass — always overwrite |
+| `.github/workflows/ci.yml` | ci | `.bkit/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
+| `.github/renovate.json5` | renovate | `.bkit/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --renovate`** — NOT included in `--full`. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. See issue #123 for rationale. |
+| `.github/dependabot.yml` | dependabot | `.bkit/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependabot`** — NOT included in `--full`. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. See issue #109 (origin) + #123 follow-up. |
+| `scripts/ci/bkit-set-dependabot.sh` | dependabot | `.bkit/templates/scripts/ci/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependabot`. |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
-| `.vale.ini` | lint | `.agents/templates/.vale.ini` | Tier 2 hash-comment |
-| `.vale/styles/House/**` | lint | `.agents/templates/.vale/styles/House/` | Tier 1 (fully managed) |
-| `slop-scan.config.json` | lint | `.agents/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
-| `.prettierignore` | lint | `.agents/templates/.prettierignore` | Tier 2 hash-comment |
+| `.vale.ini` | lint | `.bkit/templates/.vale.ini` | Tier 2 hash-comment |
+| `.vale/styles/House/**` | lint | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed) |
+| `slop-scan.config.json` | lint | `.bkit/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
+| `.prettierignore` | lint | `.bkit/templates/.prettierignore` | Tier 2 hash-comment |
 | `package.json#scripts.format:check` / `lint:prose` / `lint:slop` | lint | hardcoded defaults | Managed-key (add-if-missing) |
 | `package.json#devDependencies.prettier` / `slop-scan` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`) | Managed-key (add-if-missing) |
-| `.husky/pre-commit` | git-hooks | `.agents/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
-| `.husky/pre-push` | git-hooks | `.agents/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
+| `.husky/pre-commit` | git-hooks | `.bkit/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
+| `.husky/pre-push` | git-hooks | `.bkit/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
 | `package.json#scripts.prepare` | git-hooks | hardcoded default (`husky install`) | Managed-key (add-if-missing) |
 | `package.json#devDependencies.husky` | git-hooks | hardcoded version-spec (`^9.1.7`) | Managed-key (add-if-missing) |
-| `.cursor/hooks.json` | cursor | `.agents/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
-| `.cursor/settings.json` | cursor | `.agents/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
+| `.cursor/hooks.json` | cursor | `.bkit/templates/.cursor/hooks.json` | Tier 1 (fully managed) |
+| `.cursor/settings.json` | cursor | `.bkit/templates/.cursor/settings.json` | Tier 3 (seed-or-print) |
 
 ### Optional post-install decisions (tracker + dependency updater + cloud agents)
 
@@ -204,10 +205,10 @@ Three capabilities are **opt-in** and excluded from `--full`: the **issue tracke
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
-bkit dogfoods its own templates: `.agents/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. An updater (Renovate/Dependabot) scans only the actual workflow path (`.github/workflows/`), not the template path. This dance applies ONLY if bkit-repo has opted into an updater (`bkit install --renovate` / `--dependabot`) — by default it ships neither. When an updater PR opens against bkit's own workflows:
+bkit dogfoods its own templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. An updater (Renovate/Dependabot) scans only the actual workflow path (`.github/workflows/`), not the template path. This dance applies ONLY if bkit-repo has opted into an updater (`bkit install --renovate` / `--dependabot`) — by default it ships neither. When an updater PR opens against bkit's own workflows:
 
-1. Before merging, manually edit the matching `.agents/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
-2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .agents/scripts/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
+1. Before merging, manually edit the matching `.bkit/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
+2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .bkit/src/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
 3. Push the template-side change to the updater PR's branch (or land both in a single follow-up commit on `dev` if the branch is read-only).
 
 This only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so updater bumps survive every install. `bkit-cloud.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`. The shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-cloud.yml"]` + `enabled: false`; the shipped `dependabot.yml` covers the `github-actions` ecosystem at `/` (consumers tune ignore patterns for bkit-managed files if needed).
@@ -216,7 +217,7 @@ This only applies to the bkit repo itself — consumers don't have the templates
 
 ## Triggering workflows
 
-Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). All execute the same workflow file from `.agents/workflows/` — differences are compute source and orchestrator model.
+Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cursor (interactive local). All execute the same workflow file from `.bkit/workflows/` — differences are compute source and orchestrator model.
 
 ### From a tracker comment (cloud — Cursor Cloud Agent)
 
@@ -250,7 +251,7 @@ Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 Claude reads issue details, comments, and plan files automatically via the tracker MCP.
 
-**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.agents/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/docs/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 
@@ -288,16 +289,16 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | File | Purpose |
 | --- | --- |
 | `.agents/rules.md` | Universal agent rules — read first by every workflow |
-| `.agents/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
-| `.agents/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
+| `.bkit/docs/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
+| `.bkit/docs/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.agents/IDEs.md` | Claude vs Cursor differences and transform rules |
+| `.bkit/docs/IDEs.md` | Claude vs Cursor differences and transform rules |
 | `.agents/friction.md` | Friction log — orchestrator-observed recovery moments |
-| `.agents/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
-| `.agents/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
-| `.agents/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
-| `.agents/scripts/bkit-install.ts` | Install script — regenerates host outputs and applies templates |
+| `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
+| `.bkit/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
+| `.bkit/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
+| `.bkit/src/bkit-install.ts` | Install script — regenerates host outputs and applies templates |
 | `docs/plans/{YYYYMM}/` | Canonical month bucket — `{FID}-design.md`, `{FID}-plan.md` (+ `-N.md` if split). Files never move; `{YYYYMM}` = creation month, set once at design start. |
 | `docs/plans/{YYYYMM}/logs/{FID}/` | Per-run workflow logs (status, subagent outputs). Delete-eligible — bulk cleanup is `rm -rf docs/plans/{YYYYMM}/logs/`. Canonical artifacts above are not affected. |
 | `docs/audits/` | Audit reports written/updated by `bkit-utility-audit-*` agents |
@@ -308,18 +309,18 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 
 ## Editing workflows or prompts
 
-Edit source in `.agents/workflows/` (slash-command orchestrators) or `.agents/prompts/` (subagent files), then re-run install:
+Edit source in `.bkit/workflows/` (slash-command orchestrators) or `.bkit/prompts/` (subagent files), then re-run install:
 
 ```bash
 # Edit source
-vim .agents/workflows/bkit-build.md
+vim .bkit/workflows/bkit-build.md
 
 # Regenerate (run dist binary; faster than tsx and matches what consumers run)
 pnpm build && node dist/bkit-install.js install
 
 # Commit both source and generated output together
-git add .agents/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md
+git add .bkit/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/commands/bkit-build.md
 git commit -m "chore: update build command"
 ```
 
-Adding a new subagent? Update `.agents/prompts.md` with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.
+Adding a new subagent? Update `.bkit/docs/prompts.md` with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.

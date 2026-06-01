@@ -73,7 +73,7 @@
 - **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
 - **Integration and E2E:** Debug workflow only (post-PR).
 - **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
-- **Check gotaches first:** Search `docs/knowledge.md` BEFORE touching code.
+- **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 
 ### Security & Data
@@ -98,10 +98,11 @@
 
 ### bkit Repo Authoring
 
-- **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
-- **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
-- **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
-- **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
-- **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.
-- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.agents/scripts/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
+- **Install source of truth:** Install engine lives in `.bkit/src/`; install payload lives in `.bkit/templates/`; mirror sources (`workflows`, `prompts`) and bkit-authoring docs live in `.bkit/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — never conflate the two.
+- **Canonical sources only:** ONLY edit `.bkit/workflows/*`, `.bkit/prompts/*`, and `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`.
+- **Install to mirror:** After editing `.bkit/workflows/*` or `.bkit/prompts/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
+- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.bkit/templates/.agents/rules.md` and vice versa.
+- **Workflow edits:** Any `.bkit/workflows/*.md` edits → ALWAYS follow `.bkit/docs/workflows.md` § Workflow Authoring Rules.
+- **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/docs/prompts.md` § Prompt Authoring Rules.
+- **Keep documentation updated:** When editing `.bkit/workflows/*.md` → update `.bkit/docs/workflows.md`. When editing `.bkit/prompts/*.md` → update `.bkit/docs/prompts.md`. Index drift = regression.
+- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
