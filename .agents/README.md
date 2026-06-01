@@ -287,7 +287,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 <!-- prettier-ignore -->
 | File | Purpose |
 | --- | --- |
-| `AGENTS.md` | Universal agent rules — read first by every workflow |
+| `.agents/rules.md` | Universal agent rules — read first by every workflow |
 | `.bkit/docs/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
 | `.bkit/docs/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |

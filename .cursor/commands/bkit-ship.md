@@ -4,7 +4,7 @@
 **Scope:** Merge feature PR to default integration branch.
 
 > [!CAUTION]
-> **Read in full:** `AGENTS.md`.
+> **Read in full:** `.agents/rules.md`.
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
 >
 > - **Order:** Execute sequentially unless stated otherwise.

@@ -312,7 +312,7 @@ export function detectPrettierignoreScopeBroadening(cwd: string): PreflightFindi
     severity: "advisory",
     detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
     action:
-      "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/docs.md, .agents/skills.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
+      "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/rules.md, .agents/docs.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
   };
 }
 

@@ -4,7 +4,7 @@
 **Scope:** Create design in `docs/plans/{YYYYMM}/` (canonical month bucket, set at start) — no plans, no code, no execution.
 
 > [!CAUTION]
-> **Read in full:** `AGENTS.md`.
+> **Read in full:** `.agents/rules.md`.
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
 >
 > - **Order:** Execute sequentially unless stated otherwise.

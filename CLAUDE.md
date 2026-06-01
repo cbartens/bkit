@@ -2,6 +2,6 @@
 
 <!-- bkit:start -->
 
-**Read in full:** `AGENTS.md`.
+**Read in full:** `.agents/rules.md`.
 
 <!-- bkit:end -->

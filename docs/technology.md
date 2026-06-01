@@ -78,4 +78,4 @@ See `docs/deployments.md` for CI pipeline rules, branch protection, and secrets 
 
 ## Naming Conventions
 
-See `docs/../AGENTS.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.
+See `docs/../.agents/rules.md` § Naming Conventions for server actions, Inngest events, migrations, tests, and log format rules.

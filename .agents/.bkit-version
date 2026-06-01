@@ -17,7 +17,7 @@
     ".cursor/Dockerfile": "62260a51f38982e65201352767946727fd7e8636523ec119f5b31bcb4cd49af4",
     ".cursor/environment.json": "e1af6607ae2cce3c9d1d78d8fec4038ec9b2d4675e9359ac3a57cfe818010476",
     ".cursor/hooks/preflight.sh": "b00abf2847cba864c62866879b30635c487d14249b691cabf270ddb55dd57fea",
-    ".cursor/rules/00-shared-rules.mdc": "ddea3f9f8752f4c760901e7584f220ac6ee1ddc9440976ece86bd4cc44d8421e",
+    ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
     ".cursor/settings.json": "1b4f18de636c8c03ba0b748fb57499c71816ac34cfd5e3cc0c5ddb57c263d972",
     ".husky/pre-commit": "36bbb7ed74e56f4b02974f7ff3d2b0b5d5fe6c4518e982c8f4ca1eb2eda98bba",
     ".prettierignore": "0397d69bb0d7c3ab156db2c2ecdedf351f22a743521fd3365ea193a5c169a70c",

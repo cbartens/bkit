@@ -223,17 +223,17 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
 // break the dry-run/install parity check (postDispatch suppresses its own
 // write when the file already matches pkgVersion).
 //
-// Tier-2-style `.agents/*.md` files (friction/docs/skills) are excluded because
-// they ship as templates under `.bkit/templates/.agents/` and are installed by
-// the templates pass. Copying them here additively would dump bkit's own
-// out-of-block content (e.g. bkit's friction-log entries) onto consumers on
-// first install. (Universal rules now live in the root `AGENTS.md` managed block,
-// installed by the core-templates pass — not via this `.agents/` payload copy.)
+// Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded
+// because they ship as templates under `.bkit/templates/.agents/` and are
+// installed by the templates pass. Copying them here additively would dump
+// bkit's own out-of-block content (e.g. bkit's `### bkit Repo Authoring` section
+// in `rules.md`, bkit's friction-log entries) onto consumers on first install.
 const COPY_EXCLUDE = new Set([
     "skills",
     "scripts",
     "README.md",
     ".bkit-version",
+    "rules.md",
     "friction.md",
     "docs.md",
     "skills.md",

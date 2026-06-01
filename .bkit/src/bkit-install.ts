@@ -627,15 +627,14 @@ function mirrorDirAlways(
 // (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). They are never
 // written into a consumer. Consumers upgraded from a layout that DID copy these
 // into `.agents/` carry orphans — `runPayload` removes them so the tree stays
-// clean. `.agents/rules.md` is likewise relocated (its content moved into the
-// root `AGENTS.md` managed block).
+// clean. (`.agents/rules.md` is NOT relocated — it remains a consumer-shipped
+// Tier-2 file; AGENTS.md/CLAUDE.md reference it.)
 //
 // Named `runPayload` for call-site stability with the dispatch in runCoreModule;
 // the historical "payload copy" is gone, leaving only orphan cleanup. Never
 // touches the bkit repo's own tree (isDogfood guard): in dogfood these paths
 // already live under `.bkit/`, so there is nothing in `.agents/` to remove.
 const RELOCATED_AGENTS_FILES = [
-  "rules.md",
   "trackers.md",
   "workflows.md",
   "cloud.md",
@@ -662,7 +661,7 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
     if (!dryRun && fs.readdirSync(dstDir).length === 0) fs.rmdirSync(dstDir);
   }
 
-  // 2. Relocated single files (bkit docs + rules.md).
+  // 2. Relocated single files (bkit-authoring docs).
   for (const name of RELOCATED_AGENTS_FILES) {
     const target = path.join(".agents", name);
     if (!fs.existsSync(target)) continue;
@@ -784,9 +783,9 @@ async function main() {
     // Dry-run aware: log only, no FS write.
     removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
 
-    // Relocated-orphan removal: mirror sources (.agents/workflows, .agents/prompts),
-    // the bkit-authoring docs, and .agents/rules.md moved into `.bkit/` / `AGENTS.md`.
-    // Strip any copies an old-layout consumer still carries. No-op when absent / in dogfood.
+    // Relocated-orphan removal: mirror sources (.agents/workflows, .agents/prompts)
+    // and the bkit-authoring docs moved into `.bkit/`. Strip any copies an old-layout
+    // consumer still carries. No-op when absent / in dogfood.
     runPayload(upgradeFlags.dryRun);
 
     // Collect bkit-managed template candidates from the package.
