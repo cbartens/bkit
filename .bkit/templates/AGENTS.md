@@ -143,7 +143,7 @@ Read and execute the matched command file for the current IDE.
 - **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
 - **Integration and E2E:** Debug workflow only (post-PR).
 - **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
-- **Check gotaches first:** Search `docs/knowledge.md` BEFORE touching code.
+- **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 
 ### Security & Data
