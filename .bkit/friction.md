@@ -84,3 +84,14 @@
 - **Related:** #137 (#111 realign); commit `314b729` (Part 1); DB CHECK `20260521200000`; `match-chunks.ts`, `match-chunks.test.ts`, `embeddings.integration.test.ts`.
 - **Recovery:** Operator decision (AskUserQuestion 2026-05-31): UPDATE the gate — drop `fcte` from `FORBIDDEN_SOURCE_ONLY_TOKENS` (legitimate DB-CHECK-enforced corpus source_type, not brand leakage) and remove the `"fc"+"te"` obfuscation so code/tests use the plain literal. To be captured in Part 3 Task 13 ADR + `docs/sync-with-gether.md` § Deviation.
 - **Status:** RECOVERED
+
+## 2026-06-02 — Branch push blocked: lint-staged prettier --write disagrees with pre-push prettier --check (203-ci-green-validated)
+
+- **Category:** tooling / hook-divergence
+- **Workflow:** plan
+- **Step:** 10 — Summary (branch push)
+- **Source:** orchestrator
+- **Description:** Each per-step commit's pre-commit hook runs lint-staged `prettier --write --ignore-unknown` on the STAGED files only, so generated plan markdown is written-and-committed as "formatted." But the pre-push hook runs repo-wide `prettier --check` (`pnpm format:check`), which flagged two already-committed plan files (`plan-v2-reviewed.md`, `plan-v4-1.md`) as unformatted and blocked `git push` (`husky pre-push code 1`). The two tools disagreed on large subagent-authored markdown (tables / embedded fenced YAML), so `--write` at commit-time did not satisfy `--check` at push-time.
+- **Suggested fix:** Plan/design/build close + summary steps that push a branch should run `pnpm format:check` (or a `prettier --write` over `docs/plans/{YYYYMM}/logs/{FID}/`) BEFORE `git push`, not rely on per-commit lint-staged. Alternatively make lint-staged + format:check share one resolved prettier invocation so `--write` is guaranteed to satisfy `--check`.
+- **Recovery:** `npx prettier --write` on the two flagged files → `pnpm format:check` clean → committed `chore(203-...): prettier-fix plan docs` → push succeeded.
+- **Status:** RECOVERED
