@@ -336,6 +336,40 @@ export function detectValePackageNotSynced(cwd) {
         action: "Run `vale sync` (one-time per repo) to download the write-good package. The lint:prose script soft-skips when write-good is absent, but prose linting won't work until synced.",
     };
 }
+/**
+ * Detect incomplete local workflow-lint tooling: `actionlint` and/or `shellcheck`
+ * not on PATH. `pnpm lint:workflows` soft-skips without actionlint, and actionlint
+ * skips shellcheck on `run:` blocks without shellcheck — so invalid GHA expressions
+ * and shell issues in `.github/workflows/*` surface only in CI (the runner preinstalls
+ * both). Recommends installing both for pre-push parity. Only fires when the repo has
+ * workflow files to lint. bkit does NOT install these binaries (same as vale).
+ */
+export function detectWorkflowLintToolsMissing(cwd) {
+    const wfDir = path.join(cwd, ".github", "workflows");
+    if (!fs.existsSync(wfDir))
+        return null;
+    const hasWorkflow = fs.readdirSync(wfDir).some((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+    if (!hasWorkflow)
+        return null;
+    const onPath = (cmd) => {
+        try {
+            execSync(`${cmd} --version`, { stdio: ["ignore", "pipe", "ignore"], timeout: 5000 });
+            return true;
+        }
+        catch {
+            return false;
+        }
+    };
+    const missing = ["actionlint", "shellcheck"].filter((t) => !onPath(t));
+    if (missing.length === 0)
+        return null;
+    return {
+        id: "workflow-lint-tools-missing",
+        severity: "advisory",
+        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
+        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm lint:workflows` lints `.github/workflows/*` locally before you push.",
+    };
+}
 const BKIT_STUBS = [
     {
         id: "auto-force-e2e",
@@ -1529,6 +1563,10 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const vale = detectValePackageNotSynced(cwd);
     if (vale)
         phase3.push(vale);
+    // actionlint + shellcheck for local pre-push workflow linting (CI has both)
+    const wfLintTools = detectWorkflowLintToolsMissing(cwd);
+    if (wfLintTools)
+        phase3.push(wfLintTools);
     // devDeps need fetch
     const devDeps = detectDevDepsNeedFetch(ws);
     if (devDeps)

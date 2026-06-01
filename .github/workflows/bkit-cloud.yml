@@ -178,9 +178,11 @@ jobs:
             fi
             # bkit:end shared-deriv
           fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "phase=$PHASE" >> "$GITHUB_OUTPUT"
-          echo "arg=$ARG" >> "$GITHUB_OUTPUT"
+          {
+            echo "skip=false"
+            echo "phase=$PHASE"
+            echo "arg=$ARG"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Dispatch /bkit-cloud on Claude Code runner
         if: steps.ctx.outputs.skip != 'true'

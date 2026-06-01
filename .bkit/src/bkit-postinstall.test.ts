@@ -20,6 +20,7 @@ import {
   detectVercelEnv,
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
+  detectWorkflowLintToolsMissing,
   detectDevDepsNeedFetch,
   detectBkitStubs,
   detectTurboIntegrationInputs,
@@ -1800,5 +1801,36 @@ describe("detectCiYmlMissingActionlint", () => {
   it("returns null when an actionlint step is already present", () => {
     writeCi(MANAGED_NO_ACTIONLINT + '      - run: "$RUNNER_TEMP/actionlint" -color\n');
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectWorkflowLintToolsMissing
+// ---------------------------------------------------------------------------
+
+describe("detectWorkflowLintToolsMissing", () => {
+  function writeWorkflow() {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "name: CI\n");
+  }
+
+  it("returns null when the repo has no workflows", () => {
+    expect(detectWorkflowLintToolsMissing(tmpDir)).toBeNull();
+  });
+  it("returns null when both actionlint and shellcheck are on PATH", () => {
+    writeWorkflow();
+    execSync.mockReturnValue("ok"); // every `<tool> --version` succeeds
+    expect(detectWorkflowLintToolsMissing(tmpDir)).toBeNull();
+  });
+  it("fires (advisory) when a tool is missing, naming it", () => {
+    writeWorkflow();
+    execSync.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("actionlint")) throw new Error("not found");
+      return "ok";
+    });
+    const f = detectWorkflowLintToolsMissing(tmpDir);
+    expect(f?.id).toBe("workflow-lint-tools-missing");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("actionlint");
   });
 });
