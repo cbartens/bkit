@@ -180,15 +180,15 @@ Keep total runtime under ~5 minutes or the snapshot won't build.
 
 Token management splits by session type:
 
-- **Local sessions** — bkit seeds `.agents/.env.example` (token placeholders) and `.envrc` (`dotenv_if_exists .agents/.env`) on first install. Copy `.env.example` to `.agents/.env`, fill in your tokens, then run `direnv allow`. direnv auto-exports `GH_TOKEN`, `GH_BKIT_TOKEN`, and `LINEAR_API_KEY` into your shell whenever you enter the repo — no manual `source` or shell-rc export needed. `.agents/.env` is gitignored; never commit it.
+- **Local sessions** — bkit seeds `.bkit/.env.example` (token placeholders) and `.envrc` (`dotenv_if_exists .bkit/.env`) on first install. Copy `.env.example` to `.bkit/.env`, fill in your tokens, then run `direnv allow`. direnv auto-exports `GH_TOKEN`, `GH_BKIT_TOKEN`, and `LINEAR_API_KEY` into your shell whenever you enter the repo — no manual `source` or shell-rc export needed. `.bkit/.env` is gitignored; never commit it.
 
   ```bash
-  cp .agents/.env.example .agents/.env
-  # edit .agents/.env — fill in GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY
+  cp .bkit/.env.example .bkit/.env
+  # edit .bkit/.env — fill in GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY
   direnv allow
   ```
 
-- **Cloud sessions** (Claude Code on the web, Cursor Background Agents) — the `.agents/.env` file is not present in cloud containers. Set the same names (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY`) in the respective online dashboards: Claude app → environment selector → Environment variables; Cursor → Settings → Background Agents → Environment Variables. The dashboard list in the sections below is the canonical reference for which names to set.
+- **Cloud sessions** (Claude Code on the web, Cursor Background Agents) — the `.bkit/.env` file is not present in cloud containers. Set the same names (`GH_TOKEN`, `GH_BKIT_TOKEN`, `LINEAR_API_KEY`) in the respective online dashboards: Claude app → environment selector → Environment variables; Cursor → Settings → Background Agents → Environment Variables. The dashboard list in the sections below is the canonical reference for which names to set.
 
 ## MCP issue-tracker integration
 

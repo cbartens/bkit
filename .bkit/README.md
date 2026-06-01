@@ -171,9 +171,10 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 <!-- prettier-ignore -->
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
-| `.agents/{rules,docs,skills,friction}.md`, `.agents/.env.example` | core | `.bkit/templates/.agents/` | Tier 2 html-comment / Tier 3 seed (via templates pass — NOT the additive payload copy) |
-| `.agents/` (payload cleanup pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, and the moved `.bkit/docs` files) from consumers; no longer copies workflow/prompt sources in (they are read package-relative from `.bkit/`) |
-| `.bkit-version` | core | package.json version | Written LAST (so partial installs are detectable) |
+| `.agents/{rules,docs,skills}.md` | core | `.bkit/templates/.agents/` | Tier 2 html-comment (via templates pass — NOT the additive payload copy) |
+| `.bkit/friction.md`, `.bkit/.env.example` | core | `.bkit/templates/.bkit/` | Tier 2 html-comment / Tier 3 seed |
+| `.agents/` + `.bkit/` (payload cleanup/migration pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, the moved reference docs) and migrates `.agents/{.bkit-version,.env,.env.example,friction.md}` → `.bkit/` for old-layout consumers (content-preserving) |
+| `.bkit/version` | core | package.json version | Written LAST (so partial installs are detectable) |
 | `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
 | `AGENTS.md`, `CLAUDE.md` | core | `.bkit/templates/` | Tier 2 html-comment |
 | `docs/**` | core | `.bkit/templates/docs/` | Tier 2 html-comment |
@@ -294,7 +295,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
 | `.bkit/IDEs.md` | Claude vs Cursor differences and transform rules |
-| `.agents/friction.md` | Friction log — orchestrator-observed recovery moments |
+| `.bkit/friction.md` | Friction log — orchestrator-observed recovery moments |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
 | `.bkit/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
 | `.bkit/templates/` | Bootstrap files copied / managed by `bkit install` (see § What install writes) |
