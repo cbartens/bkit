@@ -171,7 +171,8 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 <!-- prettier-ignore -->
 | Path | Module | Source | Tier |
 | --- | --- | --- | --- |
-| `.agents/` (additive copy) | core | `PKG_AGENTS` (package's `.agents/`) | Additive copy — write-if-missing |
+| `.agents/{rules,docs,skills,friction}.md`, `.agents/.env.example` | core | `.bkit/templates/.agents/` | Tier 2 html-comment / Tier 3 seed (via templates pass — NOT the additive payload copy) |
+| `.agents/` (payload cleanup pass) | core | — | Removes relocated old-layout orphans (`.agents/workflows`, `.agents/prompts`, and the moved `.bkit/docs` files) from consumers; no longer copies workflow/prompt sources in (they are read package-relative from `.bkit/`) |
 | `.bkit-version` | core | package.json version | Written LAST (so partial installs are detectable) |
 | `.gitignore` | core | `.bkit/templates/gitignore` | Tier 2 html-comment |
 | `AGENTS.md`, `CLAUDE.md` | core | `.bkit/templates/` | Tier 2 html-comment |

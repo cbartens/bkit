@@ -104,7 +104,7 @@ Always assert at least one positive signal (a known log prefix like `[bkit-insta
 
 ## What not to test
 
-- `.claude/` and `.cursor/` mirror file contents — generated from `.agents/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
+- `.claude/` and `.cursor/` mirror file contents — generated from `.bkit/workflows/` + `.bkit/prompts/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
 - Token resolution against the real `gh`/`vercel` CLIs. Stub via `process.env` overrides.
 - Network calls. `bkit-tokens.ts` is the only network-adjacent surface; isolate behind injectable resolvers.
 
