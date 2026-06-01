@@ -68,7 +68,7 @@ bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit
 
 When adding new bkit-managed file types or new managed-scope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
 
-## Test files added in v0.6.x → v1.0
+## Key test files
 
 <!-- prettier-ignore -->
 | File | Tier | Scope |
