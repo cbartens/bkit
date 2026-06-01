@@ -17,10 +17,10 @@
 
 - **Instructions only:** NO rationale, NO parentheticals explaining "why", NO inline comments justifying behaviour.
 - **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
-- **Self-contained:** Each prompt file MUST stand alone. NO cross-references to `.bkit/docs/prompts.md` or other meta docs. If the agent needs the rule, inline it; if it doesn't, leave it out.
+- **Self-contained:** Each prompt file MUST stand alone. NO cross-references to `.bkit/prompts.md` or other meta docs. If the agent needs the rule, inline it; if it doesn't, leave it out.
 - **Standalone-runnable:** Each prompt works invoked outside any workflow. All inputs arrive via orchestrator-supplied Read paths. Multi-agent coordination uses the `**Parallel:**` and `**Lens discipline:**` Contract clauses.
 - **Generic Role, specific Process:** `Role:` and `description:` anchor on seniority titles ("Senior X", "Veteran X"). Lens-specific behaviour lives in Process steps. Where sibling lenses define distinct disciplines, the lens MAY differentiate the `Role:` line; siblings still share the seniority anchor. Where the lens is a priority weighting rather than a discipline, `Role:` lines MUST be identical and lens lives entirely in Process.
-- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.bkit/docs/prompts.md`) — NEVER in the per-agent prompt files.
+- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.bkit/prompts.md`) — NEVER in the per-agent prompt files.
 - **Reuse wording and formatting:** ALWAYS `grep .bkit/prompts/` before writing. Copy closest existing phrasing AND formatting verbatim — backtick conventions, indentation, line breaks, punctuation, spacing.
 - **Cross-prompt alignment:** ALWAYS change shared lines in ALL prompts using them.
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.

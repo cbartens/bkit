@@ -8,7 +8,7 @@ docs/pending.md     merge=union
 docs/knowledge.md   merge=union
 docs/decisions.md   merge=union
 docs/completed.md   merge=union
-.agents/friction.md merge=union
+.bkit/friction.md merge=union
 
 # Append-only NDJSON workflow status logs: union auto-concatenates both branches'
 # appended lines server-side so a per-FID status log never blocks a merge.

@@ -95,7 +95,7 @@ Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API
 
 ### Per-subagent model assignment
 
-**Lives in `.bkit/docs/prompts.md`** (per-agent metadata co-located with agent descriptions, effort / maxTurns rationale, tool-set patterns).
+**Lives in `.bkit/prompts.md`** (per-agent metadata co-located with agent descriptions, effort / maxTurns rationale, tool-set patterns).
 
 `prompts.md` carries one row per agent: `name | Cursor model | Claude effort | role hint`. Canonical source for Cursor frontmatter rewrite (T3). `bkit/hosts/cursor.ts` mirrors it; CI drift gate enforces parity.
 
@@ -219,7 +219,7 @@ Both hosts use the same `mcpServers` key shape, but the files differ:
 | Claude Code | `.mcp.json` at repo root | `bkit install --tracker=github` seeds the `github` entry |
 | Cursor | `.cursor/mcp.json` | `bkit install --tracker=github` seeds this file with the same `mcpServers.github` block |
 
-Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_TOKEN}" }`. The `${GH_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.bkit/docs/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
+Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_TOKEN}" }`. The `${GH_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.bkit/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
 
 **Tracker switch is seed-only, not a rewrite.** `.mcp.json` / `.cursor/mcp.json` are Tier-3 seed-or-print: bkit writes the tracker-filtered content only when the file is _absent_. On an existing file it never overwrites — so switching trackers (e.g. `--tracker=linear` → `--tracker=github`) leaves the old tracker's `mcpServers` entry behind. Two advisories catch the divergence: `mcp-missing-server-<name>` when the file lacks a server the tracker needs, and `mcp-extra-server-<name>` when it carries a bkit-managed server the tracker no longer uses (remove that entry). Consumer-added (non-bkit) MCP servers are never flagged.
 
@@ -229,7 +229,7 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 
 ## Runtime environment (cloud agents)
 
-> Setup recipe + alignment guarantees: `.bkit/docs/cloud.md`. This section = host-diff matrix only.
+> Setup recipe + alignment guarantees: `.bkit/cloud.md`. This section = host-diff matrix only.
 
 <!-- prettier-ignore -->
 | Concern | Claude Code on the web | Cursor Background Agents |
@@ -247,7 +247,7 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 | Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
 | Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
 
-**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.33.0 (corepack-pinned), gh CLI. See `.bkit/docs/cloud.md` for paste-in recipe + sharing-across-repos pattern.
+**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.33.0 (corepack-pinned), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing-across-repos pattern.
 
 ---
 

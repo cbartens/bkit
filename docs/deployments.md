@@ -312,7 +312,7 @@ See issue #132 (consumer-reported dashboard noise) and § Renovate activation ab
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.bkit/docs/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.bkit/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
 
 **Commit-tag taxonomy:**
 
@@ -336,7 +336,7 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 
 All other docs-only intermediate commits (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow` commit (build/debug) and the squash-merge subject (ship) are unmarked and loud.
 
-**Commit-message tags reference (full table):** see `.bkit/docs/workflows.md` § "CI / Vercel commit tags".
+**Commit-message tags reference (full table):** see `.bkit/workflows.md` § "CI / Vercel commit tags".
 
 ### Manual CI trigger on feat branches (`workflow_dispatch`)
 

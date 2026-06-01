@@ -11,7 +11,7 @@
 
 ## Scope
 
-> **Host-delta matrix:** `.bkit/docs/IDEs.md` § Runtime environment (cloud agents). That table is the canonical "what differs" reference for Claude vs Cursor cloud agents. This file = paste-in setup recipe, alignment guarantees, sharing-across-repos pattern, and caveats.
+> **Host-delta matrix:** `.bkit/IDEs.md` § Runtime environment (cloud agents). That table is the canonical "what differs" reference for Claude vs Cursor cloud agents. This file = paste-in setup recipe, alignment guarantees, sharing-across-repos pattern, and caveats.
 
 ## Cloud-agent support matrix (read first)
 

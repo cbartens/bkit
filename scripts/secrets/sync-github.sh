@@ -5,7 +5,7 @@
 #   bash scripts/secrets/sync-github.sh                  # reads from .env.local
 #   bash scripts/secrets/sync-github.sh --dry-run        # show what would be pushed
 #
-# Pushes only the three secrets the post-CI router needs (see .bkit/docs/cloud.md
+# Pushes only the three secrets the post-CI router needs (see .bkit/cloud.md
 # "Claude — required GitHub repo secrets"). Phase 2 removes any other secrets
 # from the repo to keep the surface tight.
 

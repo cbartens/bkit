@@ -6,7 +6,7 @@
 #
 # Trigger:  LINEAR_ISSUE_ID env var present (proxy for non-IDE session).
 # Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
-# Setup:    See `.agents/README.md` § Linear setup.
+# Setup:    See `.bkit/README.md` § Linear setup.
 #
 # IMPORTANT — Claude Code SessionStart hooks CANNOT block the session: any
 # non-zero exit is treated as non-blocking (docs.claude.com/docs/en/hooks.md).

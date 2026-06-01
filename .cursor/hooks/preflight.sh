@@ -6,7 +6,7 @@
 #
 # Trigger:  is_background_agent === true (received via stdin JSON).
 # Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
-# Setup:    See `.agents/README.md` § Linear setup.
+# Setup:    See `.bkit/README.md` § Linear setup.
 #
 # Cursor honours non-zero exit as a hard stop (failClosed: true) — non-zero
 # blocks the session before the agent starts. Failures are also surfaced via

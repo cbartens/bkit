@@ -51,8 +51,6 @@
     ".envrc": "48302986fd8b7c4ce5b5bd5a88d47042ccf98f3ed22cc8ce910e0c68d90c348c",
     "docs/security.md": "6f24cc66b23d719167b544493d45cbdc06bddd251c34bc8fe5123d9394ae1cd2",
     ".github/renovate.json5": "bbd32e18195b64407eb919610454bd4976cc93728a153a1408650f1664237b53",
-    ".agents/.env.example": "1dbcfa023ec0a687532f474c8ed2cd77c9e15e1e464e61706d1ed7b87416b11e",
-    ".agents/friction.md": "3cc4c98c00175efd21ea404309cdb279e9056a5c2c38c55c06c961a714e7cad8",
     ".mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     "docs/architecture.md": "e74ca6ae7e878ea694a2cb2d7355fdb64ca310a1091a7aa74c484782c0397e52",
     "docs/completed.md": "017dcb73f534603cce7583a859bb96d5466099aa7e3dc94d6c0baf0816aa5234",

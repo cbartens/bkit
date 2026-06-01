@@ -18,7 +18,7 @@
  * Defaults to dry-run. Pass `--apply` to write.
  *
  * Required env:
- *   LINEAR_API_KEY      Linear personal API key (loaded via direnv from .agents/.env)
+ *   LINEAR_API_KEY      Linear personal API key (loaded via direnv from .bkit/.env)
  *
  * Token resolution for GitHub:
  *   1. process.env.GH_PROJECT_TOKEN  (explicit override)
@@ -66,7 +66,7 @@ if (!OWNER || !REPO_NAME) die(`--repo must be owner/name, got ${REPO}`);
 // ─────────────────────────────────────────────────────────────────────────────
 
 const LINEAR_API_KEY = process.env.LINEAR_API_KEY;
-if (!LINEAR_API_KEY) die("LINEAR_API_KEY missing — load .agents/.env via direnv");
+if (!LINEAR_API_KEY) die("LINEAR_API_KEY missing — load .bkit/.env via direnv");
 
 function resolveGhToken(): string {
   if (process.env.GH_PROJECT_TOKEN) return process.env.GH_PROJECT_TOKEN;
