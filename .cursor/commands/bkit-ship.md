@@ -522,7 +522,11 @@
 
 1. Switch to `dev` and fast-forward:
    ```bash
+   REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   cd "$REPO_ROOT"
+   [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    git checkout dev
+   [ "$(git branch --show-current)" = "dev" ] || { echo "Not on dev after checkout (on '$(git branch --show-current)') — aborting dev ops" >&2; exit 1; }
    git fetch origin dev
    AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
    if [ "$AHEAD" -gt 0 ]; then

@@ -380,6 +380,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-plan-execute-{SUB_PLAN}-log.md`, non-empty)
 - [ ] Source files implemented
 - [ ] `EXECUTE_VERDICT` extracted
+- [ ] No PENDING placeholders remain (`build-plan-execute-{SUB_PLAN}-log.md`)
 - [ ] Workflow status updated (step `build-plan-execute` recorded with `parentSha`, `verdict`, `subPlan`)
 - [ ] Issue comment attempted (`Step 5` section)
 
@@ -848,6 +849,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Artifact written (`build-summary.md`, non-empty)
 - [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] No PENDING placeholders remain (`build-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `build-summary` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 16` section)

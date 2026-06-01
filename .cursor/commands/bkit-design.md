@@ -575,6 +575,7 @@
 4. Squash-merge to dev and clean up:
    ```bash
    cd "$REPO_ROOT"
+   [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    git checkout dev
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"

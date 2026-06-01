@@ -334,6 +334,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagent invoked (`@bkit-plan-generate`, no inline work)
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
+- [ ] No PENDING placeholders remain (`plan-v1-draft.md`)
 - [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 3` section)
@@ -433,6 +434,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
 - [ ] Verdict extracted (`APPLY_REVIEW_VERDICT`)
 - [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] No PENDING placeholders remain (`plan-v2-reviewed.md`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 5` section)
@@ -530,6 +532,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
 - [ ] Verdict extracted (`APPLY_SCOPE_VERDICT`)
 - [ ] Verdict valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] No PENDING placeholders remain (`plan-v3-checked.md`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 7` section)
@@ -624,6 +627,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
 - [ ] Verdict extracted (`SPLIT_VERDICT`)
 - [ ] Verdict valid (`SPLIT_VERDICT` in `PASS|FAIL`)
+- [ ] No PENDING placeholders remain (`plan-v4-split.md`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 9` section)
@@ -681,6 +685,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-summary.md`, non-empty)
 - [ ] Verdict extracted (`SUMMARY_VERDICT`)
 - [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] No PENDING placeholders remain (`plan-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
@@ -727,6 +732,7 @@ description: "Plan Feature — Autonomous plan generation"
 4. Squash-merge to dev and clean up:
    ```bash
    cd "$REPO_ROOT"
+   [ "$(git config --get core.bare)" = "true" ] && [ -d "$REPO_ROOT/.git" ] && git config core.bare false
    git checkout dev
    git pull --ff-only origin dev || { echo "dev fast-forward failed" >&2; exit 1; }
    git merge --squash -X ours "feat/{FID}"
