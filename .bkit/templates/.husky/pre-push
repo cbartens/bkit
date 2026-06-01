@@ -5,6 +5,7 @@
 # Revert-branch bypass: when rolling back, the source tree is intentionally
 # inconsistent (deleted files referenced by surviving tests). Skip the test
 # suite so the recovery push can land; lint + typecheck still run.
+set -e
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0

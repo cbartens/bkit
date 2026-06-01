@@ -5,6 +5,7 @@
 # Revert-branch bypass: when rolling back, the source tree is intentionally
 # inconsistent (deleted files referenced by surviving tests). Skip the test
 # suite so the recovery push can land; lint + typecheck still run.
+set -e
 BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
 HEAD_SUBJECT=$(git log -1 --pretty=%s 2>/dev/null || echo "")
 IS_REVERT=0
@@ -27,3 +28,7 @@ pnpm bkit check < /dev/null
 # bkit-repo only — verify committed `dist/` matches `tsc` output of committed source.
 # Consumers don't have TS to compile and never run this gate.
 pnpm check:dist < /dev/null
+
+# bkit-repo only — actionlint validates `.github/workflows/*` (YAML parse is not enough).
+# Guard-skips when actionlint is absent; install actionlint to enforce.
+pnpm lint:workflows < /dev/null

@@ -33,110 +33,54 @@
 
 <!-- Entries up to 2026-05-18 cleaned out after capture into BAR-155 (shipped) and BAR-230 (follow-ups). Harvest evidence preserved in those issues; recovered/duplicate entries removed. -->
 
-## Plan start blocked by pre-flight env state (unrelated branch WIP + unpushed dev) (2026-05-25)
+<!-- 2026-06-01 friction reconciliation: 35 consumer entries harvested (app-gether-life + visitfrasercoast-com) and reconciled with the 9 bkit-repo entries against dev HEAD under a verified-fix bar. 12 already-fixed entries pruned; 27 verified-open gaps migrated to issue #216 (P0–P3 backlog) and removed here; the 5 consumer-side/transient entries below have no bkit-side fix. -->
 
-- **Category:** human-confirm
-- **Workflow:** plan
-- **Step:** 1 — Start Workflow (orchestrator, pre-lock)
-- **Source:** orchestrator
-- **Description:** `/bkit-plan 143` invoked while HEAD was on an unrelated feature branch with uncommitted WIP, and local `dev` was 2 commits ahead of `origin/dev` (one being the #143 design revision the plan depends on). Step 1's divergence guard (`AHEAD>0 -> exit 1`) would have routed to Failure Path, which posts `bkit:failed` to the issue + writes a FAILED status — inappropriate for a pre-flight environment condition on a not-yet-started workflow. Orchestrator halted and asked the user (2 questions) instead of mechanically failing.
-- **Suggested fix:** Distinguish "pre-flight environment precondition" (dev-ahead, WIP on unrelated branch) from "workflow failure" in Step 1 — surface to human + halt WITHOUT the Failure-Path issue-labelling/status-write, since no workflow run exists yet to fail. The guard's own message ("Push or reset before retrying") already implies retry-after-fix, not terminal failure.
-- **Related:** 143-real-world-testing, issue #143
-- **Recovery:** User pushed `dev` to origin and switched to a clean branch even with dev tip; orchestrator re-verified (0 ahead, clean tree) and proceeded. Worktree branched cleanly from the dev tip.
-- **Status:** RECOVERED
-
-## status.json written to main-repo working copy (not worktree) -> plan steps lost to mid-run reset (2026-05-25)
-
-- **Category:** tool-failure
-- **Workflow:** plan
-- **Step:** orchestrator (all status-write steps 2-11)
-- **Source:** orchestrator
-- **Description:** In a linked worktree, `REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")` resolves to the MAIN repo, not the worktree, so every `STATUS="$REPO_ROOT/docs/.../status.json"` write landed in the main-repo working copy — a file outside the worktree's VCS and on whatever branch the main repo happened to be on. Mid-run the main repo was switched to `dev` (working copy reset to dev's committed design-only status.json: a 1-element array). Subsequent `jq '.[-1].steps += [...]'` then appended plan-complexity-split / plan-summary / plan-close-workflow INTO the design entry (`.[-1]` = design, since the plan element no longer existed), and `.[-1] |= (.status="DONE")` hit design. The 8 earlier plan steps were lost entirely. All actual plan ARTIFACTS were unaffected (committed in the worktree branch); only status.json corrupted.
-- **Suggested fix:** status.json should live in and be committed from the WORKTREE (use the worktree root, e.g. `git rev-parse --show-toplevel`, not `--git-common-dir`), OR the per-step writes must target a path that is branch/worktree-stable. As written, the "dev working copy" status model is corrupted by any concurrent `git checkout` in the main repo and by the worktree/main-repo working-tree split. Also: `jq '.[-1]'` blindly trusting the last array element is unsafe after a reset — select by `.workflow=="plan"` explicitly.
-- **Related:** 143-real-world-testing, issue #143, commits f4f6061..925bb9a (plan run)
-- **Recovery:** Reconstructed status.json authoritatively from dev's committed design(10) entry + the full 11-step plan workflow (verdicts/artifacts re-derived from the committed step artifacts), committed to dev at close.
-- **Status:** RECOVERED
-
-## Step 9 workstream matching breaks when a re-design renumbers WS meanings (2026-05-26)
-
-- **Category:** human-confirm
-- **Workflow:** design
-- **Step:** 9 — Design Workstream Issues
-- **Source:** orchestrator
-- **Description:** `/bkit-design 80` was a re-design of an issue that already had sub-issues from a superseded decomposition. The old run cut WS-1=orchestrator, WS-2..WS-12=one-per-lens, WS-13=pipeline-prompts (#103, #104, #84–#93, #105). The new design cut a structurally different 7-workstream set (WS-1=stack-detect, WS-2=skill-install, WS-3=all-11-lenses, …). Step 9 matches existing children to new workstreams purely by `^WS-{N}:` title-prefix, which assumes WS-{N} means the same thing across runs. It does not after a re-design: following the literal procedure would have posted "now this is Stack-detect" Update comments onto issues still TITLED "Workflow Orchestrator"/"architecture lens", and fired spurious Delete comments at real lens issues (#89–#93/#105) whose work still exists (folded into new WS-3). Orchestrator halted and asked the user how to reconcile rather than producing a tracker where titles and scope contradict.
-- **Suggested fix:** Step 9 needs a re-design branch: when existing children's `WS-{N}` titles don't semantically match the new design's `WS-{N}` names (or when the new decomposition is a known re-cut), prefer cancel-old-and-create-fresh over match-by-number Update. At minimum, match on title SLUG not just the numeric prefix, and treat a name mismatch at the same number as "stale child" (cancel) rather than "reuse". Consider recording a design-supersedes-design marker so Step 9 can detect the re-cut automatically.
-- **Related:** 80-audit-workflow, issue #80, cancelled #103/#104/#84–#93/#105, created #187–#193
-- **Recovery:** User chose "cancel old, create 7 fresh"; orchestrator retitled+closed the 13 stale children (`not_planned`, bodies kept) and created #187–#193 with correct titles + blocked-by DAG.
-- **Status:** RECOVERED
-
-## Main repo `core.bare` flipped to `true` mid-run, blocking Close-Workflow merge (2026-05-26)
-
-- **Category:** tool-failure
-- **Workflow:** plan
-- **Step:** 11 — Close Workflow (squash-merge to dev)
-- **Source:** orchestrator
-- **Description:** During `/bkit-plan 160`, Steps 1–2 ran fine against the main repo (`git status --porcelain` returned the untracked-file list, so `core.bare=false` then). By Step 11, `git checkout dev` / `git pull` / `git merge --squash` in the main repo all failed with `fatal: this operation must be run in a work tree`. `git rev-parse --show-toplevel` and `--is-inside-work-tree` errored identically, while `git branch --show-current` (which doesn't need a work tree) still returned `dev`. Root cause: `.git/config` `[core] bare = true` — the main repo (a non-bare checkout with `.git` as a directory and a full working tree) had `core.bare` flipped to `true` at some point after Step 2, after the worktree was created. No orchestrator step sets `core.bare`; suspected external mutation (IDE git integration — `GIT_ASKPASS` points at Cursor — or a git operation side-effect). All committed artifacts on `feat/160-...` were intact; only the main repo's work-tree operations were blocked.
-- **Suggested fix:** Close-Workflow (Step 11.4) should assert `git -C "$REPO_ROOT" config --get core.bare` is `false` (or `git rev-parse --is-inside-work-tree` succeeds) before `git checkout dev`, and self-heal with `git config core.bare false` when the main repo demonstrably has a working tree (`.git` is a dir + tracked files present). Consider doing this assertion at Step 1 too, to fail fast with a clear message instead of an opaque "must be run in a work tree" at merge time. Related to the known worktree/main-repo split fragility (see the 2026-05-25 status.json entry).
-- **Related:** 160-centralise-install-code, issue #160
-- **Recovery:** Set `git -C "$REPO_ROOT" config core.bare false`; `git status` and `--show-toplevel` worked again; resumed the Step 11.4 squash-merge.
-- **Status:** RECOVERED
-
-## bkit-plan-update left `Verdict: PENDING` placeholder, forcing a re-invocation (2026-05-26)
-
-- **Category:** agent-rework
-- **Workflow:** plan
-- **Step:** 5 — Apply Review
-- **Source:** subagent (`bkit-plan-update`)
-- **Description:** During `/bkit-plan 141`, the Apply-Review subagent completed the full plan edit (`plan-v2-reviewed.md`, 532 lines, all 10 CRITICAL findings resolved) but its final assistant message was truncated mid-action and it left the verdict header as the literal placeholder `Verdict: PENDING` / `<!-- verdict:end -->` at the top of the file. `PENDING` is not in `PASS|CONCERNS|FAIL`, so Gate-5 verdict extraction failed and Step 5.3's "invoke offending subagent again to re-emit ONLY the verdict header" recovery had to run. The re-invocation read the completed file, assessed it, and emitted `Verdict: PASS` — no plan rework needed, only the header was missing.
-- **Suggested fix:** `bkit-plan-update` (and any subagent that owns a verdict-headed artifact) should write the verdict header FIRST as its very first file write — before the body edits — so a truncated/interrupted run still leaves a valid (if conservative) verdict rather than the `PENDING` placeholder. The orchestrator already handles this via Step 5.3, but the extra round-trip is avoidable. Step 7's apply-scope prompt mitigated this by explicitly instructing "emit the verdict header before anything else risky"; folding that instruction into the agent definition itself would close the gap for Step 5 too.
-- **Related:** 141-cloud-app, issue #141
-- **Recovery:** Re-invoked `bkit-plan-update` per Step 5.3 with the re-emit instruction; it read the completed `plan-v2-reviewed.md`, confirmed all 10 CRITICALs resolved, and set `Verdict: PASS`. No plan content changed.
-- **Status:** RECOVERED
-
-## Build Step 7 PRIOR_STRATEGY query never matches recorded step name (2026-05-27)
-
-- **Category:** tool-failure
-- **Workflow:** build
-- **Step:** 7 — Plan Gaps Remediate (sub-step 17)
-- **Source:** orchestrator
-- **Description:** During `/bkit-build issue 141`, Step 7.17's `PRIOR_STRATEGY` query selects `.steps[] | select(.step=="plan-gaps-remediate" and ...)`, but Step 7.22 records the step as `"build-plan-gaps-remediate"` (with the `build-` prefix). The exact `==` match therefore NEVER finds the prior entry, so `PRIOR_STRATEGY` is always `""` and the strategy ladder collapses to STANDARD on every remediation attempt — it never advances STANDARD -> PIVOT -> FINAL as designed. Same defect class likely exists in Step 14's `failure-diagnose` query (`select(.step=="failure-diagnose")` vs recorded `"build-failure-diagnose"`).
-- **Suggested fix:** Change the Step 7.17 query string to `"build-plan-gaps-remediate"` (and Step 14.1 to `"build-failure-diagnose"`) so the recorded step names match. Alternatively derive the prior strategy from `.steps[] | select(.step|endswith("plan-gaps-remediate"))`.
-- **Related:** 141-cloud-app, issue #141
-- **Recovery:** Orchestrator derived the next strategy from its own in-run memory (attempt 1 = STANDARD, so attempt 2 = PIVOT) rather than the buggy query result.
-- **Status:** RECOVERED
-
-## Plan T3.1 (D3 concurrency reconciliation) Done-when structurally unsatisfiable in GitHub Actions (2026-05-27)
-
-- **Category:** agent-rework
-- **Workflow:** build
-- **Step:** 6/7 — Plan Verify / Gaps Remediate (sub-plan 2)
-- **Source:** subagent (bkit-build-plan-gaps-remediate) + plan spec
-- **Description:** Sub-plan 2 T3.1 requires the `bkit-cloud.yml` `concurrency.group` to resolve to one identical FID token across BOTH the `workflow_dispatch` path (payload exposes only the bare issue number, e.g. `141`) and the `workflow_run` CI-completion path (payload exposes only `head_branch` = `feat/{slugged-FID}`, e.g. `feat/141-cloud-app`). GitHub evaluates `concurrency.group` from trigger-payload context ONLY, before any step runs — it cannot consume a step output or do a tracker/PR lookup. GHA expression functions are limited to contains/startsWith/endsWith/format/join/toJSON/fromJSON/hashFiles (NO regex, NO split, and crucially **no `replace`**). The first remediation shipped `replace(github.event.workflow_run.head_branch, 'feat/', '')` — `replace` is not a valid GHA expression function, AND even if it were, it strips only the literal `feat/` prefix, leaving the slugged FID (`141-cloud-app`), which does not equal the dispatch's bare `141`. The accompanying render test used the unrealistic fixture `feat/141` (no slug), encoding the bug as the expectation (the "validate with the real tool" memory class). Net: T3.1's "single FID-derived token equal across both surfaces, single-sourced with the SHARED-DERIV step" is not achievable with concurrency expressions when FID contains a slug.
-- **Suggested fix:** Re-scope T3.1 to the achievable reconciliation (option iii): concurrency serialises WITHIN each surface (CI path keys on `head_branch`; dispatch keys on `inputs.issue`), and the cross-boundary dispatch<->auto-ship race is mitigated by a non-concurrency mechanism (orchestrator stale-run guard / status.json lock). Document the structural limit in KN-30 and restate the plan Done-when. Replace the false-confidence test fixture with a realistic slugged branch asserting the chosen behaviour. Drop the invalid `replace()` expression. Future plans that key GHA concurrency across dispatch+`workflow_run` must account for the payload-identity asymmetry up front.
-- **Related:** 141-cloud-app, issue #141, KN-30, D3
-- **Recovery:** PIVOT remediation (Step 7 attempt 2) adopted option (iii): removed invalid replace(), intra-surface concurrency, KN-30 + plan Done-when restated, realistic test fixture. Re-verified PASS (attempt 3).
-- **Status:** RECOVERED
-
-## Pre-existing dev CI breakage (stale template snapshot from 1226c94) surfaced mid-ship (2026-05-27)
+## Ship Step 9: dev commit blocked by pre-commit hook (2026-05-24)
 
 - **Category:** tool-failure
 - **Workflow:** ship
-- **Step:** 11 — Worktree Cleanup
+- **Step:** 9 — Update Docs & Summary
 - **Source:** orchestrator
-- **Description:** During `/bkit-ship issue 141`, the `git push origin --delete feat/141-cloud-app` in Step 11 triggered the bkit-repo pre-push hook, which ran the full vitest suite and exposed a FAILING test: `bkit-templates.content.test.ts > consumer CI template > snapshot matches expected template content`. Root cause is a pre-existing `dev` breakage unrelated to #141: commit `1226c94` ("fix(ci): run static checks before test/build group") reordered `.agents/templates/.github/workflows/ci.yml` but did NOT regenerate `.agents/scripts/__snapshots__/bkit-templates.content.test.ts.snap` (last updated at parent `fcf8e1a`). As a result, dev's `bkit-tests` job has been red since `1226c94` (CI run `26496882251` = failure; `fcf8e1a` before it = success), and the #141 squash-merge commit `b2cc83f` inherited the same single failure (run `26497306397`). TWO secondary issues compounded it: (1) the pre-push hook did NOT block the deletion push despite the test failure — the hook's `pnpm typecheck && pnpm test && pnpm format:check` line is followed by un-chained `pnpm bkit check` + `check:dist` lines, so the hook's exit code = the LAST command's (passing) status and the mid-script test failure is swallowed; (2) the ship Step 3 Regression Guard did not catch it because it compares the FEATURE branch's prior CI runs (all green), not dev-side pre-existing failures, and Step 12's squash-CI gate only fails on `cancelled`/`skipped` bkit-tests — NOT on `conclusion=failure` — so a red merge commit would pass the gate on a technicality.
-- **Suggested fix:** (a) `1226c94`-class: any commit changing a snapshotted template MUST run `vitest -u` and commit the regenerated `.snap` — add a CI/pre-commit guard or a `bkit check`-style assertion that template files and their content snapshots are in sync. (b) Pre-push hook: add `set -e` (or chain all gate commands with `&&`) so a mid-script test failure actually blocks the push instead of being masked by a later passing command. (c) Ship Step 12 gate: also fail when the squash-merge bkit-tests `conclusion == "failure"` (currently only `cancelled`/`skipped` are caught), so a red merge commit cannot close the workflow as DONE.
-- **Related:** 141-cloud-app, issue #141, commits 1226c94 / b2cc83f / 7638674
-- **Recovery:** Regenerated the stale snapshot (`npx vitest run -u .agents/scripts/bkit-templates.content.test.ts`) — diff was exactly the static-checks reordering matching `1226c94`'s intended template, nothing else. Committed as `7638674` ("fix(ci): regenerate stale template-content snapshot…", no `[skip ci]`) and pushed so CI re-validates `dev` green. Honours the user's "dev wins" instruction on ci.yml. Full suite 1109 passing locally; awaiting CI run `26497825235` confirmation before Close.
+- **Description:** Ship workflow Steps 8-12 must commit docs-only changes to `dev`. The `pre-commit` hook (husky `.husky/pre-commit`) refuses commits on `dev`/`main` unless `$PWD` matches `*.worktrees/*`. Git sets hook `$PWD` to the repo working-tree root (REPO_ROOT), not the caller's cwd, so calling `git -C "$REPO_ROOT" commit` from within a worktree directory does NOT pass the `*.worktrees/*` guard. No `--no-verify` allowed.
+- **Suggested fix:** Ship workflow Steps 9/10/Close should commit via a temp branch (`docs/ship-{FID}`) created from dev in a new temp worktree, commit there (branch != dev/main → hook allows), then FF-merge dev from REPO_ROOT. Or: add a hook exception for commit messages matching `[skip ci]`.
+- **Related:** bar-174-auto-bin-items, PR #70
+- **Recovery:** Temp branch + FF-merge workaround (commits `0377061d`, `86e8c130`)
+- **Status:** `RECOVERED`
+
+## 2026-05-29 — Build Challenge 2 (114-email-thread-memory) — 529 Overloaded
+
+**Step:** Step 9 (Build Challenge), challenge-2 subagent
+**Error:** `API Error: 529 Overloaded` — two consecutive attempts failed.
+**Recovery:** Retry after brief pause.
+**Status:** Resolved — succeeded on 3rd attempt using haiku model.
+
+## 2026-05-29 — Pre-push leakage guard blocked push (114-email-thread-memory)
+
+**Step:** Step 16/17 (Summary/Create PR), pre-push hook
+**Error:** `SeedRepoLeakage FAIL` — `app-gether-life` token in a JSDoc comment in `strip-quoted.ts:22`.
+**Recovery:** Removed the forbidden token (replaced "app-gether-life" with "seed repo" in the comment). Fix committed and pushed clean.
+**Status:** Resolved.
+
+## 2026-05-30 — Post-merge dev CI red: Payload migrate over Supabase IPv6 (43-payload-bootstrap)
+
+- **Category:** infra / post-merge-failure
+- **Workflow:** ship (follow-up fix on dev)
+- **Step:** 12 — Close Workflow (squash-merge CI assertion)
+- **Source:** orchestrator
+- **Description:** WS-1 added a post-merge "Apply Payload Migrations" CI step (`payload migrate`) that connects directly via `DATABASE_URL` = the Supabase _direct_ endpoint `db.<ref>.supabase.co:5432`, served over IPv6 only. GitHub Actions runners have no IPv6 route → `connect ENETUNREACH …:5432`. Invisible on PRs (step is dev/main-push only), so it first failed on the dev squash-merge run `26680973946`. Unit/build/E2E all green; only the migration apply failed.
+- **Suggested fix:** Any GitHub-Actions step that opens a _direct_ socket to Supabase Postgres must use the IPv4 **session** pooler (`aws-1-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`), not the direct host. Transaction pooler (6543) can't run DDL. The Supabase CLI (`db push`) is unaffected — it uses the Management API.
+- **Recovery:** Rewrote the step to fetch the pooler `db_host` from the Management API (region-agnostic) and rebuild `DATABASE_URL` as the session-pooler URL before `payload migrate`. Validated by a `[force build]` dev run.
+- **Related:** #43; dev run `26680973946` (red) → fix commit on dev; docs/deployments.md § "System 2".
 - **Status:** RECOVERED
 
-## dev HEAD ships stale `dist/bkit-trackers.js`; pre-push `check:dist` blocked design feat-branch push (2026-05-31)
+## 2026-05-31 — pre-existing `fcte`-forbidden CI gate collides with #77 `source_type='fcte'` (77-ingest-partner-corrections)
 
-- **Category:** tool-failure
-- **Workflow:** design
-- **Step:** 8 — Summary (branch push)
-- **Source:** orchestrator
-- **Description:** During `/bkit-design #80` (re-design pass 3), the Step-8 `git push origin feat/80-audit-workflow` was blocked by the bkit-repo pre-push hook's `pnpm check:dist` gate: dev HEAD (`6b9415b`) ships a stale `dist/bkit-trackers.js` — the committed `.agents/scripts/bkit-trackers.ts` source has the new `PAIR_RE` built via `[...].join("\\s*")` (from #202 commit `b013c36`), but the committed `dist/bkit-trackers.js` still carries the older string-concatenation form. Commit `6b9415b` ("rebuild dist (bkit-trackers stale on dev)") evidently did not capture this file's rebuild. The design feat branch (off dev HEAD) inherited the drift; its worktree source is clean (= dev HEAD, no #202 working-tree changes), so a plain `tsc` regenerates the correct `dist/bkit-trackers.js`. SECONDARY (Step-10 risk): the close-workflow `git push origin dev` runs the SAME `check:dist` in the MAIN checkout, where `tsc` compiles the _uncommitted_ #202 source (`bkit-trackers.ts` is modified there) and diffs against committed dist — so the close-to-dev push will fail the gate unless the #202 working tree is committed or stashed for the push. The user chose "proceed as-is" on the dirty #202 tree at start, accepting this Step-10 risk.
-- **Suggested fix:** (a) Ensure any commit that changes `.agents/scripts/*.ts` runs `pnpm build` and commits the regenerated `dist/` (the recurring stale-dist class — same root as `1226c94`/snapshot drift). A pre-commit guard asserting `dist/` matches `tsc` output of committed source would prevent shipping stale dist on `dev`. (b) The Step-10 dev push from the main checkout cannot pass `check:dist` while #202 source is uncommitted — bkit-repo design/plan runs on a dirty source tree need the WIP committed or stashed before close; consider an orchestrator pre-close assertion that the main checkout source tree is `check:dist`-clean.
-- **Related:** 80-audit-workflow, issue #80, #202 (uncommitted inline-tracker refactor), dev commit `6b9415b`, `b013c36`
-- **Recovery:** Rebuilt `dist/` in the clean worktree via `pnpm build` (changed only `dist/bkit-trackers.js`), verified `pnpm check:dist` exit 0 + `pnpm bkit check` exit 0, committed on the feat branch to unblock the Step-8 push. Step-10 dev-merge decision surfaced to the user (commit/stash #202 for the close vs leave design on the pushed feat branch).
+- **Category:** plan-vs-policy-collision
+- **Workflow:** build
+- **Step:** 5 — Plan Execute (sub-plan 2, slice A)
+- **Source:** bkit-build-plan-execute + orchestrator
+- **Description:** `packages/ai/src/prompts/forbidden-tokens.test.ts` (added by #137 realign-packages-ai) lists `fcte` in `FORBIDDEN_SOURCE_ONLY_TOKENS` and scans `packages/ai/src/prompts`, `packages/services/src/corpus`, `packages/ai/src`, `apps/web/src/app/api/chat`, `apps/web/evals` for the literal token. Green on `dev`. But #77 — and the live DB CHECK `source_type in ('web','partner','fcte')` (`20260521200000`) — requires `fcte` as a corpus `source_type` value in exactly those dirs. Part 1's T2 union narrowing (already verified PASS + committed: `314b729`) added `fcte` to `match-chunks.ts` (JSDoc) + `match-chunks.test.ts` (~8 assertions), turning the gate RED (4 violations). The Part-1 verify did NOT run this AI-package gate, so it slipped through. The slice-A agent tried to comply by writing `fcte` as `"fc"+"te"` (the repo's own anti-self-trigger idiom) in `embeddings.integration.test.ts` but left `as "fcte"` so the gate stayed red, and concatenation can't express a TS literal-union member anyway. The plan never anticipated this gate.
+- **Suggested fix:** Plan/design step should grep for pre-existing `forbidden-tokens.test.ts` SCAN_DIR + token policies before introducing a new brand/source-type literal into a scanned dir. Part-1 verify (and any verify touching `packages/services/src/corpus` or `packages/ai`) should run the AI-package `forbidden-tokens.test.ts` gate, not only typecheck + co-located unit tests.
+- **Related:** #137 (#111 realign); commit `314b729` (Part 1); DB CHECK `20260521200000`; `match-chunks.ts`, `match-chunks.test.ts`, `embeddings.integration.test.ts`.
+- **Recovery:** Operator decision (AskUserQuestion 2026-05-31): UPDATE the gate — drop `fcte` from `FORBIDDEN_SOURCE_ONLY_TOKENS` (legitimate DB-CHECK-enforced corpus source_type, not brand leakage) and remove the `"fc"+"te"` obfuscation so code/tests use the plain literal. To be captured in Part 3 Task 13 ADR + `docs/sync-with-gether.md` § Deviation.
 - **Status:** RECOVERED

@@ -25,6 +25,8 @@ import {
   detectTurboIntegrationInputs,
   detectTestIntegrationEnv,
   detectGhaFloatingTags,
+  detectBkitCloudYmlAlwaysTrueGate,
+  detectCiYmlMissingActionlint,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -1721,5 +1723,82 @@ describe("dedupeById", () => {
       { id: "only", severity: "advisory", detect: "d", action: "a" },
     ];
     expect(dedupeById(findings)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectBkitCloudYmlAlwaysTrueGate
+// ---------------------------------------------------------------------------
+
+describe("detectBkitCloudYmlAlwaysTrueGate", () => {
+  function writeCloud(content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), content);
+  }
+  const BROKEN =
+    "jobs:\n" +
+    "  run:\n" +
+    "    if: |\n" +
+    "      ${{\n" +
+    "        github.event_name == 'workflow_dispatch'\n" +
+    "      }}\n" +
+    "    runs-on: ubuntu-latest\n";
+  const FIXED =
+    "jobs:\n" +
+    "  run:\n" +
+    "    if: >-\n" +
+    "      github.event_name == 'workflow_dispatch'\n" +
+    "    runs-on: ubuntu-latest\n";
+
+  it("returns null when bkit-cloud.yml is absent", () => {
+    expect(detectBkitCloudYmlAlwaysTrueGate(tmpDir)).toBeNull();
+  });
+  it("fires on the always-true block-scalar `if:` gate", () => {
+    writeCloud(BROKEN);
+    const f = detectBkitCloudYmlAlwaysTrueGate(tmpDir);
+    expect(f?.id).toBe("bkit-cloud-yml-always-true-gate");
+    expect(f?.severity).toBe("advisory");
+  });
+  it("returns null on the fixed folded expression (no ${{ }} wrapper)", () => {
+    writeCloud(FIXED);
+    expect(detectBkitCloudYmlAlwaysTrueGate(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCiYmlMissingActionlint
+// ---------------------------------------------------------------------------
+
+describe("detectCiYmlMissingActionlint", () => {
+  function writeCi(content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+  }
+  const MANAGED_NO_ACTIONLINT =
+    "name: CI\n" +
+    "jobs:\n" +
+    "  bkit-tests:\n" +
+    "    runs-on: ubuntu-latest\n" +
+    "    # bkit:start verbose-ci-env\n" +
+    "    # bkit:end verbose-ci-env\n" +
+    "    steps:\n" +
+    "      - run: pnpm test\n";
+
+  it("returns null when ci.yml is absent", () => {
+    expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+  it("returns null when ci.yml has no bkit markers (consumer-owned)", () => {
+    writeCi("name: CI\njobs:\n  test:\n    runs-on: ubuntu-latest\n");
+    expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+  it("fires on a bkit-managed ci.yml with no actionlint step", () => {
+    writeCi(MANAGED_NO_ACTIONLINT);
+    const f = detectCiYmlMissingActionlint(tmpDir);
+    expect(f?.id).toBe("ci-yml-missing-actionlint");
+    expect(f?.severity).toBe("advisory");
+  });
+  it("returns null when an actionlint step is already present", () => {
+    writeCi(MANAGED_NO_ACTIONLINT + '      - run: "$RUNNER_TEMP/actionlint" -color\n');
+    expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
   });
 });

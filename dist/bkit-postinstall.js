@@ -248,6 +248,71 @@ export function detectCiYmlMissingTokenEnv(cwd) {
     };
 }
 /**
+ * Detect the always-true `if:` gate in `.github/workflows/bkit-cloud.yml`: a `|`
+ * block scalar wrapping ${{ }}. GitHub Actions sees extra characters around ${{ }}
+ * (the block scalar's newlines) and evaluates the whole condition to a non-empty
+ * string === always true — so the free-tier `bkit [auto route]` gate never fires and
+ * the run job executes on every triggering event (unintended runner-minute spend).
+ *
+ * Fires only while the broken construct is present; the fixed form is a `>-` folded
+ * expression with no ${{ }} wrapper. bkit-cloud.yml is not always rewritten on a
+ * re-install of older consumers, so the action inlines the manual fix.
+ */
+export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
+    const cloudPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+    if (!fs.existsSync(cloudPath))
+        return null;
+    const content = fs.readFileSync(cloudPath, "utf-8");
+    // Broken construct: an `if:` block scalar (`|` / `>`) whose first content line is ${{.
+    if (!/^\s*if:\s*[|>][^\n]*\n\s*\$\{\{/m.test(content))
+        return null;
+    return {
+        id: "bkit-cloud-yml-always-true-gate",
+        severity: "advisory",
+        detect: ".github/workflows/bkit-cloud.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
+        action: "Replace the `if: |` block under `# bkit:start auto-route-gate` with a `>-` folded expression that drops the ${{ }} wrapper (GitHub Actions evaluates `if:` expressions natively):\n\n" +
+            "    if: >-\n" +
+            "      github.event_name == 'workflow_dispatch'\n" +
+            "      || (\n" +
+            "      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')\n" +
+            "      && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')\n" +
+            "      )\n\n" +
+            "Validate with `actionlint` — the `[if-cond]` finding disappears once the wrapper is gone.",
+    };
+}
+/**
+ * Detect a bkit-managed `.github/workflows/ci.yml` with no `actionlint` step.
+ * `yaml.safe_load` (and generic YAML linters) accept workflows that are valid YAML
+ * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
+ * scalars). actionlint is GHA-aware and catches that class.
+ *
+ * Only fires when the consumer opted into a bkit-managed ci.yml (markers present).
+ * ci.yml is Tier-3 seed-or-print, so `bkit install` will not add the step to an
+ * existing file — the action inlines the manual step.
+ */
+export function detectCiYmlMissingActionlint(cwd) {
+    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    if (!fs.existsSync(ciPath))
+        return null;
+    const content = fs.readFileSync(ciPath, "utf-8");
+    if (!/^\s*# bkit:start\b/m.test(content))
+        return null;
+    if (/actionlint/i.test(content))
+        return null;
+    return {
+        id: "ci-yml-missing-actionlint",
+        severity: "advisory",
+        detect: ".github/workflows/ci.yml (bkit-managed) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
+        action: "Add an actionlint step among the static checks in .github/workflows/ci.yml (before the test/build group):\n\n" +
+            "      - name: Run Actionlint\n" +
+            "        if: steps.cache.outputs.skip != 'true'\n" +
+            "        run: |\n" +
+            '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
+            '          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"\n' +
+            '          "$RUNNER_TEMP/actionlint" -color',
+    };
+}
+/**
  * Detect whether vale is installed but write-good styles are not synced.
  * Returns null if vale is not on PATH (silent skip — not an error).
  */
@@ -1438,6 +1503,14 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const gha = detectGhaFloatingTags(cwd);
     if (gha)
         phase3.push(gha);
+    // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
+    const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
+    if (cloudGate)
+        phase3.push(cloudGate);
+    // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
+    const ciActionlint = detectCiYmlMissingActionlint(cwd);
+    if (ciActionlint)
+        phase3.push(ciActionlint);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);

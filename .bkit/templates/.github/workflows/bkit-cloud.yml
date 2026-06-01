@@ -92,14 +92,12 @@ jobs:
     # head commit message — zero runner minutes if the marker is absent (no opted-in
     # close-workflow HEAD). Dispatched runs always proceed.
     # bkit:start auto-route-gate
-    if: |
-      ${{
-        github.event_name == 'workflow_dispatch'
-        || (
-          (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
-          && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
-        )
-      }}
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
+      )
     # bkit:end auto-route-gate
     runs-on: ubuntu-latest
     steps:

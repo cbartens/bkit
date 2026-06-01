@@ -287,7 +287,7 @@ description: "Ship Feature — Autonomous merge and archive"
 3. `git branch --show-current` → update `BRANCH` to worktree branch. Assert non-empty.
 4. **If** `BRANCH` NOT `dev` **and** does NOT contain `{FID}` **and** does NOT contain `{ISSUE_ID}` (case-insensitive) → **Failure Path**.
 5. `gh pr list --head "$(git branch --show-current)" --json number,baseRefName --jq '.[0]'` → extract `PR_NUMBER` and `PR_BASE`. **If** `PR_NUMBER` empty → **Failure Path**. **If** `PR_BASE` != dev → **Failure Path**. Set `MERGE_ATTEMPT` = 0.
-6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → **If** any failures → **Failure Path**.
+6. `gh pr view {PR_NUMBER} --json statusCheckRollup` → assert call succeeds. **If** query errors **or** any check failed **or** rollup empty → **Failure Path**.
 7. Create: `docs/plans/{YYYYMM}/logs/{FID}/ship-input.md` = session prompt + `DESCRIPTION` + `COMMENTS` + `docs/plans/{YYYYMM}/{FID}-plan.md`.
 8. Update status and commit:
    ```bash
@@ -468,7 +468,7 @@ description: "Ship Feature — Autonomous merge and archive"
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
      git -C "$REPO_ROOT" status --short
-     git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
+     git -C "$REPO_ROOT" add -- ':(exclude).DS_Store' ':(exclude)*.log' ':(exclude)*.swp' ':(exclude)node_modules'
      git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
    fi
    ```
@@ -884,7 +884,9 @@ description: "Ship Feature — Autonomous merge and archive"
    [ -z "$RUN_ID" ] && { echo "No CI run found for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    RUN_CONCLUSION=$(echo "$RUN" | jq -r '.[0].conclusion // empty')
    [ "$RUN_CONCLUSION" = "cancelled" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA was cancelled — feature merge not test-validated" >&2; exit 1; }
+   [ "$RUN_CONCLUSION" = "failure" ] && { echo "CI run $RUN_ID for squash merge $SQUASH_SHA concluded failure — feature merge not test-validated" >&2; exit 1; }
    TESTS_CONCLUSION=$(gh run view "$RUN_ID" --json jobs --jq '[.jobs[] | select(.name | test("test"; "i"))][0].conclusion // empty')
+   [ "$TESTS_CONCLUSION" = "failure" ] && { echo "bkit-tests job failed on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge is red" >&2; exit 1; }
    [ "$TESTS_CONCLUSION" = "skipped" ] && { echo "bkit-tests job skipped on CI run $RUN_ID for squash merge $SQUASH_SHA — feature merge not test-validated" >&2; exit 1; }
    ```
    **If** exit non-zero → **Failure Path**.
@@ -941,7 +943,7 @@ description: "Ship Feature — Autonomous merge and archive"
 - [ ] All documents archived and logs retained for manual cleanup
 - [ ] Worktree cleaned up
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
-- [ ] Squash-merge CI run completed `bkit-tests` (not cancelled, not skipped)
+- [ ] Squash-merge CI run completed `bkit-tests` (not cancelled, not failed, not skipped)
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
 <!-- bkit:tracker true start -->

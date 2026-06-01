@@ -166,6 +166,16 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:slop
 
+      # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
+      # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
+      # workflows that are valid YAML but invalid GHA; actionlint catches that class.
+      - name: Run Actionlint
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color
+
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
