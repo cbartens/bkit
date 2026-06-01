@@ -1,12 +1,12 @@
 # Trackers
 
 > [!CAUTION]
-> **Purpose:** Reference for the inline tracker-block model used by `.agents/workflows/bkit-*.md`. **Not consumed by the installer** — there is no `trackers.md` substitution. The full per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents the marker contract and the cross-cutting per-tracker conventions only.
+> **Purpose:** Reference for the inline tracker-block model used by `.bkit/workflows/bkit-*.md`. **Not consumed by the installer** — there is no `trackers.md` substitution. The full per-tracker call bodies (`github` / `linear` / `none`) live INLINE at each workflow call site; this file documents the marker contract and the cross-cutting per-tracker conventions only.
 >
 > **Rules:**
 >
 > - Token-efficient dense phrasing; agent / maintainer readers only.
-> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.agents/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
+> - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.bkit/docs/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Three trackers supported: `github` (default), `linear` (opt-in), `none` (no tracker wired).
 > - Adding a new tracker (Jira, etc.): add the enum value to `.bkit/src/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.bkit/src/bkit-trackers.ts`). There is no `none` marker — no-tracker content is `false`.
 
@@ -56,7 +56,7 @@ Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `n
 
 ## Interaction catalog
 
-The per-tracker call sites are referenced across `.agents/workflows.md` by these names. Each is an inline `github`/`linear` pair at its call site; this table maps the name to its tracker tooling (reference only — the authoritative bodies are inline in the workflows). The `none` column shows the no-tracker rendering: most sites have no `false` block and collapse to the generic `_No tracker connected, skip step._`; a few carry a substantive trailing `false` block (shown) because they must still function without a tracker.
+The per-tracker call sites are referenced across `.bkit/docs/workflows.md` by these names. Each is an inline `github`/`linear` pair at its call site; this table maps the name to its tracker tooling (reference only — the authoritative bodies are inline in the workflows). The `none` column shows the no-tracker rendering: most sites have no `false` block and collapse to the generic `_No tracker connected, skip step._`; a few carry a substantive trailing `false` block (shown) because they must still function without a tracker.
 
 <!-- prettier-ignore -->
 | Interaction | Purpose | github | linear | none |
@@ -81,7 +81,7 @@ The per-tracker call sites are referenced across `.agents/workflows.md` by these
 | `pr-body-metadata` | Parse PR-body issue/FID marker | `pull_request_read` + parse | same (GitHub PR) | FID-only, no fail-closed |
 | `pr-body-marker` | Literal PR-body marker line | `<!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->` | `<!-- bkit:fid={FID} -->` |
 
-Phase-label set + additive-label semantics are documented in `.agents/workflows.md` § Tracker Integration.
+Phase-label set + additive-label semantics are documented in `.bkit/docs/workflows.md` § Tracker Integration.
 
 ## github — Projects v2 board (optional, #137)
 

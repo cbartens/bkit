@@ -231,12 +231,12 @@
 - **Category:** agentic
 - **Symptom:** PR opens with no Actions runs visible — `gh pr view --json statusCheckRollup` returns empty. Ship Step 2's CI fail-fast gate (`if ANY failures → Failure Path`) admits the PR despite no CI verification. First observed on PR #7 (BAR-131 consumer-friction suite) — CI only triggered after manually pushing an empty commit without `[skip ci]`.
 - **Root cause:** GitHub suppresses both `pull_request` and `push` workflow runs when HEAD commit message contains `[skip ci]` (or `[skip actions]`). Build's Step 15 summary push left `summary status [skip build] [skip ci]` as remote HEAD, so when `gh pr create` opened the PR (Step 16), no `pull_request` event fired. Same shape in debug Step 7 summary push, which would overwrite a previously-clean HEAD with `[skip ci]` and silently empty the PR's rollup. Build Step 17 / debug Step 11 close-workflow commits also never reached remote — no explicit `git push` in either step.
-- **Fix or rule:** Final commit before `git push` in build / debug close-workflow renamed to `chore({FID}): close-workflow status trigger CI` (no skip tags). Explicit `git push` added to close-workflow (also fixes the missing-push side bug). Ship Step 5 already used `gh pr merge --body ""` (empty body strips `[skip ci]` from the squash subject). Identical gate phrasing across all three workflows: `HEAD on remote does NOT contain [skip ci]`. Codified in `.agents/rules.md` § Git block as "Last push to PR / `dev` (validated): HEAD MUST NOT contain `[skip ci]`."
+- **Fix or rule:** Final commit before `git push` in build / debug close-workflow renamed to `chore({FID}): close-workflow status trigger CI` (no skip tags). Explicit `git push` added to close-workflow (also fixes the missing-push side bug). Ship Step 5 already used `gh pr merge --body ""` (empty body strips `[skip ci]` from the squash subject). Identical gate phrasing across all three workflows: `HEAD on remote does NOT contain [skip ci]`. Codified in `AGENTS.md` § Git block as "Last push to PR / `dev` (validated): HEAD MUST NOT contain `[skip ci]`."
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** high
 - **Source:** phase
-- **Related:** BAR-146, BAR-131 (PR #7 first observation), `.agents/workflows/bkit-build.md` Step 17, `.agents/workflows/bkit-debug.md` Step 11, `.agents/workflows/bkit-ship.md` Step 5 + Gate 5, `.agents/workflows.md` § CI / Vercel commit tags
+- **Related:** BAR-146, BAR-131 (PR #7 first observation), `.bkit/workflows/bkit-build.md` Step 17, `.bkit/workflows/bkit-debug.md` Step 11, `.bkit/workflows/bkit-ship.md` Step 5 + Gate 5, `.bkit/docs/workflows.md` § CI / Vercel commit tags
 
 ## KN-12: Transactional install via staging dir — zero-overwrite mid-failure guarantee (2026-05-07)
 
@@ -284,7 +284,7 @@
 - **Confidence:** high
 - **Severity:** high
 - **Source:** build-challenge
-- **Related:** BAR-155, `.agents/workflows/bkit-ship.md`
+- **Related:** BAR-155, `.bkit/workflows/bkit-ship.md`
 
 ## KN-16: Multi-section output format — EOF-append landing section must be last (2026-05-09)
 
@@ -296,7 +296,7 @@
 - **Confidence:** high
 - **Severity:** high
 - **Source:** build-challenge
-- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-verify.md`, `.agents/prompts/bkit-build-challenge-tests.md`
+- **Related:** BAR-155, `.bkit/prompts/bkit-build-plan-verify.md`, `.bkit/prompts/bkit-build-challenge-tests.md`
 
 ## KN-17: Deep-containment is canonical for ownership-mixed JSON — `__bkit__` envelope removed (2026-05-11)
 
@@ -381,7 +381,7 @@
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** phase
-- **Related:** BAR-187, BAR-183, BAR-184, `.agents/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`
+- **Related:** BAR-187, BAR-183, BAR-184, `.bkit/docs/workflows.md` §status.json, `.agents/scripts/bkit-status.ts`
 
 ## KN-23: Server-side CI is the only quality gate; agent self-verification is informational, not authoritative (2026-05-14)
 
@@ -393,7 +393,7 @@
 - **Confidence:** high
 - **Severity:** high
 - **Source:** phase
-- **Related:** BAR-192, BAR-195, `.agents/workflows/bkit-debug.md` Step 6, `.agents/prompts/bkit-debug-failure-remediate.md`, `.agents/prompts/bkit-debug-failure-diagnose.md`, `.agents/templates/.github/workflows/ci.yml`
+- **Related:** BAR-192, BAR-195, `.bkit/workflows/bkit-debug.md` Step 6, `.bkit/prompts/bkit-debug-failure-remediate.md`, `.bkit/prompts/bkit-debug-failure-diagnose.md`, `.agents/templates/.github/workflows/ci.yml`
 
 ## KN-24: Turbo content-keyed cache replays across SHAs — declare external-state proxies in `inputs` to avoid ghost-greens (2026-05-14)
 
@@ -431,7 +431,7 @@
 - **Confidence:** high
 - **Severity:** critical
 - **Source:** phase
-- **Related:** BAR-200, KN-11 (`[skip ci]` HEAD gap — same shape, different mechanism), `.agents/workflows/bkit-debug.md` Steps 5–7 + Gate 7, `.agents/workflows/bkit-ship.md` Step 3 + Gate 3, `.agents/workflows.md` §CI / Vercel commit tags (`fix({FID}): {description}` row)
+- **Related:** BAR-200, KN-11 (`[skip ci]` HEAD gap — same shape, different mechanism), `.bkit/workflows/bkit-debug.md` Steps 5–7 + Gate 7, `.bkit/workflows/bkit-ship.md` Step 3 + Gate 3, `.bkit/docs/workflows.md` §CI / Vercel commit tags (`fix({FID}): {description}` row)
 
 ## KN-27: Playwright artifacts via `actions/upload-artifact` are invisible to `gh run view --log-failed` — fetch separately (2026-05-16)
 
@@ -447,7 +447,7 @@
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** phase
-- **Related:** BAR-201, KN-26 (sibling — same milestone, closes both ends of the e2e-debug loop), `.agents/workflows/bkit-debug.md` Step 3 sub-step 3 + Gate 3, `.agents/templates/.github/workflows/ci.yml` (`bkit-stub:e2e` + `bkit-stub:e2e-artifacts`), `.agents/workflows.md` §`/bkit-debug` Step 3
+- **Related:** BAR-201, KN-26 (sibling — same milestone, closes both ends of the e2e-debug loop), `.bkit/workflows/bkit-debug.md` Step 3 sub-step 3 + Gate 3, `.agents/templates/.github/workflows/ci.yml` (`bkit-stub:e2e` + `bkit-stub:e2e-artifacts`), `.bkit/docs/workflows.md` §`/bkit-debug` Step 3
 
 ## KN-28: `turbo query affected --exit-code` returns 0 in every path — affected-gates with `workflow_dispatch` "fall back to safe" comments don't actually fall back (2026-05-23)
 
@@ -492,7 +492,7 @@
 - **Category:** tooling
 - **Symptom:** (D1) A live dispatch of `bkit-cloud.yml` failed ~26s in with "Could not fetch an OIDC token … add `id-token: write`". `claude-code-action@v1` in `mode: agent` calls `getOidcToken` at boot — `github.token` passed only as `env: GH_TOKEN` is NOT consumed for the action's own auth. The CI cloud path had never completed. (D2) On a re-build with an open PR, the `worktree-setup` and `create-pr` commits (neither carried `[skip ci]`) triggered a `pull_request: synchronize` CI event → the cloud auto-router fired mid-build. (D3) Dispatched build `bkit-cloud.yml` runs (issue `inputs.issue=50` → group `bkit-cloud-50`) and CI-completion runs (branch `head_branch=feat/50-slug` → group `bkit-cloud-feat/50-slug`) resolved to different concurrency groups → `cancel-in-progress` could not serialize a dispatched build against the ship it triggered.
 - **Root cause:** (D1) `bkit-cloud.yml` was designed on the assumption that `github.token` handles all repo git/gh access — the App's OIDC requirement was not surfaced until a live dispatch. (D2) The `worktree-setup` and `create-pr` commits lacked `[skip ci]` tags (documented in `deployments.md` for `create-pr` but not implemented; `worktree-setup` was a genuinely NEW contract entry). (D3) The concurrency key mixed `inputs.issue` (numeric FID) with `head_branch` (`feat/50-slug`) across the two trigger paths — different strings, no cancel.
-- **Fix or rule:** (D1) Add `id-token: write` to `bkit-cloud.yml` permissions; require the Claude GitHub App via `/install-github-app`. (D2) Add `bkit [skip ci]` to `worktree-setup` and `create-pr` commit messages; add `bkit [auto route]` to the close-workflow commit (and debug re-trigger commit) only when the issue carries `bkit:auto` at close time. (D3 — revised after structural analysis): Full cross-surface token equality in the `concurrency.group` expression is NOT achievable via GHA expression functions. GitHub evaluates `concurrency.group` from trigger-payload context only, before any step runs. The dispatch payload exposes only the bare issue number (`inputs.issue`, e.g. `141`); the `workflow_run` payload exposes only `head_branch` (= `feat/{FID-with-slug}`, e.g. `feat/141-cloud-app`). GHA expression functions have no regex, no split, and no `replace()` that can reduce a slugged FID to the bare issue number — `replace('feat/141-cloud-app','feat/','')` = `141-cloud-app`, not `141`. The shipped approach (`replace()` to strip `feat/`) was invalid for the actual bkit branch convention (`bkit-build.md:146` defines FID with a slug). Corrected design: serialise WITHIN each surface separately — dispatch keys on `inputs.issue`; CI-completion keys on `head_branch`. Cross-boundary races between a dispatched build and the auto-ship it triggers are handled by the orchestrator stale-run guard + `status.json` lock. See also: DE-21 (full architectural decision), `docs/deployments.md` § "CI trigger on final workflow push", `.agents/workflows.md` § "HEAD-Subject Assertion".
+- **Fix or rule:** (D1) Add `id-token: write` to `bkit-cloud.yml` permissions; require the Claude GitHub App via `/install-github-app`. (D2) Add `bkit [skip ci]` to `worktree-setup` and `create-pr` commit messages; add `bkit [auto route]` to the close-workflow commit (and debug re-trigger commit) only when the issue carries `bkit:auto` at close time. (D3 — revised after structural analysis): Full cross-surface token equality in the `concurrency.group` expression is NOT achievable via GHA expression functions. GitHub evaluates `concurrency.group` from trigger-payload context only, before any step runs. The dispatch payload exposes only the bare issue number (`inputs.issue`, e.g. `141`); the `workflow_run` payload exposes only `head_branch` (= `feat/{FID-with-slug}`, e.g. `feat/141-cloud-app`). GHA expression functions have no regex, no split, and no `replace()` that can reduce a slugged FID to the bare issue number — `replace('feat/141-cloud-app','feat/','')` = `141-cloud-app`, not `141`. The shipped approach (`replace()` to strip `feat/`) was invalid for the actual bkit branch convention (`bkit-build.md:146` defines FID with a slug). Corrected design: serialise WITHIN each surface separately — dispatch keys on `inputs.issue`; CI-completion keys on `head_branch`. Cross-boundary races between a dispatched build and the auto-ship it triggers are handled by the orchestrator stale-run guard + `status.json` lock. See also: DE-21 (full architectural decision), `docs/deployments.md` § "CI trigger on final workflow push", `.bkit/docs/workflows.md` § "HEAD-Subject Assertion".
 - **Type:** gotcha
 - **Confidence:** high (D1 confirmed live; D2/D3 confirmed by code analysis)
 - **Severity:** high (D1 blocked all cloud CI usage; D2 mid-build fires caused confirmed CI run #202/PR #102 phantom; D3 latent race)

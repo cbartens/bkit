@@ -329,7 +329,7 @@ Usage:
 
 Module flags (composable — same for install and uninstall):
   --full          All modules (default when no flags given).
-  --core          .agents/ payload pass + .gitignore block + rules.md block + .bkit-version.
+  --core          .agents/ payload pass + .gitignore block + AGENTS.md block + .bkit-version.
   --claude        .claude/commands/ + .claude/agents/ (byte-identical mirror).
   --cursor        .cursor/commands/ + .cursor/agents/ (T1/T2/T3 transforms).
   --ci            .github/workflows/ci.yml (Tier 3 seed-or-print: byte-equal, tokens

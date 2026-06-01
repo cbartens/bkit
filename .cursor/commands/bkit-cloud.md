@@ -8,7 +8,7 @@
 > **Phase classes:** `ship`/`debug` = **CI-class** (Steps 1–4: guard + opt-in gate + dispatch). `design`/`plan`/`build` = **brief-class** (Step 1 resolves the issue, Step 4 invokes the skill — guard + opt-in gate are skipped; the human `workflow_dispatch` is the opt-in, and the skill owns its own `status.jsonl`/worktree/FID).
 
 > [!CAUTION]
-> **Read in full:** `.agents/rules.md`.
+> **Read in full:** `AGENTS.md`.
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
 >
 > - **Order:** Execute sequentially unless stated otherwise.

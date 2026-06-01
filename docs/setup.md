@@ -13,7 +13,7 @@
 
 <!-- bkit:end -->
 
-> Consumer install + auth (`GH_BKIT_TOKEN`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.agents/cloud.md`](../.agents/cloud.md).
+> Consumer install + auth (`GH_BKIT_TOKEN`, `.npmrc`, GHA secrets, Vercel env) → root [`README.md`](../README.md). Cloud-agent setup (Claude Code on the web, Cursor Background Agents) → [`.bkit/docs/cloud.md`](../.bkit/docs/cloud.md).
 
 ## Required tools
 
@@ -69,5 +69,5 @@ pnpm exec bkit doctor                                       # token + advisory s
 - **`pnpm install` returns 401 / 404 on `@cbartens/bkit`** — `GH_BKIT_TOKEN` unset; pnpm silently ignores `.npmrc` and falls back to npmjs.org. Verify with `echo "${GH_BKIT_TOKEN:-MISSING}"`.
 - **`bkit check` reports `.agents/.bkit-version` drift** — `pnpm add -D @cbartens/bkit@<new>` ran without `pnpm exec bkit install`. Re-run install; commit the resync.
 - **Linear preflight blocks session** — issue missing `Auto` label or in `Done` / `Cancelled`. Add `Auto`, set non-terminal state.
-- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.agents/workflows.md` § Rebase Conflict Tiering.
+- **`pnpm-lock.yaml` rebase conflict in workflow** — Tier 2 handler runs inline (`git checkout --theirs pnpm-lock.yaml` + `pnpm install --lockfile-only`); see `.bkit/docs/workflows.md` § Rebase Conflict Tiering.
 - **Cloud snapshot stuck on stale vale (Claude)** — bump `# cache-bust YYYY-MM-DD-N` comment in setup script to force rebuild.

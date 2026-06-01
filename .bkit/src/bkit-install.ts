@@ -9,7 +9,7 @@ import {
   renderCloudWorkflow,
   type ModuleContext,
 } from "./bkit-modules.js";
-import { getTemplatesRoot } from "./bkit-paths.js";
+import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import {
@@ -135,12 +135,10 @@ export function discardAllStaging(cwd = process.cwd()): void {
   }
 }
 
-// Hard allowlist: install / payload prune may ONLY remove files from these dirs.
-// `.agents/{workflows,prompts}/` are mirrored from the package payload during the
-// payload pass; the host dirs are mirrored from `.agents/` during the host pass.
+// Hard allowlist: install / host-pass prune may ONLY remove files from these
+// dirs. Mirror SOURCES live package-side under `.bkit/{workflows,prompts}`; only
+// the generated IDE mirror dirs below are consumer-writable.
 const WRITE_DIRS = [
-  ".agents/workflows",
-  ".agents/prompts",
   ".claude/agents",
   ".claude/commands",
   ".cursor/agents",
@@ -157,14 +155,14 @@ let LOG_PREFIX = "[bkit-install]";
 
 export type Host = "claude" | "cursor";
 
-// Parse .agents/prompts.md § Models table → Map<name, cursorModel>
-export function parseModelLookup(subagentsMdPath = ".agents/prompts.md"): Map<string, string> {
+// Parse .bkit/docs/prompts.md § Models table → Map<name, cursorModel>
+export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
   const content = fs.readFileSync(subagentsMdPath, "utf-8");
   const map = new Map<string, string>();
 
   const modelsIdx = content.indexOf("## Models");
   if (modelsIdx === -1) {
-    console.error(`${LOG_PREFIX} Could not find ## Models section in .agents/prompts.md`);
+    console.error(`${LOG_PREFIX} Could not find ## Models section in ${subagentsMdPath}`);
     process.exit(1);
   }
 
@@ -624,38 +622,56 @@ function mirrorDirAlways(
 //   - .agents/{workflows,prompts}/bkit-*.md → overwrite + prune (bkit-prefix only)
 // In dogfood (running from .bkit/src/ in the bkit repo itself), src and dst
 // resolve to the same paths, so this pass is a no-op.
-export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
-  const PKG_ROOT = getPkgRoot();
-  const PKG_AGENTS = path.join(PKG_ROOT, ".agents");
+// Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
+// (`.bkit/docs/*.md`) now live package-side and are read directly from there
+// (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). They are never
+// written into a consumer. Consumers upgraded from a layout that DID copy these
+// into `.agents/` carry orphans — `runPayload` removes them so the tree stays
+// clean. `.agents/rules.md` is likewise relocated (its content moved into the
+// root `AGENTS.md` managed block).
+//
+// Named `runPayload` for call-site stability with the dispatch in runCoreModule;
+// the historical "payload copy" is gone, leaving only orphan cleanup. Never
+// touches the bkit repo's own tree (isDogfood guard): in dogfood these paths
+// already live under `.bkit/`, so there is nothing in `.agents/` to remove.
+const RELOCATED_AGENTS_FILES = [
+  "rules.md",
+  "trackers.md",
+  "workflows.md",
+  "cloud.md",
+  "prompts.md",
+  "IDEs.md",
+] as const;
 
-  let writes = 0;
+export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
   let deletes = 0;
   const tag = dryRun ? "[dry-run] " : "";
 
-  if (!fs.existsSync(PKG_AGENTS)) return { writes, deletes };
+  if (isDogfood()) return { writes: 0, deletes: 0 };
 
+  // 1. Relocated mirror-source dirs: remove bkit-prefix files, then the dir if empty.
   for (const subdir of ["workflows", "prompts"] as const) {
-    const srcDir = path.join(PKG_AGENTS, subdir);
     const dstDir = path.join(".agents", subdir);
-    if (!fs.existsSync(srcDir)) continue;
-    if (path.resolve(srcDir) === path.resolve(dstDir)) continue;
-
-    ensureDir(dstDir);
-    const srcFiles = listMdFiles(srcDir, BKIT_PREFIX);
-    const sourceSet = new Set(srcFiles);
-    for (const f of srcFiles) {
-      if (installFile(path.join(srcDir, f), path.join(dstDir, f), null, dryRun)) {
-        writes++;
-        console.log(`${LOG_PREFIX} ${tag}payload: ${path.join(dstDir, f)}`);
-      }
-    }
-    for (const f of removeOrphans(dstDir, sourceSet, dryRun, BKIT_PREFIX)) {
+    if (!fs.existsSync(dstDir)) continue;
+    for (const f of listMdFiles(dstDir, BKIT_PREFIX)) {
+      const target = path.join(dstDir, f);
+      console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing relocated ${target}`);
       deletes++;
-      console.log(`${LOG_PREFIX} ${tag}payload delete: ${path.join(dstDir, f)}`);
+      if (!dryRun) fs.rmSync(target, { force: true });
     }
+    if (!dryRun && fs.readdirSync(dstDir).length === 0) fs.rmdirSync(dstDir);
   }
 
-  return { writes, deletes };
+  // 2. Relocated single files (bkit docs + rules.md).
+  for (const name of RELOCATED_AGENTS_FILES) {
+    const target = path.join(".agents", name);
+    if (!fs.existsSync(target)) continue;
+    console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing relocated ${target}`);
+    deletes++;
+    if (!dryRun) fs.rmSync(target, { force: true });
+  }
+
+  return { writes: 0, deletes };
 }
 
 // ---------------------------------------------------------------------------
@@ -767,6 +783,11 @@ async function main() {
     // consumer tree stays clean. No-op when already absent (fresh consumers).
     // Dry-run aware: log only, no FS write.
     removeOrphanTemplatesDir(process.cwd(), upgradeFlags.dryRun);
+
+    // Relocated-orphan removal: mirror sources (.agents/workflows, .agents/prompts),
+    // the bkit-authoring docs, and .agents/rules.md moved into `.bkit/` / `AGENTS.md`.
+    // Strip any copies an old-layout consumer still carries. No-op when absent / in dogfood.
+    runPayload(upgradeFlags.dryRun);
 
     // Collect bkit-managed template candidates from the package.
     // Templates live in .bkit/templates/ — walk the directory for all files.
@@ -932,15 +953,13 @@ async function main() {
   });
 
   // Parse model lookup (needed for cursor transforms).
-  // Source: PACKAGE's .agents/prompts.md, not the consumer's. The consumer's
-  // copy may be stale (e.g. upgrading from a release that predates a newly
-  // added prompt) — reading from the package guarantees the lookup matches the
+  // Source: PACKAGE's .bkit/docs/prompts.md (bkit-authoring data, package-only).
+  // prompts.md is no longer copied into consumers, so the package copy is the
+  // sole source. Reading from the package guarantees the lookup matches the
   // prompt files about to be installed and avoids a mid-install hard-fail in
-  // applyT3 ("Missing model lookup for <name>"). Falls back to consumer file
-  // when running from a non-package context (e.g. the bkit repo itself).
+  // applyT3 ("Missing model lookup for <name>").
   let modelLookup: Map<string, string> = new Map();
-  const pkgPromptsMd = path.join(getPkgRoot(), ".agents", "prompts.md");
-  const promptsMdPath = fs.existsSync(pkgPromptsMd) ? pkgPromptsMd : ".agents/prompts.md";
+  const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
   if (fs.existsSync(promptsMdPath)) {
     try {
       modelLookup = parseModelLookup(promptsMdPath);

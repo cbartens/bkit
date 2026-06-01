@@ -7,7 +7,7 @@
 # Cloud-only: no-op when CLAUDE_CODE_REMOTE != "true". Local sessions rely on
 # pre-commit / lefthook for the same checks.
 #
-# Companion to the cloud environment setup script — see `.agents/cloud.md` for
+# Companion to the cloud environment setup script — see bkit's `cloud.md` for
 # what installs vale/gh binaries (those live in the cloud env, not the repo).
 #
 # IMPORTANT — SessionStart hooks cannot block the session: non-zero exits are

@@ -31,14 +31,14 @@ function countMatches(content: string, pattern: RegExp): number {
 }
 
 // ---------------------------------------------------------------------------
-// Group A — Full-ownership templates (12 files)
+// Group A — Full-ownership templates (11 files)
 // Each must contain exactly ONE bkit:start and ONE bkit:end marker.
+// (Universal rules merged into AGENTS.md — .agents/rules.md retired.)
 // ---------------------------------------------------------------------------
 
 const GROUP_A_MD_FILES = [
   "AGENTS.md",
   "CLAUDE.md",
-  ".agents/rules.md",
   ".agents/docs.md",
   ".agents/friction.md",
   ".agents/skills.md",

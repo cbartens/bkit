@@ -1,13 +1,14 @@
 // bkit-rules-sync.test.ts — WS7-T1 — block-scoped managed-block byte-equality gate.
 //
-// Asserts that the `bkit:start`→`bkit:end` managed block in bkit's own
-// `.agents/rules.md` byte-equals the same block in the canonical template at
-// `.bkit/templates/.agents/rules.md`.
+// The canonical agent rules + workflow router live in the root `AGENTS.md`
+// managed block. This gate asserts that block byte-equals the same block in the
+// shipped template at `.bkit/templates/AGENTS.md`, so a hand edit to one without
+// the other cannot ship.
 //
 // D3 constraint: compare the MANAGED BLOCK ONLY (between `<!-- bkit:start -->`
-// and `<!-- bkit:end -->` inclusive). The `### bkit Repo Authoring` section
-// that follows the closing marker in `.agents/rules.md` is bkit-repo-only —
-// it never ships to consumers, and is NEVER compared by this test.
+// and `<!-- bkit:end -->` inclusive). The `### bkit Repo Authoring` section that
+// follows the closing marker in the root `AGENTS.md` is bkit-repo-only — it never
+// ships to consumers, and is NEVER compared by this test.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -44,38 +45,38 @@ function extractManagedBlock(filePath: string, content: string): string {
 
 describe("bkit-rules-sync — managed block byte-equality gate (WS7-T1, D3)", () => {
   const pkgRoot = getPkgRoot();
-  const agentsRulesPath = path.join(pkgRoot, ".agents", "rules.md");
-  const templateRulesPath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
+  const agentsPath = path.join(pkgRoot, "AGENTS.md");
+  const templateAgentsPath = path.join(pkgRoot, ".bkit", "templates", "AGENTS.md");
 
-  it("both .agents/rules.md and .bkit/templates/.agents/rules.md exist", () => {
-    expect(fs.existsSync(agentsRulesPath), `Missing: ${agentsRulesPath}`).toBe(true);
-    expect(fs.existsSync(templateRulesPath), `Missing: ${templateRulesPath}`).toBe(true);
+  it("both AGENTS.md and .bkit/templates/AGENTS.md exist", () => {
+    expect(fs.existsSync(agentsPath), `Missing: ${agentsPath}`).toBe(true);
+    expect(fs.existsSync(templateAgentsPath), `Missing: ${templateAgentsPath}`).toBe(true);
   });
 
-  it("managed bkit:start→bkit:end block is byte-identical between .agents/rules.md and the template", () => {
-    const agentsContent = fs.readFileSync(agentsRulesPath, "utf-8");
-    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+  it("managed bkit:start→bkit:end block is byte-identical between AGENTS.md and the template", () => {
+    const agentsContent = fs.readFileSync(agentsPath, "utf-8");
+    const templateContent = fs.readFileSync(templateAgentsPath, "utf-8");
 
-    const agentsBlock = extractManagedBlock(agentsRulesPath, agentsContent);
-    const templateBlock = extractManagedBlock(templateRulesPath, templateContent);
+    const agentsBlock = extractManagedBlock(agentsPath, agentsContent);
+    const templateBlock = extractManagedBlock(templateAgentsPath, templateContent);
 
     expect(agentsBlock).toBe(templateBlock);
   });
 
-  it("### bkit Repo Authoring section is present ONLY in .agents/rules.md, not in the template (D3 exclusion)", () => {
-    const agentsContent = fs.readFileSync(agentsRulesPath, "utf-8");
-    const templateContent = fs.readFileSync(templateRulesPath, "utf-8");
+  it("### bkit Repo Authoring section is present ONLY in AGENTS.md, not in the template (D3 exclusion)", () => {
+    const agentsContent = fs.readFileSync(agentsPath, "utf-8");
+    const templateContent = fs.readFileSync(templateAgentsPath, "utf-8");
 
     // The section must exist in the bkit-repo file (outside bkit:end)
     expect(
       agentsContent.includes("### bkit Repo Authoring"),
-      ".agents/rules.md should contain the ### bkit Repo Authoring section",
+      "AGENTS.md should contain the ### bkit Repo Authoring section",
     ).toBe(true);
 
     // The section must NOT exist in the template (it is bkit-repo-only)
     expect(
       templateContent.includes("### bkit Repo Authoring"),
-      ".bkit/templates/.agents/rules.md must NOT contain the bkit-repo-only ### bkit Repo Authoring section",
+      ".bkit/templates/AGENTS.md must NOT contain the bkit-repo-only ### bkit Repo Authoring section",
     ).toBe(false);
   });
 });

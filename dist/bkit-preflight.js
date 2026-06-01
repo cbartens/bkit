@@ -278,7 +278,7 @@ export function detectPrettierignoreScopeBroadening(cwd) {
         id: "prettierignore-scope-broadening",
         severity: "advisory",
         detect: `.prettierignore bkit-managed block is being broadened on this install: ${broadenings.join("; ")}.`,
-        action: "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/rules.md, .agents/docs.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
+        action: "bkit's new .prettierignore block uses broader paths. Files that were previously formatted (e.g. .agents/docs.md, .agents/skills.md) will newly be ignored by Prettier. Confirm this is desired — if you want narrower scope, customise .prettierignore outside the bkit-managed block (your customisations survive the install).",
     };
 }
 // ---------------------------------------------------------------------------
@@ -382,7 +382,7 @@ export function detectObservabilityDebugFetchMissing(cwd) {
         return null;
     const afterBkitEnd = content.slice(endIdx);
     // Consumer-section markers must be line-anchored to mirror the workflow's
-    // `sed`/`awk` extraction (`.agents/workflows/bkit-debug.md:298`).
+    // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md:298`).
     const hasStart = /^<!-- debug-fetch:start -->$/m.test(afterBkitEnd);
     const hasEnd = /^<!-- debug-fetch:end -->$/m.test(afterBkitEnd);
     if (hasStart && hasEnd)

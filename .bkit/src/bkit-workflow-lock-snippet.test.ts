@@ -26,7 +26,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const WORKFLOWS_DIR = path.resolve(".agents/workflows");
+const WORKFLOWS_DIR = path.resolve(".bkit/workflows");
 const MONTH = "202605";
 const FID = "68-digital-agent-mvp";
 

@@ -375,7 +375,7 @@ describe("formatChecklist format contract", () => {
 // parsed the consumer's stale prompts.md → applyT3 hit "Missing model lookup
 // for bkit-design-organise" → process.exit(1) mid-install (partial state).
 //
-// The fix sources the model lookup from the PACKAGE's .agents/prompts.md, so a
+// The fix sources the model lookup from the PACKAGE's .bkit/docs/prompts.md, so a
 // stale consumer copy is tolerated. This test guards against regression and
 // catches the analogous failure for ANY future prompt added without backfill.
 // ---------------------------------------------------------------------------

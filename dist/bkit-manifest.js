@@ -13,8 +13,8 @@
  * - `linear` — Linear (opt-in).
  * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
  *
- * Add a new value here when adding a provider section to `.agents/trackers.md`.
- * See `.agents/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ * Add a new value here when adding a provider section to `.bkit/docs/trackers.md`.
+ * See `.bkit/docs/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
  */
 export const ISSUE_TRACKERS = ["github", "linear", "none"];
 /** Default tracker when consumer manifest has no `bkit.issueTracker` field. */

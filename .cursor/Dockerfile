@@ -26,7 +26,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # <!-- bkit:start -->
 
 # --- bkit toolchain (managed; do not edit) ---------------------------------
-# Aligned with the Claude Code on the web setup script in `.agents/cloud.md`.
+# Aligned with the Claude Code on the web setup script in bkit's `cloud.md`.
 # Updates ship via `pnpm bkit install`; consumer extensions go outside this block.
 
 # System deps the preflight hook + bkit workflows depend on.

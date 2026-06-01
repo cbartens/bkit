@@ -4,7 +4,7 @@
 **Scope:** Build feature and raise PR for default integration branch.
 
 > [!CAUTION]
-> **Read in full:** `.agents/rules.md`.
+> **Read in full:** `AGENTS.md`.
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
 >
 > - **Order:** Execute sequentially unless stated otherwise.

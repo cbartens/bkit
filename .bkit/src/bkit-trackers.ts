@@ -1,6 +1,6 @@
 // bkit-trackers.ts — resolve tracker-specific blocks in workflow source files at
 // install time. Consumed by bkit-modules.ts when the host-pass mirrors
-// `.agents/workflows/bkit-*.md` to `.claude/commands/` and `.cursor/commands/`.
+// `.bkit/workflows/bkit-*.md` to `.claude/commands/` and `.cursor/commands/`.
 //
 // Inline model (no trackers.md substitution): every tracker call site carries the
 // `github` and `linear` variants inline as a consecutive pair. The installer keeps
@@ -15,7 +15,7 @@
 // `pr-body-marker`), otherwise to one generic skip message. There is no separate
 // `none` marker — no-tracker content is always `false`.
 //
-// See `.agents/trackers.md` for the marker contract.
+// See `.bkit/docs/trackers.md` for the marker contract.
 
 import type { IssueTracker } from "./bkit-manifest.js";
 

@@ -9,14 +9,14 @@
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Subagents are leaves — never invoke other subagents.
 > - Subagents NEVER touch the tracker. Tracker MCP tools (GitHub Issues, Linear, etc.) are orchestrator/workflow-layer exclusive.
-> - When you change a workflow file (`.agents/workflows/bkit-*.md`), mirror change here.
+> - When you change a workflow file (`.bkit/workflows/bkit-*.md`), mirror change here.
 
 ## File Layout
 
-Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.claude/commands/` (byte-identical) and `.cursor/commands/` (T1/T2/T3 transformed). Never edit the generated copies.
+Canonical source lives in `.bkit/workflows/`. `bkit install` regenerates `.claude/commands/` (byte-identical) and `.cursor/commands/` (T1/T2/T3 transformed). Never edit the generated copies.
 
 ```
-.agents/workflows/
+.bkit/workflows/
 ├── bkit-design.md         # Workflow 1/6 — 10 steps; hard stop after summary
 ├── bkit-plan.md           # Workflow 2/6 — 11 steps; hard stop after summary
 ├── bkit-build.md          # Workflow 3/6 — 18 steps; CI takes over after PR
@@ -43,14 +43,14 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 
 ## Workflow Authoring Rules
 
-`.agents/workflows/*.md` are AI-only execution surfaces. Every byte is paid on every run.
+`.bkit/workflows/*.md` are AI-only execution surfaces. Every byte is paid on every run.
 
 - **Instructions only:** NO rationale, NO parentheticals explaining "why", NO "we don't do X because Y" notes, NO inline comments justifying behaviour.
 - **Removal = delete:** When dropping an instruction, delete it. NEVER replace it with an explanation of the removal.
-- **Self-contained:** Each workflow file MUST stand alone. NO cross-references to `.agents/workflows.md` or other meta docs. If the orchestrator needs the rule, inline it; if it doesn't, leave it out.
+- **Self-contained:** Each workflow file MUST stand alone. NO cross-references to `.bkit/docs/workflows.md` or other meta docs. If the orchestrator needs the rule, inline it; if it doesn't, leave it out.
 - **Sibling-blind subagent Context:** `Context:` strings stay generic — agent prompts handle their own lens via Process. Canonical phrasings: "You are a subagent in the {Phase} phase running in parallel with N other agents"; for reconcilers, "Inputs carry distinct lenses — merge across them, max-wins on CRITICAL findings".
-- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.agents/workflows.md`) — NEVER in the per-workflow files.
-- **Reuse wording and formatting:** ALWAYS `grep .agents/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
+- **Rationale lives here:** Decisions, trade-offs, history, meta-commentary belong in this file (`.bkit/docs/workflows.md`) — NEVER in the per-workflow files.
+- **Reuse wording and formatting:** ALWAYS `grep .bkit/workflows/` before writing. Copy closest existing phrasing AND formatting verbatim (backticks, indentation, line breaks, punctuation, spacing, etc). Match existing shape exactly for any sections that appear more than once (subagent invocations, gate checklists, `bash` blocks, comment fences, etc).
 - **Cross-workflow alignment:** ALWAYS change shared lines in ALL workflows using them.
 - **Procedural conditionals:** Any flow-gating conditional uses bold `**If** {condition} → {action}.` (with `**Else** → {action}.` for branches), regardless of syntactic shape. Test: if reordering reads as "If {X}, {Y}" naturally, it IS one. Excludes inline qualifiers (`if any`, `if defined`), dispatch tables (`PASS = …`, `STANDARD → …`), iteration (`For each …`), bash inside backticks, and output-template placeholders.
 - **ASCII operators:** Use ASCII comparison/logic operators only — `!=`, `>=`, `<=`, `=>` — and `x` for "times"/dimensions. NEVER Unicode math glyphs (not-equal, greater-or-equal, less-or-equal, implies, multiplication). The flow-arrow `→` in procedural conditionals / dispatch tables is the **sole intentional non-ASCII glyph** — deliberately kept (it is the uniform, documented flow notation used in every conditional, not a stray operator; it reads clearer than `->`, which is also overloaded as member-access). Do NOT convert `→`.
@@ -58,7 +58,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 
 ## Tracker Blocks (#39, inline model)
 
-`.agents/workflows/bkit-*.md` source files carry the wired tracker variants inline — `github` and `linear` — so the full per-tracker behaviour (MCP call shapes, label semantics, state transitions) is visible at the call site in one place. No substitution from `.agents/trackers.md`; the resolver only selects/strips inline blocks. Markers:
+`.bkit/workflows/bkit-*.md` source files carry the wired tracker variants inline — `github` and `linear` — so the full per-tracker behaviour (MCP call shapes, label semantics, state transitions) is visible at the call site in one place. No substitution from `.bkit/docs/trackers.md`; the resolver only selects/strips inline blocks. Markers:
 
 **Per-tracker pair.** Every tracker call site defines a consecutive `github` → `linear` pair (no authored `none` block — the no-tracker rendering is a single generic message):
 
@@ -83,7 +83,7 @@ A `github`/`linear` pair is only for content whose **call genuinely differs**. W
 <!-- bkit:tracker true end -->
 ```
 
-Re-runnable: source workflows carry the wired variants; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors. The resolver reports a lone `github`/`linear` block or an unbalanced `true`/`false` pair as an orphan — silent regressions unacceptable. New tracker call site → add the `github`/`linear` pair inline (no `trackers.md` edit; add a `none` block only if the step must do something specific without a tracker). `.agents/trackers.md` is reference-only (marker contract + cross-cutting per-tracker conventions), no longer a substitution source.
+Re-runnable: source workflows carry the wired variants; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors. The resolver reports a lone `github`/`linear` block or an unbalanced `true`/`false` pair as an orphan — silent regressions unacceptable. New tracker call site → add the `github`/`linear` pair inline (no `trackers.md` edit; add a `none` block only if the step must do something specific without a tracker). `.bkit/docs/trackers.md` is reference-only (marker contract + cross-cutting per-tracker conventions), no longer a substitution source.
 
 **Per-tracker operational notes** (rationale kept here, not in the workflow files per § Workflow Authoring Rules):
 
@@ -98,7 +98,7 @@ Re-runnable: source workflows carry the wired variants; switching trackers (`--t
 > **Agents NEVER call tracker MCP tools.** Tracker MCP tools (`mcp__github__issue_*`, `mcp__linear__*_issue`, `*_comment`, `list_issues`, etc.) are exclusive to the workflow layer. Agent that calls a tracker is a protocol violation.
 
 <!-- prettier-ignore -->
-| Capability | Workflow (`.agents/workflows/`) | Agent (`.agents/prompts/`) |
+| Capability | Workflow (`.bkit/workflows/`) | Agent (`.bkit/prompts/`) |
 | --- | --- | --- |
 | Invoke tracker MCP | ✅ | ❌ |
 | Read/write `docs/` | ✅ | ✅ |
@@ -438,7 +438,7 @@ Create:  {paths the agent writes fresh, with annotations e.g. (MAX 500 token sum
 
 Then assert each Update/Create artifact exists and is non-empty. Empty → **Failure Path**.
 
-**Per-agent description, scope, effort tier, tool surface, and `maxTurns` calibration → see `.agents/prompts.md`.** That file indexes every `.agents/prompts/*.md` agent and is single source of truth for agent metadata; this file only describes how workflow layer composes them.
+**Per-agent description, scope, effort tier, tool surface, and `maxTurns` calibration → see `.bkit/docs/prompts.md`.** That file indexes every `.bkit/prompts/*.md` agent and is single source of truth for agent metadata; this file only describes how workflow layer composes them.
 
 **Cross-platform tool surface:** subagent frontmatter `tools:` allowlist is enforced on both Claude (native) and Cursor (passthrough — Cursor 2.4+). Removing `Edit`/`Bash` makes an agent provably non-mutating on both hosts. `bkit install` T3 transform passes `tools:` through verbatim; never emits `readonly:` (Cursor honours `tools:` allowlist directly).
 
@@ -565,7 +565,7 @@ Both paths idempotent — re-running debug doesn't double-append the marker (Ste
 
 ## Per-Phase Workflows
 
-Each subsection below documents what command actually does — step list, subagents invoked, artifacts written, verdict routing, close behavior. For agent capability and effort details, cross-reference `.agents/prompts.md`.
+Each subsection below documents what command actually does — step list, subagents invoked, artifacts written, verdict routing, close behavior. For agent capability and effort details, cross-reference `.bkit/docs/prompts.md`.
 
 ### `/bkit-design` — 10 steps
 
@@ -809,7 +809,7 @@ pnpm install --frozen-lockfile   # symlink-only ~5s; required because pnpm per-p
 
 ## Tracker Integration
 
-Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes are written inline at each call site as `github`/`linear`/`none` blocks; the installer keeps the chosen tracker's block and drops the others when mirroring to `.claude/commands/` + `.cursor/commands/` (see § Tracker Blocks). `.agents/trackers.md` holds the marker contract + cross-cutting conventions only.
+Pluggable via `bkit install --tracker=<github|linear|none>`. Per-tracker MCP server endpoints, tool names, and call shapes are written inline at each call site as `github`/`linear`/`none` blocks; the installer keeps the chosen tracker's block and drops the others when mirroring to `.claude/commands/` + `.cursor/commands/` (see § Tracker Blocks). `.bkit/docs/trackers.md` holds the marker contract + cross-cutting conventions only.
 
 ### Phase labels (mutually exclusive)
 
@@ -1095,7 +1095,7 @@ Append-only. Cross-doc grep by ID: `grep -rE 'KN-\d+|DE-\d+' docs/`. See `.agent
 
 ## Authoring Checklist for New / Refined Workflows
 
-When writing or editing `.agents/workflows/bkit-*.md` (canonical source — `bkit install` regenerates `.claude/commands/` and `.cursor/commands/`):
+When writing or editing `.bkit/workflows/bkit-*.md` (canonical source — `bkit install` regenerates `.claude/commands/` and `.cursor/commands/`):
 
 - [ ] YAML frontmatter with `description`.
 - [ ] Header with `Output:` and `Tracker:` lines.
@@ -1113,5 +1113,5 @@ When writing or editing `.agents/workflows/bkit-*.md` (canonical source — `bki
 - [ ] Docs-only commits include both `bkit [skip build]` and `bkit [skip ci]` (§ CI / Vercel commit tags).
 - [ ] Branch eligibility check on phases that don't create their own branch (`/bkit-debug`, `/bkit-ship`).
 - [ ] Token efficient — tables > prose, `→` not `then`, no sub-bullets when a table works.
-- [ ] If new agent is introduced, add it to `.agents/prompts.md` with frontmatter rationale and `maxTurns` calibration.
+- [ ] If new agent is introduced, add it to `.bkit/docs/prompts.md` with frontmatter rationale and `maxTurns` calibration.
 - [ ] If new destructive shell command is introduced, route it through `ask` or `deny` in `.claude/settings.json`.

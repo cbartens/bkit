@@ -8,7 +8,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Scope:** Remediate feature failures and push to branch.
 
 > [!CAUTION]
-> **Read in full:** `.agents/rules.md`.
+> **Read in full:** `AGENTS.md`.
 > **EXECUTION PROTOCOL:** Strict procedure, do NOT deviate.
 >
 > - **Order:** Execute sequentially unless stated otherwise.

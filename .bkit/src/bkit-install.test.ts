@@ -192,7 +192,7 @@ describe("T3 — subagent frontmatter rewrite", () => {
   });
 
   it("exits non-zero when frontmatter is missing the `name` field", () => {
-    // Guards against a per-prompt file shipped in `.agents/prompts/` losing its
+    // Guards against a per-prompt file shipped in `.bkit/prompts/` losing its
     // `name:` field (manual edit / merge conflict / template skew). Without this
     // test the failure surfaces only on a consumer running install.
     const input = `---\ndescription: desc\neffort: medium\n---\nBody.\n`;
@@ -229,9 +229,9 @@ describe("parseFrontmatter", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseModelLookup", () => {
-  it("parses one row per agent file in .agents/prompts/", () => {
-    const lookup = parseModelLookup();
-    const agentFiles = fs.readdirSync(".agents/prompts").filter((f) => f.endsWith(".md"));
+  it("parses one row per agent file in .bkit/prompts/", () => {
+    const lookup = parseModelLookup(".bkit/docs/prompts.md");
+    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     expect(lookup.size).toBe(agentFiles.length);
     for (const [name, model] of lookup) {
       expect(name).toBeTruthy();
@@ -239,12 +239,12 @@ describe("parseModelLookup", () => {
     }
   });
 
-  it("all .agents/prompts/ files have a lookup row", () => {
-    const lookup = parseModelLookup();
-    const agentFiles = fs.readdirSync(".agents/prompts").filter((f) => f.endsWith(".md"));
+  it("all .bkit/prompts/ files have a lookup row", () => {
+    const lookup = parseModelLookup(".bkit/docs/prompts.md");
+    const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     const missingNames: string[] = [];
     for (const f of agentFiles) {
-      const content = fs.readFileSync(path.join(".agents/prompts", f), "utf-8");
+      const content = fs.readFileSync(path.join(".bkit/prompts", f), "utf-8");
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (!fmMatch) continue;
       const parsed = parseFrontmatter(fmMatch[1]);
@@ -273,7 +273,7 @@ describe("parseModelLookup", () => {
   });
 
   it("all parsed model values have no backticks", () => {
-    const lookup = parseModelLookup();
+    const lookup = parseModelLookup(".bkit/docs/prompts.md");
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }

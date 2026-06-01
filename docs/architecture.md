@@ -43,8 +43,8 @@ cbartens/bkit (this repo)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
 │   └── bkit-status.ts      # status.json schema + invariant validator
 ├── dist/                   # Compiled output (committed; published in tarball)
-├── .agents/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
-├── .agents/prompts/        # Subagent prompt files
+├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
+├── .bkit/prompts/        # Subagent prompt files
 ├── .bkit/templates/        # Files templated into consumer repos on install
 └── package.json            # bin: bkit → dist/bkit-install.js
 ```

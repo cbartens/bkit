@@ -935,7 +935,7 @@ export function buildCloudSetupAdvisory(cwd) {
                     id: "cloud-claude-missing-id-token",
                     severity: "blocker",
                     detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
-                    action: "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See `.agents/cloud.md` § Post-CI auto-routing.",
+                    action: "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
                 };
             }
         }
@@ -943,7 +943,7 @@ export function buildCloudSetupAdvisory(cwd) {
             id: "cloud-router",
             severity: "advisory",
             detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and \`.agents/cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
     // No router present — distinguish deliberate opt-out from undecided.

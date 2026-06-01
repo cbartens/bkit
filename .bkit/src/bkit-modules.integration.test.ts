@@ -1438,39 +1438,37 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
 });
 
 // ---------------------------------------------------------------------------
-// COPY_EXCLUDE: Tier-2-style `.agents/*.md` files must NOT be additively copied
-// from the package payload — they ship as templates and the templates pass owns
-// them. Regression for the "consumer rules.md leaks bkit's `## Project Rules`
-// content from outside the bkit:start/end block" bug.
+// Canonical rules live in the root `AGENTS.md` managed block, installed by the
+// core-templates pass. bkit's own out-of-block authoring content must NOT leak
+// to consumers. Tier-2-style `.agents/*.md` files (friction/docs/skills) must
+// likewise NOT be additively copied from the package payload.
 // ---------------------------------------------------------------------------
 
-describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` must not leak to consumers", () => {
-  it("first install matches the template (no out-of-block content from bkit's source rules.md)", () => {
+describe("Core templates: AGENTS.md rules block + `.agents/{friction,docs,skills}.md` must not leak bkit content", () => {
+  it("first install AGENTS.md matches the template (no out-of-block bkit Repo Authoring content)", () => {
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
 
-    const consumerRules = fs.readFileSync(path.join(tmpDir, ".agents", "rules.md"), "utf-8");
+    const consumerAgents = fs.readFileSync(path.join(tmpDir, "AGENTS.md"), "utf-8");
 
     // Template content (what consumers SHOULD get) lives in the package's
-    // .bkit/templates/.agents/rules.md — resolve from the running package root.
+    // .bkit/templates/AGENTS.md — resolve from the running package root.
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
     const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", ".agents", "rules.md");
+    const templatePath = path.join(pkgRoot, ".bkit", "templates", "AGENTS.md");
     const template = fs.readFileSync(templatePath, "utf-8");
 
     // Both files have markers — the inner block content must match (modulo
     // surrounding-newline normalisation done by updateManagedBlock).
-    const consumerBlock = extractManagedBlock(consumerRules, "html-comment");
+    const consumerBlock = extractManagedBlock(consumerAgents, "html-comment");
     const templateBlock = extractManagedBlock(template, "html-comment");
     expect(consumerBlock).not.toBeNull();
     expect(consumerBlock).toBe(templateBlock);
 
-    // Critically: bkit's own out-of-block content (its `## Project Rules`
-    // children — e.g. "### bkit Repo Authoring", "### Pre-push Checklist
-    // (this repo)") MUST NOT appear in a consumer install.
-    expect(consumerRules).not.toMatch(/###\s+bkit Repo Authoring/);
-    expect(consumerRules).not.toMatch(/###\s+Pre-push Checklist \(this repo\)/);
+    // Critically: bkit's own out-of-block content (the "### bkit Repo Authoring"
+    // section after bkit:end) MUST NOT appear in a consumer install.
+    expect(consumerAgents).not.toMatch(/###\s+bkit Repo Authoring/);
   });
 
   it("first install of friction.md does not carry bkit's friction-log entries", () => {
@@ -1487,19 +1485,17 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     expect(consumerFriction).not.toMatch(/^##\s+.+\(\d{4}-\d{2}-\d{2}\)/m);
   });
 
-  it("rules.md is reachable via the templates pass — no additive leak path", () => {
-    // Simulates a brand-new consumer: no .agents/ exists. After runCoreModule,
-    // the only writer of `.agents/rules.md` should be the templates pass
-    // (sourced from `.bkit/templates/.agents/rules.md`), not copyAdditive.
+  it("AGENTS.md is reachable via the core-templates pass — no additive leak path", () => {
+    // Simulates a brand-new consumer. After runCoreModule, the writer of
+    // `AGENTS.md` should be the core-templates pass (sourced from
+    // `.bkit/templates/AGENTS.md`), not copyAdditive.
     const ctx = makeCtx();
     runCoreModule(ctx);
     flushPostDispatch(ctx);
 
-    // The rules.md write MUST appear in ws.writes (templates pass tracks it).
-    const ruleWrites = ctx.ws.writes.filter((w) =>
-      w.path.endsWith(path.join(".agents", "rules.md")),
-    );
-    expect(ruleWrites.length).toBeGreaterThan(0);
+    // The AGENTS.md write MUST appear in ws.writes (templates pass tracks it).
+    const agentsWrites = ctx.ws.writes.filter((w) => w.path.endsWith("AGENTS.md"));
+    expect(agentsWrites.length).toBeGreaterThan(0);
   });
 });
 

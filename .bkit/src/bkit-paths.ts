@@ -58,6 +58,30 @@ export function getTemplatesRoot(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Mirror-source roots. `.bkit/workflows` and `.bkit/prompts` are the canonical
+// SOURCE for the `.claude/*` and `.cursor/*` mirrors. They live only in the bkit
+// package — never copied into a consumer — so the install engine resolves them
+// package-relative (via getPkgRoot()), not from the consumer's cwd. In dogfood
+// (getPkgRoot() === cwd) these resolve to the in-repo source, so mirror
+// regeneration works unchanged.
+// ---------------------------------------------------------------------------
+
+export function getWorkflowsRoot(): string {
+  return path.join(getPkgRoot(), ".bkit", "workflows");
+}
+
+export function getPromptsRoot(): string {
+  return path.join(getPkgRoot(), ".bkit", "prompts");
+}
+
+// `.bkit/docs/` holds bkit-authoring reference docs + engine data (e.g.
+// prompts.md's Cursor model-lookup table). Package-only, never shipped to
+// consumers.
+export function getBkitDocsRoot(): string {
+  return path.join(getPkgRoot(), ".bkit", "docs");
+}
+
+// ---------------------------------------------------------------------------
 // isDogfood — true when bkit is running inside its own repo (in-repo install).
 // In this case the source tree IS the consumer's .agents/ directory, so any
 // payload copy would overwrite the source with itself — a no-op at best and a

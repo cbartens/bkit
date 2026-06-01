@@ -118,7 +118,7 @@
 - **Status:** deferred
 - **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
 - **Source:** phase
-- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
+- **Related:** BAR-155, `.bkit/prompts/bkit-build-plan-execute.md`, `.bkit/workflows/bkit-plan.md` Step 8
 
 ## BAR-155 deferred — KN/DE auto-renumber on rebase conflicts (2026-05-09)
 
