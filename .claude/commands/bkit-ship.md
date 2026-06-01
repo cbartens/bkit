@@ -161,7 +161,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/ .bkit/friction.md
+     git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build] bkit [skip ci]"
    fi
    ```
