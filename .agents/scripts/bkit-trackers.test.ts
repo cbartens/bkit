@@ -66,6 +66,20 @@ ISSUE_ID="" — derive FID from branch.
     expect(r.output).toContain("g2");
   });
 
+  it("does not jam content that follows a pair with no trailing false block", () => {
+    // Regression: the optional trailing-false `\s*` used to live outside the
+    // optional group, eating the newline after a pair and merging the next line
+    // onto the kept body (e.g. `…COMMENTS.→ EXISTING map…`).
+    const wf = `2. ${pair("read call", "read call ln")}\n   → trailing derived line.\n`;
+
+    const gh = substituteWorkflow(wf, "github").output;
+    expect(gh).toContain("read call\n   → trailing derived line.");
+    expect(gh).not.toContain("read call→ trailing derived line.");
+
+    const no = substituteWorkflow(wf, "none").output;
+    expect(no).toContain("_No tracker connected, skip step._\n   → trailing derived line.");
+  });
+
   it("flags a lone github block (no linear) as an orphan", () => {
     const wf = `<!-- bkit:tracker github start -->\nbody\n<!-- bkit:tracker github end -->\n`;
     const r = substituteWorkflow(wf, "github");
@@ -187,4 +201,66 @@ describe("real workflow sources", () => {
       expect(legacyNone, `${wf} has retired bkit:tracker none markers`).toBe(0);
     }
   });
+
+  // #202 invariant guard: tracker-only operations and their internal data
+  // placeholders must NEVER survive into the `none` render — they live only
+  // inside github/linear pairs (collapse to a stub under none) or `true` blocks
+  // (removed under none). If one leaks into the none render, a step assumes a
+  // tracker that isn't wired (the #202 bug class). Excluded: ISSUE_ID, STATE,
+  // LABELS, DESCRIPTION, COMMENTS — these legitimately appear in the none path
+  // (FID derivation, and the `false` stub that sets them empty).
+  const TRACKER_ONLY_TOKENS = [
+    "mcp__github__", // any GitHub tracker tool call
+    "mcp__linear__", // any Linear tracker tool call
+    "TARGET_ISSUE_ID",
+    "WORKSTREAM_ISSUE_ID",
+    "SUB_ISSUE_NUMBER",
+    "SUB_ISSUE_NODE_ID",
+    "BLOCKED_BY_LIST",
+    "CURRENT_BODY",
+    "NEW_BODY",
+    "ITEM_ID",
+    "LINEAR_TEAM",
+    "githubProject", // Projects v2 board config (bkit.githubProject.*)
+    "progressOptionId",
+  ];
+
+  for (const wf of workflows) {
+    it(`${wf} leaks no tracker-only token into the none render (#202 guard)`, () => {
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".agents", "workflows", `${wf}.md`),
+        "utf-8",
+      );
+      const out = substituteWorkflow(src, "none").output;
+      const leaked = TRACKER_ONLY_TOKENS.filter((t) => out.includes(t));
+      expect(leaked, `${wf} none render leaks tracker-only tokens: ${leaked.join(", ")}`).toEqual(
+        [],
+      );
+    });
+  }
+
+  // A github/linear pair is for content whose CALL genuinely differs. If the two
+  // bodies are byte-identical, the pair is redundant duplication — it must be a
+  // single `bkit:tracker true` block (kept for any wired tracker, removed under
+  // none) instead.
+  const PAIR_RE =
+    /<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->\s*<!--\s*bkit:tracker\s+linear\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+linear\s+end\s*-->/g;
+  for (const wf of workflows) {
+    it(`${wf} has no identical github/linear pair (should be a true block)`, () => {
+      const src = fs.readFileSync(
+        path.join(REPO_ROOT, ".agents", "workflows", `${wf}.md`),
+        "utf-8",
+      );
+      const identical: string[] = [];
+      let m: RegExpExecArray | null;
+      PAIR_RE.lastIndex = 0;
+      while ((m = PAIR_RE.exec(src)) !== null) {
+        if (m[1].trim() === m[2].trim()) identical.push(m[1].trim().slice(0, 60));
+      }
+      expect(
+        identical,
+        `${wf} has byte-identical github/linear pair(s) — use \`true\`: ${identical.join(" | ")}`,
+      ).toEqual([]);
+    });
+  }
 });

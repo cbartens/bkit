@@ -64,7 +64,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 [Full design body — verbatim copy, verdict header stripped.]
 
-## Design Workstreams
+## Suggested Workstreams
 
 ### WS-{N}: [Workstream Name]
 

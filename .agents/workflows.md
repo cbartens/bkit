@@ -21,7 +21,7 @@ Canonical source lives in `.agents/workflows/`. `bkit install` regenerates `.cla
 ├── bkit-plan.md           # Workflow 2/6 — 11 steps; hard stop after summary
 ├── bkit-build.md          # Workflow 3/6 — 18 steps; CI takes over after PR
 ├── bkit-debug.md          # Workflow 4/6 — 12 steps; observe + normal-debug modes
-├── bkit-ship.md           # Workflow 5/6 — 11 steps; merge → archive → close
+├── bkit-ship.md           # Workflow 5/6 — 11 steps; merge → archive → In Review (human closes)
 ├── bkit-audit.md          # Workflow 6/6 — 7 steps; hard stop after summary
 ├── bkit-cloud.md          # Utility — phase-routed cloud dispatch (ship/debug by CI; design/plan/build by dispatch)
 ├── bkit-worktree-sync.md  # Utility — human-triggered; merge worktree branch into IDE branch
@@ -74,6 +74,8 @@ At `bkit install` time the installer reads `bkit.issueTracker` from the consumer
 
 **Conditional blocks (`bkit:tracker true` / `bkit:tracker false`).** Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body): `true` is kept when a tracker is connected and **removed entirely under `none`** (used for shared content like comment `{BODY}` fences, identical for github/linear); `false` is kept ONLY under `none`. A removed block consumes its leading newline so no blank gap remains.
 
+A `github`/`linear` pair is only for content whose **call genuinely differs**. When the two bodies would be **byte-identical** (same text/call for both trackers), use a single `true` block instead — duplicating identical content as a pair is redundant. Enforced by a test (`bkit-trackers.test.ts` — "no identical github/linear pair"). Note the `none` difference: a pair collapses to the `_No tracker connected, skip step._` stub, whereas a `true` block is removed outright — so only use `true` where the content can vanish under `none` (inline notes, gate items), not where a standalone numbered step needs a stub to keep its number.
+
 ```text
 <!-- bkit:tracker true start -->
 … shared content (kept when wired; removed under none) …
@@ -81,6 +83,14 @@ At `bkit install` time the installer reads `bkit.issueTracker` from the consumer
 ```
 
 Re-runnable: source workflows carry the wired variants; switching trackers (`--tracker=linear` after `--tracker=github`) operates on the same source, producing fresh mirrors. The resolver reports a lone `github`/`linear` block or an unbalanced `true`/`false` pair as an orphan — silent regressions unacceptable. New tracker call site → add the `github`/`linear` pair inline (no `trackers.md` edit; add a `none` block only if the step must do something specific without a tracker). `.agents/trackers.md` is reference-only (marker contract + cross-cutting per-tracker conventions), no longer a substitution source.
+
+**Per-tracker operational notes** (rationale kept here, not in the workflow files per § Workflow Authoring Rules):
+
+- **Projects v2 board sync** (`issue-update-status`): best-effort — never gates; on failure the workflow retries once after 5s then continues. The `update_project_item` call needs the numeric `item_id`, NOT the node id returned by `add_project_item` — hence the intervening `projects_list` resolve step. The status `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name. Linear has no separate board (issue state carries the status) → its `issue-update-status` is a no-op.
+- **Blocked-by edges:** GitHub Issues have no native `blockedBy` field → encoded via a `<!-- bkit:blocked-by -->` marker block in the issue body. Linear has a native `blockedBy` (append-only; re-runs with unchanged edges are no-ops).
+- **Sub-issue create:** GitHub has no `parentId` on issue create → two calls (`issue_write` create, then `sub_issue_write` attach). Linear attaches via `parentId` in the create call (one call).
+- **issue-update-review** (phase-close hand-off): GitHub no-op — the phase label set in `issue-update-phase` carries the completion signal until ship's terminal `issue-update-merged`.
+- **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops the phase labels, adds `bkit:merged`, and moves the issue to **In Review** — Linear `state: "In Review"`, GitHub left **open** (the board, if wired, goes to the review option, not done). A human reviews the merged change and closes the issue manually. Rationale: a merge is not an acceptance — a person should confirm the shipped result before the issue is considered done, so closing stays a deliberate human act.
 
 ## Two-Layer Separation Rules
 
@@ -111,7 +121,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 6. Step 2 — Worktree Setup         (create/resume .worktrees/{FID}, copy env, pnpm install, save input, status init + `start-workflow` + `worktree-setup` step entries committed on `feat/{FID}`)
 7. Phase-specific steps            (subagent invocations, gates, per-step new comment post)
 8. Summary step                    (subagent → commit → push → verdict)
-9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal close via `issue-update-merged`; non-ship phases preserve phase label)
+9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal `bkit:merged` + In Review via `issue-update-merged` (issue left OPEN — human reviews + closes); non-ship phases preserve phase label)
 ```
 
 **Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and posts a NEW tracker comment with one fenced section (see § Comment Lifecycle).
@@ -830,7 +840,7 @@ Phase labels carry the `bkit:` namespace prefix so they never clash with consume
 | `bkit:plan` | `/bkit-plan` running |
 | `bkit:build` | `/bkit-build` running |
 | `bkit:ship` | `/bkit-ship` running |
-| `bkit:merged` | `/bkit-ship` completed; PR merged to `dev`; terminal |
+| `bkit:merged` | `/bkit-ship` completed; PR merged to `dev`; issue left **In Review** (open) — a human reviews post-merge and closes manually (bkit never auto-closes) |
 
 Phase label is preserved through Close Workflow exit — tracker-specific state (e.g. Linear "In Review", GitHub `open`) carries the completion signal, so the label tells reviewers which workflow just finished. Ship is the exception: Close Workflow swaps `bkit:ship` → `bkit:merged`.
 

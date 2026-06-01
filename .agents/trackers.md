@@ -44,18 +44,15 @@ Boolean tracker-presence gates for tracker-agnostic content (no per-tracker body
 
 Conditionals are resolved AFTER the pair pass, so a pair nested inside a kept `true` block is resolved first. A removed block consumes its leading newline + indentation so no blank gap remains. An unbalanced `start`/`end` is reported as an orphan.
 
-**Numbered-step rule:** never wrap a numbered list item's NUMBER inside a `true` block — under `none` the whole item (number included) vanishes and leaves a numbering gap (`1, 6, 7`). For a numbered step whose entire body is tracker-only, keep the `N.` outside the markers and pair a `true` body with a trailing `false` stub:
+**Numbered-step rule:** never wrap a numbered list item's NUMBER inside a `true` block — under `none` the whole item (number included) vanishes and leaves a numbering gap (`1, 6, 7`). For a numbered step whose entire body is tracker-only, keep the `N.` outside the markers and pair a `true` body with a trailing `false` stub. Put the `false` block on the SAME line as `true end`, with a single leading space before the stub text, so it renders inline (`N. _stub_`) rather than on a dangling continuation line:
 
 ```text
 N. <!-- bkit:tracker true start -->
    … tracker-only body (github/linear pairs allowed inside) …
-   <!-- bkit:tracker true end -->
-   <!-- bkit:tracker false start -->
-   _No tracker connected, skip step._
-   <!-- bkit:tracker false end -->
+   <!-- bkit:tracker true end --><!-- bkit:tracker false start --> _No tracker connected, skip step._<!-- bkit:tracker false end -->
 ```
 
-Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — the number always survives. (The bare-`true` "removed, no stub" form is for **checklist `- [ ]` gate items**, where vanishing is correct — a stub bullet would be noise.)
+Renders `N. <body>` when wired, `N. _No tracker connected, skip step._` under `none` — the number always survives, on one line. (The bare-`true` "removed, no stub" form is for **checklist `- [ ]` gate items**, where vanishing is correct — a stub bullet would be noise.)
 
 ## Interaction catalog
 
@@ -72,7 +69,7 @@ The per-tracker call sites are referenced across `.agents/workflows.md` by these
 | `issue-update-review` | phase Close hand-off (non-terminal) | no-op (label carries) | `save_issue` In Review | skip |
 | `issue-update-failed` | Failure Path additive `bkit:failed` | `issue_write` labels | `save_issue` In Review | skip |
 | `issue-update-debug` | `/bkit-debug` Step 1 additive `bkit:debug` | `issue_write` labels | `save_issue` In Review | skip |
-| `issue-update-merged` | Ship terminal close | `issue_write` `bkit:merged` + closed | `save_issue` Done | skip |
+| `issue-update-merged` | Ship terminal — `bkit:merged` + In Review (issue left open; human closes) | `issue_write` `bkit:merged` (no close) | `save_issue` In Review | skip |
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
 | `comment-post-step` | NEW comment per workflow step | `add_issue_comment` | `save_comment` | skip |
 | `comment-on-issue` | NEW comment on an arbitrary issue | `add_issue_comment` (`{TARGET_ISSUE_ID}`) | `save_comment` (`{TARGET_ISSUE_ID}`) | skip |

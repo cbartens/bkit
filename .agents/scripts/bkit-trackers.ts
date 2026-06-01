@@ -44,9 +44,12 @@ const NONE_STUB = "_No tracker connected, skip step._";
 /**
  * Per-tracker group: a consecutive `github` → `linear` pair, each
  * `<!-- bkit:tracker {name} start -->` … `<!-- bkit:tracker {name} end -->`,
- * with an OPTIONAL trailing `false` block. Inter-block whitespace is absorbed by
- * `\s*`. A list-number prefix (`3. `) precedes the first marker and is left
- * untouched, so the kept body / none stub attaches to it cleanly.
+ * with an OPTIONAL trailing `false` block. The whitespace BEFORE the optional
+ * `false` block lives INSIDE the optional group (`(?:\s*<false>)?`), so when no
+ * `false` follows the pair, the trailing newline + indent are left untouched —
+ * otherwise content immediately after the pair would jam onto the kept body. A
+ * list-number prefix (`3. `) precedes the first marker and is left untouched, so
+ * the kept body / none stub attaches to it cleanly.
  *
  * `none` resolution: if a trailing `false` block is present (substantive
  * no-tracker behaviour — e.g. `issue-id-extraction`, `fid-format`,
@@ -54,14 +57,15 @@ const NONE_STUB = "_No tracker connected, skip step._";
  * (Standalone `false` blocks not attached to a pair are handled in pass 2.)
  */
 const PAIR_RE = new RegExp(
-  [
-    /<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->/
-      .source,
+  /<!--\s*bkit:tracker\s+github\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+github\s+end\s*-->/
+    .source +
+    "\\s*" +
     /<!--\s*bkit:tracker\s+linear\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+linear\s+end\s*-->/
-      .source,
-    /(?:<!--\s*bkit:tracker\s+false\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+false\s+end\s*-->)?/
-      .source,
-  ].join("\\s*"),
+      .source +
+    "(?:\\s*" +
+    /<!--\s*bkit:tracker\s+false\s+start\s*-->([\s\S]*?)<!--\s*bkit:tracker\s+false\s+end\s*-->/
+      .source +
+    ")?",
   "g",
 );
 

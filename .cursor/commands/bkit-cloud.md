@@ -28,6 +28,8 @@
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
+
+
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
 
 ---
@@ -46,7 +48,8 @@
      git -C "$REPO_ROOT" push origin dev 2>/dev/null || true
    fi
    ```
-2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
+2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
    Step: {N} — {Step Name}; Sub-step: {M}
@@ -87,15 +90,13 @@
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback), then init status:
     
-    When `bkit-build` opens the PR, the body template includes a metadata marker:
+    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse the marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
     <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
     ```
 
-    HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
-
-    **Fail-closed:** missing or malformed marker → terminate workflow (no-op exit; the live kill switch for CI auto-routing is the in-job `bkit:auto` label re-check in `bkit-cloud.yml`).
+    **If** marker missing or malformed → terminate workflow.
 
     **Fallback** (`bkit-build` was run pre-metadata, or metadata missing): parse `FID`:
 
@@ -122,7 +123,8 @@
       "$STATUS" > "$t" && mv "$t" "$STATUS"
     ```
 
-11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below (CI-class includes the branch/PR/run links; brief-class omits them — there is no PR):
+11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+    `{BODY}` = fenced block below (CI-class includes the branch/PR/run links; brief-class omits them — there is no PR):
     ```comment
     ## bkit Cloud
     ### Step 1 — Start Workflow - Phase: {PHASE}
@@ -157,7 +159,8 @@
    git -C "$REPO_ROOT" commit -m "docs({FID}): cloud DONE bkit [skip ci]"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
-2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.`{BODY}` = fenced block below:
+2. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Dispatch - Phase: {PHASE}
    ```

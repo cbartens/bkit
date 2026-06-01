@@ -62,10 +62,10 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
    fi
    ```
 2. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
@@ -111,37 +111,32 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback), then init status:
     <!-- bkit:tracker github start -->
 
-    When `bkit-build` opens the PR, the body template includes a metadata marker:
+    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse the marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
     <!-- bkit:issue=#{ISSUE_ID} bkit:fid={FID} -->
     ```
 
-    HTML comment, invisible in rendered PR body. Downstream workflows (debug, ship, cloud) resolve issue ID and FID by reading PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` and parsing the marker.
-
-    **Fail-closed:** missing or malformed marker → terminate workflow (no-op exit; the live kill switch for CI auto-routing is the in-job `bkit:auto` label re-check in `bkit-cloud.yml`).
+    **If** marker missing or malformed → terminate workflow.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
 
-    When `bkit-build` opens the GitHub PR, the body template includes a metadata marker:
+    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse the marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
     <!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
     ```
 
-    (Linear ISSUE_ID like `BAR-123` — no `#` prefix.) HTML comment, invisible in rendered PR body. Downstream workflows resolve via `mcp__github__pull_request_read` + marker parsing.
-
-    **Fail-closed:** missing or malformed marker → terminate workflow (no-op exit).
+    **If** marker missing or malformed → terminate workflow.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker false start -->
 
-    PR body still gets the marker, just without verified issue resolution:
+    Parse `FID` from the marker below (no `ISSUE_ID` under `none`):
 
     ```html
     <!-- bkit:fid={FID} -->
     ```
 
-    (`bkit:issue=` omitted when `ISSUE_ID` is empty.) Downstream workflows read FID; tracker calls remain no-ops.
     <!-- bkit:tracker false end -->
 
     **Fallback** (`bkit-build` was run pre-metadata, or metadata missing): parse `FID`:
@@ -170,10 +165,10 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
     ```
 
 11. <!-- bkit:tracker github start -->
-    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
-    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below (CI-class includes the branch/PR/run links; brief-class omits them — there is no PR):
@@ -215,10 +210,10 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
    git -C "$REPO_ROOT" push origin dev || { echo "dev push failed" >&2; exit 1; }
    ```
 2. <!-- bkit:tracker github start -->
-   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit. Each workflow step posts ONE new comment with its output.
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — no `id` field → NEW comment. Each workflow step posts ONE new comment with its output.
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:

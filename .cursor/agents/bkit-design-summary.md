@@ -75,21 +75,25 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 [Brainstorms proposed N approaches; synthesis kept M; dropped which/why. Reasonable, or did good options get lost?; initially set to `PENDING`.]
 
+## Scope Alignment
+
+[Creep vs original brief; initially set to `PENDING`.]
+
 ## Risks
 
 [Unknowns, dependencies, assumptions; initially set to `PENDING`.]
+
+## Action Items
+
+[Only if `CONCERNS`/`FAIL` — specific revisions needed before planning; initially set to `PENDING`.]
 
 ## Outstanding Questions
 
 [Sourced from the design artifact's `## Risks & Open Questions`. One bullet per open question, each with a subagent-generated recommended answer. **Advisory only — MUST NOT influence the `Verdict`.** If none, render `_None._`. Format per item: `- **Q:** <question> — **Recommended:** <best-judgement default>`; initially set to `PENDING`.]
 
-## Scope
+## Suggested Workstreams
 
-[Creep vs original brief; initially set to `PENDING`.]
-
-## Action Items
-
-[Only if `CONCERNS`/`FAIL` — specific revisions needed before planning; initially set to `PENDING`.]
+[Summarise workstreams `WS-{N}` including `Requires` prerequisites; initially set to `PENDING`.]
 
 ## Recommended Next Step
 
