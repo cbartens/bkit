@@ -56,9 +56,9 @@
      *) echo "Unrecognised PHASE: $PHASE" >&2; exit 1 ;;
    esac
    ```
-   **If** the exit branch fires → **Failure Path**.
+   **If** exit branch fires → **Failure Path**.
 3. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
-4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. Assert `ISSUE_ID` non-empty. **Else** → **Failure Path**. Skip sub-steps 5–10.
+4. **If** `MODE` = BRIEF → set `ISSUE_ID="$ARG"`. **If** `ISSUE_ID` empty → **Failure Path**. **Else** → step 11.
 5. **If** `MODE` = CI → set `PR_NUMBER="$ARG"`.
 6. `gh pr view "$PR_NUMBER" --json headRefName,headRefOid,state,url --jq '.headRefName + "\t" + .headRefOid + "\t" + .state + "\t" + .url'` → split into `BRANCH`, `HEAD_SHA`, `PR_STATE`, `PR_URL`. Assert `BRANCH`, `HEAD_SHA`, `PR_URL` non-empty. **Else** → **Failure Path**.
 7. **If** `PR_STATE` != OPEN → **Failure Path**. **If** `BRANCH` does NOT start with `feat/` → **Failure Path**.
@@ -69,7 +69,7 @@
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
-    
+     
     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
@@ -90,10 +90,11 @@
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] `PHASE` in `ship|debug|design|plan|build`; `MODE` set (`CI` for ship/debug, `BRIEF` for design/plan/build)
-- [ ] `OWNER_REPO`, `OWNER`, `REPO` non-empty; `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
-- [ ] `MODE` = CI only: `PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID` non-empty; PR OPEN and branch in `feat/**`
-- [ ] Issue comment attempted (`Step 1` section, fresh comment)
+- [ ] `PHASE` and `MODE` determined
+- [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
+- [ ] `ISSUE_ID` non-empty (if tracker wired)
+- [ ] `PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID` non-empty (if `MODE` = CI)
+- [ ] Issue comment attempted (`Step 1` section)
 
 ---
 
@@ -110,9 +111,10 @@
    - `design` → `/bkit-design {ISSUE_ID}`
    - `plan` → `/bkit-plan {ISSUE_ID}`
    - `build` → `/bkit-build {ISSUE_ID}`
-   **If** `{PHASE}` matches none of above → **Failure Path**.
+     **If** `{PHASE}` matches none of above → **Failure Path**.
 
 ### 🔒 Gate 2 — Dispatch
+
 
 - [ ] Issue comment attempted (`Step 2` section)
 - [ ] The phase skill matching `{PHASE}` was invoked with the correct argument (`{FID}` for ship/debug, `{ISSUE_ID}` for design/plan/build)
