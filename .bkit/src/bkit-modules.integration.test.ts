@@ -265,7 +265,7 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
         p.includes(".vale") ||
         p.includes("slop-scan") ||
         p.includes(".prettierignore") ||
-        p.includes(".bkit-version"),
+        p.includes(".bkit/version"),
     );
     expect(hasCiOrLint).toBe(true);
   });
@@ -319,7 +319,7 @@ describe("module dispatch: --core is implicit before any other module", () => {
     dispatchModules(new Set(["core", "ci"]), ctx);
 
     // .bkit-version is written in postDispatch — AFTER all module writes
-    const bkitVersionIdx = realWs.writes.findIndex((e) => e.path.endsWith(".bkit-version"));
+    const bkitVersionIdx = realWs.writes.findIndex((e) => e.path.endsWith(".bkit/version"));
 
     // Consumer-facing ci.yml is written by ci module (before postDispatch)
     // It's at a path like .github/workflows/ci.yml (NOT inside .agents/templates/)
@@ -369,7 +369,7 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
     dispatchModules(new Set(["core"]), ctx);
 
     const writeOrder = ws.writes.map((e) => e.path);
-    const bkitVersionIdx = writeOrder.findIndex((p) => p.includes(".bkit-version"));
+    const bkitVersionIdx = writeOrder.findIndex((p) => p.includes(".bkit/version"));
 
     // .bkit-version should be present
     expect(bkitVersionIdx).toBeGreaterThanOrEqual(0);
@@ -382,7 +382,7 @@ describe(".bkit-version write-order regression (Reviewer 1 #7 + MED-4)", () => {
 
   it(".bkit-version is absent if postDispatch is NOT flushed (mid-install crash simulation)", () => {
     // If a crash prevents postDispatch from running, .bkit-version must NOT be on disk.
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
     const ws = makeWriteSet();
@@ -1090,7 +1090,7 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
 describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backslash-escape sequences", () => {
   it("advisories emitted on first install contain no literal \\$ sequence (backslash-dollar)", () => {
     // Ensure no .bkit-version exists (first install scenario)
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
     const advisories: PreflightFinding[] = [];
@@ -1108,7 +1108,7 @@ describe("MED-5: first-install advisory GH_BKIT_TOKEN block has no broken backsl
   });
 
   it("advisory action for first-install is plain text (copy-paste safety)", () => {
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
     const advisories: PreflightFinding[] = [];
@@ -1129,7 +1129,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     const ctx = makeCtx({ ws, advisories });
 
     // Ensure no .bkit-version exists
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(false);
 
     // dispatchModules flushes postDispatch (where .bkit-version is written)
@@ -1149,7 +1149,7 @@ describe(".bkit-version first-run signal extra-logging", () => {
     dispatchModules(new Set(["core"]), ctx1);
 
     // Verify .bkit-version was written
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(true);
 
     // Second run: .bkit-version exists → no first-run extra logging
@@ -1200,7 +1200,7 @@ describe("KN-3 regression: ci.yml files must NOT set `with.version:` for pnpm ac
 
 describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction", () => {
   it("readBkitVersion returns pinnedVersion semver string when file is JSON format (v0.7.x+)", () => {
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.3",
@@ -1218,7 +1218,7 @@ describe("C1 regression: .bkit-version JSON format → pinnedVersion extraction"
 
   it("readBkitVersion.pinnedVersion passes semverLte correctly (not the JSON blob)", () => {
     // Confirm the extracted value is a valid semver — a JSON blob would fail semver comparisons
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.8.0",
@@ -1246,7 +1246,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     // Dispatch core module (which writes .bkit-version via postDispatch)
     dispatchModules(new Set(["core"]), ctx);
 
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(true);
 
     const parsed = readBkitVersion(versionFile);
@@ -1267,7 +1267,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     const ctx = makeCtx({ ws });
     dispatchModules(new Set(["core"]), ctx);
 
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     const raw = fs.readFileSync(versionFile, "utf-8");
     // Must be JSON — starts with "{"
     expect(raw.trim()).toMatch(/^\{/);
@@ -1286,7 +1286,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     // Core + claude + ci + lint + git-hooks covers all consumer-facing non-cursor modules.
     dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
 
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFile)).toBe(true);
 
     const parsed = readBkitVersion(versionFile);
@@ -1310,7 +1310,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
     // Exclude cursor: applyT3 requires a populated modelLookup which the test helper omits.
     dispatchModules(new Set(["core", "claude", "ci", "lint", "git-hooks"]), ctx);
 
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     const parsed = readBkitVersion(versionFile);
     expect(parsed).not.toBeNull();
 
@@ -1341,7 +1341,7 @@ describe("C3 regression: canonicalHashes populated in .bkit-version after bkit i
 describe("C1 end-to-end regression: runClaudeModule applies deep-containment with JSON-format .bkit-version", () => {
   it("runClaudeModule writes template scope and preserves consumer Stop hook (no __bkit__ in v2.0.0)", () => {
     // Arrange: seed a JSON-format .bkit-version (confirms JSON-format read path works)
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.5.0",
@@ -1395,7 +1395,7 @@ describe("C1 end-to-end regression: runClaudeModule applies deep-containment wit
     // Regression guard: confirms readBkitVersion().pinnedVersion is used (not raw JSON blob).
     // In v2.0.0, this manifests as: writeTier2JsonContained must still run and preserve
     // consumer keys even when .bkit-version is in JSON format.
-    const versionFile = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFile = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFile), { recursive: true });
     writeBkitVersion(versionFile, {
       pinnedVersion: "0.7.0",
@@ -1478,7 +1478,7 @@ describe("COPY_EXCLUDE: bkit-source `.agents/{rules,friction,docs,skills}.md` mu
     runCoreModule(ctx);
     flushPostDispatch(ctx);
 
-    const frictionPath = path.join(tmpDir, ".agents", "friction.md");
+    const frictionPath = path.join(tmpDir, ".bkit", "friction.md");
     if (!fs.existsSync(frictionPath)) return; // friction.md is optional in some module sets
     const consumerFriction = fs.readFileSync(frictionPath, "utf-8");
 
@@ -1581,7 +1581,7 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
   it("returns blocker when pinnedVersion < 0.8.0 and no __bkit__ in JSON files", () => {
     // Write .bkit-version with pre-envelope pin
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.7.0",
       tier3Hashes: {},
       canonicalHashes: {},
@@ -1594,7 +1594,7 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
 
   it("returns null when pinnedVersion >= 0.8.0", () => {
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.8.0",
       tier3Hashes: {},
       canonicalHashes: {},
@@ -1611,7 +1611,7 @@ describe("detectPreEnvelopeBkitVersion blocker", () => {
   it("returns null when pinnedVersion < 0.8.0 but __bkit__ IS present (envelope install gone right)", () => {
     fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
-    writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), {
+    writeBkitVersion(path.join(tmpDir, ".bkit", "version"), {
       pinnedVersion: "0.7.0",
       tier3Hashes: {},
       canonicalHashes: {},

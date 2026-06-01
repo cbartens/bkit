@@ -104,7 +104,7 @@ export function buildDecisionTable(modules, ctx) {
         : modules;
     const entries = getInstallManifest(moduleList);
     // Read tier3Hashes from .bkit-version
-    const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+    const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
     const bkitVer = readBkitVersion(versionFilePath);
     const tier3Hashes = bkitVer?.tier3Hashes ?? {};
     const table = [];
@@ -273,7 +273,7 @@ export async function runUninstall(modules, ctx) {
         console.log(formatDecisionTable(table));
     }
     // Read tier3Hashes for actual deletions
-    const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+    const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
     const bkitVer = readBkitVersion(versionFilePath);
     const tier3Hashes = bkitVer?.tier3Hashes ?? {};
     const seen = new Set();

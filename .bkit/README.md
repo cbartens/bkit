@@ -2,7 +2,7 @@
 
 **bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
 
-This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/docs/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/docs/prompts.md`.
+This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/prompts.md`.
 
 ---
 
@@ -39,9 +39,9 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
 
-**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.bkit/docs/workflows.md`.
+**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.bkit/workflows.md`.
 
-**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/docs/prompts.md`.
+**Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/prompts.md`.
 
 ---
 
@@ -124,7 +124,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | `model` | `claude-4.7-opus-high-thinking`, `composer-2.5`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
-Per-agent (subagent) model assignments live in `.bkit/docs/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/docs/IDEs.md` § Cursor model catalog.
+Per-agent (subagent) model assignments live in `.bkit/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/IDEs.md` § Cursor model catalog.
 
 For full Linear ↔ Cursor integration setup (webhook routing, dashboard env vars, parent-label families), see Linear's official integration docs: <https://linear.app/docs/cursor>.
 
@@ -251,7 +251,7 @@ Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 Claude reads issue details, comments, and plan files automatically via the tracker MCP.
 
-**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/docs/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 
@@ -289,11 +289,11 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | File | Purpose |
 | --- | --- |
 | `.agents/rules.md` | Universal agent rules — read first by every workflow |
-| `.bkit/docs/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
-| `.bkit/docs/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
+| `.bkit/workflows.md` | Workflow pipeline reference (steps, verdicts, contracts) |
+| `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/docs/IDEs.md` | Claude vs Cursor differences and transform rules |
+| `.bkit/IDEs.md` | Claude vs Cursor differences and transform rules |
 | `.agents/friction.md` | Friction log — orchestrator-observed recovery moments |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
 | `.bkit/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |
@@ -323,4 +323,4 @@ git add .bkit/workflows/bkit-build.md .claude/commands/bkit-build.md .cursor/com
 git commit -m "chore: update build command"
 ```
 
-Adding a new subagent? Update `.bkit/docs/prompts.md` with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.
+Adding a new subagent? Update `.bkit/prompts.md` with the row (frontmatter rationale + `maxTurns` calibration + model assignment) before re-running install — the file is the single source of truth for agent metadata, and the CI drift gate enforces consistency.

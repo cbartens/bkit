@@ -67,31 +67,31 @@ function makeWs(...writes: import("./bkit-install").WriteEntry[]): WriteSet {
 
 describe("detectBkitVersionMajorDowngrade — NaN-guard edge cases", () => {
   it("emits NO advisory when .bkit-version is an empty file (parseInt returns NaN)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "", "utf-8");
     // NaN <= installingMajor evaluates to false without the guard → would emit a misleading advisory
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).toBeNull();
   });
 
   it("emits NO advisory when .bkit-version contains only whitespace", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "   \n  \t  ", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "   \n  \t  ", "utf-8");
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).toBeNull();
   });
 
   it("emits NO advisory when .bkit-version has a non-semver string (e.g. 'unknown')", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "unknown\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "unknown\n", "utf-8");
     // parseInt("unknown", 10) → NaN — should not emit an advisory
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).toBeNull();
   });
 
   it("does NOT produce a detect message containing the string 'NaN'", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "", "utf-8");
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     // Primary assertion: no finding emitted for malformed version
     expect(result).toBeNull();
@@ -103,8 +103,8 @@ describe("detectBkitVersionMajorDowngrade — NaN-guard edge cases", () => {
 
   it("still emits an advisory when .bkit-version is valid and major is higher", () => {
     // Regression guard: normal operation must still work after any NaN fix
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "3.0.0\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "3.0.0\n", "utf-8");
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.0.0");
     expect(result).not.toBeNull();
     expect(result!.id).toBe("bkit-version-major-downgrade");
@@ -118,11 +118,11 @@ describe("detectBkitVersionPinStale — malformed on-disk version guard", () => 
     fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ version }), "utf-8");
   }
 
-  it("emits NO advisory when .agents/.bkit-version is empty (NaN comparison guard)", () => {
+  it("emits NO advisory when .bkit/version is empty (NaN comparison guard)", () => {
     // Both files present but on-disk version is empty → should not emit
     writeInstalledBkit("0.5.0");
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "", "utf-8");
     // detectBkitVersionPinStale guards `!onDiskVersion` → returns null
     const result = detectBkitVersionPinStale(tmpDir);
     expect(result).toBeNull();
@@ -133,8 +133,8 @@ describe("detectBkitVersionPinStale — malformed on-disk version guard", () => 
     const dir = path.join(tmpDir, "node_modules", "@cbartens", "bkit");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ version: "" }), "utf-8");
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "0.4.0\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "0.4.0\n", "utf-8");
     const result = detectBkitVersionPinStale(tmpDir);
     expect(result).toBeNull();
   });

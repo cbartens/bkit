@@ -47,7 +47,7 @@ beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-surgical-test-"));
 
   // Write .bkit-version (no tier3Hashes → preserve-all for T3)
-  const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
+  const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(
     versionFilePath,
@@ -135,7 +135,7 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
 
   it(".husky/pre-commit: heavily customised legacy fixture preserved byte-identically (Tier 3 byte-equal-text, v2.0.4)", async () => {
     // v2.0.4: .husky/* is byte-equal-text. Uninstall only deletes when content
-    // matches install-time hash (recorded in .agents/.bkit-version#canonicalHashes).
+    // matches install-time hash (recorded in .bkit/version#canonicalHashes).
     // The heavy-customised fixture has consumer-written lines + a legacy bkit:start/end
     // block — content does NOT match any bkit install-time hash, so uninstall PRESERVES
     // the file byte-identically rather than mutating it. This is a stronger guarantee

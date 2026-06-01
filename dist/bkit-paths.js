@@ -63,11 +63,11 @@ export function getWorkflowsRoot() {
 export function getPromptsRoot() {
     return path.join(getPkgRoot(), ".bkit", "prompts");
 }
-// `.bkit/docs/` holds bkit-authoring reference docs + engine data (e.g.
-// prompts.md's Cursor model-lookup table). Package-only, never shipped to
-// consumers.
+// `.bkit/` root holds bkit-authoring reference docs + engine data (e.g.
+// prompts.md's Cursor model-lookup table) alongside src/, workflows/, prompts/,
+// templates/. Package-only, never shipped to consumers.
 export function getBkitDocsRoot() {
-    return path.join(getPkgRoot(), ".bkit", "docs");
+    return path.join(getPkgRoot(), ".bkit");
 }
 // ---------------------------------------------------------------------------
 // isDogfood — true when bkit is running inside its own repo (in-repo install).

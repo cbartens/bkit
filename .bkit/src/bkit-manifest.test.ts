@@ -135,9 +135,9 @@ describe("getInstallManifest", () => {
     expect(modules.has("core")).toBe(false);
   });
 
-  it("core manifest includes .bkit-version as byte-equal-text", () => {
+  it("core manifest includes .bkit/version as byte-equal-text", () => {
     const entries = getInstallManifest(["core"]);
-    const versionEntry = entries.find((e) => e.path.includes(".bkit-version"));
+    const versionEntry = entries.find((e) => e.path.includes(".bkit/version"));
     expect(versionEntry).toBeDefined();
     expect(versionEntry!.format).toBe("byte-equal-text");
   });

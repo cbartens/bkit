@@ -1,4 +1,4 @@
-// bkit-version.ts — Schema for .agents/.bkit-version (P2.T3, P4.T4).
+// bkit-version.ts — Schema for .bkit/version (P2.T3, P4.T4).
 //
 // Extension history:
 //   v0.6.x schema: plain text "0.6.1\n"
@@ -32,7 +32,7 @@ import * as crypto from "node:crypto";
 // Parse — backward-compat reader
 // ---------------------------------------------------------------------------
 /**
- * Parse `.agents/.bkit-version` content into a BkitVersion object.
+ * Parse `.bkit/version` content into a BkitVersion object.
  * Handles all schema versions:
  *   - v0.9.x JSON:  { pinnedVersion, tier3Hashes, canonicalHashes }
  *   - v0.7.x JSON:  { pinnedVersion, tier3Hashes } → canonicalHashes defaults to {}
@@ -75,7 +75,7 @@ export function parseBkitVersion(content) {
     return { pinnedVersion: trimmed, tier3Hashes: {}, canonicalHashes: {} };
 }
 /**
- * Read and parse `.agents/.bkit-version` from an absolute path.
+ * Read and parse `.bkit/version` from an absolute path.
  * Returns null if the file is absent or content is empty.
  */
 export function readBkitVersion(versionFilePath) {
@@ -88,7 +88,7 @@ export function readBkitVersion(versionFilePath) {
 // Write — serialize to JSON
 // ---------------------------------------------------------------------------
 /**
- * Serialize a BkitVersion to JSON for writing to `.agents/.bkit-version`.
+ * Serialize a BkitVersion to JSON for writing to `.bkit/version`.
  * Always writes pretty-printed JSON with a trailing newline.
  */
 export function serializeBkitVersion(v) {

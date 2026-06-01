@@ -15,7 +15,7 @@
 // `pr-body-marker`), otherwise to one generic skip message. There is no separate
 // `none` marker — no-tracker content is always `false`.
 //
-// See `.bkit/docs/trackers.md` for the marker contract.
+// See `.bkit/trackers.md` for the marker contract.
 
 import type { IssueTracker } from "./bkit-manifest.js";
 

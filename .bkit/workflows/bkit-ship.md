@@ -16,7 +16,7 @@ description: "Ship Feature — Autonomous merge and archive"
 > - **Auto-apply:** NEVER request human confirmation between steps. **If** single recommended option → document and proceed.
 > - **Narrate:** Emit user-visible lines at key points (step start, subagent return, pivot, blocker). Silence between actions = compliance regression; Auto-apply does NOT mean silent.
 > - **Failures:** **If** any step, tool, command fails, or gate cannot pass → **Failure Path**.
-> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.agents/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
+> - **Friction:** Watch own context + subagent returns for human confirm prompts, manual installs, agent rework, repeated tool failures, destructive backouts → APPEND to `.bkit/friction.md`. Log first, then continue or escalate; logging does NOT replace **Failure Path**.
 > - **Gates:** Verify all gates before next step. Skipped gate = invalid work → close gap.
 > - **Placeholders:** Assert `{PLACEHOLDERS}` such as `{FID}`, `{YYYYMM}`, `{ISSUE_ID}`, `{STATE}`, `{LABELS}`, `{OWNER_REPO}`, `{OWNER}`, `{REPO}`, `{BRANCH}`, `{PR_NUMBER}`, etc non-empty before tool calls (`{ISSUE_ID}` / `{STATE}` / `{LABELS}` only when tracker wired — empty under `none`). **Else** → **Failure Path**. `{OWNER}` + `{REPO}` derived from `{OWNER_REPO}` at Step 1. `{YYYYMM}` = canonical month bucket for this FID; discover via `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/`.
 > - **Resume:** On start, fold status.jsonl — pick up after last `DONE` step in active `IN_PROGRESS` workflow.
@@ -234,7 +234,7 @@ description: "Ship Feature — Autonomous merge and archive"
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
-     git add docs/ .agents/friction.md
+     git add docs/ .bkit/friction.md
      git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build] bkit [skip ci]"
    fi
    ```
@@ -875,7 +875,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 12 — Close Workflow
 
-1. Sweep `.agents/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
+1. Sweep `.bkit/friction.md` for current workflow entries → ensure each has valid `Recovery` and `Status`.
 2. Assert squash-merge CI run completed `bkit-tests`:
    ```bash
    SQUASH_SHA=$(gh pr view {PR_NUMBER} --json mergeCommit --jq .mergeCommit.oid)

@@ -40,7 +40,7 @@ const GROUP_A_MD_FILES = [
   "CLAUDE.md",
   ".agents/rules.md",
   ".agents/docs.md",
-  ".agents/friction.md",
+  ".bkit/friction.md",
   ".agents/skills.md",
   "docs/plans/template.md",
 ];

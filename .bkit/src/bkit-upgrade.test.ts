@@ -40,7 +40,7 @@ function writeFile(relPath: string, content: string): string {
 
 function writeBkitVersionInDir(v: BkitVersion): void {
   fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-  writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), v);
+  writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
 }
 
 function makeVersion(
@@ -382,7 +382,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
-    const updated = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const updated = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(updated).not.toBeNull();
     expect(updated!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(newContent));
     // Previous entry retained
@@ -396,7 +396,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const result = { updated: [".claude/agents/bkit-foo.md"], conflicts: [], skipped: [] };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: true, cwd: tmpDir });
 
-    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     // Hash should still be the old one (dry-run didn't update)
     expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256("old\n"));
   });
@@ -419,7 +419,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const result = { updated: [], conflicts: [], skipped: [".claude/agents/bkit-foo.md"] };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
-    const updated = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const updated = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(updated).not.toBeNull();
     // Canonical hash now recorded — next upgrade can detect true drift instead of all-conflict.
     expect(updated!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBe(sha256(content));
@@ -443,7 +443,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     };
     updateCanonicalHashesAfterUpgrade(result, { dryRun: false, cwd: tmpDir });
 
-    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(v!.canonicalHashes[".claude/agents/bkit-foo.md"]).toBeUndefined();
   });
 
@@ -459,7 +459,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
       pinnedVersion: "2.5.1",
     });
 
-    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(v!.pinnedVersion).toBe("2.5.1");
   });
 
@@ -473,7 +473,7 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
       pinnedVersion: "0.8.0",
     });
 
-    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(v!.pinnedVersion).toBe("0.8.0");
     expect(v!.canonicalHashes["x.md"]).toBe(sha256("x")); // untouched
   });

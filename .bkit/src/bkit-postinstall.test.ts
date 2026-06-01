@@ -939,13 +939,13 @@ describe("detectGhaFloatingTags", () => {
   // the canonical file straight back into the collision the design is preventing.
   it("skips workflow files listed in .bkit-version canonicalHashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".bkit-version"),
+      path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
@@ -957,13 +957,13 @@ describe("detectGhaFloatingTags", () => {
 
   it("skips workflow files listed in .bkit-version tier3Hashes (issue #124)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".bkit-version"),
+      path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
@@ -975,7 +975,7 @@ describe("detectGhaFloatingTags", () => {
 
   it("still flags consumer-managed workflow files even when canonical files coexist", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
@@ -985,7 +985,7 @@ describe("detectGhaFloatingTags", () => {
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".bkit-version"),
+      path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
@@ -1500,8 +1500,8 @@ describe("renderAdvisoriesMarkdown", () => {
 });
 
 describe("writeAdvisoriesArtifact", () => {
-  it("writes .agents/advisories.md to the consumer cwd, creating .agents/ if missing", () => {
-    const artifactDir = path.join(tmpDir, ".agents");
+  it("writes .bkit/advisories.md to the consumer cwd, creating .bkit/ if missing", () => {
+    const artifactDir = path.join(tmpDir, ".bkit");
     const artifactPath = path.join(artifactDir, "advisories.md");
     expect(fs.existsSync(artifactDir)).toBe(false);
 
@@ -1519,8 +1519,8 @@ describe("writeAdvisoriesArtifact", () => {
   });
 
   it("overwrites an existing artifact on each call", () => {
-    const artifactPath = path.join(tmpDir, ".agents", "advisories.md");
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    const artifactPath = path.join(tmpDir, ".bkit", "advisories.md");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(artifactPath, "STALE CONTENT");
 
     writeAdvisoriesArtifact([], {
@@ -1537,8 +1537,8 @@ describe("writeAdvisoriesArtifact", () => {
 
   it("does not throw on write failure (best-effort, logs error)", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    // Make .agents/ a file (not a directory) so mkdirSync recursively fails at file location.
-    fs.writeFileSync(path.join(tmpDir, ".agents"), "blocker");
+    // Make .bkit/ a file (not a directory) so mkdirSync recursively fails at file location.
+    fs.writeFileSync(path.join(tmpDir, ".bkit"), "blocker");
 
     expect(() =>
       writeAdvisoriesArtifact([], {
@@ -1549,7 +1549,7 @@ describe("writeAdvisoriesArtifact", () => {
       }),
     ).not.toThrow();
     expect(errSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to write .agents/advisories.md"),
+      expect.stringContaining("Failed to write .bkit/advisories.md"),
     );
     errSpy.mockRestore();
   });

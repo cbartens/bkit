@@ -375,7 +375,7 @@ describe("formatChecklist format contract", () => {
 // parsed the consumer's stale prompts.md → applyT3 hit "Missing model lookup
 // for bkit-design-organise" → process.exit(1) mid-install (partial state).
 //
-// The fix sources the model lookup from the PACKAGE's .bkit/docs/prompts.md, so a
+// The fix sources the model lookup from the PACKAGE's .bkit/prompts.md, so a
 // stale consumer copy is tolerated. This test guards against regression and
 // catches the analogous failure for ANY future prompt added without backfill.
 // ---------------------------------------------------------------------------
@@ -425,7 +425,7 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
     // Sanity-check the install actually produced consumer outputs.
     expect(fs.existsSync(path.join(tmpDir, ".claude", "agents"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, ".cursor", "agents"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, ".agents", ".bkit-version"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "version"))).toBe(true);
   });
 });
 
@@ -587,8 +587,8 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    // Capture pre-install state: .agents/.bkit-version must not exist
-    const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
+    // Capture pre-install state: .bkit/version must not exist
+    const versionFilePath = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFilePath)).toBe(false);
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--core", "--auto-revert"], {
@@ -611,7 +611,7 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     // Auto-revert log messages must be present — confirms in-process revert ran
     expect(combined).toContain("--auto-revert");
 
-    // The Tier-1 .agents/.bkit-version written by --core MUST be absent after
+    // The Tier-1 .bkit/version written by --core MUST be absent after
     // auto-revert (runUninstall deleted it as a Tier-1 file).
     // This is the byte-identical-to-pre-install check: file was absent → now absent.
     expect(fs.existsSync(versionFilePath)).toBe(false);
@@ -916,7 +916,7 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: .agents/.env.example + .envrc scaffolding (BAR-260 follow-up)
+// Scenario: .bkit/.env.example + .envrc scaffolding (BAR-260 follow-up)
 // ---------------------------------------------------------------------------
 
 import { runClaudeModule, getPkgRoot } from "./bkit-modules";
@@ -939,7 +939,7 @@ function makeClaudeContext(dryRun: boolean): ModuleContext {
 }
 
 describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
-  it("first install seeds .agents/.env.example when template exists", () => {
+  it("first install seeds .bkit/.env.example when template exists", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -952,7 +952,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     process.chdir(tmpDir);
     runClaudeModule(ctx);
 
-    const envExamplePath = path.join(tmpDir, ".agents", ".env.example");
+    const envExamplePath = path.join(tmpDir, ".bkit", ".env.example");
     expect(fs.existsSync(envExamplePath)).toBe(true);
     const content = fs.readFileSync(envExamplePath, "utf-8");
     expect(content).toContain("GH_TOKEN=");
@@ -975,10 +975,10 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     const envrcPath = path.join(tmpDir, ".envrc");
     expect(fs.existsSync(envrcPath)).toBe(true);
     const content = fs.readFileSync(envrcPath, "utf-8");
-    expect(content).toContain("dotenv_if_exists .agents/.env");
+    expect(content).toContain("dotenv_if_exists .bkit/.env");
   });
 
-  it("second install is idempotent — does not overwrite consumer-modified .agents/.env.example", () => {
+  it("second install is idempotent — does not overwrite consumer-modified .bkit/.env.example", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -992,7 +992,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     runClaudeModule(ctx1);
 
     // Consumer modifies .env.example (adds a custom token)
-    const envExamplePath = path.join(tmpDir, ".agents", ".env.example");
+    const envExamplePath = path.join(tmpDir, ".bkit", ".env.example");
     const original = fs.readFileSync(envExamplePath, "utf-8");
     const modified = original + "\n# custom consumer token\nMY_API_KEY=\n";
     fs.writeFileSync(envExamplePath, modified, "utf-8");
@@ -1008,7 +1008,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     expect(ctx2.advisories.some((a) => a.id.startsWith("tier3-merge-suggested"))).toBe(true);
   });
 
-  it(".gitignore marker block contains .agents/.env after first install", () => {
+  it(".gitignore marker block contains .bkit/.env after first install", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -1024,16 +1024,16 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     if (fs.existsSync(gitignoreTemplate)) {
       fs.writeFileSync(gitignoreDst, fs.readFileSync(gitignoreTemplate, "utf-8"), "utf-8");
       const content = fs.readFileSync(gitignoreDst, "utf-8");
-      // Should contain .agents/.env inside the bkit marker block
-      expect(content).toContain(".agents/.env");
+      // Should contain .bkit/.env inside the bkit marker block
+      expect(content).toContain(".bkit/.env");
       // The entry must be inside the bkit block
       const blockMatch = content.match(/# <!-- bkit:start -->([\s\S]*?)# <!-- bkit:end -->/);
       expect(blockMatch).not.toBeNull();
-      expect(blockMatch![1]).toContain(".agents/.env");
+      expect(blockMatch![1]).toContain(".bkit/.env");
     }
   });
 
-  it(".gitignore marker block .agents/.env entry unchanged on second install", () => {
+  it(".gitignore marker block .bkit/.env entry unchanged on second install", () => {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "test-consumer" }),
@@ -1055,7 +1055,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
       const after2 = fs.readFileSync(gitignoreDst, "utf-8");
 
       expect(after2).toBe(after1); // idempotent
-      expect(after2).toContain(".agents/.env");
+      expect(after2).toContain(".bkit/.env");
     }
   });
 });

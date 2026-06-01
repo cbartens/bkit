@@ -38,9 +38,9 @@ function seedMinimalConsumer(dir: string): void {
 }
 
 function seedStaleVersionPin(dir: string): void {
-  // Create a stale .agents/.bkit-version (older than installed)
-  fs.mkdirSync(path.join(dir, ".agents"), { recursive: true });
-  fs.writeFileSync(path.join(dir, ".agents", ".bkit-version"), "0.4.1\n", "utf-8");
+  // Create a stale .bkit/version (older than installed)
+  fs.mkdirSync(path.join(dir, ".bkit"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".bkit", "version"), "0.4.1\n", "utf-8");
   // Create a newer installed bkit in node_modules
   const bkitDir = path.join(dir, "node_modules", "@cbartens", "bkit");
   fs.mkdirSync(bkitDir, { recursive: true });
@@ -125,7 +125,7 @@ describe("bkit doctor — integration", () => {
     expect(combinedOutput).toContain("bkit-version-pin-stale");
   });
 
-  it("writes only the .agents/advisories.md artifact (no other side effects)", () => {
+  it("writes only the .bkit/advisories.md artifact (no other side effects)", () => {
     if (!fs.existsSync(tsxBin)) return;
 
     seedMinimalConsumer(tmpDir);
@@ -145,7 +145,7 @@ describe("bkit doctor — integration", () => {
 
     // The only permitted new file is the advisories artifact (referenceable
     // snapshot of the doctor run). Everything else must remain untouched.
-    const advisoryPath = path.join(tmpDir, ".agents", "advisories.md");
+    const advisoryPath = path.join(tmpDir, ".bkit", "advisories.md");
     expect(newFiles).toEqual([advisoryPath]);
     expect(fs.readFileSync(advisoryPath, "utf-8")).toContain("# bkit advisories");
   });
@@ -229,9 +229,9 @@ describe("bkit doctor — BAR-167 Phase 1 advisory surface", () => {
 describe("bkit doctor — [mcp-env] advisory surface", () => {
   it("mcp-env-missing-dotenv surfaces through runPostInstallCheck when .env.example exists but .env absent", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
-    // No .agents/.env
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    // No .bkit/.env
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
     const ws = { writes: [], reverts: [] };
@@ -239,16 +239,16 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(findings.some((a) => a.id === "mcp-env-missing-dotenv")).toBe(true);
   });
 
-  it("mcp-env-blank-key advisories surface when .agents/.env has blank values (Linear tracker → all 3 keys)", () => {
+  it("mcp-env-blank-key advisories surface when .bkit/.env has blank values (Linear tracker → all 3 keys)", () => {
     // Linear tracker so LINEAR_API_KEY is a required key (issue #138 tracker-gating).
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", bkit: { issueTracker: "linear" } }),
       "utf-8",
     );
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -268,9 +268,9 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
       JSON.stringify({ name: "x", bkit: { issueTracker: "github" } }),
       "utf-8",
     );
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -283,11 +283,11 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
 
-  it("no mcp-env advisories when .agents/.env has all keys populated and no .envrc", () => {
+  it("no mcp-env advisories when .bkit/.env has all keys populated and no .envrc", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
@@ -304,7 +304,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const originalCI = process.env.CI;
     process.env.CI = "true";
     try {
-      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
       const f = detectDirenvNotAllowed(tmpDir);
       expect(f).toBeNull();
     } finally {
@@ -317,7 +317,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const originalCI = process.env.CI;
     process.env.CI = "true";
     try {
-      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+      fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
       const f = detectDirenvMissing(tmpDir);
       expect(f).toBeNull();
     } finally {
@@ -330,8 +330,8 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     if (!fs.existsSync(tsxBin)) return;
 
     seedMinimalConsumer(tmpDir);
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
       cwd: tmpDir,

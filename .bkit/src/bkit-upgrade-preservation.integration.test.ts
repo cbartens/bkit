@@ -50,7 +50,7 @@ function writeTemplate(name: string, content: string): string {
 
 function seedVersion(canonicalHashes: Record<string, string> = {}): void {
   const v: BkitVersion = { pinnedVersion: "2.4.0", tier3Hashes: {}, canonicalHashes };
-  writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), v);
+  writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
 }
 
 function upgrade(candidates: UpgradeCandidate[]) {
@@ -81,7 +81,7 @@ describe("upgrade preserves consumer content outside the bkit block (markered-te
 
     const templatePath = writeTemplate(
       "gitignore",
-      "# <!-- bkit:start -->\nnode_modules/\n.agents/advisories.md\n# <!-- bkit:end -->\n",
+      "# <!-- bkit:start -->\nnode_modules/\n.bkit/advisories.md\n# <!-- bkit:end -->\n",
     );
 
     const result = upgrade([{ relPath: ".gitignore", templatePath, format: "markered-text" }]);
@@ -92,7 +92,7 @@ describe("upgrade preserves consumer content outside the bkit block (markered-te
     expect(after).toContain(".env*.local");
     expect(after).toContain("*.csv");
     // bkit block updated to the new template content.
-    expect(after).toContain(".agents/advisories.md");
+    expect(after).toContain(".bkit/advisories.md");
     expect(after).not.toContain("STALE-bkit-entry/");
     // Classified as an applied update, never a conflict/skip.
     expect(result.updated).toContain(".gitignore");
@@ -238,7 +238,7 @@ describe("upgrade is idempotent for block-merge formats", () => {
 
     const templatePath = writeTemplate(
       "gitignore",
-      "# <!-- bkit:start -->\nnode_modules/\n.agents/advisories.md\n# <!-- bkit:end -->\n",
+      "# <!-- bkit:start -->\nnode_modules/\n.bkit/advisories.md\n# <!-- bkit:end -->\n",
     );
     const candidate: UpgradeCandidate = {
       relPath: ".gitignore",
@@ -251,7 +251,7 @@ describe("upgrade is idempotent for block-merge formats", () => {
     updateCanonicalHashesAfterUpgrade(first, { dryRun: false, cwd: tmpDir });
 
     const merged = fs.readFileSync(path.join(tmpDir, ".gitignore"), "utf-8");
-    const recorded = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const recorded = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     // Hash recorded is of the MERGED disk content, not the template.
     expect(recorded!.canonicalHashes[".gitignore"]).toBe(sha256(merged));
 
@@ -279,7 +279,7 @@ describe("migrateStrayGitattributes", () => {
     expect(fs.readFileSync(path.join(tmpDir, ".gitattributes"), "utf-8")).toBe(
       "docs/pending.md merge=union\n",
     );
-    const v = readBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"));
+    const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(v!.canonicalHashes.gitattributes).toBeUndefined();
   });
 

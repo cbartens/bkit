@@ -230,7 +230,7 @@ describe("parseFrontmatter", () => {
 
 describe("parseModelLookup", () => {
   it("parses one row per agent file in .bkit/prompts/", () => {
-    const lookup = parseModelLookup(".bkit/docs/prompts.md");
+    const lookup = parseModelLookup(".bkit/prompts.md");
     const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     expect(lookup.size).toBe(agentFiles.length);
     for (const [name, model] of lookup) {
@@ -240,7 +240,7 @@ describe("parseModelLookup", () => {
   });
 
   it("all .bkit/prompts/ files have a lookup row", () => {
-    const lookup = parseModelLookup(".bkit/docs/prompts.md");
+    const lookup = parseModelLookup(".bkit/prompts.md");
     const agentFiles = fs.readdirSync(".bkit/prompts").filter((f) => f.endsWith(".md"));
     const missingNames: string[] = [];
     for (const f of agentFiles) {
@@ -273,7 +273,7 @@ describe("parseModelLookup", () => {
   });
 
   it("all parsed model values have no backticks", () => {
-    const lookup = parseModelLookup(".bkit/docs/prompts.md");
+    const lookup = parseModelLookup(".bkit/prompts.md");
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }

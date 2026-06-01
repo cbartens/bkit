@@ -485,7 +485,7 @@ export function detectTestIntegrationEnv(cwd) {
  * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
  * SHA pins for any workflow that runs with elevated permissions.
  *
- * bkit-canonical workflow files (those tracked in `.agents/.bkit-version`
+ * bkit-canonical workflow files (those tracked in `.bkit/version`
  * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
  * ship tag-only pins. The bkit-shipped `renovate.json5` adds a packageRule
  * with `matchFileNames` for bkit-managed workflow files so consumer-side
@@ -496,7 +496,7 @@ export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
         return null;
-    const bkitVersion = readBkitVersion(path.join(cwd, ".agents", ".bkit-version"));
+    const bkitVersion = readBkitVersion(path.join(cwd, ".bkit", "version"));
     const canonicalPaths = new Set([
         ...Object.keys(bkitVersion?.canonicalHashes ?? {}),
         ...Object.keys(bkitVersion?.tier3Hashes ?? {}),
@@ -640,7 +640,7 @@ export function buildTrackerSetupAdvisory(cwd) {
             id: "tracker-setup-linear",
             severity: "advisory",
             detect: "bkit tracker is configured as `linear`. Linear is the active tracker.",
-            action: "Linear tracker: set `LINEAR_API_KEY` in `.agents/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
+            action: "Linear tracker: set `LINEAR_API_KEY` in `.bkit/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
         };
     }
     // tracker === "none". Distinguish deliberate opt-out (explicit
@@ -652,7 +652,7 @@ export function buildTrackerSetupAdvisory(cwd) {
         id: "tracker-setup-none",
         severity: "advisory",
         detect: "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
-        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
     };
 }
 /** True when package.json has an explicit `bkit.issueTracker` field (any value). */
@@ -1137,7 +1137,7 @@ export function formatChecklist(findings) {
     return lines.join("\n");
 }
 /**
- * Render findings as a markdown artifact suitable for `.agents/advisories.md`.
+ * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
  * Mirrors `formatChecklist` content but in markdown form so the file can be
  * referenced and revisited between installs. Overwritten on every run.
  */
@@ -1183,12 +1183,12 @@ export function renderAdvisoriesMarkdown(findings, opts) {
     return lines.join("\n");
 }
 /**
- * Write `.agents/advisories.md` in the consumer's cwd. Best-effort:
+ * Write `.bkit/advisories.md` in the consumer's cwd. Best-effort:
  * mkdir -p `.agents/`, write the rendered markdown, log a one-line status.
  * Any I/O failure is logged but does not throw — the artifact is informational.
  */
 export function writeAdvisoriesArtifact(findings, opts) {
-    const dir = path.join(opts.cwd, ".agents");
+    const dir = path.join(opts.cwd, ".bkit");
     const filePath = path.join(dir, "advisories.md");
     try {
         fs.mkdirSync(dir, { recursive: true });
@@ -1198,10 +1198,10 @@ export function writeAdvisoriesArtifact(findings, opts) {
         });
         fs.writeFileSync(filePath, content);
         const n = findings.length;
-        console.log(`${opts.logPrefix} Wrote .agents/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
+        console.log(`${opts.logPrefix} Wrote .bkit/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
     }
     catch (err) {
-        console.error(`${opts.logPrefix} Failed to write .agents/advisories.md: ${err.message}`);
+        console.error(`${opts.logPrefix} Failed to write .bkit/advisories.md: ${err.message}`);
     }
 }
 // ---------------------------------------------------------------------------
@@ -1269,7 +1269,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-unset-shell",
             severity: "advisory",
             detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
-            action: "Set GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
+            action: "Set GH_BKIT_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
@@ -1278,7 +1278,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-empty-shell",
             severity: "advisory",
             detect: 'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
-            action: "Set a non-empty GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .agents/.env.\n\n" +
+            action: "Set a non-empty GH_BKIT_TOKEN in .bkit/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .bkit/.env.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
@@ -1294,7 +1294,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
                 id: "gh-token-unset-shell",
                 severity: "advisory",
                 detect: "GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
-                action: "Set GH_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+                action: "Set GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
             });
         }
         else if (ghTokenStatus === "empty") {
@@ -1302,7 +1302,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
                 id: "gh-token-empty-shell",
                 severity: "advisory",
                 detect: 'GH_TOKEN is set to an empty string (GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
-                action: "Set a non-empty GH_TOKEN in .agents/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
+                action: "Set a non-empty GH_TOKEN in .bkit/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
             });
         }
     }
@@ -1460,8 +1460,8 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const devDeps = detectDevDepsNeedFetch(ws);
     if (devDeps)
         phase3.push(devDeps);
-    // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
-    // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
+    // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
+    // Wired here in Phase 3 — scaffolds (.bkit/.env.example, .envrc) only exist
     // after writes, so Phase 1 cannot see them on first install.
     // Pass the consumer's tracker so the mcp-env prose omits LINEAR_API_KEY on github/none
     // repos (issue #138) — they never wire Linear, so asking for the key is a false ask.

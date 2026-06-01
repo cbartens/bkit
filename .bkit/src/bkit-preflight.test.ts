@@ -256,8 +256,8 @@ describe("detectLintProseF9Vulnerable", () => {
 
 describe("detectBkitVersionMajorDowngrade", () => {
   it("returns finding when on-disk major is greater than installing major", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "2.0.0\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "2.0.0\n", "utf-8");
     const result = detectBkitVersionMajorDowngrade(tmpDir, "1.5.0");
     expect(result).not.toBeNull();
     expect(result!.id).toBe("bkit-version-major-downgrade");
@@ -265,14 +265,14 @@ describe("detectBkitVersionMajorDowngrade", () => {
   });
 
   it("returns null when on-disk major equals installing major", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "1.2.0\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "1.2.0\n", "utf-8");
     expect(detectBkitVersionMajorDowngrade(tmpDir, "1.5.0")).toBeNull();
   });
 
   it("returns null when on-disk major is less than installing major (upgrade)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), "1.0.0\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), "1.0.0\n", "utf-8");
     expect(detectBkitVersionMajorDowngrade(tmpDir, "2.0.0")).toBeNull();
   });
 
@@ -293,8 +293,8 @@ describe("detectBkitVersionPinStale", () => {
   }
 
   function writeOnDiskVersion(version: string): void {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".bkit-version"), version + "\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", "version"), version + "\n", "utf-8");
   }
 
   it("(a) returns finding when installed version > on-disk version", () => {
@@ -326,7 +326,7 @@ describe("detectBkitVersionPinStale", () => {
     expect(detectBkitVersionPinStale(tmpDir)).toBeNull();
   });
 
-  it("(e) returns null when .agents/.bkit-version is absent", () => {
+  it("(e) returns null when .bkit/version is absent", () => {
     writeInstalledBkit("0.5.0");
     // Don't write on-disk version
     expect(detectBkitVersionPinStale(tmpDir)).toBeNull();
@@ -1189,9 +1189,9 @@ describe("detectExtraMcpServers", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectMissingDotenv", () => {
-  it("flags when .agents/.env.example exists but .agents/.env does not", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+  it("flags when .bkit/.env.example exists but .bkit/.env does not", () => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
     const f = detectMissingDotenv(tmpDir);
     expect(f).not.toBeNull();
     expect(f!.id).toBe("mcp-env-missing-dotenv");
@@ -1201,19 +1201,19 @@ describe("detectMissingDotenv", () => {
   });
 
   it("does NOT flag when both .env.example and .env exist", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=ghp_test\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=ghp_test\n", "utf-8");
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
 
-  it("does NOT flag when .agents/.env.example does not exist", () => {
+  it("does NOT flag when .bkit/.env.example does not exist", () => {
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
 
   it("github tracker: token prose omits LINEAR_API_KEY; linear keeps it (issue #138)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
     const gh = detectMissingDotenv(tmpDir, "github")!;
     expect(gh.detect).not.toContain("LINEAR_API_KEY");
     expect(gh.action).not.toContain("LINEAR_API_KEY");
@@ -1224,14 +1224,14 @@ describe("detectMissingDotenv", () => {
 });
 
 describe("detectBlankDotenvKeys", () => {
-  it("returns empty array when .agents/.env does not exist", () => {
+  it("returns empty array when .bkit/.env does not exist", () => {
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
   });
 
-  it("returns three advisories when .agents/.env has all keys blank", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+  it("returns three advisories when .bkit/.env has all keys blank", () => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -1244,9 +1244,9 @@ describe("detectBlankDotenvKeys", () => {
   });
 
   it("github tracker: does NOT flag blank LINEAR_API_KEY (issue #138)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -1257,9 +1257,9 @@ describe("detectBlankDotenvKeys", () => {
   });
 
   it("returns one advisory for the blank key only", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -1269,9 +1269,9 @@ describe("detectBlankDotenvKeys", () => {
   });
 
   it("returns empty array when all three keys are set and non-empty", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
@@ -1279,9 +1279,9 @@ describe("detectBlankDotenvKeys", () => {
   });
 
   it("returns advisory for absent key (key not in file at all)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\n",
       "utf-8",
     );
@@ -1291,8 +1291,8 @@ describe("detectBlankDotenvKeys", () => {
   });
 
   it("advisory action text contains [mcp-env] prefix and no BAR-XXX references", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=\n", "utf-8");
     const findings = detectBlankDotenvKeys(tmpDir);
     for (const f of findings) {
       expect(f.action).toContain("[mcp-env]");
@@ -1317,19 +1317,19 @@ describe("detectDirenvMissing", () => {
   });
 
   it("returns null when CI=true (cloud/CI short-circuit)", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CI = "true";
     expect(detectDirenvMissing(tmpDir)).toBeNull();
   });
 
   it("returns null when CLAUDE_CODE_REMOTE is truthy (cloud short-circuit)", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CLAUDE_CODE_REMOTE = "1";
     expect(detectDirenvMissing(tmpDir)).toBeNull();
   });
 
   it("returns null when CURSOR_REMOTE_AGENT is truthy (cloud short-circuit)", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CURSOR_REMOTE_AGENT = "1";
     expect(detectDirenvMissing(tmpDir)).toBeNull();
   });
@@ -1337,7 +1337,7 @@ describe("detectDirenvMissing", () => {
   it("returns advisory when .envrc exists and direnv is NOT installed (mocked)", () => {
     // We can only test this in environments where direnv is not on PATH.
     // We mock by temporarily overriding the PATH to something empty.
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     delete process.env.CI;
     delete process.env.CLAUDE_CODE_REMOTE;
     delete process.env.CURSOR_REMOTE_AGENT;
@@ -1375,25 +1375,25 @@ describe("detectDirenvNotAllowed", () => {
   });
 
   it("returns null when CI=true (cloud/CI short-circuit)", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CI = "true";
     expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
   });
 
   it("returns null when CLAUDE_CODE_REMOTE is truthy", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CLAUDE_CODE_REMOTE = "1";
     expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
   });
 
   it("returns null when CURSOR_REMOTE_AGENT is truthy", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     process.env.CURSOR_REMOTE_AGENT = "1";
     expect(detectDirenvNotAllowed(tmpDir)).toBeNull();
   });
 
   it("returns null when direnv is not installed (guard: returns null, not advisory)", () => {
-    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .agents/.env\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), "dotenv_if_exists .bkit/.env\n", "utf-8");
     delete process.env.CI;
     delete process.env.CLAUDE_CODE_REMOTE;
     delete process.env.CURSOR_REMOTE_AGENT;
@@ -1412,16 +1412,16 @@ describe("detectDirenvNotAllowed", () => {
 
 describe("[mcp-env] detector outputs", () => {
   it("detectMissingDotenv fires when .env.example exists but .env absent", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
     const finding = detectMissingDotenv(tmpDir);
     expect(finding?.id).toBe("mcp-env-missing-dotenv");
   });
 
   it("detectBlankDotenvKeys returns one finding per blank required key", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".agents", ".env"),
+      path.join(tmpDir, ".bkit", ".env"),
       "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
@@ -1432,9 +1432,9 @@ describe("[mcp-env] detector outputs", () => {
   });
 
   it("all [mcp-env] advisories have no BAR-XXX references", () => {
-    fs.mkdirSync(path.join(tmpDir, ".agents"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env.example"), "GH_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".agents", ".env"), "GH_TOKEN=\n", "utf-8");
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=\n", "utf-8");
     const findings = [
       detectMissingDotenv(tmpDir),
       ...detectBlankDotenvKeys(tmpDir),

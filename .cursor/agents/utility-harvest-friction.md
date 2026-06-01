@@ -24,7 +24,7 @@ tools:
 
 **Contract:**
 
-- **Mandate:** Move harvest content from each consumer worktree's `.agents/friction.md` into the bkit repo's `.agents/friction.md`; truncate source.
+- **Mandate:** Move harvest content from each consumer worktree's `.bkit/friction.md` into the bkit repo's `.bkit/friction.md`; truncate source.
 - **Single pass:** One pass over consumers listed in `docs/bkit-consumers.md`; do NOT recurse into other files or paths.
 
 **Process:**
@@ -35,8 +35,8 @@ tools:
    - Verify the directory exists and is a git repo (`git -C {CONSUMER} rev-parse --git-dir`).
    - Run `git -C {CONSUMER} worktree list --porcelain`. Parse `worktree <path>` and `branch <ref>` (or `detached`) pairs.
 4. For each worktree `{WORKTREE}` in each consumer path `{CONSUMER}`:
-   - If `{WORKTREE}/.agents/friction.md` does NOT exist OR lacks a `<!-- bkit:end -->` marker → skip (no harvest, no truncate).
-   - Locate first `<!-- bkit:end -->`. Harvest = trimmed content AFTER that marker line → append Harvest at EOF via Bash `echo {harvest} >> {bkit's .agents/friction.md}` (heredoc form for multi-line findings) as work progresses.
-   - Truncate source `{WORKTREE}/.agents/friction.md` → rewrite file with content up to and including marker line `<!-- bkit:end -->` followed by single trailing newline.
+   - If `{WORKTREE}/.bkit/friction.md` does NOT exist OR lacks a `<!-- bkit:end -->` marker → skip (no harvest, no truncate).
+   - Locate first `<!-- bkit:end -->`. Harvest = trimmed content AFTER that marker line → append Harvest at EOF via Bash `echo {harvest} >> {bkit's .bkit/friction.md}` (heredoc form for multi-line findings) as work progresses.
+   - Truncate source `{WORKTREE}/.bkit/friction.md` → rewrite file with content up to and including marker line `<!-- bkit:end -->` followed by single trailing newline.
 
 > ⛔ **STOP. Do NOT commit in any repo. Do NOT recurse into other consumer files.**

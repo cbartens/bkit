@@ -181,7 +181,7 @@ export function buildDecisionTable(
   const entries = getInstallManifest(moduleList);
 
   // Read tier3Hashes from .bkit-version
-  const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+  const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
   const bkitVer = readBkitVersion(versionFilePath);
   const tier3Hashes = bkitVer?.tier3Hashes ?? {};
 
@@ -377,7 +377,7 @@ export async function runUninstall(
   }
 
   // Read tier3Hashes for actual deletions
-  const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+  const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
   const bkitVer = readBkitVersion(versionFilePath);
   const tier3Hashes = bkitVer?.tier3Hashes ?? {};
 

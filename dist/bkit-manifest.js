@@ -13,8 +13,8 @@
  * - `linear` — Linear (opt-in).
  * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
  *
- * Add a new value here when adding a provider section to `.bkit/docs/trackers.md`.
- * See `.bkit/docs/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ * Add a new value here when adding a provider section to `.bkit/trackers.md`.
+ * See `.bkit/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
  */
 export const ISSUE_TRACKERS = ["github", "linear", "none"];
 /** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
@@ -91,7 +91,7 @@ const CORE_MANIFEST = [
     // Append-only ledger union-merge rules live in a managed block; consumers may add
     // their own attributes outside the block, so this is markered-text (not whole-file).
     { path: ".gitattributes", format: "markered-text", module: "core" },
-    { path: ".agents/.bkit-version", format: "byte-equal-text", module: "core" },
+    { path: ".bkit/version", format: "byte-equal-text", module: "core" },
 ];
 const CLAUDE_MANIFEST = [
     { path: ".claude/settings.json", format: "json", module: "claude" },
@@ -101,7 +101,7 @@ const CLAUDE_MANIFEST = [
     // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
     // so a default --full install without the script no-ops instead of erroring.
     { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-    { path: ".agents/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+    { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at

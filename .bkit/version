@@ -20,7 +20,7 @@
     ".cursor/rules/00-shared-rules.mdc": "aae2f00295e2692d19e66322dfe4463f76fd154c356f1bc9005f5edc90d36afd",
     ".cursor/settings.json": "1b4f18de636c8c03ba0b748fb57499c71816ac34cfd5e3cc0c5ddb57c263d972",
     ".husky/pre-commit": "36bbb7ed74e56f4b02974f7ff3d2b0b5d5fe6c4518e982c8f4ca1eb2eda98bba",
-    ".prettierignore": "0397d69bb0d7c3ab156db2c2ecdedf351f22a743521fd3365ea193a5c169a70c",
+    ".prettierignore": "1f9db4443c9f447ff02d6995aaecdb578dfc455587e3bc96a332b549f997fb0b",
     ".vale/styles/House/Filler.yml": "96139df9ffc61835e23014addac887d9465169d62cd1be24c2f272f838166524",
     ".vale/styles/House/Hedging.yml": "c46cda04406629377555d3add75e56edaad40521864743dbbd47781f2c048ef0",
     ".vale/styles/House/LLMSlop.yml": "e1ce58da6c86d7bc746698fbf17fd3d0075980ca78f2d8b8c927ea3ddc35094e",

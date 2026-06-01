@@ -107,7 +107,7 @@ export { getPkgRoot } from "./bkit-paths.js";
 // These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
 // ---------------------------------------------------------------------------
 // Top-level template directories/files that belong to core (not other modules)
-const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", "scripts"]);
+const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // Top-level template files (non-directory) that belong to core.
 // `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
 // is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
@@ -192,9 +192,12 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
     if (!fs.existsSync(srcDir))
         return;
     for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-        // Skip Tier 3 files inside .agents/ subtemplate dir — they are owned by their
-        // respective modules and written via writeTier3 (seed-or-print), not Tier 2.
-        if (ent.isFile() && relBase === ".agents" && AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
+        // Skip Tier 3 files inside subtemplate dirs (e.g. .bkit/.env.example) — they
+        // are owned by their respective modules and written via writeTier3
+        // (seed-or-print), not Tier 2.
+        if (ent.isFile() &&
+            (relBase === ".agents" || relBase === ".bkit") &&
+            AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
             continue;
         }
         const srcPath = path.join(srcDir, ent.name);
@@ -238,7 +241,7 @@ const COPY_EXCLUDE = new Set([
     "docs.md",
     "skills.md",
     // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
-    // template at .bkit/templates/.agents/.env.example). Including it in the
+    // template at .bkit/templates/.bkit/.env.example). Including it in the
     // payload copy would double-handle the same destination — Tier 3 sees the
     // file already written by payload copy in live mode, skips its own write,
     // and dry-run vs install writesets diverge. Tier 3 owns this file.
@@ -249,7 +252,7 @@ const COPY_EXCLUDE = new Set([
 //
 // Currently EMPTY: the former members (prompts.md, workflows.md, IDEs.md, cloud.md)
 // are bkit-authoring docs / engine data that now live package-side under
-// `.bkit/docs/` and are read directly from there — never copied into a consumer,
+// `.bkit/` and are read directly from there — never copied into a consumer,
 // so there is nothing to force-overwrite. Kept as the extension point if a
 // canonical consumer-side `.agents/` file is reintroduced.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set([]);
@@ -305,7 +308,7 @@ export function runCoreModule(ctx) {
     // The actual .bkit-version write is deferred to postDispatch so that a mid-install crash
     // in a subsequent module does NOT leave .bkit-version on disk (which would suppress the
     // first-install banner on retry).
-    const versionFile = path.join(target, ".bkit-version");
+    const versionFile = path.join(cwd, ".bkit", "version");
     const isFirstInstall = !fs.existsSync(versionFile);
     // 1. Additive .agents/ payload copy (core subdirs only, excluding COPY_EXCLUDE)
     console.log(`${logPrefix} ${tag}Running core payload copy`);
@@ -346,10 +349,10 @@ export function runCoreModule(ctx) {
         // Build the set of consumer-relative paths that have format "byte-equal-text".
         // tier3Hashes is narrowed (v2.0.0+) to only these paths — json and markered-text
         // formats use deepContains / marker extraction for drift detection, so they do NOT
-        // need a hash entry. ".agents/.bkit-version" is excluded (it is the version file
+        // need a hash entry. ".bkit/version" is excluded (it is the version file
         // itself, not a consumer-facing file).
         const byteEqualPaths = new Set(getInstallManifest()
-            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".agents", ".bkit-version"))
+            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".bkit", "version"))
             .map((e) => e.path));
         // Build new canonicalHashes entries from ws.writes (files written in this run).
         // ws.writes is fully populated by the time postDispatch runs.
@@ -360,7 +363,7 @@ export function runCoreModule(ctx) {
         for (const entry of ws.writes) {
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
-            if (relPath === path.join(".agents", ".bkit-version"))
+            if (relPath === path.join(".bkit", "version"))
                 continue;
             if (relPath.startsWith(".agents" + path.sep))
                 continue;
@@ -528,14 +531,14 @@ export function runClaudeModule(ctx) {
             console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
         }
     }
-    // Byte-equal-text — .agents/.env.example — Tier 3 seed-or-print.
+    // Byte-equal-text — .bkit/.env.example — Tier 3 seed-or-print.
     // Seeds the canonical token-placeholder file on first install; emits merge
     // instructions if consumer has modified. Not claude-specific but the claude
     // module is the default-runs-everywhere module — appropriate home for
     // consumer-setup scaffolding that all environments need.
     {
-        const envExampleSrc = path.join(getTemplatesRoot(), ".agents", ".env.example");
-        const envExampleDst = ".agents/.env.example";
+        const envExampleSrc = path.join(getTemplatesRoot(), ".bkit", ".env.example");
+        const envExampleDst = ".bkit/.env.example";
         if (fs.existsSync(envExampleSrc)) {
             const prevLen = ws.writes.length;
             const result = writeTier3(envExampleSrc, envExampleDst, dryRun, advisories, ws, ENV_EXAMPLE_MERGE_INSTRUCTIONS);
@@ -918,24 +921,24 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // jq + python3 + corepack-pinned pnpm); consumers customise Node major,
 // Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
 // those across upgrades.
-const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .agents/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
+const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .bkit/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  Open .agents/.env.example. Compare against the bkit reference below.
+  Open .bkit/.env.example. Compare against the bkit reference below.
   Merge any new token entries you find (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY)
   into your existing file. Keep any project-specific additions you have.
 
-  --- begin bkit reference .agents/.env.example ---
+  --- begin bkit reference .bkit/.env.example ---
 {{TEMPLATE_CONTENT}}
-  --- end bkit reference .agents/.env.example ---
+  --- end bkit reference .bkit/.env.example ---
 `;
-const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .agents/.env via direnv.
+const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .bkit/.env via direnv.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .envrc. Compare against the bkit reference below.
-  Ensure the file contains \`dotenv_if_exists .agents/.env\` so direnv
+  Ensure the file contains \`dotenv_if_exists .bkit/.env\` so direnv
   auto-exports the tokens into your shell. Keep any existing lines.
   You can append more \`dotenv_if_exists <path>\` lines to expose additional
   env files (e.g. .env.local, infra/secrets.env); run \`direnv allow\` after.

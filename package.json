@@ -15,7 +15,13 @@
     "CHANGELOG.md",
     "!.bkit/src/*.test.ts",
     "!.bkit/src/*.integration.test.ts",
-    "!.bkit/src/__snapshots__"
+    "!.bkit/src/__snapshots__",
+    "!.bkit/.env",
+    "!.bkit/.env.example",
+    "!.bkit/version",
+    "!.bkit/advisories.md",
+    "!.bkit/friction.md",
+    "!.bkit/README.md"
   ],
   "engines": {
     "node": ">=20"
@@ -40,7 +46,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit/workflows .bkit/prompts .bkit/docs -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
+    "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
     "prepare": "husky"
   },
   "dependencies": {

@@ -166,7 +166,7 @@ export function detectBkitVersionMajorDowngrade(
   cwd: string,
   installingVersion: string,
 ): PreflightFinding | null {
-  const versionFile = path.join(cwd, ".agents", ".bkit-version");
+  const versionFile = path.join(cwd, ".bkit", "version");
   if (!fs.existsSync(versionFile)) return null;
   const onDisk = fs.readFileSync(versionFile, "utf-8").trim();
   if (!onDisk) return null; // empty/whitespace file — guard against parseInt("") = NaN
@@ -184,7 +184,7 @@ export function detectBkitVersionMajorDowngrade(
 
 export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null {
   const installedPkgPath = path.join(cwd, "node_modules", "@cbartens", "bkit", "package.json");
-  const versionFile = path.join(cwd, ".agents", ".bkit-version");
+  const versionFile = path.join(cwd, ".bkit", "version");
 
   if (!fs.existsSync(installedPkgPath) || !fs.existsSync(versionFile)) return null;
 
@@ -208,7 +208,7 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
   return {
     id: "bkit-version-pin-stale",
     severity: "advisory",
-    detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .agents/.bkit-version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run \`pnpm bkit install\`.`,
+    detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .bkit/version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run \`pnpm bkit install\`.`,
     action:
       "Run `pnpm bkit install --full` to resync the .agents payload + version pin, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
   };
@@ -231,8 +231,8 @@ const BKIT_GITIGNORE_LINES = [
   "docs/plans/*/logs/**/raw/",
   "docs/plans/*/logs/**/.lock",
   ".husky/_",
-  ".agents/advisories.md",
-  ".agents/.env",
+  ".bkit/advisories.md",
+  ".bkit/.env",
 ];
 
 export function detectGitignoreBlockDuplicates(cwd: string): PreflightFinding | null {
@@ -279,7 +279,7 @@ const BKIT_PRETTIERIGNORE_PATHS = [
   "pnpm-lock.yaml",
   ".mcp.json",
   ".envrc",
-  ".agents/.env.example",
+  ".bkit/.env.example",
 ];
 
 export function detectPrettierignoreScopeBroadening(cwd: string): PreflightFinding | null {
@@ -556,7 +556,7 @@ export function detectTier2TextDrift(
  * through bkit v1.x before upgrading directly to v2.0.0.
  */
 export function detectPreEnvelopeBkitVersion(cwd: string): PreflightFinding | null {
-  const versionFilePath = path.join(cwd, ".agents", ".bkit-version");
+  const versionFilePath = path.join(cwd, ".bkit", "version");
   const bkitVer = readBkitVersion(versionFilePath);
   if (!bkitVer?.pinnedVersion) return null;
 
@@ -755,13 +755,13 @@ export function detectExtraMcpServers(
 }
 
 // ---------------------------------------------------------------------------
-// [mcp-env] advisories — direnv + .agents/.env setup (BAR-260 follow-up)
+// [mcp-env] advisories — direnv + .bkit/.env setup (BAR-260 follow-up)
 // ---------------------------------------------------------------------------
 
 /**
- * Advisory: .agents/.env.example exists but .agents/.env does not.
+ * Advisory: .bkit/.env.example exists but .bkit/.env does not.
  * Consumer ran `bkit install` (which seeds .env.example) but has not yet
- * copied it to .agents/.env and filled in their tokens.
+ * copied it to .bkit/.env and filled in their tokens.
  */
 // `tracker` controls whether `LINEAR_API_KEY` appears in the token prose — a github/none
 // repo never wires Linear, so listing the key is a false ask (issue #138). Defaults to
@@ -771,8 +771,8 @@ export function detectMissingDotenv(
   cwd: string,
   tracker: IssueTracker = "linear",
 ): PreflightFinding | null {
-  const examplePath = path.join(cwd, ".agents", ".env.example");
-  const envPath = path.join(cwd, ".agents", ".env");
+  const examplePath = path.join(cwd, ".bkit", ".env.example");
+  const envPath = path.join(cwd, ".bkit", ".env");
   if (!fs.existsSync(examplePath)) return null;
   if (fs.existsSync(envPath)) return null;
   const tokens =
@@ -780,20 +780,20 @@ export function detectMissingDotenv(
   return {
     id: "mcp-env-missing-dotenv",
     severity: "advisory",
-    detect: `.agents/.env.example exists but .agents/.env does not. MCP servers and agent tooling will not have access to ${tokens}.`,
-    action: `[mcp-env] Copy .agents/.env.example to .agents/.env and fill in your tokens (${tokens}). Then run \`direnv allow\` to auto-export them into your shell. .agents/.env is gitignored and safe to commit-skip.`,
+    detect: `.bkit/.env.example exists but .bkit/.env does not. MCP servers and agent tooling will not have access to ${tokens}.`,
+    action: `[mcp-env] Copy .bkit/.env.example to .bkit/.env and fill in your tokens (${tokens}). Then run \`direnv allow\` to auto-export them into your shell. .bkit/.env is gitignored and safe to commit-skip.`,
   };
 }
 
 /**
- * Advisory: .agents/.env exists but one or more required keys are blank or absent.
+ * Advisory: .bkit/.env exists but one or more required keys are blank or absent.
  * Returns one finding per missing/blank key.
  */
 export function detectBlankDotenvKeys(
   cwd: string,
   tracker: IssueTracker = "linear",
 ): PreflightFinding[] {
-  const envPath = path.join(cwd, ".agents", ".env");
+  const envPath = path.join(cwd, ".bkit", ".env");
   if (!fs.existsSync(envPath)) return [];
 
   const content = fs.readFileSync(envPath, "utf-8");
@@ -841,13 +841,13 @@ export function detectBlankDotenvKeys(
     if (value !== undefined && value !== "") continue;
     const reason =
       value === undefined
-        ? `${key} is absent from .agents/.env`
-        : `${key} is set but has an empty value in .agents/.env`;
+        ? `${key} is absent from .bkit/.env`
+        : `${key} is set but has an empty value in .bkit/.env`;
     findings.push({
       id: `mcp-env-blank-key-${key.toLowerCase()}`,
       severity: "advisory",
       detect: `${reason}. The associated service will not authenticate.`,
-      action: `[mcp-env] Set ${key} in .agents/.env — ${description}. After editing, run \`direnv allow\` (or re-enter the directory) to reload the env.`,
+      action: `[mcp-env] Set ${key} in .bkit/.env — ${description}. After editing, run \`direnv allow\` (or re-enter the directory) to reload the env.`,
     });
   }
   return findings;
@@ -885,9 +885,9 @@ export function detectDirenvMissing(
     id: "mcp-env-direnv-missing",
     severity: "advisory",
     detect:
-      ".envrc exists but direnv is not installed. .agents/.env will not be auto-loaded into your shell.",
+      ".envrc exists but direnv is not installed. .bkit/.env will not be auto-loaded into your shell.",
     action:
-      "[mcp-env] direnv auto-loads .agents/.env into your shell on cd, so tokens stay scoped to the repo. Set it up:\n\n" +
+      "[mcp-env] direnv auto-loads .bkit/.env into your shell on cd, so tokens stay scoped to the repo. Set it up:\n\n" +
       "    # 1. One-time per machine — install direnv\n" +
       "    brew install direnv                                              # macOS\n" +
       "    # Linux / other: https://direnv.net/docs/installation.html\n\n" +
@@ -895,8 +895,8 @@ export function detectDirenvMissing(
       "    echo 'eval \"$(direnv hook zsh)\"' >> ~/.zshrc && source ~/.zshrc\n" +
       "    # bash: echo 'eval \"$(direnv hook bash)\"' >> ~/.bashrc && source ~/.bashrc\n\n" +
       "    # 3. One-time per repo — copy the example, fill in tokens, allow\n" +
-      "    cp .agents/.env.example .agents/.env                             # if not already done\n" +
-      `    # edit .agents/.env: set ${editKeys}\n` +
+      "    cp .bkit/.env.example .bkit/.env                             # if not already done\n" +
+      `    # edit .bkit/.env: set ${editKeys}\n` +
       "    direnv allow\n\n" +
       `After step 3, restart Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers. Alternative if you do not want direnv: export ${exportKeys} in ~/.zshrc or ~/.bashrc directly — works but leaks tokens into every shell on this machine.`,
   };
@@ -936,8 +936,8 @@ export function detectDirenvNotAllowed(
       id: "mcp-env-direnv-not-allowed",
       severity: "advisory",
       detect:
-        "direnv is installed but the .envrc in this repo is blocked. .agents/.env is not being auto-loaded.",
-      action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .agents/.env. direnv will then export ${tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
+        "direnv is installed but the .envrc in this repo is blocked. .bkit/.env is not being auto-loaded.",
+      action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
     };
   }
   return null;
@@ -1095,7 +1095,7 @@ export function runPreflight(
   }
 
   // [mcp-env] detectors run in Phase 3 (runPostInstallCheck in bkit-postinstall.ts),
-  // not here — Phase 1 cannot see the scaffolds (.agents/.env.example, .envrc) on
+  // not here — Phase 1 cannot see the scaffolds (.bkit/.env.example, .envrc) on
   // a first install because writes have not happened yet. Detectors stay exported
   // from this file so the postinstall module can call them.
 

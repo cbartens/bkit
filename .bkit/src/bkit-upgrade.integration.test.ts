@@ -80,7 +80,7 @@ function writeVersionFile(
     tier3Hashes,
     canonicalHashes,
   };
-  writeBkitVersion(path.join(tmpDir, ".agents", ".bkit-version"), v);
+  writeBkitVersion(path.join(tmpDir, ".bkit", "version"), v);
 }
 
 // ---------------------------------------------------------------------------

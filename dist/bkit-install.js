@@ -121,7 +121,7 @@ const BKIT_PREFIX = "bkit-";
 // Log prefix — mutated by main() to "[bkit-check]" when verb === "check"
 // so log scanners can tell which verb actually ran.
 let LOG_PREFIX = "[bkit-install]";
-// Parse .bkit/docs/prompts.md § Models table → Map<name, cursorModel>
+// Parse .bkit/prompts.md § Models table → Map<name, cursorModel>
 export function parseModelLookup(subagentsMdPath) {
     const content = fs.readFileSync(subagentsMdPath, "utf-8");
     const map = new Map();
@@ -531,7 +531,7 @@ function mirrorDirAlways(src, dst, dryRun, log) {
 // In dogfood (running from .bkit/src/ in the bkit repo itself), src and dst
 // resolve to the same paths, so this pass is a no-op.
 // Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
-// (`.bkit/docs/*.md`) now live package-side and are read directly from there
+// (`.bkit/*.md`) now live package-side and are read directly from there
 // (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). They are never
 // written into a consumer. Consumers upgraded from a layout that DID copy these
 // into `.agents/` carry orphans — `runPayload` removes them so the tree stays
@@ -548,6 +548,17 @@ const RELOCATED_AGENTS_FILES = [
     "cloud.md",
     "prompts.md",
     "IDEs.md",
+];
+// Files that moved from `.agents/` to a consumer-side `.bkit/` directory and
+// carry consumer-owned or stateful content — MIGRATE (move) rather than delete,
+// so an upgrading consumer keeps their version pin, secrets, and friction log.
+// [oldRel, newRel]. `.env.example` is a seed but may carry consumer edits, so
+// move it too (install reseeds at the new path only if absent).
+const MIGRATED_AGENTS_FILES = [
+    [path.join(".agents", ".bkit-version"), path.join(".bkit", "version")],
+    [path.join(".agents", ".env"), path.join(".bkit", ".env")],
+    [path.join(".agents", ".env.example"), path.join(".bkit", ".env.example")],
+    [path.join(".agents", "friction.md"), path.join(".bkit", "friction.md")],
 ];
 export function runPayload(dryRun) {
     let deletes = 0;
@@ -578,6 +589,36 @@ export function runPayload(dryRun) {
         deletes++;
         if (!dryRun)
             fs.rmSync(target, { force: true });
+    }
+    // 3. Migrate stateful/consumer-owned files .agents/ → .bkit/ (move, content-preserving).
+    //    Only when the old path exists and the new one does not, so a re-run is a no-op
+    //    and an already-migrated consumer is never clobbered.
+    for (const [oldRel, newRel] of MIGRATED_AGENTS_FILES) {
+        if (!fs.existsSync(oldRel))
+            continue;
+        if (fs.existsSync(newRel)) {
+            // Already migrated (or freshly seeded) — drop the stale .agents/ copy.
+            console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing superseded ${oldRel}`);
+            deletes++;
+            if (!dryRun)
+                fs.rmSync(oldRel, { force: true });
+            continue;
+        }
+        console.log(`${LOG_PREFIX} ${tag}payload migrate: ${oldRel} → ${newRel}`);
+        if (!dryRun) {
+            fs.mkdirSync(path.dirname(newRel), { recursive: true });
+            fs.renameSync(oldRel, newRel);
+        }
+    }
+    // Old regenerated advisories artifact — drop it (rewritten at .bkit/advisories.md).
+    {
+        const oldAdvisories = path.join(".agents", "advisories.md");
+        if (fs.existsSync(oldAdvisories)) {
+            console.log(`${LOG_PREFIX} ${tag}payload cleanup: removing superseded ${oldAdvisories}`);
+            deletes++;
+            if (!dryRun)
+                fs.rmSync(oldAdvisories, { force: true });
+        }
     }
     return { writes: 0, deletes };
 }
@@ -824,7 +865,7 @@ async function main() {
         process.exit(1);
     });
     // Parse model lookup (needed for cursor transforms).
-    // Source: PACKAGE's .bkit/docs/prompts.md (bkit-authoring data, package-only).
+    // Source: PACKAGE's .bkit/prompts.md (bkit-authoring data, package-only).
     // prompts.md is no longer copied into consumers, so the package copy is the
     // sole source. Reading from the package guarantees the lookup matches the
     // prompt files about to be installed and avoids a mid-install hard-fail in

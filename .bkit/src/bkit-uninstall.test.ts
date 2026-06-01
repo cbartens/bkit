@@ -54,7 +54,7 @@ function readFile(relPath: string): string {
 }
 
 function writeBkitVersionFile(v: BkitVersion): void {
-  const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
+  const versionFilePath = path.join(tmpDir, ".bkit", "version");
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(versionFilePath, serializeBkitVersion(v), "utf-8");
 }
@@ -173,7 +173,7 @@ describe("buildDecisionTable — byte-equal-text hash guard", () => {
   it("retro-fit: v0.6.x .bkit-version (plain text, no tier3Hashes) → skip-tier3-unknown", () => {
     writeFile(".cursor/environment.json", '{"install":"pnpm install"}\n');
     // Simulate v0.6.x plain-text .bkit-version
-    const versionFilePath = path.join(tmpDir, ".agents", ".bkit-version");
+    const versionFilePath = path.join(tmpDir, ".bkit", "version");
     fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
     fs.writeFileSync(versionFilePath, "0.6.0\n", "utf-8");
 
