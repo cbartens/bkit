@@ -8,7 +8,7 @@
 > - Token-efficient dense phrasing; agent / maintainer readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in another doc. Label semantics live in `.bkit/workflows.md` § Tracker Integration; this file is the marker contract + operational per-tracker reference.
 > - Three trackers supported: `github` (default), `linear` (opt-in), `none` (no tracker wired).
-> - Adding a new tracker (Jira, etc.): add the enum value to `.bkit/src/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.bkit/src/bkit-trackers.ts`). There is no `none` marker — no-tracker content is `false`.
+> - Adding a new tracker (Jira, etc.): add the enum value to `.bkit/src/bkit-manifest.ts`; document the MCP server config under `mcpServers.<name>` in `.bkit/templates/.mcp.json` and `.bkit/templates/.cursor/mcp.json`; add a `<!-- bkit:tracker <name> -->` block alongside `github`/`linear` at every tracker call site (and extend the pair resolver in `.bkit/src/bkit-trackers.ts`). No `none` marker exists — no-tracker content is `false`.
 
 ## Marker contract
 
