@@ -174,18 +174,18 @@ None — no new routes, DB writes, secrets, or user input. Structural refactor o
 
 ### Core (always verify)
 
-- [ ] **Package Management:** `package.json` `files[]`/`bin`/scripts and `pnpm-lock.yaml` sync cleanly; no new runtime deps (the move adds none — `picomatch` stays the only `dependencies` entry).
-- [ ] **Dependency Versions:** Spot-check `pnpm --version`, `npx tsc --version`, `tsx`/`vitest` versions; confirm `tsc` build still emits to flat `dist/` with `bin` unchanged.
-- [ ] **User Context:** Read/write access to `.agents/scripts/**`, `.agents/templates/**`, `tsconfig.json`, `vitest.config.ts`, `package.json`, `docs/**`, `.agents/rules.md`.
-- [ ] **Pending Blockers:** No open `blocker`-labelled issues on #160–#167.
-- [ ] **Project Context:** Re-read `docs/decisions.md`, `docs/knowledge.md` for prior bkit-install/dogfood gotchas (tarball dogfood, install↔upgrade divergence, `.npmrc` var substitution, ASCII operators in workflow/prompt files).
-- [ ] **Testing & Quality:** Confirm `vitest` discovery glob and `docs/testing.md` tier boundaries (`*.test.ts` unit, `*.integration.test.ts` integration); plan re-targets the glob in WS-3 (Sub-Plan 2).
-- [ ] **Prerequisite Plans:** None — this is the root sub-plan for #160; WS dependency edges are internal to the split (Sub-Plan 1 → Sub-Plan 2 → Sub-Plan 3; Sub-Plan 2 → Sub-Plan 4).
+- [x] **Package Management:** `package.json` `files[]`/`bin`/scripts and `pnpm-lock.yaml` sync cleanly; no new runtime deps (the move adds none — `picomatch` stays the only `dependencies` entry).
+- [x] **Dependency Versions:** Spot-check `pnpm --version`, `npx tsc --version`, `tsx`/`vitest` versions; confirm `tsc` build still emits to flat `dist/` with `bin` unchanged.
+- [x] **User Context:** Read/write access to `.agents/scripts/**`, `.agents/templates/**`, `tsconfig.json`, `vitest.config.ts`, `package.json`, `docs/**`, `.agents/rules.md`.
+- [x] **Pending Blockers:** No open `blocker`-labelled issues on #160–#167.
+- [x] **Project Context:** Re-read `docs/decisions.md`, `docs/knowledge.md` for prior bkit-install/dogfood gotchas (tarball dogfood, install↔upgrade divergence, `.npmrc` var substitution, ASCII operators in workflow/prompt files).
+- [x] **Testing & Quality:** Confirm `vitest` discovery glob and `docs/testing.md` tier boundaries (`*.test.ts` unit, `*.integration.test.ts` integration); plan re-targets the glob in WS-3 (Sub-Plan 2).
+- [x] **Prerequisite Plans:** None — this is the root sub-plan for #160; WS dependency edges are internal to the split (Sub-Plan 1 → Sub-Plan 2 → Sub-Plan 3; Sub-Plan 2 → Sub-Plan 4).
 
 ### Conditional (verify only when applicable)
 
-- [ ] **Architecture & UI** _(new files)_: New seam in `bkit-paths.ts` adheres to `docs/architecture.md` topology (which WS-6 / Sub-Plan 4 updates to describe `.bkit/`).
-- [ ] **Observability** _(new log points)_: fail-loud guard emits `[bkit-modules] Templates root not found at <path> — package corrupt?` following the `[Context] Message` convention. (`bkit doctor` line is Sub-Plan 2.)
+- [x] **Architecture & UI** _(new files)_: New seam in `bkit-paths.ts` adheres to `docs/architecture.md` topology (which WS-6 / Sub-Plan 4 updates to describe `.bkit/`).
+- [x] **Observability** _(new log points)_: fail-loud guard emits `[bkit-modules] Templates root not found at <path> — package corrupt?` following the `[Context] Message` convention. (`bkit doctor` line is Sub-Plan 2.)
 
 ### 🔒 Gate 1: Prerequisites Check
 
@@ -193,7 +193,7 @@ None — no new routes, DB writes, secrets, or user input. Structural refactor o
 
 - [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
 - [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [x] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
 
 ## Data Schema Integration
 
@@ -252,41 +252,41 @@ Code-only — `git revert` of the squash merge is sufficient. This sub-plan adds
 
 ### Phase WS-1 — Resolver-seam consolidation & dogfood safety scaffolding (pre-move; #161)
 
-- [ ] **WS1-T1:** Add `BKIT_SRC_SUBPATH` shared constant to `bkit-paths.ts` (value still `.agents/scripts` form) and derive `getPkgRoot()`'s suffix check from it.
+- [x] **WS1-T1:** Add `BKIT_SRC_SUBPATH` shared constant to `bkit-paths.ts` (value still `.agents/scripts` form) and derive `getPkgRoot()`'s suffix check from it.
   - **Done when:** `bkit-paths.ts` exports/declares `BKIT_SRC_SUBPATH`; `getPkgRoot()` uses it; `pnpm test` + `pnpm build` green; no behaviour change.
-- [ ] **WS1-T2:** Add `getTemplatesRoot()` (`path.join(getPkgRoot(), ".agents", "templates")`) and `isDogfood()` (`getPkgRoot() === process.cwd()`) to `bkit-paths.ts`.
+- [x] **WS1-T2:** Add `getTemplatesRoot()` (`path.join(getPkgRoot(), ".agents", "templates")`) and `isDogfood()` (`getPkgRoot() === process.cwd()`) to `bkit-paths.ts`.
   - **Done when:** both functions exported; a unit test asserts `getTemplatesRoot()` ends with `.agents/templates` and `isDogfood()` returns true when cwd === pkgRoot.
-- [ ] **WS1-T3:** Expand the `bkit-paths.ts` header comment to enumerate the THREE `getPkgRoot()` run-contexts (dist / tsx-from-source / packed tarball) and which arm each hits.
+- [x] **WS1-T3:** Expand the `bkit-paths.ts` header comment to enumerate the THREE `getPkgRoot()` run-contexts (dist / tsx-from-source / packed tarball) and which arm each hits.
   - **Done when:** header comment lists all three contexts; no two-context-only wording remains.
-- [ ] **WS1-T4:** Refactor `runPayload()` (`bkit-install.ts:627-630`) to obtain `PKG_ROOT` from `getPkgRoot()`, deleting the inline suffix walk; workflows/prompts arm `src === dst` skip unchanged.
+- [x] **WS1-T4:** Refactor `runPayload()` (`bkit-install.ts:627-630`) to obtain `PKG_ROOT` from `getPkgRoot()`, deleting the inline suffix walk; workflows/prompts arm `src === dst` skip unchanged.
   - **Done when:** no second copy of `scriptDir.endsWith(...scripts)` exists in `bkit-install.ts`; `runPayload` calls `getPkgRoot()`; payload tests green.
-- [ ] **WS1-T5:** Add the fail-loud templates-root-not-found guard in `bkit-modules.ts` (mirroring `:359`) replacing silent `if (!fs.existsSync) return` for templates-derived paths. The guard's unit test MUST be **path-agnostic** (inject/resolve the templates root via a non-existent path rather than hard-coding `.agents/templates`), so it stays valid after the WS3-T2 templates-root flip and the WS3-T1 `git mv` — i.e. it asserts the guard fires for ANY non-existent resolved root, not specifically `.agents/templates`.
+- [x] **WS1-T5:** Add the fail-loud templates-root-not-found guard in `bkit-modules.ts` (mirroring `:359`) replacing silent `if (!fs.existsSync) return` for templates-derived paths. The guard's unit test MUST be **path-agnostic** (inject/resolve the templates root via a non-existent path rather than hard-coding `.agents/templates`), so it stays valid after the WS3-T2 templates-root flip and the WS3-T1 `git mv` — i.e. it asserts the guard fires for ANY non-existent resolved root, not specifically `.agents/templates`.
   - **Done when:** unit test asserts that a non-existent (injected) templates root triggers the `[bkit-modules] Templates root not found at <path> — package corrupt?` message + `process.exit(1)`; the test contains NO hard-coded `.agents/templates` literal that would silently keep passing if the guard regressed post-move.
-- [ ] **WS1-T6:** Add the zero-write in-repo dogfood integration test (asserts `bkit install` writes nothing to `.agents/` when `isDogfood()`), running in the `tsx`-from-source context (not `dist/`-only). Author under `.agents/scripts/` now (moves with WS-3).
+- [x] **WS1-T6:** Add the zero-write in-repo dogfood integration test (asserts `bkit install` writes nothing to `.agents/` when `isDogfood()`), running in the `tsx`-from-source context (not `dist/`-only). Author under `.agents/scripts/` now (moves with WS-3).
   - **Done when:** `bkit-dogfood-noop.integration.test.ts` exists and passes in `tsx` context; asserts zero writes under `.agents/`.
-- [ ] **WS1-T7:** Author the dedicated `bkit-paths.test.ts` unit test asserting `getPkgRoot()` resolves to repo root under EACH of the three run-contexts named in the matrix and the `bkit-paths.ts` header — dist (`__dirname` under `dist/` → one level up), tsx-from-source (`__dirname` under `.agents/scripts` pre-move / `.bkit/src` post-move → two levels up), and packed-tarball (`node_modules/@cbartens/bkit/dist` layout). The **dist arm — what consumers actually run — MUST be explicitly asserted**, since WS3-T2 deliberately leaves the `dist/` arm untouched and only `check:dist` exercises it indirectly. Author under `.agents/scripts/` now (moves with WS-3). Owns Derived Test Matrix row 3 (1:1).
+- [x] **WS1-T7:** Author the dedicated `bkit-paths.test.ts` unit test asserting `getPkgRoot()` resolves to repo root under EACH of the three run-contexts named in the matrix and the `bkit-paths.ts` header — dist (`__dirname` under `dist/` → one level up), tsx-from-source (`__dirname` under `.agents/scripts` pre-move / `.bkit/src` post-move → two levels up), and packed-tarball (`node_modules/@cbartens/bkit/dist` layout). The **dist arm — what consumers actually run — MUST be explicitly asserted**, since WS3-T2 deliberately leaves the `dist/` arm untouched and only `check:dist` exercises it indirectly. Author under `.agents/scripts/` now (moves with WS-3). Owns Derived Test Matrix row 3 (1:1).
   - **Done when:** `bkit-paths.test.ts` exists and passes with three named assertions — one per run-context (dist, tsx-from-source, packed-tarball) — each asserting `getPkgRoot()` resolves to the expected repo/package root; the dist arm is asserted explicitly (not only via `check:dist`).
 
 ### 🔒 Gate WS-1: scaffolding green pre-move
 
-- [ ] **Gate WS-1 - Verified:** `pnpm test` + `pnpm build` + `check:dist` green with the tree STILL at `.agents/`; no file relocation has occurred yet.
+- [x] **Gate WS-1 - Verified:** `pnpm test` + `pnpm build` + `check:dist` green with the tree STILL at `.agents/`; no file relocation has occurred yet.
 
 ### Phase WS-2 — Pre-refactor baseline capture (#162)
 
-- [ ] **WS2-T1:** Build a pre-refactor packed tarball (`pnpm pack`) from the WS-1 (post-scaffolding, pre-move) state and install it into a clean temp dir; run `bkit install`. **Use the default (non-`--renovate`) install flags** — Sub-Plan 3's WS4-T1/WS4-T3 verification MUST use identical flags so the WS-6 `renovate.json5` source edit never perturbs the default-flow hashed set.
+- [x] **WS2-T1:** Build a pre-refactor packed tarball (`pnpm pack`) from the WS-1 (post-scaffolding, pre-move) state and install it into a clean temp dir; run `bkit install`. **Use the default (non-`--renovate`) install flags** — Sub-Plan 3's WS4-T1/WS4-T3 verification MUST use identical flags so the WS-6 `renovate.json5` source edit never perturbs the default-flow hashed set.
   - **Done when:** a clean-dir install from the tarball exists; capture dir under `docs/plans/202605/logs/160-centralise-install-code/baseline/`.
-- [ ] **WS2-T2:** Capture the `.bkit-version` hash-set baseline (`canonicalHashes` + `tier3Hashes`) as a serialised JSON artifact.
+- [x] **WS2-T2:** Capture the `.bkit-version` hash-set baseline (`canonicalHashes` + `tier3Hashes`) as a serialised JSON artifact.
   - **Done when:** `baseline/bkit-version-hashes.json` committed.
-- [ ] **WS2-T3:** Capture the recursive `.agents/` consumer-tree listing baseline (covers untracked `copyAdditive` payload — `workflows/`, `prompts/`, `IDEs.md`, `cloud.md`, `trackers.md`).
+- [x] **WS2-T3:** Capture the recursive `.agents/` consumer-tree listing baseline (covers untracked `copyAdditive` payload — `workflows/`, `prompts/`, `IDEs.md`, `cloud.md`, `trackers.md`).
   - **Done when:** `baseline/agents-tree.txt` committed (deterministic sorted listing).
-- [ ] **WS2-T4:** Capture the pre-refactor `npm pack --dry-run` tarball file list.
+- [x] **WS2-T4:** Capture the pre-refactor `npm pack --dry-run` tarball file list.
   - **Done when:** `baseline/pack-filelist.txt` committed.
-- [ ] **WS2-T5:** Capture a pre-move baseline on a consumer that HAS `.agents/templates/` (for the D1 orphan-removal upgrade assertion in WS-4 / Sub-Plan 3).
+- [x] **WS2-T5:** Capture a pre-move baseline on a consumer that HAS `.agents/templates/` (for the D1 orphan-removal upgrade assertion in WS-4 / Sub-Plan 3).
   - **Done when:** `baseline/stale-consumer-setup.md` (single committed artifact — no disjunction) exists and names the EXACT construction step that establishes the stale consumer (install the pre-move WS-1-state tarball from WS2-T1 into a clean dir and run `bkit install`, which writes `.agents/templates/`), so WS4-T4 has a deterministic, named, reproducible input whose `.agents/templates/` is present pre-move.
 
 ### 🔒 Gate WS-2: baseline captured before any move
 
-- [ ] **Gate WS-2 - Verified:** All four baseline artifacts committed; captured from a packed tarball (NOT the source tree); no `git mv` has run.
+- [x] **Gate WS-2 - Verified:** All four baseline artifacts committed; captured from a packed tarball (NOT the source tree); no `git mv` has run.
 
 > [!IMPORTANT]
 > **Hand-off to Sub-Plan 2:** Once Gate WS-1 AND Gate WS-2 are green and committed, Sub-Plan 2 ([`160-centralise-install-code-plan-2.md`](./160-centralise-install-code-plan-2.md)) may begin the physical `git mv`. Do NOT start the move before both gates pass — the live `.agents/` would self-overwrite mid-state and destroy the baseline oracle.

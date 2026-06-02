@@ -153,7 +153,12 @@ def collect_targets(args: list[str]) -> list[Path]:
             files.append(root)
         elif root.is_dir():
             files.extend(root.rglob("*.md"))
-    return files
+    # Exclude vendored skill docs — any file inside a `skills/` DIRECTORY
+    # (.agents/skills/**, etc.); third-party content we must not reformat.
+    # Checks parent dirs only (f.parent.parts), so a file merely named
+    # "skills.md" or "my-skills-guide.md" is NOT excluded — only /skills/ trees.
+    # An explicit file arg under skills/ is still honoured (walk results only).
+    return [f for f in files if "skills" not in f.parent.parts]
 
 
 def main() -> int:

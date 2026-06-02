@@ -9,8 +9,34 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Tiers strictly separated — Unit · Integration · E2E · Smoke.
-> - Pre-push runs typecheck + unit tests + `bkit check`; integration and E2E excluded. NEVER `--no-verify`.
+> - Tiers strictly separated — Unit · Integration · E2E · @live · Smoke.
+> - Pre-push runs typecheck + unit tests + `bkit check`; integration, E2E, and @live excluded (they run in CI — see below). NEVER `--no-verify`.
+
+## CI test tiers (the bkit scaffold)
+
+CI runs the tiers through the 4-job scaffold (full step-by-step in
+`.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape in
+`deployments.md` § Run-level decision matrix):
+
+- **`bkit-decide`** (always-on) computes `run_level` + emits the `bkit-test-plan`
+  contract — _what should run_.
+- **`bkit-tests`** runs Unit → Integration → E2E (Integration / E2E gated on
+  `web_affected` / `run_e2e`).
+- **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
+  `run_live`; drop the whole job if you have no deploy).
+- **`bkit-tests-check`** is the capstone — it fails the run if any tier the plan
+  _expected_ was skipped, so a green required check means **validated**, not merely
+  "nothing failed". Make it the sole branch-protection required check.
+
+## Schema-invariant DB checks (RLS coverage, etc.)
+
+Assert DB-level invariants ("every public table has RLS enabled", no hardcoded list) one of two ways:
+
+- **pgTAP (canonical)** — `supabase/tests/*.sql` run by `supabase db test` in the `bkit-stub:test-db` step against the CI-local DB; keeps the invariant out of app code.
+- **@live catalog-RPC (remote-only CI)** — no local DB? A `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier. Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.
+- **PostgREST gotcha** — `GET /rest/v1/` (OpenAPI) is service_role-only by default: fetch the exposed surface with the service-role key, then probe each table with the ANON key (only the leak assertion must be anon).
+
+An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-denial, no hardcoded table list) is a natural fit for `bkit-tests-live`; bkit may ship it as a template later.
 
 ## CI verbosity (`[verbose ci]`)
 
@@ -34,7 +60,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 ## Stack
 
 - **Runner:** Vitest 2 (`pnpm test` → `vitest run`).
-- **Test files** colocated with source under `.agents/scripts/`. No separate `tests/` tree.
+- **Test files** colocated with source under `.bkit/src/`. No separate `tests/` tree.
 - **No mocking framework.** Prefer real filesystem against `os.tmpdir()` over mocked `fs`. `vi.spyOn(process, "exit", ...)` only where production code calls `process.exit(1)` (T1/T2/T3 hard-fails).
 
 ## Tiers
@@ -45,16 +71,17 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 | Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
 | Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI (excluded from pre-push) |
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
+| @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
 ## Consumer-runtime parity rule
 
-bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit install`. The repo and its consumers run the same `.agents/scripts/*` code, so a release tag must not ship an install path the repo's own CI hasn't exercised end-to-end.
+bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit install`. The repo and its consumers run the same `.bkit/src/*` code, so a release tag must not ship an install path the repo's own CI hasn't exercised end-to-end.
 
 **Required coverage for every consumer-runtime hard-fail** (any `process.exit(1)` reachable from `bkit install` / `bkit check`):
 
 1. **Unit test** of the failure branch (positive: bad input → exit). Cheap regression guard.
 2. **Smoke spawn test** of `bkit install --full` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
-3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.agents/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
+3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.bkit/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
 4. **Phase 3 blocker exit-1 + recovery test** — Scenario 6 (exit 1 with recovery line) + Scenario 7 (`--auto-revert` calls `runUninstall` in-process before exit). v0.7.0+.
 5. **Mid-failure rollback test** — Scenario 9: simulate failure after first module commit; assert consumer files byte-identical to pre-install state via `discardAllStaging` (KN-12). v0.9.0+.
 
@@ -68,7 +95,7 @@ bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit
 
 When adding new bkit-managed file types or new managed-scope keys, extend the fixture rather than mocking — the fixture is the single source of truth for "real consumer surface" testing.
 
-## Test files added in v0.6.x → v1.0
+## Key test files
 
 <!-- prettier-ignore -->
 | File | Tier | Scope |
@@ -104,20 +131,16 @@ Always assert at least one positive signal (a known log prefix like `[bkit-insta
 
 ## What not to test
 
-- `.claude/` and `.cursor/` mirror file contents — generated from `.agents/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
+- `.claude/` and `.cursor/` mirror file contents — generated from `.bkit/workflows/` + `.bkit/prompts/` at install time; regenerating from a snapshot tests the snapshot, not the install. Test the transform (`applyT1` / `applyT2` / `applyT3`) and dispatch (`dispatchModules`) instead.
 - Token resolution against the real `gh`/`vercel` CLIs. Stub via `process.env` overrides.
 - Network calls. `bkit-tokens.ts` is the only network-adjacent surface; isolate behind injectable resolvers.
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs every push to `dev`/`main` and PRs into them. Order:
+`.github/workflows/ci.yml` runs the degenerate 3-job scaffold on every push to `dev`/`main` and PRs into them (bkit is single-package with no deploy, so there is no `bkit-tests-live`):
 
-1. `pnpm typecheck`
-2. `pnpm test` (unit + integration)
-3. `pnpm format:check`
-4. `pnpm lint:prose` (vale)
-5. `pnpm lint:slop`
-6. `pnpm check:dist` — rebuilds `dist/` and fails if working tree differs from committed
-7. `pnpm bkit check` — drift gate against the bkit repo itself
+1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON + a `$GITHUB_STEP_SUMMARY` table.
+2. **`bkit-tests`** (`if: run_level != 'none'`) — the suite, in order: `pnpm typecheck` → `pnpm test` (unit + integration) → `pnpm format:check` → `pnpm lint:prose` (vale) → `pnpm lint:slop` → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
+3. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests` succeeded. This is the SOLE branch-protection required check (`scripts/ci/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs steps 1–6 before `npm publish`. Step 7 is intentionally omitted — the tagged tree should already match dev's clean state.
+Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the `bkit-tests` static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.

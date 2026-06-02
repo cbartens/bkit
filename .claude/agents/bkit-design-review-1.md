@@ -51,7 +51,7 @@ maxTurns: 50
 6. Stack feasibility — buildable with approved stack? Constraints?
 7. Library/API eval — maturity, bundle, types, license.
 8. Integration risk — monorepo fit, systems touched.
-9. PoC approach — ≤200 words. **If** can't be described that briefly → `Verdict` = CONCERNS.
+9. PoC approach — <=200 words. **If** can't be described that briefly → `Verdict` = CONCERNS.
 10. Unknowns/blockers needing experimentation.
 11. Update **Create** output - set `Verdict` via `Edit`; mapping:
 

@@ -13,8 +13,8 @@
  * - `linear` — Linear (opt-in).
  * - `none` — no tracker wired; workflows skip tracker calls with one-line log.
  *
- * Add a new value here when adding a provider section to `.agents/trackers.md`.
- * See `.agents/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
+ * Add a new value here when adding a provider section to `.bkit/trackers.md`.
+ * See `.bkit/trackers.md` § "Adding a tracker (Jira, etc.)" in the Rules block.
  */
 export const ISSUE_TRACKERS = ["github", "linear", "none"];
 /** Default tracker when consumer manifest has no `bkit.issueTracker` field. */
@@ -54,20 +54,29 @@ export function parseDepUpdater(value) {
 // ---------------------------------------------------------------------------
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `enabled` — `bkit install --cloud` installed `.github/workflows/bkit-cloud.yml`
- *               (the Claude half of post-CI auto-routing). Set by `runCloudModule`
- *               on the success path only.
+ * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-cloud.yml`
+ *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
+ * - `cursor`  — `bkit install --cloud=cursor` installed `.cursor/Dockerfile`
+ *               + `.cursor/environment.json`. Requires `tracker=linear`.
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
- * (`bkit-cloud.yml`) is the authoritative "active" signal; the package.json
- * field only distinguishes a deliberate opt-out from an undecided install.
+ * (`bkit-cloud.yml` for claude; `.cursor/Dockerfile` for cursor) is the authoritative
+ * "active" signal; the package.json field only distinguishes a deliberate opt-out from
+ * an undecided install.
+ *
+ * DECISION-C (AMENDED 2026-05-27): single self-describing field (mirrors `bkit.issueTracker`).
+ * Back-compat: legacy `"enabled"` is mapped to `"claude"` by `parseCloudAgents`.
  */
-export const CLOUD_MODES = ["enabled", "none"];
+export const CLOUD_MODES = ["claude", "cursor", "none"];
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
 export const DEFAULT_CLOUD_AGENTS = "none";
-/** Narrow an unknown string to `CloudAgents` or return `null` if invalid. */
+/** Narrow an unknown string to `CloudAgents` or return `null` if invalid.
+ * Back-compat: legacy `"enabled"` value maps to `"claude"` (the only meaning it ever had).
+ */
 export function parseCloudAgents(value) {
+    if (value === "enabled")
+        return "claude"; // back-compat
     return typeof value === "string" && CLOUD_MODES.includes(value)
         ? value
         : null;
@@ -82,7 +91,7 @@ const CORE_MANIFEST = [
     // Append-only ledger union-merge rules live in a managed block; consumers may add
     // their own attributes outside the block, so this is markered-text (not whole-file).
     { path: ".gitattributes", format: "markered-text", module: "core" },
-    { path: ".agents/.bkit-version", format: "byte-equal-text", module: "core" },
+    { path: ".bkit/version", format: "byte-equal-text", module: "core" },
 ];
 const CLAUDE_MANIFEST = [
     { path: ".claude/settings.json", format: "json", module: "claude" },
@@ -92,7 +101,7 @@ const CLAUDE_MANIFEST = [
     // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)
     // so a default --full install without the script no-ops instead of erroring.
     { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-    { path: ".agents/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+    { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
@@ -122,25 +131,27 @@ const CI_MANIFEST = [
         },
     },
 ];
-// Cloud agent integration is opt-in via `bkit install --cloud` — NOT included in
-// --full, so a default install ships ZERO cloud footprint. Every file here is
-// inert until a human wires the matching cloud surface (repo secrets + Actions
-// permissions for the workflow; the Claude/Cursor dashboard for the env scaffolding):
+// Cloud agent integration is opt-in — NOT included in --full, so a default install
+// ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
-//   - bkit-cloud.yml         — phase-routed GitHub Action; auto-dispatches a cloud
-//                              agent on CI events. Inert without ANTHROPIC_API_KEY +
-//                              LINEAR_API_KEY + Actions write perms, and depends on
-//                              the issue tracker (itself opt-in). The ONE pathway that
-//                              actually auto-spins-up a cloud agent.
+//   cloud=claude (tracker=github):
+//   - bkit-cloud.yml         — phase-routed GitHub Action; requires ANTHROPIC_API_KEY +
+//                              Claude GitHub App + Actions write perms.
 //   - cloud-bootstrap.sh     — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).
+//
+//   cloud=cursor (tracker=linear):
 //   - .cursor/Dockerfile     — Cursor Background Agent container toolchain.
 //   - .cursor/environment.json — Cursor Background Agent env config (consumer-owned).
 //
-// See issue #119 ("Managed Cloud Agents").
-const CLOUD_MANIFEST = [
+// Splitting per variant ensures uninstall removes ONLY the recorded variant's files —
+// a single manifest with conditional emission but unconditional uninstall listing would
+// orphan the unused variant's files. See issue #119 ("Managed Cloud Agents").
+export const CLOUD_MANIFEST_CLAUDE = [
     { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
     { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
+];
+export const CLOUD_MANIFEST_CURSOR = [
     { path: ".cursor/Dockerfile", format: "markered-text", module: "cloud" },
     {
         path: ".cursor/environment.json",
@@ -149,6 +160,12 @@ const CLOUD_MANIFEST = [
         seedOrPrint: true,
     },
 ];
+// Combined manifest used by MODULE_MANIFESTS.cloud (install dispatch + uninstall).
+// Uninstall intentionally removes the union (zero-footprint): each variant's files are
+// physically absent on an install of the other variant, so removing absent files is a no-op.
+// DECISION-D states the split exists for install EMISSION (variant-correct write), not for
+// variant-correct uninstall listing — union removal is the correct uninstall behaviour.
+const CLOUD_MANIFEST = [...CLOUD_MANIFEST_CLAUDE, ...CLOUD_MANIFEST_CURSOR];
 // Renovate is opt-in via `bkit install --renovate` — phase-gated against the
 // default branch. NOT included in --full. See issue #123 follow-up.
 const RENOVATE_MANIFEST = [

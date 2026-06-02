@@ -3,7 +3,7 @@
 // Design contract (BAR-142 §A5):
 //
 //   `bkit upgrade` diffs old vs new template content against consumer drift using
-//   the `canonicalHashes` field from `.agents/.bkit-version`. Files whose on-disk
+//   the `canonicalHashes` field from `.bkit/version`. Files whose on-disk
 //   content matches the canonical hash recorded at last install are safe to upgrade
 //   (no consumer drift). Files that differ have consumer drift — do NOT silently
 //   overwrite.
@@ -15,7 +15,7 @@
 //
 //   Conflict = a bkit-managed file where:
 //     - The template content has changed (new bkit version ships an update), AND
-//     - The consumer has modified the file since last install (on-disk hash ≠ canonical hash).
+//     - The consumer has modified the file since last install (on-disk hash != canonical hash).
 //
 // Dependency: P4.T4 `canonicalHashes` + `isConsumerModified` from bkit-version.ts.
 //             BAR-167 v2.0.0: `migrateLegacyBkitEnvelope` from bkit-tiers.ts runs before
@@ -81,14 +81,14 @@ export function diffFile(relPath, absolutePath, templateContent, canonicalHashes
  *   - `relPath`: consumer-relative path (e.g. ".claude/agents/bkit-foo.md")
  *   - `templatePath`: absolute path to the new template file in the bkit package
  *
- * The function reads `canonicalHashes` from `.agents/.bkit-version`, diffs each
+ * The function reads `canonicalHashes` from `.bkit/version`, diffs each
  * candidate, and applies the upgrade strategy based on `options`.
  *
  * Returns an `UpgradeResult` describing what happened.
  */
 export function runUpgrade(candidates, options) {
     const cwd = options.cwd ?? process.cwd();
-    const versionFile = path.join(cwd, ".agents", ".bkit-version");
+    const versionFile = path.join(cwd, ".bkit", "version");
     const bkitVersion = readBkitVersion(versionFile);
     const canonicalHashes = bkitVersion?.canonicalHashes ?? {};
     const tokens = options.tokens ?? EMPTY_TOKENS;
@@ -200,7 +200,7 @@ export function runUpgrade(candidates, options) {
 // updateCanonicalHashes — record hashes of written files back to .bkit-version
 // ---------------------------------------------------------------------------
 /**
- * After a successful upgrade, update `.agents/.bkit-version`:
+ * After a successful upgrade, update `.bkit/version`:
  *   - `canonicalHashes`: refresh from the ON-DISK content of every file bkit wrote
  *     or confirmed (`result.updated` ∪ `result.skipped`). For block/scope-merge
  *     formats the disk content is NOT the template (it carries consumer content
@@ -219,13 +219,19 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
     if (options.dryRun)
         return;
     const cwd = options.cwd ?? process.cwd();
-    const versionFile = path.join(cwd, ".agents", ".bkit-version");
+    const versionFile = path.join(cwd, ".bkit", "version");
     const bkitVersion = readBkitVersion(versionFile);
     if (!bkitVersion)
         return;
     const seedablePaths = new Set([...result.updated, ...result.skipped]);
     const newCanonicalHashes = { ...bkitVersion.canonicalHashes };
     for (const relPath of seedablePaths) {
+        // Exclude .agents/ internal files (docs.md, friction.md, rules.md, skills.md,
+        // .env.example etc.) from canonicalHashes — they are not consumer-facing files
+        // whose hashes bkit uses for drift detection. Mirrors the same filter applied
+        // in the install path (bkit-modules.ts postDispatch, line ~470).
+        if (relPath.startsWith(".agents" + path.sep))
+            continue;
         const absolutePath = path.join(cwd, relPath);
         if (!fs.existsSync(absolutePath))
             continue;
@@ -249,7 +255,7 @@ export function updateCanonicalHashesAfterUpgrade(result, options) {
  * 2.5.0 wrote the `.gitattributes` template to a file literally named
  * `gitattributes` (no leading dot) at the repo root. Git only reads
  * `.gitattributes`, so the shipped union-merge rules for the append-only ledgers
- * were inert, and `.agents/.bkit-version` recorded a bogus dot-less
+ * were inert, and `.bkit/version` recorded a bogus dot-less
  * `gitattributes` canonicalHashes key.
  *
  * This migration:
@@ -276,7 +282,7 @@ export function migrateStrayGitattributes(cwd, dryRun) {
     if (dryRun)
         return;
     // Drop the bogus dot-less key 2.5.0 recorded; the dotted key is reseeded later.
-    const versionFile = path.join(cwd, ".agents", ".bkit-version");
+    const versionFile = path.join(cwd, ".bkit", "version");
     const bkitVersion = readBkitVersion(versionFile);
     if (bkitVersion?.canonicalHashes && "gitattributes" in bkitVersion.canonicalHashes) {
         const canonicalHashes = { ...bkitVersion.canonicalHashes };

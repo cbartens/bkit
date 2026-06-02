@@ -130,14 +130,18 @@
     },
 
     // ─────────────────────────────────────────────────────────────────────
-    // Group all non-major npm bumps into one PR per dependency-type.
-    // One coherent PR per week beats one PR per package.
+    // Collapse every auto-mergeable non-major npm bump into ONE PR.
+    // Each Renovate PR rewrites pnpm-lock.yaml, so several firing in the same
+    // window force serial rebases and stall platformAutomerge. Sharing one
+    // groupName across the auto-merge rules below means a single weekly
+    // lockfile mutation, one merge, and no rebase cascade. Manual-review
+    // groups (prod minor, tanstack, vitest, playwright, majors) stay separate.
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor", "patch"],
       matchDepTypes: ["devDependencies"],
-      groupName: "devDependencies (non-major)",
+      groupName: "bkit: renovate non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -146,7 +150,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["patch"],
       matchDepTypes: ["dependencies"],
-      groupName: "dependencies (patch)",
+      groupName: "bkit: renovate non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -155,8 +159,11 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor"],
       matchDepTypes: ["dependencies"],
-      groupName: "dependencies (minor)",
-      // Minor prod bumps: review manually; no auto-merge.
+      groupName: "bkit: renovate minor dependencies",
+      // Minor prod bumps ship new behavior to users — review manually.
+      // Explicit (not just absent) so the policy is greppable and can't be
+      // silently flipped true by an earlier automerge rule.
+      automerge: false,
     },
 
     // Major bumps — always separate, never auto-merged. A human reads the
@@ -167,30 +174,49 @@
       labels: ["dep-major"],
     },
 
-    // Group related ecosystems so they bump in lockstep (avoids peer-dep churn).
-    {
-      matchPackagePatterns: ["^@tanstack/"],
-      groupName: "tanstack",
-    },
+    // @types/* and the eslint family fold into the unified non-major
+    // auto-merge PR above. Scoped to non-major so a major bump falls to the
+    // majors rule (own PR, no auto-merge) instead of poisoning the group's
+    // auto-merge — these pattern rules carry no updateType filter otherwise.
     {
       matchPackagePatterns: ["^@types/"],
-      groupName: "type definitions",
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "bkit: renovate non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
     {
       matchPackagePatterns: ["^eslint", "^@eslint/", "^@typescript-eslint/"],
-      groupName: "linters (eslint)",
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "bkit: renovate non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
+
+    // Multi-package ecosystems. NON-major bumps fold into the unified
+    // auto-merge PR above (peer-deps still move together inside that one PR).
+    // Only MAJOR bumps get a dedicated lockstep PR — a coordinated breaking
+    // bump (e.g. @tanstack/react-query + @tanstack/query-core, or vitest +
+    // @vitest/*) must land together and is reviewed, never auto-merged.
+    // Without the major scope each would split into a separate per-package PR
+    // and the halves would fail CI against each other.
+    {
+      matchPackagePatterns: ["^@tanstack/"],
+      matchUpdateTypes: ["major"],
+      groupName: "bkit: renovate major tanstack",
+      automerge: false,
+    },
     {
       matchPackagePatterns: ["^vitest", "^@vitest/"],
-      groupName: "vitest",
+      matchUpdateTypes: ["major"],
+      groupName: "bkit: renovate major vitest",
+      automerge: false,
     },
     {
       matchPackagePatterns: ["^@playwright/"],
-      groupName: "playwright",
+      matchUpdateTypes: ["major"],
+      groupName: "bkit: renovate major playwright",
+      automerge: false,
     },
 
     // ─────────────────────────────────────────────────────────────────────
@@ -200,9 +226,12 @@
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["github-actions"],
-      groupName: "github-actions",
+      groupName: "bkit: renovate github-actions",
       // Pin to SHA + tag comment; Renovate maintains the tag comment.
       pinDigests: true,
+      // Reviewed manually — a workflow action bump can change CI behavior.
+      // Explicit false for the same greppability reason as the prod-minor rule.
+      automerge: false,
     },
   ],
 

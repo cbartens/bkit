@@ -7,9 +7,12 @@ on:
   pull_request:
     branches: [main, dev]
 
+# pull-requests: read lets bkit-decide call repos/{}/commits/{sha}/pulls to tell a
+# merged-PR dev push (light) from a direct dev push (full — the uuid-incident fix).
 permissions:
   actions: read
   contents: read
+  pull-requests: read
 
 # Cancel superseded in-progress runs on the same PR only. Never on push to main/dev —
 # release/main-CI runs are observed by downstream workflow_run triggers and must not be cancelled.
@@ -18,7 +21,220 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # ── bkit-decide ── always-on planner (no `if:`; never skips). Emits the bkit-test-plan
+  # JSON read via fromJSON(needs.bkit-decide.outputs.plan).<field> + a $GITHUB_STEP_SUMMARY table.
+  # DEGENERATE: bkit is single-package, no deploy — web_affected/run_e2e/run_live are always
+  # false and there's no turbo affected-graph. The full multi-tier decide ships to consumers in
+  # .bkit/templates/.github/workflows/ci.yml; this dogfoods the marker + run_level + merged-PR-escalation core.
+  bkit-decide:
+    name: bkit-decide
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      plan: ${{ steps.decide.outputs.plan }}
+    steps:
+      - name: Read Markers
+        id: markers
+        # User-controlled text (commit message / PR title) arrives via env: (runtime
+        # expansion, injection-safe) — never inlined into the run: body.
+        env:
+          PUSH_MSG: ${{ github.event.head_commit.message }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            MSG="$PUSH_MSG"
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
+            MSG="$PR_TITLE"
+          else
+            MSG=""
+          fi
+          # [skip ci] / [skip actions] honoured push-only (commit message). PR-title skip
+          # is intentionally ignored — it would bypass the bkit-tests-check required gate.
+          SKIP_MSG=""
+          [ "$EVENT_NAME" = "push" ] && SKIP_MSG="$MSG"
+
+          MARKERS=""
+          case "$MSG" in *"[force build]"*) MARKERS="$MARKERS force-build" ;; esac
+          case "$MSG" in *"[force cache]"*) MARKERS="$MARKERS force-cache" ;; esac
+          case "$MSG" in *"[verbose ci]"*) MARKERS="$MARKERS verbose-ci" ;; esac
+          case "$SKIP_MSG" in *"[skip ci]"*) MARKERS="$MARKERS skip-ci" ;; esac
+          case "$SKIP_MSG" in *"[skip actions]"*) MARKERS="$MARKERS skip-ci" ;; esac
+
+          MARKERS=$(echo "$MARKERS" | xargs)
+          MARKERS_JSON=$(echo "$MARKERS" | tr ' ' '\n' | jq -R -s -c 'split("\n") | map(select(length > 0))' 2>/dev/null || echo "[]")
+          echo "markers_present=$MARKERS_JSON" >> "$GITHUB_OUTPUT"
+          echo "Markers detected: $MARKERS_JSON"
+
+      - name: Decide Run Level
+        id: level
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MARKERS: ${{ steps.markers.outputs.markers_present }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          # Compute into shell vars, then write once at the end. A single grouped
+          # redirect avoids SC2129 (bkit's actionlint runs with no suppress config).
+          RUN_LEVEL=""
+          DEPTH_SOURCE=""
+          WHETHER_REASON=""
+
+          HAS_SKIP=$(echo "$MARKERS" | jq 'any(.[]; . == "skip-ci")' 2>/dev/null || echo "false")
+          HAS_FORCE_BUILD=$(echo "$MARKERS" | jq 'any(.[]; . == "force-build")' 2>/dev/null || echo "false")
+
+          if [ "$HAS_SKIP" = "true" ]; then
+            # Layer 1 — [skip ci] wins: do not run.
+            RUN_LEVEL="none"; DEPTH_SOURCE="marker:skip-ci"; WHETHER_REASON="skipped-because:skip-ci-marker"
+            echo "🛑 [skip ci] → run_level=none"
+          elif [ "$HAS_FORCE_BUILD" = "true" ]; then
+            # Layer 2 — how much to run.
+            RUN_LEVEL="full"; DEPTH_SOURCE="marker:force-build"; WHETHER_REASON="ran-because:force-build"
+            echo "✅ [force build] → run_level=full"
+          elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RUN_LEVEL="full"; DEPTH_SOURCE="event:$EVENT_NAME"; WHETHER_REASON="ran-because:$EVENT_NAME"
+            echo "✅ $EVENT_NAME → run_level=full"
+          elif [ "$REF" = "refs/heads/main" ]; then
+            RUN_LEVEL="full"; DEPTH_SOURCE="main-carveout"; WHETHER_REASON="ran-because:push-main"
+            echo "✅ push main → run_level=full (main-carveout)"
+          elif [ "$REF" = "refs/heads/dev" ]; then
+            # Merged-PR dev push (PR already ran full) → light. Direct dev push with no
+            # merged PR behind it → escalate to full (kills the uuid-incident at source).
+            # API error → full (run-to-be-safe).
+            set +e
+            PR_RESPONSE=$(gh api "repos/$REPO/commits/$SHA/pulls" 2>&1)
+            GH_EC=$?
+            set -e
+            if [ "$GH_EC" -ne 0 ]; then
+              echo "::warning::commits/{sha}/pulls failed (exit $GH_EC) — defaulting to full (run-to-be-safe)"
+              RUN_LEVEL="full"; DEPTH_SOURCE="fallback-on-api-error"; WHETHER_REASON="ran-because:dev-push-api-error"
+            else
+              MERGED_PR=$(echo "$PR_RESPONSE" | jq -r '.[0].number // empty' 2>/dev/null || echo "")
+              if [ -n "$MERGED_PR" ]; then
+                RUN_LEVEL="light"; DEPTH_SOURCE="auto-via-gh-api"; WHETHER_REASON="ran-because:dev-push-merged-pr-$MERGED_PR"
+                echo "✅ dev push: merged PR #$MERGED_PR → run_level=light"
+              else
+                RUN_LEVEL="full"; DEPTH_SOURCE="auto-via-gh-api"; WHETHER_REASON="ran-because:dev-push-direct-escalated"
+                echo "✅ dev push: no merged PR (direct) → run_level=full (escalated)"
+              fi
+            fi
+          else
+            # Other refs (non-dev, non-main push).
+            RUN_LEVEL="light"; DEPTH_SOURCE="event:push"; WHETHER_REASON="ran-because:push-other-ref"
+          fi
+
+          {
+            echo "run_level=$RUN_LEVEL"
+            echo "source=$DEPTH_SOURCE"
+            echo "reason=$WHETHER_REASON"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate Test Plan
+        id: decide
+        # Prior-step outputs arrive via env: so JSON-array values keep their inner quotes
+        # (a double-quoted "${{ ...json... }}" in the run body would corrupt --argjson).
+        env:
+          RUN_LEVEL: ${{ steps.level.outputs.run_level }}
+          DEPTH_SOURCE: ${{ steps.level.outputs.source }}
+          WHETHER_REASON: ${{ steps.level.outputs.reason }}
+          MARKERS: ${{ steps.markers.outputs.markers_present }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          # bkit is single-package with no deploy: web_affected / run_e2e /
+          # run_live / global_dep_changed are constant false. The fields stay in
+          # the contract so the bkit-test-plan schema is identical to the consumer template.
+          PLAN_JSON=$(jq -cn \
+            --arg schema "bkit-test-plan" \
+            --arg run_level "${RUN_LEVEL:-none}" \
+            --argjson web_affected false \
+            --argjson run_e2e false \
+            --argjson run_live false \
+            --argjson global_dep_changed false \
+            --arg source "${DEPTH_SOURCE:-none}" \
+            --arg reason "${WHETHER_REASON:-}" \
+            --arg event "$EVENT_NAME" \
+            --arg ref "$REF" \
+            --argjson affected_packages '[]' \
+            --argjson markers_present "${MARKERS:-[]}" \
+            '{
+              schema: $schema,
+              run_level: $run_level,
+              web_affected: $web_affected,
+              run_e2e: $run_e2e,
+              run_live: $run_live,
+              global_dep_changed: $global_dep_changed,
+              source: $source,
+              reason: $reason,
+              event: $event,
+              ref: $ref,
+              affected_packages: $affected_packages,
+              markers_present: $markers_present
+            }')
+
+          # has()/!=null (NOT `.field // empty`): jq's // treats boolean false as absent,
+          # so a legit run_live:false would read as a missing required field.
+          FAIL=0
+          for field in schema run_level web_affected run_e2e run_live source reason; do
+            if ! echo "$PLAN_JSON" | jq -e --arg f "$field" 'has($f) and .[$f] != null' >/dev/null 2>&1; then
+              echo "::error::Plan JSON missing required field: $field"
+              FAIL=1
+            fi
+          done
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::Plan JSON failed schema validation"
+            exit 1
+          fi
+
+          echo "plan=$(echo "$PLAN_JSON" | jq -c .)" >> "$GITHUB_OUTPUT"
+          echo "Plan JSON: $(echo "$PLAN_JSON" | jq -c .)"
+
+      - name: Upload Test Plan
+        if: "!cancelled()"
+        env:
+          PLAN: ${{ steps.decide.outputs.plan }}
+        run: |
+          RUN_LEVEL=$(echo "$PLAN" | jq -r '.run_level')
+          DEPTH=$(echo "$PLAN" | jq -r '.source')
+          WHETHER=$(echo "$PLAN" | jq -r '.reason')
+          MARKERS=$(echo "$PLAN" | jq -r '.markers_present | join(", ")' 2>/dev/null || echo "")
+          {
+            echo "## CI Plan — \`bkit-decide\` (degenerate: single-package, no deploy/e2e/live)"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| schema | bkit-test-plan |"
+            echo "| run_level | \`$RUN_LEVEL\` |"
+            echo "| source | \`$DEPTH\` |"
+            echo "| reason | \`$WHETHER\` |"
+            echo "| markers | ${MARKERS:-none} |"
+            echo ""
+            if [ "$RUN_LEVEL" = "none" ]; then
+              echo "> ⏭️ **bkit-tests skipped** — $WHETHER"
+            else
+              echo "> ✅ **bkit-tests runs** (run_level=\`$RUN_LEVEL\`); web / e2e / live tiers are N/A for bkit."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write Cancellation Notice
+        if: cancelled()
+        run: |
+          {
+            echo "## CI Plan — bkit-decide (CANCELLED)"
+            echo ""
+            echo "> ⚠️ Run cancelled before the plan-table could be written (concurrency cancel-in-progress)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── bkit-tests ─────────────────────────────────────────────────────────────
+  # bkit's single test tier: static checks (clean tree) then vitest. Gated on
+  # run_level != none. Consumers split this into integration / E2E tiers + a separate
+  # bkit-tests-live job; bkit has neither, so it stays one job.
   bkit-tests:
+    name: bkit-tests
+    needs: [bkit-decide]
+    if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -32,39 +248,47 @@ jobs:
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Check SHA Cache
-        # Skip the suite when this SHA already has a successful run for this
-        # workflow within the last 7 days. Helps after a rollback force-push.
+        # Skip the suite when this SHA already has a successful run for this workflow
+        # within the last 7 days (helps after a rollback force-push). [force build] /
+        # [force cache] markers bypass the short-circuit and force a real run.
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.bkit-decide.outputs.plan }}
         run: |
-          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
-          PRIOR=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow "$GITHUB_WORKFLOW" \
-            --status success \
-            --limit 50 \
-            --json headSha,createdAt \
-            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
-            2>/dev/null || echo 0)
-          if [ "${PRIOR:-0}" -gt 0 ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          # Single grouped write at the end (one redirect) keeps the actionlint
+          # pass clean (avoids SC2129).
+          SKIP="false"
+          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
+          if [ "$FORCE" = "true" ]; then
+            echo "::notice::force marker present — ignoring SHA cache."
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+            PRIOR=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$GITHUB_WORKFLOW" \
+              --status success \
+              --limit 50 \
+              --json headSha,createdAt \
+              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+              2>/dev/null || echo 0)
+            if [ "${PRIOR:-0}" -gt 0 ]; then
+              SKIP="true"
+              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+            fi
           fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
 
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # Static checks (typecheck → prettier → vale → slop → verify-dist → bkit check)
+      # run first so they scan a CLEAN tree. Vitest runs LAST — it writes coverage and
+      # other artifacts that would otherwise pollute the Slop Scan / bkit check inputs.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
-
-      - name: Run Vitest Tests
-        if: steps.cache.outputs.skip != 'true'
-        run: pnpm test
 
       - name: Run Prettier Format Check
         if: steps.cache.outputs.skip != 'true'
@@ -78,8 +302,18 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:slop
 
+      # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
+      # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
+      # workflows that are valid YAML but invalid GHA; actionlint catches that class.
+      - name: Run Actionlint
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color
+
       # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be
-      # regenerated and committed whenever .agents/scripts/**.ts changes.
+      # regenerated and committed whenever .bkit/src/**.ts changes.
       # This step rebuilds dist/ in CI and fails if the working tree differs
       # from the committed version.
       - name: Verify Dist Freshness
@@ -89,3 +323,52 @@ jobs:
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+
+      - name: Run Vitest Tests
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm test
+
+  # ── bkit-tests-check ── capstone; needs all tiers; if: !cancelled() (NOT always() — a
+  # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not
+  # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-decide
+  # succeeded and, when run_level != none, bkit-tests succeeded. bkit's SOLE branch-protection
+  # required check (scripts/ci/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
+  # "the planned suite ran and passed", not "nothing visibly failed".
+  bkit-tests-check:
+    name: bkit-tests-check
+    needs: [bkit-decide, bkit-tests]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check Test Plan Followed
+        env:
+          PLAN: ${{ needs.bkit-decide.outputs.plan }}
+          DECIDE_RESULT: ${{ needs.bkit-decide.result }}
+          TESTS_RESULT: ${{ needs.bkit-tests.result }}
+        run: |
+          FAIL=0
+          plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
+          if [ "$DECIDE_RESULT" != "success" ]; then
+            echo "::error::bkit-decide did not succeed (result=$DECIDE_RESULT)"
+            FAIL=1
+          fi
+          # run_level=none (e.g. [skip ci]) → bkit-tests is skipped by design; asserting
+          # on a skipped job would false-RED a legit maintainer skip.
+          if [ "$plan_run_level" != "none" ] && [ "$TESTS_RESULT" != "success" ]; then
+            echo "::error::plan.run_level=$plan_run_level but bkit-tests result=$TESTS_RESULT"
+            FAIL=1
+          fi
+          if [ "$FAIL" = "1" ]; then
+            echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
+            exit 1
+          fi
+          echo "✅ bkit-tests-check passed — planned suite ran and succeeded (run_level=$plan_run_level)."
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONSUMER SCAFFOLD (not used by bkit). bkit ships the FULL multi-tier scaffold to
+# consumers in .bkit/templates/.github/workflows/ci.yml as `# bkit-stub:` blocks they
+# enable: turbo affected-graph (bkit-decide); integration + E2E + Vercel-await (bkit-tests);
+# the push-only @live job (bkit-tests-live) — all N/A for single-package, no-deploy bkit.
+# `pnpm bkit install`/`upgrade` advise on each stub. See .bkit/src/bkit-postinstall.ts.
+# ─────────────────────────────────────────────────────────────────────────────

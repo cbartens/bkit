@@ -44,7 +44,7 @@
 
 ### Plans & Process
 
-- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.json`.
+- **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
 - **Gates:** STOP at every gate. Verify all steps BEFORE proceeding.
 - **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
@@ -61,7 +61,7 @@
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
 - **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
-- **CI:** Pushes auto-trigger; NEVER manually trigger - final push to PR / `dev` HEAD MUST NOT contain `[skip ci]`.
+- **CI:** Pushes auto-trigger; NEVER manually. Final push to PR / `dev` → HEAD commit should NEVER contain `[skip ci]`. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
 - **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
@@ -73,7 +73,7 @@
 - **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
 - **Integration and E2E:** Debug workflow only (post-PR).
 - **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
-- **Check gotaches first:** Search `docs/knowledge.md` BEFORE touching code.
+- **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 
 ### Security & Data
@@ -98,10 +98,11 @@
 
 ### bkit Repo Authoring
 
-- **Canonical sources only:** ONLY edit `.agents/*` . NEVER edit `.claude/*`, `.cursor/*`.
-- **Install to mirror:** After editing `.agents/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
-- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.agents/templates/.agents/rules.md` and vice versa.
-- **Workflow edits:** Any `.agents/workflows/*.md` edits → ALWAYS follow `.agents/workflows.md` § Workflow Authoring Rules.
-- **Prompt edits:** Any `.agents/prompts/*.md` edits → ALWAYS follow `.agents/prompts.md` § Prompt Authoring Rules.
-- **Keep documentation updted:** When editing `.agents/workflows/*.md` → update `.agents/workflows.md`. When editing `.agents/prompts/*.md` → update `.agents/prompts.md`. Index drift = regression.
-- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.agents/scripts/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
+- **Install source of truth:** Install engine lives in `.bkit/src/`; install payload lives in `.bkit/templates/`; mirror sources (`workflows`, `prompts`) and bkit-authoring docs live in `.bkit/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — never conflate the two.
+- **Canonical sources only:** ONLY edit `.bkit/workflows/*`, `.bkit/prompts/*`, and `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`.
+- **Install to mirror:** After editing `.bkit/workflows/*` or `.bkit/prompts/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
+- **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.bkit/templates/.agents/rules.md` and vice versa.
+- **Workflow edits:** Any `.bkit/workflows/*.md` edits → ALWAYS follow `.bkit/workflows.md` § Workflow Authoring Rules.
+- **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/prompts.md` § Prompt Authoring Rules.
+- **Keep documentation updated:** When editing `.bkit/workflows/*.md` → update `.bkit/workflows.md`. When editing `.bkit/prompts/*.md` → update `.bkit/prompts.md`. Index drift = regression.
+- **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.

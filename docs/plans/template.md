@@ -394,7 +394,7 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 > Subagents (design synthesise, design summary, plan generate, plan review, plan summary) MUST follow this spec. No subagent restates these rules; this section is the single source of truth.
 
 - **Narrative:** 1–2 sentences, user POV (not system POV). Describes what the user does and what they get back.
-- **Success Criteria:** ≤5 bullets, each measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT implementation steps (e.g. "call API, render component"). If design doc lists fewer or more, prefer the smallest set that still proves the feature works.
+- **Success Criteria:** <=5 bullets, each measurable / testable. Outcomes (e.g. "user sees their event in the list within 2s"), NOT implementation steps (e.g. "call API, render component"). If design doc lists fewer or more, prefer the smallest set that still proves the feature works.
 - **Key Edge Cases _(design phase produces; plan phase inherits)_:** Design-shaping only — concurrency, conflict resolution, failure modes, cross-feature interactions. NOT trivial input validation (the plan adds those).
 - **Edge Cases _(plan phase)_:** Inherits design's Key Edge Cases verbatim + adds plan-level cases (validation, error paths, boundary conditions).
 - **Concrete Example _(plan phase only)_:** Specific user role + starting state + numbered steps + observable outcome. One scenario, not a list.

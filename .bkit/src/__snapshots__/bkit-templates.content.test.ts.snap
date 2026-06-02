@@ -1,0 +1,431 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`consumer CI template (.bkit/templates/.github/workflows/ci.yml) > snapshot matches expected template content (regression guard) 1`] = `
+"# This workflow is yours to own — bkit seeds it once and never rewrites it (Tier-3
+# seed-or-print). Edit freely. The one exception is the \`# bkit:start verbose-ci-env\`
+# block below: bkit's preflight checks for it by name to confirm the \`[verbose ci]\`
+# marker still works, so keep that named block intact if you want verbose-CI support.
+name: CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [{{DEFAULT_BRANCH}}, dev]
+  pull_request:
+    branches: [{{DEFAULT_BRANCH}}, dev]
+
+permissions:
+  actions: read
+  contents: read
+
+# Cancel superseded in-progress runs on the same PR only. Never on push to {{DEFAULT_BRANCH}}/dev —
+# release/main-CI runs are observed by downstream workflow_run triggers and must not be cancelled.
+concurrency:
+  group: ci-\${{ github.workflow }}-\${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: \${{ github.event_name == 'pull_request' }}
+
+jobs:
+  bkit-tests:
+    runs-on: ubuntu-latest
+    # bkit:start verbose-ci-env
+    # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
+    # [force build] / [force cache] / [skip ci] (independent contains() per marker).
+    # Markers are bare substrings — bkit-emitted commits prepend \`bkit \` for attribution
+    # (e.g. \`bkit [verbose ci]\`); substring match honours both forms.
+    # See docs/deployments.md § "Commit-message force tags" for where to put the marker
+    # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
+    # and docs/testing.md § "CI verbosity" for the full knob list.
+    #
+    # GH_BKIT_TOKEN is also declared at the job level so every pnpm/npx invocation in
+    # this job (vitest, turbo, etc.) can substitute \${GH_BKIT_TOKEN} when reading
+    # .npmrc. Without it, pnpm emits "Failed to replace env in config" warnings on
+    # every read after the install step. The install step keeps its own env: block
+    # for explicitness and to satisfy the BAR-138 regression tests.
+    env:
+      TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+    # bkit:end verbose-ci-env
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: {{NODE_VERSION}}
+
+      # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
+      # Do NOT add \`with: version:\` here — pnpm/action-setup errors when both are set.
+      - uses: pnpm/action-setup@a15d269cd4658e1107c09f1fabf4cbd7bd1f308a # v4.4.0
+
+      # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
+      # $GITHUB_ENV. Note that steps with their own \`env:\` block override $GITHUB_ENV —
+      # those steps must inline these vars in their env: declaration to stay verbose-aware.
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
+      - name: Check SHA Cache
+        id: cache
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \\
+            --repo "$GITHUB_REPOSITORY" \\
+            --workflow "$GITHUB_WORKFLOW" \\
+            --status success \\
+            --limit 50 \\
+            --json headSha,createdAt \\
+            --jq "[.[] | select(.headSha == \\"$GITHUB_SHA\\") | select(.createdAt > \\"$SINCE\\")] | length" \\
+            2>/dev/null || echo 0)
+          if [ "\${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect Direct Push
+        if: steps.cache.outputs.skip != 'true'
+        id: detect
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          if [ "\${{ github.event_name }}" = "pull_request" ]; then
+            MSG="\${{ github.event.pull_request.title }}"
+          else
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
+          fi
+          case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          if [ "\${{ github.event_name }}" = "push" ] && [ "\${{ github.ref }}" = "refs/heads/dev" ]; then
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
+            if [ -z "$PR_NUMBER" ]; then
+              echo "turbo_force=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
+      # - name: Auto Force E2E for Sensitive Paths
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   id: e2e-paths
+      #   run: |
+      #     git fetch origin "\${{ github.base_ref }}" --depth=1 2>/dev/null || true
+      #     CHANGED=$(git diff --name-only "origin/\${{ github.base_ref }}..HEAD" 2>/dev/null || echo "")
+      #     PATTERNS=('auth/' 'migrations/' 'supabase/migrations/' 'payment/' 'api/' 'server/')
+      #     for f in $CHANGED; do
+      #       for p in "\${PATTERNS[@]}"; do
+      #         case "$f" in *"$p"*) echo "needs_e2e=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+      #       done
+      #     done
+
+      # bkit-stub:migrations-immutable — Block PRs modifying previously-merged migrations. To enable: uncomment the step below and delete this stub header.
+      # - name: Migrations Immutability Guard
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   run: |
+      #     git fetch origin "\${{ github.base_ref }}" --depth=50 2>/dev/null || true
+      #     CHANGED=$(git diff --name-only "origin/\${{ github.base_ref }}..HEAD" -- supabase/migrations/ 2>/dev/null || true)
+      #     EXIT=0
+      #     for f in $CHANGED; do
+      #       if git rev-parse "origin/\${{ github.base_ref }}:$f" >/dev/null 2>&1; then
+      #         echo "::error file=$f::Migration already exists on \${{ github.base_ref }} — migrations are immutable after merge"
+      #         EXIT=1
+      #       fi
+      #     done
+      #     exit $EXIT
+
+      - name: Install Dependencies
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
+
+      # Static checks first — they read the source tree and must scan it CLEAN.
+      # Vitest/build run AFTER (below): they write coverage, dist/, and other
+      # artifacts that would otherwise pollute the Slop Scan and bkit check inputs.
+      # Keep this group (typecheck → prettier → vale → slop → bkit check) ahead of
+      # the test/build group if you reorder.
+      - name: Run Typecheck
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: pnpm typecheck
+
+      - name: Run Prettier Format Check
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: pnpm format:check
+
+      - name: Run Vale Prose Lint
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm lint:prose
+
+      - name: Run Slop Scan
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm lint:slop
+
+      # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
+      # (\${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
+      # workflows that are valid YAML but invalid GHA; actionlint catches that class.
+      - name: Run Actionlint
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color
+
+      - name: Run Bkit Check
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm bkit check
+
+      # --- Test / build group: install-dependent, tree-dirtying. Runs after all
+      # static checks above so coverage/dist artifacts never reach slop or bkit check. ---
+
+      # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
+      # - name: Apply Supabase Migrations to Dev
+      #   if: github.event_name == 'push' && github.ref == 'refs/heads/dev' && steps.cache.outputs.skip != 'true'
+      #   env:
+      #     SUPABASE_ACCESS_TOKEN: \${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      #     SUPABASE_DB_PASSWORD: \${{ secrets.SUPABASE_DEV_DB_PASSWORD }}
+      #     SUPABASE_PROJECT_REF: \${{ secrets.SUPABASE_DEV_PROJECT_REF }}
+      #   run: |
+      #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+      #     pnpm dlx supabase db push --linked --include-all
+
+      # bkit-stub:test-db — Run pgTAP schema-invariant DB tests (supabase/tests/*.sql) against the CI-local Supabase. The canonical home for schema invariants (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. To enable: uncomment, add pgTAP files under supabase/tests/, delete this stub header.
+      # - name: Run DB Tests (pgTAP)
+      #   if: steps.cache.outputs.skip != 'true'
+      #   run: pnpm dlx supabase db test   # spins up the local DB and runs supabase/tests/*.sql via pg_prove
+      # Remote-only CI (no local Supabase)? Assert the same invariants from the @live tier instead: a
+      # SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) called over REST
+      # — direct port-5432 from CI runners is IPv4-flaky. See docs/testing.md § Schema-invariant DB checks.
+
+      # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
+      # - name: Test Presence Audit
+      #   if: steps.cache.outputs.skip != 'true'
+      #   run: |
+      #     for pkg in $(jq -r '.workspaces // [] | .[]' package.json 2>/dev/null) $(ls -d packages/*/ apps/*/ 2>/dev/null); do
+      #       [ -f "$pkg/package.json" ] || continue
+      #       if jq -e '.scripts.test' "$pkg/package.json" >/dev/null 2>&1; then
+      #         COUNT=$(find "$pkg" -path '*/node_modules' -prune -o \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' \\) -print 2>/dev/null | wc -l)
+      #         [ "$COUNT" -eq 0 ] && echo "::warning::$pkg declares a test script but has zero *.test.ts files"
+      #       fi
+      #     done
+
+      - name: Run Vitest Tests
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: pnpm test
+
+      - name: Run Vitest Integration Tests
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
+        run: |
+          if jq -e '.scripts["test:integration"]' package.json >/dev/null 2>&1; then
+            pnpm turbo run test:integration --continue
+          else
+            echo "::warning::test:integration script not found in package.json — skipping integration tests"
+          fi
+
+      # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
+      # - name: Await Vercel Preview
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   id: vercel
+      #   env:
+      #     VERCEL_TOKEN: \${{ secrets.VERCEL_TOKEN }}
+      #     VERCEL_TEAM_ID: \${{ secrets.VERCEL_TEAM_ID }}
+      #     VERCEL_PROJECT_ID: \${{ secrets.VERCEL_PROJECT_ID }}
+      #   run: |
+      #     for i in $(seq 1 60); do
+      #       URL=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \\
+      #         "https://api.vercel.com/v6/deployments?projectId=$VERCEL_PROJECT_ID&teamId=$VERCEL_TEAM_ID&meta-githubCommitSha=$GITHUB_SHA&state=READY&limit=1" \\
+      #         | jq -r '.deployments[0].url // empty')
+      #       if [ -n "$URL" ]; then
+      #         echo "target_url=https://$URL" >> "$GITHUB_OUTPUT"
+      #         exit 0
+      #       fi
+      #       sleep 10
+      #     done
+      #     echo "::error::Vercel preview did not reach READY within 10 minutes"
+      #     exit 1
+
+      # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
+      # Under bkit [verbose ci]: appends --trace=on so Playwright writes per-test trace.zip
+      # (snapshots + network + console + source) — the canonical e2e debug artifact.
+      # \`--video\` and \`--screenshot\` are NOT Playwright CLI flags — they're \`use:\` keys in
+      # playwright.config.ts. Enabling standalone video / screenshot files requires editing
+      # the config (out of scope for this stub). Trace's snapshot timeline covers the
+      # dominant diagnose use case. Never pass --reporter=line — let playwright.config.ts's
+      # reporter chain run unmodified, otherwise verbose traces are written but no reporter
+      # surfaces them.
+      # - name: Run E2E Tests
+      #   id: e2e
+      #   if: (steps.detect.outputs.should_run_e2e == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true'
+      #   env:
+      #     TARGET_URL: \${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
+      #   run: |
+      #     EXTRA_ARGS=""
+      #     [ "$VERBOSE_CI" = "1" ] && EXTRA_ARGS="--trace=on"
+      #     pnpm test:e2e \${EXTRA_ARGS:+-- $EXTRA_ARGS}
+
+      # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
+      # \`if: always()\` captures both failure AND job-timeout cancel: Playwright's HTML reporter
+      # only finalises \`playwright-report/index.html\` at suite onEnd, but per-test trace.zip files
+      # in \`test-results/\` write incrementally and survive mid-suite SIGTERM. Without \`always()\`,
+      # cancelled runs lose all per-test traces. Under bkit [verbose ci]: per-test trace.zip lands in
+      # test-results/; sharded runs additionally write blob-report/ intermediate.
+      # - name: Upload Playwright Artifacts
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: playwright-report
+      #     path: |
+      #       playwright-report/
+      #       test-results/
+      #       blob-report/
+      #     retention-days: 14
+      #     if-no-files-found: ignore
+
+# bkit-stub:smoke — Post-CI smoke triggered by workflow_run on {{DEFAULT_BRANCH}}. To enable: copy the YAML below into .github/workflows/smoke.yml (separate file — workflow_run cannot share a file with push/pull_request) and delete this stub header.
+# name: Smoke
+# on:
+#   workflow_run:
+#     workflows: ["CI"]
+#     types: [completed]
+#     branches: [{{DEFAULT_BRANCH}}]
+# jobs:
+#   smoke:
+#     if: github.event.workflow_run.conclusion == 'success'
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - run: ./scripts/ci/smoke-test.sh
+
+# =============================================================================
+# FULL CI SCAFFOLD REFERENCE — every step, in execution order. Reference impl:
+# gether app-gether-life (proven turbo + Vercel + Supabase + Playwright monorepo).
+# Concept: bkit #203.
+#
+# The single bkit-tests job ABOVE is the any-repo starter. Below is the complete
+# proven scaffold. To adopt a tier, lift its steps KEEPING THIS ORDER (load-bearing:
+# static checks before env pull; resolve URL before integration; await deploy before
+# E2E; capstone last). Replace gether-specifics (apps/web, *.vercel.app, VERCEL_*/
+# SUPABASE_*). Tags: [U]niversal already in the starter; [M]onorepo/[D]eploy/[E]2E/
+# [DB] opt-in by stack.
+#
+# WHY: "green" must mean "the planned tests ran and passed", not "nothing failed". A
+# partial/cached/light run is green by construction, NOT validated. bkit-decide plans
+# what should run; bkit-tests-check enforces it ran. green == validated.
+#
+# ORDER + gating (needs: + result guards):
+#   bkit-decide                                       always-on, never skips
+#   bkit-tests        needs:[decide]                  if: run_level != 'none'
+#   bkit-tests-live   needs:[decide,tests]            if: run_live && needs.bkit-tests.result=='success'
+#   bkit-tests-check  needs:[decide,tests,tests-live] if: \${{ !cancelled() }}
+#
+# \`bkit install\`/\`upgrade\` raises an advisory per \`# bkit-stub:\` sentinel below;
+# remove a sentinel header to dismiss (uncommenting alone does not).
+#
+# === JOB 1 — planner (always-on) ===
+# bkit-stub:bkit-decide — emits the bkit-test-plan JSON. WHEN: CI has >1 run-type (PR/
+# dev-push/release) or any skippable tier. bkit's OWN ci.yml is a single-package (no
+# affected-graph) copy — start there if not a monorepo.
+#   bkit-decide:  runs-on: ubuntu-latest; timeout-minutes: 2; outputs: { plan: \${{ steps.decide.outputs.plan }} }
+#     steps:
+#       - name: Checkout Repository          # [M] fetch-depth: 0 (turbo diffs need the base commit)
+#       - name: Install Turbo                # [M] npm i -g turbo@<ver> (bare, ~10-15s; no pnpm install)
+#       - name: Resolve Base Ref             # [M] PR->origin/<base>; push->github.event.before; dispatch->HEAD~1
+# bkit-stub:affected-graph — [M] turbo "what changed" engine (the Detect Affected Packages step).
+#       # Capture stdout/stderr SEPARATELY: 2>&1 merges turbo's banner into the JSON -> jq falls back to
+#       # [] = ghost-green. turbo error / no base / non-JSON -> global-dep fallback (web_affected=true). Drop for single-package.
+#       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
+#       - name: Read Markers                 # [U] commit msg (push) / PR title (PR) via env: (injection-safe); [skip ci]/[skip actions] push-only
+#       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
+#       - name: Decide Run Level             # [U] Layer 2 (how-much): force-build/PR/dispatch/push-main -> full; push-dev ->
+#       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
+#       - name: Decide Run Live & E2E        # [D/E] run_live = push dev/main or [force live]; run_e2e = (full||[force e2e]) && web_affected
+#       - name: Generate Test Plan           # [U] id: decide. jq bkit-test-plan; validate with has()/!=null
+#       #     (NOT \`// empty\` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
+#       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
+#       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
+#
+# === JOB 2: bkit-tests — the tiers ===
+#   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
+#     integration_outcome: \${{ steps.integration.outcome }} ; e2e_outcome: \${{ steps.e2e.outcome }}
+#   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the named verbose-ci-env block from the starter (preflight checks it by name).
+#     steps:
+#       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
+#       - name: Fetch Base Branch            # [M/PR] if: pull_request — base for --filter/diffs
+#       - name: Guard Migration Immutability # [DB] if: PR — fail if an already-merged migration was edited (write a new one)
+#       - name: Materialise Base Worktree    # [PR] base as detached worktree for slop-delta; loud-fail if it resolves to HEAD
+#       - name: Setup pnpm                    # [U]
+#       - name: Setup Node                    # [U] node-version: {{NODE_VERSION}}, cache: pnpm
+#       - name: Configure Verbose CI         # [U] if: VERBOSE_CI=='1' — write NODE_OPTIONS/DEBUG to $GITHUB_ENV (steps with own env: must re-declare)
+#       - name: Install Dependencies         # [U] pnpm install --frozen-lockfile
+#       - name: Install Vale                  # [U] pinned tarball + \`vale sync\` (else E100: write-good missing)
+#       - name: Run Lint                      # [U] static checks FAIL-FAST before env pull; PRs scope --filter=...[origin/<base>]
+#       - name: Run Typecheck                 # [U]
+#       - name: Run Prettier Format Check     # [U] CI-side format gate (hook-bypass net)
+#       - name: Run Vale Prose Lint           # [U] same root lint:prose pre-push runs (local==CI)
+#       - name: Run Slop Scan (full)          # [U] advisory baseline
+#       - name: Run Slop Scan (delta)         # [PR] the real gate — blocks new/worsened vs base worktree
+#       - name: Tear Down Base Worktree       # [PR] if: always() && pull_request
+#       - name: Run Bkit Check                # [U] drift gate (same as pre-push); catches --no-verify/web-edit/cloud drift
+#       - name: Pull Vercel Env Vars          # [D] preview vs prod env by branch; set CI_ENV_FILE; FAIL-FAST if critical secrets empty
+#       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
+#       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
+#       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
+# bkit-stub:test-db — [DB] pgTAP schema invariants (\`supabase db test\` over supabase/tests/*.sql)
+#       # against the CI-local DB. Canonical home for "every public table has RLS" etc. (not app-defined).
+#       # Remote-only CI -> assert via a service_role-only catalog RPC from the @live tier (see JOB 3).
+#       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
+#       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
+#       - name: Build All Packages            # [D] source env first
+#       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
+#       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
+#       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
+#       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
+#       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
+#       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
+#
+# === JOB 3 — @live canary ===
+# bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
+# want post-deploy @live smoke. Sequential after bkit-tests. DROP if no deploy (bkit does).
+#   bkit-tests-live:  needs:[bkit-decide,bkit-tests]; if: run_live && needs.bkit-tests.result=='success'; timeout-minutes: 15
+#     steps:
+#       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
+#       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
+#       - name: Run Live Tests               # @live needs the deployed URL (branch alias); --continue. e.g.:
+#       #   DEPLOY_URL=https://your-app.example.com; TEST_URL=$DEPLOY_URL API_URL=$DEPLOY_URL/api/v1 npx turbo run test:live --continue
+#       # SCHEMA INVARIANTS on remote-only CI (no local DB for pgTAP): a @live test calls a SECURITY DEFINER,
+#       # service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) over REST — port-5432 direct from
+#       # CI runners is IPv4-flaky. Note: PostgREST \`GET /rest/v1/\` (OpenAPI) is service_role-only by default —
+#       # fetch the exposed surface with the service-role key, then probe each table with the ANON key.
+#
+# === JOB 4 — capstone (makes green == validated) ===
+# bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
+# moment any tier is skippable. ~seconds, no checkout.
+#   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-live]; if: \${{ !cancelled() }}; timeout-minutes: 2
+#   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
+#     steps:
+#       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome. Assert + exit 1 on mismatch:
+#       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
+#       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
+#       #   Then point protection here: bash scripts/ci/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
+#
+# COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
+# a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .agents/cloud.md.
+#
+# THE RULE (even with no CI): green != ran != validated. Confirm a FULL run of the touched tiers before
+# trusting green — direct dev pushes auto-escalate to full, but a green capstone on a LIGHT run is not full validation.
+# =============================================================================
+"
+`;

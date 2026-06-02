@@ -6,7 +6,7 @@
 #
 # Trigger:  is_background_agent === true (received via stdin JSON).
 # Guards:   `Automated` label present; issue state not in {Cancelled, Done}.
-# Setup:    See `.agents/README.md` § Linear setup.
+# Setup:    See `.bkit/README.md` § Linear setup.
 #
 # Cursor honours non-zero exit as a hard stop (failClosed: true) — non-zero
 # blocks the session before the agent starts. Failures are also surfaced via
@@ -93,9 +93,9 @@ print(ident, state, labels if labels else "-")
 
 FAIL_REASON=""
 
-# Guard 1: `Auto` label must be present.
-if [[ ",${LABELS}," != *",Auto,"* ]]; then
-  FAIL_REASON="Auto label missing (labels: ${LABELS})"
+# Guard 1: `bkit:auto` label must be present.
+if [[ ",${LABELS}," != *",bkit:auto,"* ]]; then
+  FAIL_REASON="bkit:auto label missing (labels: ${LABELS})"
 fi
 
 # Guard 2: Issue must not be in a terminal state.

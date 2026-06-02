@@ -200,5 +200,173 @@
         "artifacts": []
       }
     ]
+  },
+  {
+    "workflow": "build",
+    "startedAt": "2026-05-27T00:00:00Z",
+    "status": "DONE",
+    "steps": [
+      {
+        "step": "build-start-workflow",
+        "status": "DONE",
+        "at": "2026-05-27T00:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": []
+      },
+      {
+        "step": "build-worktree-setup",
+        "status": "DONE",
+        "at": "2026-05-27T00:05:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-input.md"]
+      },
+      {
+        "step": "build-execute-sub-1",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T01:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-plan-execute-1-log.md"
+        ]
+      },
+      {
+        "step": "build-verify-sub-1",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T01:30:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-plan-verify-1-1.md"]
+      },
+      {
+        "step": "build-execute-sub-2",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T02:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-plan-execute-2-log.md"
+        ]
+      },
+      {
+        "step": "build-verify-sub-2",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T02:30:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-plan-verify-2-1.md"]
+      },
+      {
+        "step": "build-execute-sub-3",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T03:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-plan-execute-3-log.md"
+        ]
+      },
+      {
+        "step": "build-verify-sub-3",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T03:30:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-plan-verify-3-1.md"]
+      },
+      {
+        "step": "build-execute-sub-4",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T04:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-plan-execute-4-log.md"
+        ]
+      },
+      {
+        "step": "build-verify-sub-4",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T04:30:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-plan-verify-4-1.md"]
+      },
+      {
+        "step": "build-verify-holistic",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T05:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-plan-verify-holistic-1.md"
+        ]
+      },
+      {
+        "step": "build-challenge",
+        "status": "DONE",
+        "verdict": "CONCERNS",
+        "attempt": 1,
+        "failures": 6,
+        "at": "2026-05-27T06:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-challenge.md"]
+      },
+      {
+        "step": "build-challenge-remediate",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T07:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-challenge-remediate-1.md"
+        ]
+      },
+      {
+        "step": "build-challenge-tests",
+        "status": "DONE",
+        "verdict": "PASS",
+        "attempt": 1,
+        "at": "2026-05-27T08:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [
+          "docs/plans/202605/logs/160-centralise-install-code/build-challenge-tests-1.md"
+        ]
+      },
+      {
+        "step": "build-summary",
+        "status": "DONE",
+        "verdict": "SHIP",
+        "attempt": 1,
+        "at": "2026-05-27T09:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": ["docs/plans/202605/logs/160-centralise-install-code/build-summary.md"]
+      },
+      {
+        "step": "build-create-pr",
+        "status": "DONE",
+        "at": "2026-05-28T00:00:00Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": [],
+        "pr": "https://github.com/cbartens/bkit/pull/204"
+      },
+      {
+        "step": "build-close-workflow",
+        "status": "DONE",
+        "at": "2026-05-28T01:46:22Z",
+        "parentSha": "83b0b6684f4fbf1c7f02289fe236da9ad1ac388d",
+        "artifacts": []
+      }
+    ]
   }
 ]

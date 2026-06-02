@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+# bkit pre-commit (Tier-3 seed-or-print — yours to own). FAST local gate only: format
+# staged files + prose/slop (seconds). Heavier gates (typecheck/unit/format:check) are in
+# pre-push; integration/E2E/@live run ONLY in CI (bkit-tests / bkit-tests-live, enforced by
+# bkit-tests-check) — see ci.yml § FULL CI SCAFFOLD REFERENCE. Rule: anything needing a
+# deployed URL, a DB, or >a few seconds belongs in a CI tier, not a hook.
+pnpm lint-staged && pnpm lint:prose && pnpm lint:slop

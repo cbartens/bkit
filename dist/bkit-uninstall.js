@@ -25,7 +25,7 @@ import { stripManagedBlock } from "./bkit-tiers.js";
 import { getInstallManifest } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getTemplatesRoot } from "./bkit-paths.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
 // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ export function buildDecisionTable(modules, ctx) {
         : modules;
     const entries = getInstallManifest(moduleList);
     // Read tier3Hashes from .bkit-version
-    const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+    const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
     const bkitVer = readBkitVersion(versionFilePath);
     const tier3Hashes = bkitVer?.tier3Hashes ?? {};
     const table = [];
@@ -273,7 +273,7 @@ export async function runUninstall(modules, ctx) {
         console.log(formatDecisionTable(table));
     }
     // Read tier3Hashes for actual deletions
-    const versionFilePath = path.join(ctx.cwd, ".agents", ".bkit-version");
+    const versionFilePath = path.join(ctx.cwd, ".bkit", "version");
     const bkitVer = readBkitVersion(versionFilePath);
     const tier3Hashes = bkitVer?.tier3Hashes ?? {};
     const seen = new Set();
@@ -311,8 +311,7 @@ export async function runUninstall(modules, ctx) {
                     try {
                         if (summary.format === "json") {
                             // JSON deep-containment: strip bkit-owned scope, preserve consumer keys
-                            const PKG_ROOT = getPkgRoot();
-                            const templatePath = path.join(PKG_ROOT, ".agents", "templates", summary.file);
+                            const templatePath = path.join(getTemplatesRoot(), summary.file);
                             if (!fs.existsSync(templatePath)) {
                                 // No template — preserve as-is
                                 console.warn(`${ctx.logPrefix} no template found for ${summary.file} — preserving`);

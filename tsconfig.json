@@ -10,11 +10,11 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "outDir": "dist",
-    "rootDir": ".agents/scripts",
+    "rootDir": ".bkit/src",
     "declaration": false,
     "sourceMap": false,
     "types": ["node"]
   },
-  "include": [".agents/scripts/**/*.ts"],
-  "exclude": ["node_modules", "dist", "tmp", ".worktrees", ".agents/skills", "**/*.test.ts"]
+  "include": [".bkit/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "tmp", ".worktrees", "**/*.test.ts"]
 }

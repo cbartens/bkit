@@ -12,6 +12,13 @@ Three things that change how you work:
 - **Tied to your tracker.** bkit integrates with GitHub Issues or Linear: it reads the issue for context, posts progress per phase, moves the issue through its states, and links the resulting PR back. Project management stays the source of truth.
 - **Consistent across the team.** Anyone, in Claude Code or Cursor, runs `/bkit-design` and gets the same reviewed, gated, tested pipeline. The rigor lives in the toolkit, not in one person's prompting.
 
+Beyond the pipeline and its tracker integration, every `bkit install` wires in the engineering scaffolding a repo needs on day one:
+
+- **A CI scaffold where green means validated.** A four-job GitHub Actions pipeline — `bkit-decide` (plans what should run) → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check` — whose always-on capstone fails the build if any tier the plan expected was skipped. "CI is green" stops meaning "nothing visibly failed" and starts meaning "the planned tests actually ran and passed"; the capstone is the single branch-protection required check, so a partial, cached, or light run can't pass as validated. Direct pushes auto-escalate to a full run. The complete multi-tier scaffold ships documented step-by-step in the seeded `ci.yml`, ready to adopt as the project grows.
+- **Quality gates, local and CI in lockstep.** Typecheck, Prettier, a Vale prose linter, an LLM-slop scanner, actionlint, and a mirror/drift gate run in the seeded pre-commit / pre-push hooks **and** in CI — the same commands in both places, so a green local push is a green CI run.
+- **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, shipped already configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, and CVE alerts that bypass the weekly schedule.
+- **Cloud agents.** Opt-in autonomous routing: when CI finishes, a Claude Code or Cursor cloud agent picks up automatically — `bkit-ship` on green, `bkit-debug` on red — with no local session running.
+
 For the full pipeline and subagent reference, and a mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see [`docs/bkit-comparison.md`](docs/bkit-comparison.md).
 
 > [!IMPORTANT]
@@ -19,7 +26,7 @@ For the full pipeline and subagent reference, and a mapping against Antonio Gull
 >
 > 1. **Local shell** — pick one of two flows (see § Local env setup for details):
 >    - **(A) Quick:** `export GH_BKIT_TOKEN=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
->    - **(B) direnv + `.agents/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.agents/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.agents/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
+>    - **(B) direnv + `.bkit/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.bkit/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.bkit/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
 > 2. **`.npmrc` at repo root** — two lines (registry + auth) — see § Consumer CI auth below
 > 3. **GitHub Actions repo secret** — `gh secret set GH_BKIT_TOKEN --body=<token>` per consumer repo
 > 4. **Vercel env vars** (if applicable) — `vercel env add GH_BKIT_TOKEN preview/production`
@@ -82,8 +89,8 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 2 | Add `GH_BKIT_TOKEN` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
 | 3 | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
 | 4 | Export `GH_BKIT_TOKEN` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
-| 5 | Run `pnpm exec bkit install` to seed the full stack (creates `.agents/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
-| 5a | Set up direnv + `.agents/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
+| 5 | Run `pnpm exec bkit install` to seed the full stack (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
+| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
 
@@ -114,7 +121,7 @@ pnpm exec bkit check --full
 
 **Opt-in flags** (NOT included in `--full`): `--tracker=github|linear`, `--renovate`, `--dependabot`, `--cloud`. These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 
-> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.agents/.bkit-version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
+> **⚠️ Always run `pnpm exec bkit install` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.bkit/version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
 
 ### Local env setup
 
@@ -134,9 +141,9 @@ source ~/.zshrc                                        # or: source ~/.bashrc
 
 Pros: one step, no install. Cons: tokens live in every shell on this machine; no per-repo scoping.
 
-#### Flow B — direnv + `.agents/.env` (recommended for daily use)
+#### Flow B — direnv + `.bkit/.env` (recommended for daily use)
 
-`bkit install` seeds `.agents/.env.example` (placeholders + permission notes) and `.envrc` (`dotenv_if_exists .agents/.env`). direnv loads `.agents/.env` automatically when you `cd` into the repo, and unloads when you leave — tokens stay scoped to the repo.
+`bkit install` seeds `.bkit/.env.example` (placeholders + permission notes) and `.envrc` (`dotenv_if_exists .bkit/.env`). direnv loads `.bkit/.env` automatically when you `cd` into the repo, and unloads when you leave — tokens stay scoped to the repo.
 
 ```bash
 # 1. One-time per machine — install direnv
@@ -148,8 +155,8 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 # bash: echo 'eval "$(direnv hook bash)"' >> ~/.bashrc && source ~/.bashrc
 
 # 3. One-time per consumer repo (after `bkit install` has seeded the templates)
-cp .agents/.env.example .agents/.env
-# Edit .agents/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY
+cp .bkit/.env.example .bkit/.env
+# Edit .bkit/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
@@ -158,7 +165,7 @@ echo "len=${#GH_TOKEN}"                                            # non-zero �
 
 After step 4, restart any open Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers.
 
-`.agents/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.agents/cloud.md`](.agents/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
+`.bkit/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.bkit/cloud.md`](.bkit/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
@@ -166,7 +173,7 @@ bkit ships repo-side scaffolding for both cloud agents via the opt-in `bkit inst
 
 For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bkit also ships `.github/workflows/bkit-cloud.yml` (Claude half, via `claude-code-action`) and a `/bkit-cloud` slash command that both clouds invoke from a single source of truth (Cursor wires it up via a dashboard trigger; no GHA needed on the Cursor side).
 
-Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.agents/cloud.md`](.agents/cloud.md). Host-delta matrix: [`.agents/IDEs.md`](.agents/IDEs.md) § Runtime environment.
+Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.bkit/cloud.md`](.bkit/cloud.md). Host-delta matrix: [`.bkit/IDEs.md`](.bkit/IDEs.md) § Runtime environment.
 
 ## JSON ownership model — deep-containment
 
@@ -283,8 +290,8 @@ bkit checks preconditions and known advisory patterns before touching any file. 
 | Advisory | `.husky/pre-commit` or `pre-push` exists without bkit markers |
 | Advisory | `.prettierignore` exists without bkit markers |
 | Advisory | `lint:prose` script lacks the write-good guard (`[ -d .vale/styles/write-good ]`) |
-| Advisory | On-disk `.bkit-version` major > installing major (downgrade) |
-| Advisory | `node_modules/@cbartens/bkit` version > `.agents/.bkit-version` (stale pin) |
+| Advisory | On-disk `.bkit/version` major > installing major (downgrade) |
+| Advisory | `node_modules/@cbartens/bkit` version > `.bkit/version` (stale pin) |
 
 **Phase 2 — Install (current behaviour)**
 
@@ -301,12 +308,15 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `npmrc-missing-gh-packages` | `.npmrc` exists but lacks registry/auth lines |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
+| `gh-token-unset-shell` / `gh-token-empty-shell` | `GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
 | `tracker-setup-none` / `-github` / `-linear` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.githubProject` absent and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.githubProject: false`. |
 | `dep-updater-none` / `-renovate` / `-dependabot` | Optional post-install decision — which dependency updater is wired. `none` nudges `bkit install --renovate` or `--dependabot` (mutually exclusive). See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --cloud`; `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
@@ -367,7 +377,7 @@ pnpm exec bkit doctor
 Use `bkit doctor` to:
 
 - Check whether `GH_BKIT_TOKEN` is set in the shell and on the GitHub repo.
-- Surface `bkit-version-pin-stale` advisory (installed version ahead of `.agents/.bkit-version`).
+- Surface `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
 - Preview all advisories that `bkit install` would show post-install, without triggering writes.
 - Verify the environment is ready before running `bkit install` on a new machine.
 
@@ -481,8 +491,8 @@ This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/
 
 ## Documentation
 
-**Full reference:** [`.agents/README.md`](.agents/README.md) — what bkit does, prerequisites, triggering workflows, key files.
+**Full reference:** [`.bkit/README.md`](.bkit/README.md) — what bkit does, prerequisites, triggering workflows, key files.
 
-**Workflow internals:** [`.agents/workflows.md`](.agents/workflows.md).
+**Workflow internals:** [`.bkit/workflows.md`](.bkit/workflows.md).
 
-**Subagent metadata:** [`.agents/prompts.md`](.agents/prompts.md).
+**Subagent metadata:** [`.bkit/prompts.md`](.bkit/prompts.md).

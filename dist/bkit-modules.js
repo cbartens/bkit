@@ -11,9 +11,9 @@ import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLeg
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
-import { getPkgRoot } from "./bkit-paths.js";
-import { getInstallManifest, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
-import { loadTrackers, substituteWorkflow } from "./bkit-trackers.js";
+import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "./bkit-paths.js";
+import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
+import { substituteWorkflow } from "./bkit-trackers.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ export { getPkgRoot } from "./bkit-paths.js";
 // These are templates that don't belong to ci/lint/git-hooks/claude/cursor modules.
 // ---------------------------------------------------------------------------
 // Top-level template directories/files that belong to core (not other modules)
-const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", "scripts"]);
+const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // Top-level template files (non-directory) that belong to core.
 // `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
 // is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
@@ -131,12 +131,25 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
     ".cursor",
     ".claude",
 ]);
+// ---------------------------------------------------------------------------
+// guardTemplatesRoot — fail-loud guard for the resolved templates root.
+// Exported so tests can inject an arbitrary (non-existent) path and assert
+// the guard fires for ANY missing root — not just the literal ".bkit/templates"
+// string. This keeps the assertion valid across any future path changes.
+//
+// Called by runCoreTemplates (below) before any FS access.
+// ---------------------------------------------------------------------------
+export function guardTemplatesRoot(root, logPrefix = "[bkit-modules]") {
+    if (!fs.existsSync(root)) {
+        console.error(`${logPrefix} Templates root not found at ${root} — package corrupt?`);
+        process.exit(1);
+    }
+}
 // Run templates pass only for core-owned files (top-level md files, docs/, .agents/ subtemplates).
 // Each other module handles its own template files directly.
-function runCoreTemplates(dryRun, pkgRoot, tokens, ws, logPrefix) {
-    const root = path.join(pkgRoot, ".agents", "templates");
-    if (!fs.existsSync(root))
-        return;
+function runCoreTemplates(dryRun, tokens, ws, logPrefix) {
+    const root = getTemplatesRoot();
+    guardTemplatesRoot(root, logPrefix);
     const tag = dryRun ? "[dry-run] " : "";
     // Process top-level entries
     for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
@@ -179,9 +192,12 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
     if (!fs.existsSync(srcDir))
         return;
     for (const ent of fs.readdirSync(srcDir, { withFileTypes: true })) {
-        // Skip Tier 3 files inside .agents/ subtemplate dir — they are owned by their
-        // respective modules and written via writeTier3 (seed-or-print), not Tier 2.
-        if (ent.isFile() && relBase === ".agents" && AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
+        // Skip Tier 3 files inside subtemplate dirs (e.g. .bkit/.env.example) — they
+        // are owned by their respective modules and written via writeTier3
+        // (seed-or-print), not Tier 2.
+        if (ent.isFile() &&
+            (relBase === ".agents" || relBase === ".bkit") &&
+            AGENTS_SUBTEMPLATE_TIER3_EXCLUDE.has(ent.name)) {
             continue;
         }
         const srcPath = path.join(srcDir, ent.name);
@@ -211,10 +227,10 @@ function processCoreTemplateDir(srcDir, relBase, dryRun, tokens, ws, logPrefix) 
 // write when the file already matches pkgVersion).
 //
 // Tier-2-style `.agents/*.md` files (rules/friction/docs/skills) are excluded
-// because they ship as templates under `.agents/templates/.agents/` and are
+// because they ship as templates under `.bkit/templates/.agents/` and are
 // installed by the templates pass. Copying them here additively would dump
-// bkit's own out-of-block content (e.g. bkit's `## Project Rules` body in
-// `rules.md`, bkit's friction-log entries) onto consumers on first install.
+// bkit's own out-of-block content (e.g. bkit's `### bkit Repo Authoring` section
+// in `rules.md`, bkit's friction-log entries) onto consumers on first install.
 const COPY_EXCLUDE = new Set([
     "skills",
     "scripts",
@@ -225,29 +241,21 @@ const COPY_EXCLUDE = new Set([
     "docs.md",
     "skills.md",
     // BAR-260 follow-up: .env.example ships via Tier 3 (writeTier3 from the
-    // template at .agents/templates/.agents/.env.example). Including it in the
+    // template at .bkit/templates/.bkit/.env.example). Including it in the
     // payload copy would double-handle the same destination — Tier 3 sees the
     // file already written by payload copy in live mode, skips its own write,
     // and dry-run vs install writesets diverge. Tier 3 owns this file.
     ".env.example",
 ]);
-// Top-level `.agents/` files that bkit owns end-to-end (no managed-block, no
-// consumer edits). copyAdditive's default skip-if-exists semantics are wrong
-// for these — a stale consumer copy left over from a prior version causes
-// downstream lookups (e.g. parseModelLookup) to crash mid-install when the
-// release adds a new prompt. Force-overwrite keeps the on-disk index in sync
-// with the installed package version.
+// Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
+// default skip-if-exists is wrong for canonical bkit-owned content).
 //
-// BAR-165: every path here MUST also be listed in .agents/templates/.prettierignore
-// (the bkit:start/end block) so consumer prettier — which may resolve a different
-// printWidth than bkit's 100 — does not lint canonical content that the consumer
-// cannot edit. The invariant is asserted by bkit-templates.content.test.ts.
-export const CANONICAL_OVERWRITE_RELPATHS = new Set([
-    ".agents/prompts.md",
-    ".agents/workflows.md",
-    ".agents/IDEs.md",
-    ".agents/cloud.md",
-]);
+// Currently EMPTY: the former members (prompts.md, workflows.md, IDEs.md, cloud.md)
+// are bkit-authoring docs / engine data that now live package-side under
+// `.bkit/` and are read directly from there — never copied into a consumer,
+// so there is nothing to force-overwrite. Kept as the extension point if a
+// canonical consumer-side `.agents/` file is reintroduced.
+export const CANONICAL_OVERWRITE_RELPATHS = new Set([]);
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
     if (!fs.existsSync(src))
@@ -300,7 +308,7 @@ export function runCoreModule(ctx) {
     // The actual .bkit-version write is deferred to postDispatch so that a mid-install crash
     // in a subsequent module does NOT leave .bkit-version on disk (which would suppress the
     // first-install banner on retry).
-    const versionFile = path.join(target, ".bkit-version");
+    const versionFile = path.join(cwd, ".bkit", "version");
     const isFirstInstall = !fs.existsSync(versionFile);
     // 1. Additive .agents/ payload copy (core subdirs only, excluding COPY_EXCLUDE)
     console.log(`${logPrefix} ${tag}Running core payload copy`);
@@ -315,16 +323,18 @@ export function runCoreModule(ctx) {
             // We log them but do NOT add to ws (ws tracks consumer output files for parity checks).
         }, cwd);
     }
-    // 2. Payload pass (bkit-prefix sync for workflows/prompts + templates mirror)
-    console.log(`${logPrefix} ${tag}Running payload pass`);
-    const { writes: payloadWrites } = runPayload(dryRun);
-    if (payloadWrites > 0) {
-        console.log(`${logPrefix} ${tag}payload: ${payloadWrites} file(s) synced`);
+    // 2. Payload cleanup pass — mirror sources + bkit docs + rules.md are now
+    // package-only (read directly from .bkit/); this removes any orphan copies a
+    // consumer carries from an earlier layout. No-op in dogfood and on clean trees.
+    console.log(`${logPrefix} ${tag}Running payload cleanup pass`);
+    const { deletes: payloadDeletes } = runPayload(dryRun);
+    if (payloadDeletes > 0) {
+        console.log(`${logPrefix} ${tag}payload: ${payloadDeletes} relocated orphan(s) removed`);
     }
     // 3. Core templates pass (only core-owned template files: AGENTS.md, CLAUDE.md, .gitignore, docs/)
     // Each other module handles its own template files directly.
     console.log(`${logPrefix} ${tag}Running core templates pass`);
-    runCoreTemplates(dryRun, PKG_ROOT, ctx.tokens, ws, logPrefix);
+    runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
     // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).
@@ -339,10 +349,10 @@ export function runCoreModule(ctx) {
         // Build the set of consumer-relative paths that have format "byte-equal-text".
         // tier3Hashes is narrowed (v2.0.0+) to only these paths — json and markered-text
         // formats use deepContains / marker extraction for drift detection, so they do NOT
-        // need a hash entry. ".agents/.bkit-version" is excluded (it is the version file
+        // need a hash entry. ".bkit/version" is excluded (it is the version file
         // itself, not a consumer-facing file).
         const byteEqualPaths = new Set(getInstallManifest()
-            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".agents", ".bkit-version"))
+            .filter((e) => e.format === "byte-equal-text" && e.path !== path.join(".bkit", "version"))
             .map((e) => e.path));
         // Build new canonicalHashes entries from ws.writes (files written in this run).
         // ws.writes is fully populated by the time postDispatch runs.
@@ -353,7 +363,7 @@ export function runCoreModule(ctx) {
         for (const entry of ws.writes) {
             const absPath = path.isAbsolute(entry.path) ? entry.path : path.resolve(cwd, entry.path);
             const relPath = path.relative(cwd, absPath);
-            if (relPath === path.join(".agents", ".bkit-version"))
+            if (relPath === path.join(".bkit", "version"))
                 continue;
             if (relPath.startsWith(".agents" + path.sep))
                 continue;
@@ -429,21 +439,19 @@ const BKIT_PREFIX = "bkit-";
 export function runClaudeModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    // Load tracker snippets once for this module run (reads from bkit package root).
-    const trackers = loadTrackers(getPkgRoot());
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
     const pairs = [
-        [".agents/workflows", ".claude/commands"],
-        [".agents/prompts", ".claude/agents"],
+        [getWorkflowsRoot(), ".claude/commands"],
+        [getPromptsRoot(), ".claude/agents"],
     ];
     for (const [src, dest] of pairs) {
         ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            // Apply tracker substitution for workflow files; prompts are byte-identical.
-            const transform = src === ".agents/workflows"
-                ? (c) => substituteWorkflow(c, issueTracker, trackers).output
+            // Resolve tracker blocks for workflow files; prompts are byte-identical.
+            const transform = dest === ".claude/commands"
+                ? (c) => substituteWorkflow(c, issueTracker).output
                 : null;
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
@@ -453,8 +461,7 @@ export function runClaudeModule(ctx) {
             console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
         }
     }
-    const PKG_ROOT = getPkgRoot();
-    const claudeTemplates = path.join(PKG_ROOT, ".agents", "templates", ".claude");
+    const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
     // Tier 2 JSON (contained) — deep-containment: settings.json
     // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
     const settingsSrc = path.join(claudeTemplates, "settings.json");
@@ -513,7 +520,7 @@ export function runClaudeModule(ctx) {
     // Byte-equal-text — .mcp.json root-level MCP config — Tier 3 seed-or-print.
     // Content is filtered by issueTracker: only the selected tracker's mcpServers entry is seeded.
     {
-        const mcpSrc = path.join(PKG_ROOT, ".agents", "templates", ".mcp.json");
+        const mcpSrc = path.join(getTemplatesRoot(), ".mcp.json");
         const mcpDst = ".mcp.json";
         const prevLen = ws.writes.length;
         const result = seedMcpJson(mcpSrc, mcpDst, issueTracker, MCP_ROOT_MERGE_INSTRUCTIONS, dryRun, advisories, ws);
@@ -524,14 +531,14 @@ export function runClaudeModule(ctx) {
             console.log(`${logPrefix} ${tag}claude: ${mcpDst} (exists; AI merge instructions printed)`);
         }
     }
-    // Byte-equal-text — .agents/.env.example — Tier 3 seed-or-print.
+    // Byte-equal-text — .bkit/.env.example — Tier 3 seed-or-print.
     // Seeds the canonical token-placeholder file on first install; emits merge
     // instructions if consumer has modified. Not claude-specific but the claude
     // module is the default-runs-everywhere module — appropriate home for
     // consumer-setup scaffolding that all environments need.
     {
-        const envExampleSrc = path.join(PKG_ROOT, ".agents", "templates", ".agents", ".env.example");
-        const envExampleDst = ".agents/.env.example";
+        const envExampleSrc = path.join(getTemplatesRoot(), ".bkit", ".env.example");
+        const envExampleDst = ".bkit/.env.example";
         if (fs.existsSync(envExampleSrc)) {
             const prevLen = ws.writes.length;
             const result = writeTier3(envExampleSrc, envExampleDst, dryRun, advisories, ws, ENV_EXAMPLE_MERGE_INSTRUCTIONS);
@@ -546,7 +553,7 @@ export function runClaudeModule(ctx) {
     // Byte-equal-text — .envrc — Tier 3 seed-or-print.
     // Seeds a single-line dotenv_if_exists directive for direnv auto-load.
     {
-        const envrcSrc = path.join(PKG_ROOT, ".agents", "templates", ".envrc");
+        const envrcSrc = path.join(getTemplatesRoot(), ".envrc");
         const envrcDst = ".envrc";
         if (fs.existsSync(envrcSrc)) {
             const prevLen = ws.writes.length;
@@ -566,18 +573,16 @@ export function runClaudeModule(ctx) {
 export function runCursorModule(ctx) {
     const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    // Load tracker snippets once for this module run.
-    const trackers = loadTrackers(getPkgRoot());
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    // Commands: tracker substitution → T1 → T2
+    // Commands: tracker block resolution → T1 → T2
     {
-        const src = ".agents/workflows";
+        const src = getWorkflowsRoot();
         const dest = ".cursor/commands";
         ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker, trackers).output));
+            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
             }
@@ -588,7 +593,7 @@ export function runCursorModule(ctx) {
     }
     // Agents: T3
     {
-        const src = ".agents/prompts";
+        const src = getPromptsRoot();
         const dest = ".cursor/agents";
         ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
@@ -605,8 +610,7 @@ export function runCursorModule(ctx) {
     }
     // Tier 2 JSON (contained) — deep-containment: hooks.json
     // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
-    const PKG_ROOT = getPkgRoot();
-    const cursorTemplates = path.join(PKG_ROOT, ".agents", "templates", ".cursor");
+    const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
     const hooksSrc = path.join(cursorTemplates, "hooks.json");
     const hooksDst = ".cursor/hooks.json";
     if (fs.existsSync(hooksSrc)) {
@@ -917,24 +921,24 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // jq + python3 + corepack-pinned pnpm); consumers customise Node major,
 // Playwright, Supabase CLI, etc. OUTSIDE the markers and bkit preserves
 // those across upgrades.
-const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .agents/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
+const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .bkit/.env.example exists — bkit will not overwrite. Review the reference and merge any new entries.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  Open .agents/.env.example. Compare against the bkit reference below.
+  Open .bkit/.env.example. Compare against the bkit reference below.
   Merge any new token entries you find (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY)
   into your existing file. Keep any project-specific additions you have.
 
-  --- begin bkit reference .agents/.env.example ---
+  --- begin bkit reference .bkit/.env.example ---
 {{TEMPLATE_CONTENT}}
-  --- end bkit reference .agents/.env.example ---
+  --- end bkit reference .bkit/.env.example ---
 `;
-const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .agents/.env via direnv.
+const ENVRC_MERGE_INSTRUCTIONS = `[bkit] .envrc exists — bkit will not overwrite. Ensure it loads .bkit/.env via direnv.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .envrc. Compare against the bkit reference below.
-  Ensure the file contains \`dotenv_if_exists .agents/.env\` so direnv
+  Ensure the file contains \`dotenv_if_exists .bkit/.env\` so direnv
   auto-exports the tokens into your shell. Keep any existing lines.
   You can append more \`dotenv_if_exists <path>\` lines to expose additional
   env files (e.g. .env.local, infra/secrets.env); run \`direnv allow\` after.
@@ -1045,8 +1049,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 export function runCiModule(ctx) {
     const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
-    const templatePath = path.join(PKG_ROOT, ".agents", "templates", ".github", "workflows", "ci.yml");
+    const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "ci.yml");
     if (!fs.existsSync(templatePath)) {
         console.warn(`${logPrefix} CI template not found at ${templatePath} — skipping CI module`);
         return;
@@ -1062,7 +1065,7 @@ export function runCiModule(ctx) {
     const templateContent = fs.readFileSync(templatePath, "utf-8");
     const foreignUses = scanForeignBkitUses(templateContent);
     if (foreignUses.length > 0) {
-        throw new Error(`${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .agents/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`);
+        throw new Error(`${logPrefix} canonical CI template contains cross-org private \`uses:\` reference(s) — consumer auth cannot resolve them at action-resolution time. Remove from .bkit/templates/.github/workflows/ci.yml and use the env-var pattern (GH_BKIT_TOKEN env on \`pnpm install\`) instead. See README §"Consumer CI auth" / BAR-164. Offending reference(s):\n  - ${foreignUses.join("\n  - ")}`);
     }
     const dstPath = path.join(".github", "workflows", "ci.yml");
     const prevLen = ws.writes.length;
@@ -1136,8 +1139,7 @@ export function runCiModule(ctx) {
 export function runLintModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
-    const templatesBase = path.join(PKG_ROOT, ".agents", "templates");
+    const templatesBase = getTemplatesRoot();
     // .vale.ini — Tier 3 (seed-or-print) since v0.2.1
     // Was Tier 2 but appending a managed-block at EOF puts core options after
     // [glob] sections, which Vale rejects (E201). Tier 3 seeds the whole file
@@ -1278,8 +1280,7 @@ const HUSKY_MERGE_INSTRUCTIONS = {
 export function runGitHooksModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
-    const huskyTemplatesDir = path.join(PKG_ROOT, ".agents", "templates", ".husky");
+    const huskyTemplatesDir = path.join(getTemplatesRoot(), ".husky");
     if (!fs.existsSync(huskyTemplatesDir)) {
         console.warn(`${logPrefix} .husky templates not found at ${huskyTemplatesDir} — skipping git-hooks module`);
         return;
@@ -1438,9 +1439,15 @@ const RENOVATE_LOCAL_STUB = `// Consumer-owned Renovate overrides. bkit does NOT
 const RENOVATE_CUSTOMIZE_NOTE = "Customizing Renovate: do NOT edit `.github/renovate.json5` — it's bkit-owned and rewritten on every `bkit install`/`bkit upgrade`, so changes there are lost on the next run. Put repo-specific rules in `.github/renovate-local.json5` instead (consumer-owned; bkit never overwrites it). On conflict renovate-local ADDS to bkit's rules and can set keys bkit leaves unset (notably `enabled: false` to fence a package) but canNOT override a key bkit sets explicitly (e.g. `automerge`). Common case — fence a package pinned in `pnpm.overrides` so Renovate's lockfile regen can't desync it: add `{ matchPackageNames: [\"<pkg>\"], enabled: false }` to its `packageRules`. Renovate resolves that file from the default branch, so land changes there.";
 function isRenovateConfigOnDefaultBranch(defaultBranch, cwd) {
     try {
+        // Strip git hook env vars so this git command operates on the repo at `cwd`
+        // rather than the GIT_DIR injected by the pre-push hook runner.
+        const env = { ...process.env };
+        delete env["GIT_DIR"];
+        delete env["GIT_WORK_TREE"];
         execSync(`git cat-file -e origin/${defaultBranch}:.github/renovate.json5`, {
             cwd,
             stdio: ["ignore", "ignore", "ignore"],
+            env,
         });
         return true;
     }
@@ -1451,7 +1458,6 @@ function isRenovateConfigOnDefaultBranch(defaultBranch, cwd) {
 export function runRenovateModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
     // Mutually exclusive with --dependabot — refuse if Dependabot config exists.
     // Both opening PRs against the same packages is silly and creates noise.
     const dependabotYml = path.join(process.cwd(), ".github", "dependabot.yml");
@@ -1470,7 +1476,7 @@ export function runRenovateModule(ctx) {
         });
         return;
     }
-    const renovateSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "renovate.json5");
+    const renovateSrc = path.join(getTemplatesRoot(), ".github", "renovate.json5");
     if (!fs.existsSync(renovateSrc))
         return;
     const renovateDst = path.join(".github", "renovate.json5");
@@ -1544,7 +1550,6 @@ export function runRenovateModule(ctx) {
 export function runDependabotModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
     // Mutually exclusive with --renovate — refuse if Renovate config exists.
     const renovateJson5 = path.join(process.cwd(), ".github", "renovate.json5");
     const renovateJson = path.join(process.cwd(), ".github", "renovate.json");
@@ -1563,8 +1568,8 @@ export function runDependabotModule(ctx) {
         return;
     }
     // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
-    const ymlSrc = path.join(PKG_ROOT, ".agents", "templates", ".github", "dependabot.yml");
-    const scriptSrc = path.join(PKG_ROOT, ".agents", "templates", "scripts", "ci", "bkit-set-dependabot.sh");
+    const ymlSrc = path.join(getTemplatesRoot(), ".github", "dependabot.yml");
+    const scriptSrc = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-set-dependabot.sh");
     if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc))
         return;
     const ymlDst = path.join(".github", "dependabot.yml");
@@ -1604,185 +1609,168 @@ export function runDependabotModule(ctx) {
 // runCloudModule — opt-in cloud-agent integration (issue #119, "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
 //
-// NOT shipped by default install (--full) — opt-in via `bkit install --cloud`, so
-// a default install ships ZERO cloud footprint. Owns every file that only matters
-// once a human wires a cloud surface:
+// NOT shipped by default install (--full) — opt-in via `bkit install --cloud=<variant>`,
+// so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
-//   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action. Wakes on CI
-//        completion and dispatches the `/bkit-cloud` orchestrator inside a fresh Claude
-//        Code session via claude-code-action; the orchestrator routes to the matching
-//        phase skill (ship on CI pass, debug on CI fail; design/plan/build via
-//        workflow_dispatch). Ships Tier 1 (pure plumbing; routing lives in the mirrored
-//        slash command) so auto-overwrite keeps the mirror in lockstep.
+//   cloud=claude (tracker=github):
+//   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action; requires
+//        ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
 //   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
 //        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
+//
+//   cloud=cursor (tracker=linear):
 //   - `.cursor/Dockerfile`                 — Cursor Background Agent toolchain (Tier 2 markered).
 //   - `.cursor/environment.json`           — Cursor Background Agent env config (Tier 3,
 //        consumer-owned).
 //
-// Why opt-in: the workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY repo
-// secrets, GitHub Actions write permissions, and (Cursor half) a dashboard trigger —
-// and it depends on the issue tracker, which is itself opt-in. The env scaffolding is
-// inert until a Claude/Cursor cloud env is wired in the respective dashboard.
-// Auto-dispatching cloud agents is a deliberate decision, not a sensible default.
-// Render the bkit-cloud.yml template for a specific tracker (issue #138). Substitutes
-// the `@@CLOUD_TRACKER_*@@` sentinels so a `github`/`none` repo gets a Linear-free
-// workflow (no `LINEAR_API_KEY` secret, `mcp__github__*` instead of `mcp__linear__*`),
-// while `linear` keeps the Linear surface. `@@…@@` sentinels avoid clashing with the
-// workflow's own `${{ … }}` GitHub expressions.
-export function renderCloudWorkflow(raw, tracker) {
-    const isLinear = tracker === "linear";
-    const mcp = isLinear ? "mcp__linear__*" : "mcp__github__*";
-    const secretNote = isLinear ? ", LINEAR_API_KEY (Linear tracker)" : "";
-    // Standalone sentinel line: replaced with the indented Linear secret env line under
-    // Linear, or removed entirely (line + newline) for github/none.
-    const secretEnvLine = isLinear ? "          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}\n" : "";
+// Variant constraints are enforced in bkit-install.ts before dispatch (tracker mismatch
+// = hard error). The context's cloudVariant carries the chosen variant.
+// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude
+// requires tracker=github; the Linear cloud path is Cursor-native via cloud=cursor).
+// The tracker parameter is accepted for interface stability but not branched on —
+// any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty (should be none
+// after T1.1, but this guard prevents accidental sentinel leakage).
+export function renderCloudWorkflow(raw, _tracker) {
     return raw
-        .replace(/@@CLOUD_TRACKER_MCP@@/g, () => mcp)
-        .replace(/@@CLOUD_TRACKER_SECRET_NOTE@@/g, () => secretNote)
-        .replace(/^@@CLOUD_TRACKER_SECRET_ENV@@\n/gm, () => secretEnvLine);
+        .replace(/@@CLOUD_TRACKER_MCP@@/g, () => "mcp__github__*")
+        .replace(/@@CLOUD_TRACKER_SECRET_NOTE@@/g, () => "")
+        .replace(/^@@CLOUD_TRACKER_SECRET_ENV@@\n/gm, () => "");
 }
 export function runCloudModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
-    const PKG_ROOT = getPkgRoot();
-    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    const templates = path.join(PKG_ROOT, ".agents", "templates");
-    // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical,
-    // rendered tracker-conditional via renderCloudWorkflow — issue #138). Linear-tracker
-    // repos keep the `LINEAR_API_KEY` secret + `mcp__linear__*` surface; github/none repos
-    // get a Linear-free workflow. The render is deterministic from `issueTracker` (read the
-    // same way on install and `bkit check`), so the drift gate stays consistent.
-    const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
-    if (!fs.existsSync(workflowSrc))
-        return;
-    const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
-    {
-        const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), issueTracker), tokens);
-        const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
-        if (current !== rendered) {
-            ws.writes.push({ path: workflowDst, action: "write" });
-            if (!dryRun) {
-                ensureDir(path.dirname(workflowDst));
-                fs.writeFileSync(workflowDst, rendered, "utf-8");
+    const templates = getTemplatesRoot();
+    // Default to "claude" when cloudVariant is not set (back-compat: the old bare --cloud
+    // always meant the Claude/GitHub path). Callers should always pass cloudVariant.
+    const variant = ctx.cloudVariant ?? "claude";
+    if (variant === "claude") {
+        // --- cloud=claude: GitHub-tracker path ---
+        // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical).
+        // GitHub-only; id-token: write grants the OIDC token for Claude GitHub App auth.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
+        if (!fs.existsSync(workflowSrc))
+            return;
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
+        {
+            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
+            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
+            if (current !== rendered) {
+                ws.writes.push({ path: workflowDst, action: "write" });
+                if (!dryRun) {
+                    ensureDir(path.dirname(workflowDst));
+                    fs.writeFileSync(workflowDst, rendered, "utf-8");
+                }
+                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
             }
-            console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
         }
-    }
-    // 2. Claude Code on the web SessionStart install hook — Tier 2 markered.
-    // bkit owns the install steps between `# <!-- bkit:start -->` / `# <!-- bkit:end -->`
-    // (pnpm install + vale sync); consumers add per-repo steps OUTSIDE the markers. The
-    // .claude/settings.json SessionStart entry is guarded (`test -f … || true`) so it
-    // no-ops on a --full install without this script.
-    {
-        const src = path.join(templates, ".claude", "hooks", "cloud-bootstrap.sh");
-        const dst = ".claude/hooks/cloud-bootstrap.sh";
-        if (fs.existsSync(src)) {
-            const prevLen = ws.writes.length;
-            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}cloud: ${dst}`);
-                if (!dryRun && fs.existsSync(dst)) {
-                    fs.chmodSync(dst, 0o755);
+        // 2. Claude Code on the web SessionStart install hook — Tier 2 markered.
+        {
+            const src = path.join(templates, ".claude", "hooks", "cloud-bootstrap.sh");
+            const dst = ".claude/hooks/cloud-bootstrap.sh";
+            if (fs.existsSync(src)) {
+                const prevLen = ws.writes.length;
+                writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+                if (ws.writes.length > prevLen) {
+                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
+                    if (!dryRun && fs.existsSync(dst)) {
+                        fs.chmodSync(dst, 0o755);
+                    }
                 }
             }
         }
+        // Record the variant so the post-install advisory and `bkit check` stay consistent.
+        setConsumerBkitField("cloudAgents", "claude", dryRun);
+        // Advisory — cloud=claude setup checklist (App required; id-token: write).
+        advisories.push({
+            id: "bkit-cloud-setup",
+            severity: "advisory",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (Claude cloud half of the phase-routed cloud workflow). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
+            action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
+                "REQUIRED ONE-TIME SETUP:\n" +
+                "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
+                "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
+                "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
+                "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
+                "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
+                "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
+                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-cloud` orchestrator (mirrored to `.claude/commands/bkit-cloud.md` on each `pnpm bkit install`).",
+        });
+        // Advisory — cloud env scaffolding (Claude half).
+        advisories.push({
+            id: "cloud-env-customize",
+            severity: "advisory",
+            detect: "Cloud env config splits across the repo (`.claude/hooks/cloud-bootstrap.sh`, bkit-managed) and the Claude app dashboard (setup script + env vars + auth tokens, manual).",
+            action: "Two locations to touch — full recipe in bkit's `cloud.md`.\n\n" +
+                "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
+                "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n\n" +
+                "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
+                "  - Name: `bkit-shared` (or per-repo).\n" +
+                "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
+                "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+                "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
+                "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
+        });
     }
-    // 3. Cursor Background Agent Dockerfile — Tier 2 markered. bkit owns the toolchain
-    // block (vale + gh + jq + python3 + corepack-pinned pnpm); consumers customise Node
-    // major, Playwright, Supabase CLI, etc. OUTSIDE the markers.
-    {
-        const src = path.join(templates, ".cursor", "Dockerfile");
-        const dst = ".cursor/Dockerfile";
-        if (fs.existsSync(src)) {
-            const prevLen = ws.writes.length;
-            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}cloud: ${dst}`);
+    else {
+        // --- cloud=cursor: Linear-tracker path ---
+        // 3. Cursor Background Agent Dockerfile — Tier 2 markered.
+        {
+            const src = path.join(templates, ".cursor", "Dockerfile");
+            const dst = ".cursor/Dockerfile";
+            if (fs.existsSync(src)) {
+                const prevLen = ws.writes.length;
+                writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+                if (ws.writes.length > prevLen) {
+                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
+                }
             }
         }
-    }
-    // 4. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
-    {
-        const src = path.join(templates, ".cursor", "environment.json");
-        const dst = ".cursor/environment.json";
-        if (fs.existsSync(src)) {
-            const prevLen = ws.writes.length;
-            const result = writeTier3(src, dst, dryRun, advisories, ws, CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}cloud: ${dst}`);
-            }
-            else if (result.suggested) {
-                console.log(`${logPrefix} ${tag}cloud: ${dst} (exists; AI merge instructions printed)`);
+        // 4. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
+        {
+            const src = path.join(templates, ".cursor", "environment.json");
+            const dst = ".cursor/environment.json";
+            if (fs.existsSync(src)) {
+                const prevLen = ws.writes.length;
+                const result = writeTier3(src, dst, dryRun, advisories, ws, CURSOR_ENVIRONMENT_MERGE_INSTRUCTIONS);
+                if (ws.writes.length > prevLen) {
+                    console.log(`${logPrefix} ${tag}cloud: ${dst}`);
+                }
+                else if (result.suggested) {
+                    console.log(`${logPrefix} ${tag}cloud: ${dst} (exists; AI merge instructions printed)`);
+                }
             }
         }
+        // Record the variant.
+        setConsumerBkitField("cloudAgents", "cursor", dryRun);
+        // Advisory — cloud=cursor setup checklist.
+        advisories.push({
+            id: "bkit-cloud-setup",
+            severity: "advisory",
+            detect: "`.cursor/Dockerfile` and `.cursor/environment.json` are in place (Cursor cloud scaffolding). The Cursor Background Agent trigger is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
+            action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
+                "IN CURSOR DASHBOARD:\n" +
+                "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
+                "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
+                "  - Prompt (paste literally, no edits): `/bkit-cloud $CI_STATUS $PR_NUMBER`.\n" +
+                "  - Allowed concurrency: latest-supersedes.\n" +
+                "  - Set `LINEAR_API_KEY` in Cursor → Settings → Background Agents → Environment Variables.\n" +
+                "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
+                "IN REPO (Tier 2 markered; consumer customises outside `# <!-- bkit:start -->` markers):\n" +
+                "  - `.cursor/Dockerfile`: change Node major if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below the bkit block.\n" +
+                "  - `.cursor/environment.json`: Tier 3, fully consumer-owned — set `install` / `start` / `terminals[]` / `env` for your stack.",
+        });
+        // Advisory — cloud env scaffolding (Cursor half).
+        advisories.push({
+            id: "cloud-env-customize",
+            severity: "advisory",
+            detect: "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor app dashboard (env vars + auth tokens, manual).",
+            action: "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
+                "  - `GH_TOKEN`, `GH_BKIT_TOKEN`.\n" +
+                "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
+                "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
+                "Full recipe in bkit's `cloud.md`.",
+        });
     }
-    // Record the choice so the post-install advisory stays quiet about
-    // "undecided cloud agents" — file presence is the primary signal.
-    setConsumerBkitField("cloudAgents", "enabled", dryRun);
-    // Advisory 1 — cloud env scaffolding customisation (repo files + dashboard env vars).
-    // Tracker-aware: env var list differs by issueTracker.
-    const trackerEnvNote = issueTracker === "github"
-        ? "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n"
-        : issueTracker === "linear"
-            ? "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n"
-            : "  - Tracker env vars: tracker not wired (`bkit.issueTracker` = `none`). Run `bkit install --tracker=github` to enable. GitHub tracker uses browser OAuth — no PAT required.\n";
-    advisories.push({
-        id: "cloud-env-customize",
-        severity: "advisory",
-        detect: "Cloud env config splits across the repo (scripts + Dockerfile, bkit-managed) and the online dashboards (env vars + auth tokens, manual). Claude Code on the web reads its setup script + env vars from the Claude app; Cursor Background Agents read `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars from Cursor Settings.",
-        action: "Three locations to touch — full recipe in `.agents/cloud.md`.\n\n" +
-            "IN REPO (Tier 2 markered; bkit owns content between `# <!-- bkit:start -->` and `# <!-- bkit:end -->`; consumer customises outside):\n" +
-            "  - `.cursor/Dockerfile`: change Node major above the bkit block if `engines.node` differs from 20; add Playwright / Supabase CLI / extra apt deps below.\n" +
-            "  - `.claude/hooks/cloud-bootstrap.sh`: add repo-specific install steps after the bkit:end marker (Supabase start, turbo prebuild, etc. — examples inlined).\n" +
-            "  - `.cursor/environment.json`: Tier 3, fully consumer-owned — set `install` / `start` / `terminals[]` / `env` for your stack.\n\n" +
-            "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
-            "  - Name: `bkit-shared` (or per-repo).\n" +
-            "  - Setup script: paste from `.agents/cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
-            "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
-            trackerEnvNote +
-            "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.\n\n" +
-            "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
-            "  - `GH_TOKEN`, `GH_BKIT_TOKEN`.\n" +
-            trackerEnvNote +
-            "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.",
-    });
-    // Advisory 2 — phase-routed workflow setup. The GHA workflow is the Claude half;
-    // the Cursor half (dashboard trigger + paste-once prompt) is manual. Tracker-conditional:
-    // the Linear secret line + "in Linear" phrasing appear only under the Linear tracker (#138).
-    const isLinearCloud = issueTracker === "linear";
-    const trackerSecretLine = isLinearCloud
-        ? "  - Confirm `LINEAR_API_KEY` is set (the workflow reads the `Auto` opt-in label and appends comments).\n"
-        : "";
-    const trackerLabelLine = isLinearCloud
-        ? "  - Confirm the issue is labelled `Auto` in Linear before pushing the build commit — without the label the workflow exits no-op.\n\n"
-        : "  - Confirm the issue carries the `Auto` label before pushing the build commit — without it the workflow exits no-op.\n\n";
-    // OPTIONAL manual trigger (GitHub tracker only): the `@claude` mention path. Run
-    // `/install-github-app` to add it alongside the CI-driven + workflow_dispatch paths.
-    // Experimental until verified live — the runner must load the bkit skill mirror and
-    // allow the phase skill. GitHub-gated because you mention on a GitHub issue/PR.
-    const mentionTipLine = isLinearCloud
-        ? ""
-        : "  - OPTIONAL (manual launch) — run `/install-github-app` (Claude Code CLI) to add `@claude` mention launches: comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to start a phase from the tracker UI, alongside the CI-driven and `workflow_dispatch` paths. It coexists with `bkit-cloud.yml` (different trigger events) and provides the runner's GitHub identity for the `mcp__github__*` surface. Verify with one live `@claude` mention before relying on it — the runner must load the bkit skill mirror and allow the phase skill.\n";
-    advisories.push({
-        id: "bkit-cloud-setup",
-        severity: "advisory",
-        detect: "`.github/workflows/bkit-cloud.yml` is in place (Claude half of the phase-routed cloud workflow). The Cursor half is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
-        action: "Full recipe in `.agents/cloud.md` § Post-CI auto-routing.\n\n" +
-            "IN GITHUB (Claude half):\n" +
-            "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**. Repo cannot exceed org. If this is skipped, `actions/checkout` 403s on the first fire — the workflow declares `permissions: contents: write` but the org/repo ceiling overrides it.\n" +
-            "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
-            mentionTipLine +
-            trackerSecretLine +
-            "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
-            trackerLabelLine +
-            "IN CURSOR DASHBOARD (Cursor half):\n" +
-            "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
-            "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
-            "  - Prompt (paste literally, no edits): `/bkit-cloud $CI_STATUS $PR_NUMBER` — Cursor substitutes the variables from the trigger payload.\n" +
-            "  - Allowed concurrency: latest-supersedes (newer CI completion cancels in-flight runs).\n\n" +
-            "Both halves invoke the same `/bkit-cloud` orchestrator (lives in `.cursor/commands/bkit-cloud.md` + `.claude/commands/bkit-cloud.md`, mirrored from `.agents/workflows/bkit-cloud.md` on each `pnpm bkit install`). Routing logic updates flow to both clouds automatically — the dashboard prompt itself never needs to change.",
-    });
 }
 // ---------------------------------------------------------------------------
 // MODULE_REGISTRY — maps ModuleFlag → ModuleFn

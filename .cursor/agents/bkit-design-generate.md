@@ -38,7 +38,7 @@ tools:
 6. Each conflict → pick stronger, justify.
 7. Draft `Acceptance Scenario` — initial draft only (expanded later):
    - Narrative: 2–3 sentences, user POV (NOT system POV).
-   - Success Criteria: ≤5 high-level measurable outcomes. NO tests. NO implementation steps.
+   - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
 8. Preserve strongest approaches. Consolidate Decisions.
 9. New architecture/technology decisions (if any) → append `docs/decisions.md`; check existing entries first.
@@ -59,7 +59,7 @@ tools:
 
 ### Success Criteria
 
-[≤5 high-level measurable outcomes. NO tests. NO implementation steps; initially set to `PENDING`.]
+[<=5 high-level measurable outcomes. NO tests. NO implementation steps; initially set to `PENDING`.]
 
 ### Key Edge Cases
 

@@ -1,0 +1,21 @@
+# bkit:start
+
+node_modules/
+dist/
+.agents/skills/
+# Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit-modules.ts):
+# bkit force-overwrites these on every install, so consumer prettier must not
+# lint them. Width-sensitive rewrites would be reverted next install.
+.claude/
+.cursor/
+.github/
+.husky/_/
+*.tsbuildinfo
+pnpm-lock.yaml
+# Tier-3 seed files (byte-equal-text) — bkit seeds these; consumers may modify
+# them but should not have prettier reformat bkit's canonical JSON layout.
+.mcp.json
+.envrc
+.bkit/.env.example
+
+# bkit:end

@@ -16,6 +16,6 @@ pnpm-lock.yaml
 # them but should not have prettier reformat bkit's canonical JSON layout.
 .mcp.json
 .envrc
-.agents/.env.example
+.bkit/.env.example
 
 # bkit:end

@@ -43,8 +43,6 @@
 | `docs/completed.md` | — | — | — | — | ● |
 | `docs/pending.md` | ● | ● | ● | ● | — |
 | `.agents/skills.md` | — | — | ● | — | — |
-| `.agents/workflows.md` | — | — | — | — | — |
-| `.agents/cloud.md` | — | — | — | — | — |
 | `docs/plans/template.md` | — | ● | — | — | — |
 | `docs/audits/*.md` | ○ | ○ | — | — | — |
 | `docs/setup.md` | — | — | — | — | — |
@@ -117,9 +115,6 @@
 | File | Scope |
 | --- | --- |
 | `.agents/skills.md` | Registry of installed agent skills and install/update commands. |
-| `.agents/workflows.md` | Agent-pipeline reference — workflow conventions, execution patterns, IDE integration, subagent catalog. |
-| `.agents/cloud.md` | Cloud agent environments — Claude Code on the web (setup script + env vars in Claude app) AND Cursor Background Agents (`.cursor/Dockerfile` + `environment.json` + Linear preflight). Aligned on vale 3.9.1 + pnpm 10.33.0. |
-| `.agents/trackers.md` | Per-tracker definitions (github / linear / none) consumed by `bkit install --tracker=<name>` for workflow substitution. Installer-time only. |
 | `docs/plans/template.md` | Plan template — pre-flight, gates, runbook, verification, rollback. Clone for every new plan. |
 
 ### Setup

@@ -83,6 +83,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Action Items
 
 [Only if `CONCERNS`/`FAIL` — specific blockers requiring resolution before ship (distinct from Risks above); initially set to `PENDING`.]
+
+## Recommended Next Step
+
+[Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS`/`CONCERNS` → `/bkit-ship`; `FAIL` → `/bkit-debug`. Emit `text` block: L1 `<cmd> <ref>`, L2 `Brief: <what to ship or what failed, caveat, PR/plan link — 1-3 lines>`. Initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

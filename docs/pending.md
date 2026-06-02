@@ -118,7 +118,7 @@
 - **Status:** deferred
 - **Description:** Add a `task-range` parameter to `bkit-build-plan-execute` so large plans (>15 tasks) can be executed in slices without splitting the plan file. Revisit only if the Fix 2 task-count gate (>15 → SPLIT) proves too strict and legitimate single-issue plans exceed 15 tasks. Current 15-task cap chosen as safety margin (18 = highest clean run observed; 20 = lowest dirty run).
 - **Source:** phase
-- **Related:** BAR-155, `.agents/prompts/bkit-build-plan-execute.md`, `.agents/workflows/bkit-plan.md` Step 8
+- **Related:** BAR-155, `.bkit/prompts/bkit-build-plan-execute.md`, `.bkit/workflows/bkit-plan.md` Step 8
 
 ## BAR-155 deferred — KN/DE auto-renumber on rebase conflicts (2026-05-09)
 
@@ -176,7 +176,7 @@
 - **Category:** infra
 - **Severity:** normal
 - **Status:** deferred
-- **Description:** `main` currently has no GitHub-side protection — both classic branch protection (`repos/.../branches/main/protection`) and rulesets (`repos/.../rulesets`) return `403 Upgrade to GitHub Pro or make this repository public`. Dev→main PR flow is enforced only by bkit workflow discipline, not by GitHub. Apply once the repo is either made public or upgraded to GitHub Pro. **Quick path:** `bash scripts/ci/bkit-set-protection.sh` (require PR, required check `bkit-tests`, enforce-for-admins, linear history, no force-push/deletion; pre-flights that a `bkit-tests` job exists in `ci.yml`). Equivalent ruleset JSON staged at `/tmp/main-ruleset.json`: target `refs/heads/main`, enforcement `active`, rules = `deletion` + `non_fast_forward` + `pull_request` (0 approvals so the release agent can self-merge, no stale-dismiss, no code-owner, no last-push-approval, no thread resolution) + `required_status_checks` (non-strict, context `bkit-tests`), **zero bypass actors** (enforce-for-admins is load-bearing — agents act with the owner's admin token). CI job renamed `run-tests` → `bkit-tests` (#140; `.github/workflows/ci.yml`). Apply with `gh api -X POST repos/cbartens/bkit/rulesets --input /tmp/main-ruleset.json`.
+- **Description:** `main` currently has no GitHub-side protection — both classic branch protection (`repos/.../branches/main/protection`) and rulesets (`repos/.../rulesets`) return `403 Upgrade to GitHub Pro or make this repository public`. Dev→main PR flow is enforced only by bkit workflow discipline, not by GitHub. Apply once the repo is either made public or upgraded to GitHub Pro. **Quick path:** `bash scripts/ci/bkit-protect-main.sh` (require PR, required check `bkit-tests-check` — the always-on capstone, so green means validated — enforce-for-admins, linear history, no force-push/deletion; pre-flights that a `bkit-tests-check` job exists in `ci.yml`). Equivalent ruleset JSON staged at `/tmp/main-ruleset.json`: target `refs/heads/main`, enforcement `active`, rules = `deletion` + `non_fast_forward` + `pull_request` (0 approvals so the release agent can self-merge, no stale-dismiss, no code-owner, no last-push-approval, no thread resolution) + `required_status_checks` (non-strict, context `bkit-tests-check`), **zero bypass actors** (enforce-for-admins is load-bearing — agents act with the owner's admin token). CI job renamed `run-tests` → `bkit-tests` (#140; `.github/workflows/ci.yml`). Apply with `gh api -X POST repos/cbartens/bkit/rulesets --input /tmp/main-ruleset.json`.
 - **Workaround:** Agents follow bkit workflow rules — never push directly to `main`; PRs always base=main head=dev (or feature→dev→main); humans approve+merge; surface PR URL and stop if blocked.
 - **Source:** human
 - **Related:** `.github/workflows/ci.yml`
@@ -186,10 +186,11 @@
 - **Type:** issue
 - **Category:** agentic
 - **Severity:** low
-- **Status:** deferred
+- **Status:** resolved
 - **Description:** `ci.yml` uses 6-space-indented `# bkit:start` / `# bkit:end` markers (Group B partial-ownership). `extractManagedBlock` only detects line-anchored markers (column-0 or comment-prefix position), so `detectTier2TextDrift` returns `null` for `ci.yml` — no drift is flagged even if a consumer edits the block. The Phase 2 acceptance promise ("teammate deletes `pnpm bkit check` from ci.yml → `bkit check` flags tier2-text-drift") is therefore NOT enforced for the ci.yml indented-marker case. Both `bkit-modules.integration.test.ts` (line 1216) and `bkit-modules.upgrade.integration.test.ts` (line 331) assert `result === null` and document this boundary. Fix requires a dedicated indented-YAML-marker parser, deferred to sub-plan C or a follow-up issue.
+- **Resolution:** WONTFIX-by-design. The `ci.yml` Tier-2→Tier-3 migration was finished — the decorative whole-file `# bkit:start` / `# bkit:end` markers were removed from `.agents/templates/.github/workflows/ci.yml` (only the named `verbose-ci-env` block remains). `ci.yml` is now byte-equal seed-or-print: seeded once, fully consumer-owned afterward, so drift is expected and is correctly NOT flagged. No indented-marker parser is needed. Legacy consumers seeded with the old markers keep their files unchanged (seed-or-print never overwrites); `detectTier2TextDrift` returning `null` for them is now the intended Tier-3 contract, not a gap.
 - **Source:** phase
-- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`
+- **Related:** BAR-167, `.agents/scripts/bkit-modules.integration.test.ts`, `.agents/scripts/bkit-modules.upgrade.integration.test.ts`, `.agents/scripts/bkit-install.ts` `extractManagedBlock`, `.agents/templates/.github/workflows/ci.yml`
 
 ## CI lint guarding against `.agents/scripts`/`.agents/templates` source-literal re-introduction in `.bkit/src` (2026-05-26)
 

@@ -48,7 +48,7 @@ tools:
 
 ## Blockers
 
-[Per blocker: id + reason. ≥1 blocker means caller treats this run as failed. If no blockers then `None`]
+[Per blocker: id + reason. >=1 blocker means caller treats this run as failed. If no blockers then `None`]
 ```
 
 > ⛔ **STOP after reverting logging and producing output. Do NOT fix, change code.**

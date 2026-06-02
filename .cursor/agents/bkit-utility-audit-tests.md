@@ -34,7 +34,7 @@ tools:
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo).
 4. Backend: Vitest only. No Playwright for APIs. Mock HTTP, assert DB.
-5. Integration: ≥1 test hitting API vs local DB without ORM mocking (`npm run test:integration`).
+5. Integration: >=1 test hitting API vs local DB without ORM mocking (`npm run test:integration`).
 6. UI: Playwright for visual DOM only.
 7. Review core workflows/routes/components for coverage.
 8. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. **If** incomplete findings → not counted.

@@ -121,6 +121,7 @@ Bkit's shipped `ci.yml` recognises the tags below. Tags are case-sensitive, must
 | `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
 | `[force build]` | Exposes `should_force_build=true` step output for downstream deploy gates. Has no effect unless the consumer's deploy steps gate on it. | Read by `Detect Direct Push` step |
 | `[force e2e]` | Exposes `should_run_e2e=true` step output. The `bkit-stub:e2e` block (when uncommented) runs E2E on this signal. | Read by `Detect Direct Push` step |
+| `[force live]` | Sets the plan's `run_live=true` so the `bkit-tests-live` @live job runs even off a non-dev/main-push event. No effect unless you have added the `bkit-tests-live` job (full scaffold). | Read by `bkit-decide` (Read Markers → Decide Run Live & E2E) |
 | `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 | `[skip build]` | Consumer-defined: bkit does not interpret this tag in `ci.yml`. Consumers wiring it into deploy steps add the gate themselves. | Consumer-controlled |
@@ -129,7 +130,7 @@ Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardles
 
 ## Run-level decision matrix
 
-Bkit's shipped `ci.yml` ships _primitives_ (cache check, direct-push detect, tag parsing, integration gate) and does not impose a fixed run-level tier system. Consumers composing tiers on top should align with the table below — it defines a `none` / `partial` / `full` shape that bkit's force tags + auto-detection plug into cleanly.
+Bkit ships a 4-job scaffold — `bkit-decide` (always-on; reads markers, computes `run_level`, emits the `bkit-test-plan` JSON contract) → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check` (the always-on capstone that asserts every tier the plan _expected_ actually ran and passed). The single-job starter `ci.yml` ships the primitives (cache check, marker parsing, direct-push detect, integration gate); the **FULL CI SCAFFOLD REFERENCE** at the end of `.github/workflows/ci.yml` reproduces every step, in execution order, for adopting the tiers. The table below defines the `none` / `partial` / `full` shape those primitives + the plan plug into.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -144,6 +145,7 @@ Composition guidance:
 - Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
+- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `scripts/ci/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
 ## GitHub Actions pinning
 
@@ -155,10 +157,10 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
 ```
 
-**Pair with an updater.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.agents/templates/.github/renovate.json5`. The shipped config:
+**Pair with an updater.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`. The shipped config:
 
 - Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
-- Runs weekly (`schedule: ["before 6am on Monday"]`) with grouped non-major bumps, lockfile maintenance, and `automerge: true` for devDependencies + patch updates.
+- Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
 - Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
 - For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
@@ -198,6 +200,8 @@ This is part of Phase B activation; `pnpm bkit install --renovate` prints it in 
 - ✅ **Add** rules for packages or managers bkit doesn't already configure.
 - ✅ **Set keys bkit leaves unset** — notably `enabled: false` to fence a package. bkit never sets `enabled: true` on a matching rule, so a fence here holds.
 - ❌ **NOT override a key bkit sets explicitly** (e.g. `automerge`, `groupName`) — bkit's inline rule wins for those.
+
+**Grouping and auto-merge are intentionally bkit-enforced, not tunable.** The single `bkit: renovate non-major dependencies` group and its `automerge: true` are a _correctness_ property — they prevent the lockfile rebase cascade described under § GitHub Actions pinning — not a default you adjust per-repo. Per the precedence rule above, `renovate-local.json5` cannot re-split the group or turn its auto-merge off. If you need a different posture: fence a specific package you would rather bump by hand with `enabled: false` (below); or, if your policy is _review every dependency and auto-merge nothing_, install the Dependabot module instead (`pnpm bkit install --dependabot`, § below) — it opens one PR per package and never auto-merges.
 
 **Canonical use case — fence a `pnpm.overrides`-pinned package.** If you pin a package in root `pnpm.overrides` (e.g. to stop cross-package version skew), Renovate's hosted lockfile regeneration does **not** reconcile against `pnpm.overrides`: it rewrites the locked version on an eligible bump while leaving your override in place, producing an inconsistent `pnpm-lock.yaml` that fails CI's `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`). Fence the pinned package so Renovate leaves it alone:
 
@@ -252,7 +256,7 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 <!-- prettier-ignore -->
 | Surface | Where to set | Symptom if missing | bkit detector |
 | --- | --- | --- | --- |
-| Local shell | `.agents/.env` (gitignored, scaffolded by `bkit install`) → `GH_BKIT_TOKEN=<classic PAT>`; auto-loaded via direnv (`brew install direnv` + shell hook + `direnv allow`) | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1) | `detectShellToken` + `detectMissingDotenv` + `detectBlankDotenvKeys` (Phase 3) |
+| Local shell | `.bkit/.env` (gitignored, scaffolded by `bkit install`) → `GH_BKIT_TOKEN=<classic PAT>`; auto-loaded via direnv (`brew install direnv` + shell hook + `direnv allow`) | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1) | `detectShellToken` + `detectMissingDotenv` + `detectBlankDotenvKeys` (Phase 3) |
 | `.npmrc` | `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` (env-var ref, **never** literal) plus `@cbartens:registry=https://npm.pkg.github.com` | Same 401, more opaque (pnpm v7.20+ silently ignores entire `.npmrc` — see KN-1) | `detectNpmrcAuth` (Phase 3) |
 | GitHub Actions secret | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` on every install step | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` references `${GH_BKIT_TOKEN}`) |
 | Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production` | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \ | "production")` (Phase 3) |
@@ -281,16 +285,16 @@ When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-
 
 ### `dist/` commit policy
 
-Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
+Source-repo only. Any TypeScript change under `.bkit/src/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
 
 - Pre-commit and pre-push hooks run `typecheck` + `test` — they do NOT run `pnpm build`. The source-repo pre-push also runs `pnpm check:dist` (catches a stale `dist/` at push time), but this does NOT commit the freshened `dist/` — if stale, the push is blocked and you must run `pnpm build && git add dist/` manually before pushing.
 - CI's `bkit-tests` job has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
-- Consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
+- Consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
 - See KN-7 for failure-mode and recurrence history.
 
 ### `.husky/pre-push` bkit check gate
 
-`.husky/pre-push` is **Tier 3 (seed-or-print)** — bkit writes the file once on first install and never overwrites it. There are no `# bkit:start` / `# bkit:end` markers. The consumer template (`.agents/templates/.husky/pre-push`) ships `pnpm bkit check < /dev/null` so consumers detect managed-file drift before push. The bkit source repo's `.husky/pre-push` additionally has `pnpm bkit check < /dev/null` and `pnpm check:dist < /dev/null` appended directly (not via markers) — those lines catch `.agents/*` edits that weren't mirrored via `bkit install` and verify `dist/` is not stale.
+`.husky/pre-push` is **Tier 3 (seed-or-print)** — bkit writes the file once on first install and never overwrites it. It carries no `# bkit:start` / `# bkit:end` markers. The consumer template (`.bkit/templates/.husky/pre-push`) ships `pnpm bkit check < /dev/null` so consumers detect managed-file drift before push. The bkit source repo's `.husky/pre-push` additionally has `pnpm bkit check < /dev/null` and `pnpm check:dist < /dev/null` appended directly (not via markers) — those lines catch `.agents/*` edits that weren't mirrored via `bkit install` and verify `dist/` is not stale.
 
 - The bkit-repo-only additions are plain lines at the bottom of the source-repo copy of the file; they are not in the consumer template and never reach consumer repos.
 - Fix on failure: run `pnpm bkit install` (for drift), or `pnpm build && git add dist/` (for dist staleness); stage and commit; then push. `--no-verify` remains PROHIBITED per the universal pre-push rule.
@@ -299,26 +303,42 @@ Source-repo only. Any TypeScript change under `.agents/scripts/*.ts` MUST be acc
 
 The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that lands inside any repo using bkit. This repo dogfoods the **same** config (no divergence — `bkit check --renovate` enforces it). The fence has two parts:
 
-- `ignorePaths` includes `.agents/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install`/`upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
+- `ignorePaths` includes `.bkit/templates/**` and `.agents/skills/**` — bkit-owned mirrors written into the working tree by `bkit install`/`upgrade`. They are refreshed by bkit, not Renovate; scanning them only yields onboarding-PR noise.
 - A packageRule disables the `@cbartens/bkit` package itself — bumped via `pnpm bkit upgrade` (which re-syncs templates + pin), never a bare Renovate version bump, and unauthable from Mend's runner anyway (`no-result`). Mirrors the existing `bkit-cloud.yml` exemption.
 
-**Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.agents/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.agents/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
+**Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.bkit/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.bkit/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
 
 See issue #132 (consumer-reported dashboard noise) and § Renovate activation above.
 
 ### CI trigger on final workflow push
 
-GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `bkit [skip ci]` (matched via GitHub substring check on `[skip ci]`) or `bkit [skip actions]`. When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
+GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without `bkit [skip ci]`.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.bkit/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+
+**Commit-tag taxonomy:**
+
+<!-- prettier-ignore -->
+| Tag | Suppressor? | Effect |
+| --- | --- | --- |
+| `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
+| `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — `worktree-setup`, `create-pr`, `summary` (design/plan), status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
+| `bkit [skip build]` | NO for CI; YES for Vercel | Vercel ignore script cancels preview build; CI cap remains at partial tier. Not a CI suppressor — safe on PR HEAD when CI must fire. PR title must not carry it (blocks post-squash deploy). |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. |
+| `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow + debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; treated as legitimate by the HEAD-Subject Assertion. |
+| `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
 
 <!-- prettier-ignore -->
 | Surface | Mechanic |
 | --- | --- |
-| build / debug PR push (final) | Final commit `chore({FID}): close-workflow status trigger CI` — drops `bkit [skip build] bkit [skip ci]` from the existing close-workflow status commit. Push happens at end of close-workflow step. |
-| ship squash merge | `gh pr merge --squash --body ""` — empty body strips `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID` and fails if no run registered within 60s of the push. |
+| build/debug PR push (final close-workflow) | `chore({FID}): close-workflow` — no skip tags; loud. Opted-in builds additionally append `bkit [auto route]` (conditional on issue `bkit:auto` at close time). Push fires `pull_request` synchronize. |
+| build/debug `worktree-setup` commit | `chore({FID}): worktree-setup bkit [skip ci]` — bookkeeping; no CI trigger. |
+| build `create-pr` commit | `chore({FID}): create-pr bkit [skip ci]` — bookkeeping; no CI trigger. Fires after PR creation but before the close-workflow push. |
+| ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID`. |
 
-All other docs-only intermediate commits (start-workflow, summary, create-pr, install-skills, switch-to-dev, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow status trigger CI` commit (build/debug) and the squash-merge subject (ship) are unmarked.
+All other docs-only intermediate commits (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow` commit (build/debug) and the squash-merge subject (ship) are unmarked and loud.
+
+**Commit-message tags reference (full table):** see `.bkit/workflows.md` § "CI / Vercel commit tags".
 
 ### Manual CI trigger on feat branches (`workflow_dispatch`)
 
@@ -340,15 +360,15 @@ This mirrors the same workflow_dispatch + branch-select pattern used in bkit con
 
 bkit's installer runs in three phases:
 
-1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: `detectHooksConfigOverwriteRisk` was removed in v0.8.0 — deep-containment merge guarantees consumer-key survival without a preflight gate (see KN-8, DE-8).
+1. **Phase 1 — Preflight (read-only).** Runs blocker + advisory detectors. Blockers exit 1 before any writes (e.g. malformed `package.json`, no git repo). Advisories accumulate in `ctx.advisories`. Note: there is no hooks-config-overwrite preflight gate — deep-containment merge guarantees consumer-key survival (see KN-8, DE-8).
 2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
-3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. In `bkit check` (v2.2.3+), Phase 3 runs in read-only mode — same advisory set as install, no writes. See KN-4 (historical design; prior to v2.2.3, Phase 3 was skipped entirely in check). **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
+3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. In `bkit check` (v2.2.3+), Phase 3 runs in read-only mode — same advisory set as install, no writes. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 
 `pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
 ### Consumer CI auth — env-var pattern (canonical)
 
-Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env var on the `pnpm install` step. The consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) picks it up at registry-resolution time. No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.agents/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape (BAR-164).
+Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env var on the `pnpm install` step. The consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) picks it up at registry-resolution time. No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape (BAR-164).
 
 ### Sliding major-version tag
 

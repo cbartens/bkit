@@ -1,2 +1,9 @@
 #!/usr/bin/env sh
+set -e
 pnpm lint-staged && pnpm lint:prose && pnpm lint:slop
+
+# bkit-repo only — block committing stale dist when `.bkit/src/*.ts` is staged.
+# Consumers don't compile TS and never run this gate.
+if git diff --cached --name-only --diff-filter=ACM | grep -q '^\.bkit/src/.*\.ts$'; then
+  pnpm check:dist < /dev/null
+fi

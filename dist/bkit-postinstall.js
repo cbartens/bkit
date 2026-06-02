@@ -23,6 +23,44 @@ export function detectShellToken() {
     return "present";
 }
 /**
+ * Detect whether GH_TOKEN is set in the shell environment. Mirrors
+ * detectShellToken but for the token that authenticates the GitHub MCP server
+ * (`Authorization: Bearer ${GH_TOKEN}` in .mcp.json). Where GH_BKIT_TOKEN only
+ * gates `pnpm install` from GH Packages, GH_TOKEN powers the entire tracker +
+ * PR + Projects MCP surface — so its absence is more functionally severe, yet
+ * historically had no shell-env advisory (only the `.env`-gated preflight check).
+ */
+export function detectShellGhToken() {
+    if (process.env.GH_TOKEN === undefined)
+        return "missing";
+    if (process.env.GH_TOKEN === "")
+        return "empty";
+    return "present";
+}
+/**
+ * True when a `github` MCP server is configured in `.mcp.json` or
+ * `.cursor/mcp.json` — i.e. GH_TOKEN is actually consumed for MCP auth. Used to
+ * gate the GH_TOKEN shell advisory so it never fires in repos that use bkit for
+ * CI only (no agent workflows / MCP servers).
+ */
+export function hasGithubMcpServer(cwd) {
+    for (const rel of [".mcp.json", path.join(".cursor", "mcp.json")]) {
+        const p = path.join(cwd, rel);
+        if (!fs.existsSync(p))
+            continue;
+        try {
+            const cfg = JSON.parse(fs.readFileSync(p, "utf-8"));
+            const servers = cfg.mcpServers;
+            if (servers?.github)
+                return true;
+        }
+        catch {
+            // Malformed config — ignore; a JSON-drift advisory covers that separately.
+        }
+    }
+    return false;
+}
+/**
  * Detect whether .npmrc has both required GH Packages registry lines.
  * - "present"  → both `@cbartens:registry=` and `_authToken=${GH_BKIT_TOKEN}` present
  * - "missing"  → .npmrc exists but lacks one or both lines (emit advisory)
@@ -78,6 +116,33 @@ export function detectMainBranchProtection() {
         if (stderr.includes("Branch not protected") || stderr.includes("HTTP 404")) {
             return "missing";
         }
+        return "unknown";
+    }
+}
+/**
+ * Detect whether the repo's default GitHub Actions workflow permissions let the
+ * bkit-cloud workflow push status commits and open/merge PRs. Reads
+ * `repos/{owner}/{repo}/actions/permissions/workflow`:
+ *   - default_workflow_permissions: "read" | "write"
+ *   - can_approve_pull_request_reviews: boolean
+ * Returns "present" only when permissions are "write" AND PR creation/approval is
+ * allowed; "missing" otherwise; "unknown" if gh CLI is unavailable / unauthed.
+ * Repo-level only — org-level defaults are not reliably readable with a repo token
+ * (an org policy can still override a correct-looking repo setting).
+ */
+export function detectActionsWritePermissions() {
+    try {
+        const out = execFileSync("gh", ["api", "repos/{owner}/{repo}/actions/permissions/workflow"], {
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            timeout: 5000,
+        });
+        const parsed = JSON.parse(out);
+        const canWrite = parsed.default_workflow_permissions === "write";
+        const canApprovePrs = parsed.can_approve_pull_request_reviews === true;
+        return canWrite && canApprovePrs ? "present" : "missing";
+    }
+    catch {
         return "unknown";
     }
 }
@@ -183,6 +248,71 @@ export function detectCiYmlMissingTokenEnv(cwd) {
     };
 }
 /**
+ * Detect the always-true `if:` gate in `.github/workflows/bkit-cloud.yml`: a `|`
+ * block scalar wrapping ${{ }}. GitHub Actions sees extra characters around ${{ }}
+ * (the block scalar's newlines) and evaluates the whole condition to a non-empty
+ * string === always true — so the free-tier `bkit [auto route]` gate never fires and
+ * the run job executes on every triggering event (unintended runner-minute spend).
+ *
+ * Fires only while the broken construct is present; the fixed form is a `>-` folded
+ * expression with no ${{ }} wrapper. bkit-cloud.yml is not always rewritten on a
+ * re-install of older consumers, so the action inlines the manual fix.
+ */
+export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
+    const cloudPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+    if (!fs.existsSync(cloudPath))
+        return null;
+    const content = fs.readFileSync(cloudPath, "utf-8");
+    // Broken construct: an `if:` block scalar (`|` / `>`) whose first content line is ${{.
+    if (!/^\s*if:\s*[|>][^\n]*\n\s*\$\{\{/m.test(content))
+        return null;
+    return {
+        id: "bkit-cloud-yml-always-true-gate",
+        severity: "advisory",
+        detect: ".github/workflows/bkit-cloud.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
+        action: "Replace the `if: |` block under `# bkit:start auto-route-gate` with a `>-` folded expression that drops the ${{ }} wrapper (GitHub Actions evaluates `if:` expressions natively):\n\n" +
+            "    if: >-\n" +
+            "      github.event_name == 'workflow_dispatch'\n" +
+            "      || (\n" +
+            "      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')\n" +
+            "      && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')\n" +
+            "      )\n\n" +
+            "Validate with `actionlint` — the `[if-cond]` finding disappears once the wrapper is gone.",
+    };
+}
+/**
+ * Detect a bkit-managed `.github/workflows/ci.yml` with no `actionlint` step.
+ * `yaml.safe_load` (and generic YAML linters) accept workflows that are valid YAML
+ * but invalid GitHub Actions (doubled quotes inside ${{ }}, always-true `if:` block
+ * scalars). actionlint is GHA-aware and catches that class.
+ *
+ * Only fires when the consumer opted into a bkit-managed ci.yml (markers present).
+ * ci.yml is Tier-3 seed-or-print, so `bkit install` will not add the step to an
+ * existing file — the action inlines the manual step.
+ */
+export function detectCiYmlMissingActionlint(cwd) {
+    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    if (!fs.existsSync(ciPath))
+        return null;
+    const content = fs.readFileSync(ciPath, "utf-8");
+    if (!/^\s*# bkit:start\b/m.test(content))
+        return null;
+    if (/actionlint/i.test(content))
+        return null;
+    return {
+        id: "ci-yml-missing-actionlint",
+        severity: "advisory",
+        detect: ".github/workflows/ci.yml (bkit-managed) has no actionlint step. yaml.safe_load accepts workflows that are valid YAML but invalid GitHub Actions (e.g. doubled quotes inside ${{ }}, an always-true `if:` block scalar); actionlint is GHA-aware and catches them.",
+        action: "Add an actionlint step among the static checks in .github/workflows/ci.yml (before the test/build group):\n\n" +
+            "      - name: Run Actionlint\n" +
+            "        if: steps.cache.outputs.skip != 'true'\n" +
+            "        run: |\n" +
+            '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
+            '          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"\n' +
+            '          "$RUNNER_TEMP/actionlint" -color',
+    };
+}
+/**
  * Detect whether vale is installed but write-good styles are not synced.
  * Returns null if vale is not on PATH (silent skip — not an error).
  */
@@ -204,6 +334,40 @@ export function detectValePackageNotSynced(cwd) {
         severity: "advisory",
         detect: "vale is on PATH but .vale/styles/write-good/ is absent — vale packages not synced.",
         action: "Run `vale sync` (one-time per repo) to download the write-good package. The lint:prose script soft-skips when write-good is absent, but prose linting won't work until synced.",
+    };
+}
+/**
+ * Detect incomplete local workflow-lint tooling: `actionlint` and/or `shellcheck`
+ * not on PATH. `pnpm lint:workflows` soft-skips without actionlint, and actionlint
+ * skips shellcheck on `run:` blocks without shellcheck — so invalid GHA expressions
+ * and shell issues in `.github/workflows/*` surface only in CI (the runner preinstalls
+ * both). Recommends installing both for pre-push parity. Only fires when the repo has
+ * workflow files to lint. bkit does NOT install these binaries (same as vale).
+ */
+export function detectWorkflowLintToolsMissing(cwd) {
+    const wfDir = path.join(cwd, ".github", "workflows");
+    if (!fs.existsSync(wfDir))
+        return null;
+    const hasWorkflow = fs.readdirSync(wfDir).some((f) => f.endsWith(".yml") || f.endsWith(".yaml"));
+    if (!hasWorkflow)
+        return null;
+    const onPath = (cmd) => {
+        try {
+            execSync(`${cmd} --version`, { stdio: ["ignore", "pipe", "ignore"], timeout: 5000 });
+            return true;
+        }
+        catch {
+            return false;
+        }
+    };
+    const missing = ["actionlint", "shellcheck"].filter((t) => !onPath(t));
+    if (missing.length === 0)
+        return null;
+    return {
+        id: "workflow-lint-tools-missing",
+        severity: "advisory",
+        detect: `Local workflow-lint tooling incomplete (missing: ${missing.join(", ")}). \`pnpm lint:workflows\` soft-skips without actionlint, and actionlint skips shellcheck on \`run:\` blocks without shellcheck — so GHA-expression and shell issues in .github/workflows/* are caught only in CI.`,
+        action: "Install both for pre-push parity (actionlint runs shellcheck automatically when it is on PATH):\n\n    brew install actionlint shellcheck    # macOS\n\nThen `pnpm lint:workflows` lints `.github/workflows/*` locally before you push.",
     };
 }
 const BKIT_STUBS = [
@@ -228,6 +392,11 @@ const BKIT_STUBS = [
         description: "Apply Supabase migrations to the dev project on push-to-dev. Requires SUPABASE_ACCESS_TOKEN, SUPABASE_DEV_DB_PASSWORD, SUPABASE_DEV_PROJECT_REF secrets.",
     },
     {
+        id: "test-db",
+        file: ".github/workflows/ci.yml",
+        description: "Run pgTAP schema-invariant DB tests (`supabase db test` over `supabase/tests/*.sql`) against the CI-local Supabase — the canonical home for schema invariants (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Remote-only CI (no local Supabase) can't run pgTAP: assert the same invariants from the `@live` tier via a SECURITY DEFINER, service_role-only catalog RPC called over REST (direct port-5432 from CI runners is IPv4-flaky). See docs/testing.md § Schema-invariant DB checks.",
+    },
+    {
         id: "vercel-await",
         file: ".github/workflows/ci.yml",
         description: "Poll the Vercel API for the PR's preview deployment by commit SHA and export `target_url` for E2E. Requires VERCEL_TOKEN, VERCEL_TEAM_ID, VERCEL_PROJECT_ID secrets.",
@@ -241,6 +410,29 @@ const BKIT_STUBS = [
         id: "smoke",
         file: ".github/workflows/ci.yml",
         description: "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
+    },
+    // --- The 4-job "green == validated" scaffold (bkit #203 / gether reference). ---
+    // These ship commented in the FULL CI SCAFFOLD REFERENCE block at the end of the
+    // template ci.yml. Order matters when adopting — see that block.
+    {
+        id: "bkit-decide",
+        file: ".github/workflows/ci.yml",
+        description: "Promote run-level detection into a standalone always-on `bkit-decide` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live), consumed by every tier via `fromJSON(needs.bkit-decide.outputs.plan).<field>`. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo.",
+    },
+    {
+        id: "affected-graph",
+        file: ".github/workflows/ci.yml",
+        description: "Inside bkit-decide, replace any frozen path-allowlist with `turbo query affected --packages` so run_level / web_affected track the real dependency blast radius. Monorepo-only — drop for single-package repos. Capture turbo stdout/stderr SEPARATELY: `2>&1` merges turbo's banner into the JSON and jq silently falls back to [] (a ghost-green run).",
+    },
+    {
+        id: "bkit-tests-live",
+        file: ".github/workflows/ci.yml",
+        description: "Add a push-only @live canary job (`needs: [bkit-decide, bkit-tests]`; `if: ...run_live && needs.bkit-tests.result == 'success'`) running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design).",
+    },
+    {
+        id: "bkit-tests-check",
+        file: ".github/workflows/ci.yml",
+        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `scripts/ci/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -420,7 +612,7 @@ export function detectTestIntegrationEnv(cwd) {
  * references (`uses: <owner>/<repo>@v\d+`) without SHA pinning. KN-3 mandates
  * SHA pins for any workflow that runs with elevated permissions.
  *
- * bkit-canonical workflow files (those tracked in `.agents/.bkit-version`
+ * bkit-canonical workflow files (those tracked in `.bkit/version`
  * under `canonicalHashes` or `tier3Hashes`) are exempt — they intentionally
  * ship tag-only pins. The bkit-shipped `renovate.json5` adds a packageRule
  * with `matchFileNames` for bkit-managed workflow files so consumer-side
@@ -431,7 +623,7 @@ export function detectGhaFloatingTags(cwd) {
     const workflowsDir = path.join(cwd, ".github", "workflows");
     if (!fs.existsSync(workflowsDir) || !fs.statSync(workflowsDir).isDirectory())
         return null;
-    const bkitVersion = readBkitVersion(path.join(cwd, ".agents", ".bkit-version"));
+    const bkitVersion = readBkitVersion(path.join(cwd, ".bkit", "version"));
     const canonicalPaths = new Set([
         ...Object.keys(bkitVersion?.canonicalHashes ?? {}),
         ...Object.keys(bkitVersion?.tier3Hashes ?? {}),
@@ -467,11 +659,14 @@ export function detectGhaFloatingTags(cwd) {
     };
 }
 /**
- * Detect whether the consumer composed any sibling workflow on bkit's `Detect
- * Direct Push` step outputs (`should_force_build`, `should_run_e2e`,
- * `cache.outputs.skip`). The bkit ci.yml ships primitives only — without a
- * consumer-side gate referencing the outputs, the force-tag system documented
- * in deployments.md is documentation-only.
+ * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
+ * outputs (`should_force_build` / `should_run_e2e`). The bkit ci.yml ships these
+ * primitives only — without a consumer-side gate reading the outputs, the force-tag
+ * system documented in deployments.md is documentation-only.
+ *
+ * "Composition" = a `steps.detect.outputs.should_*` READ on an uncommented line, in a
+ * sibling workflow or in ci.yml itself. bkit's shipped steps only SET these outputs and
+ * the example E2E gate ships commented (`bkit-stub:e2e`), so neither false-positives.
  */
 export function detectRunLevelsNotComposed(cwd) {
     const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -482,28 +677,37 @@ export function detectRunLevelsNotComposed(cwd) {
     if (!ciContent.includes("Detect Direct Push"))
         return null;
     const workflowsDir = path.join(cwd, ".github", "workflows");
-    const refTokens = ["should_force_build", "should_run_e2e", "cache.outputs.skip"];
-    // The bkit-managed block in ci.yml already references the tokens internally.
-    // We want to know if any OTHER workflow file (or a step OUTSIDE the bkit:start/end
-    // markers in ci.yml) references them. Scan all sibling .yml files for any token hit.
+    // A consumer "composes" run-levels by READING bkit's force-tag outputs in a gate
+    // (`steps.detect.outputs.should_*`). bkit's own shipped ci.yml only SETS those outputs
+    // (`echo "should_force_build=true" >> $GITHUB_OUTPUT`) and gates internal steps on
+    // `cache.outputs.skip` — neither is consumer composition. So we look for the READ form,
+    // on uncommented lines only (the shipped `bkit-stub:e2e` block reads the outputs but is
+    // commented out by default — enabling it correctly counts as composition).
+    // ci.yml is Tier-3 (seed-or-print, no bkit:start/end markers), so we can no longer fence
+    // off "bkit's region"; matching the read form is what distinguishes a consumer gate.
+    const readTokens = [
+        "steps.detect.outputs.should_force_build",
+        "steps.detect.outputs.should_run_e2e",
+    ];
+    const composesRunLevels = (content) => content
+        .split("\n")
+        .some((line) => !/^\s*#/.test(line) && readTokens.some((tok) => line.includes(tok)));
     let composed = false;
+    // Any sibling workflow that gates on the outputs.
     for (const entry of fs.readdirSync(workflowsDir, { withFileTypes: true })) {
         if (!entry.isFile() || !/\.ya?ml$/.test(entry.name))
             continue;
         if (entry.name === "ci.yml")
-            continue; // skip — checked separately
-        const content = fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8");
-        if (refTokens.some((tok) => content.includes(tok))) {
+            continue; // checked below
+        if (composesRunLevels(fs.readFileSync(path.join(workflowsDir, entry.name), "utf-8"))) {
             composed = true;
             break;
         }
     }
-    // Also check ci.yml content outside the bkit:start/end block.
-    if (!composed) {
-        const outside = ciContent.replace(/# bkit:start[\s\S]*?# bkit:end/g, "");
-        if (refTokens.some((tok) => outside.includes(tok)))
-            composed = true;
-    }
+    // Or a consumer-added gate inside ci.yml itself (e.g. an enabled bkit-stub:e2e block,
+    // or a deploy/job step reading the outputs).
+    if (!composed && composesRunLevels(ciContent))
+        composed = true;
     if (composed)
         return null;
     return {
@@ -563,7 +767,7 @@ export function buildTrackerSetupAdvisory(cwd) {
             id: "tracker-setup-linear",
             severity: "advisory",
             detect: "bkit tracker is configured as `linear`. Linear is the active tracker.",
-            action: "Linear tracker: set `LINEAR_API_KEY` in `.agents/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
+            action: "Linear tracker: set `LINEAR_API_KEY` in `.bkit/.env` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session by the Linear integration — do not hardcode. Run `direnv allow` after setting the key so MCP servers and the preflight hook can authenticate.",
         };
     }
     // tracker === "none". Distinguish deliberate opt-out (explicit
@@ -575,7 +779,7 @@ export function buildTrackerSetupAdvisory(cwd) {
         id: "tracker-setup-none",
         severity: "advisory",
         detect: "bkit tracker is not configured (`bkit.issueTracker` absent). Workflows run but every tracker call is a no-op.",
-        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.agents/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
+        action: 'Optional post-install decision. Run `bkit install --tracker=github` (recommended) or `bkit install --tracker=linear` to enable tracker integration. GitHub tracker uses browser OAuth — no PAT required. Linear tracker requires `LINEAR_API_KEY` in `.bkit/.env`. To opt out and silence this advisory, set `bkit.issueTracker` to `"none"` in package.json.',
     };
 }
 /** True when package.json has an explicit `bkit.issueTracker` field (any value). */
@@ -591,6 +795,121 @@ function hasExplicitIssueTrackerField(cwd) {
     catch {
         return false;
     }
+}
+/**
+ * Classify the `bkit.githubProject` board-sync config in package.json:
+ *   - "configured" → object with at least `owner` + `number` (the lookup keys)
+ *   - "opted-out"  → set to `false` (deliberate "no board sync" — stay quiet)
+ *   - "absent"     → missing, malformed, or unreadable
+ */
+function readGithubProjectConfig(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return "absent";
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const bkitField = pkg.bkit;
+        const gp = bkitField?.githubProject;
+        if (gp === false)
+            return "opted-out";
+        if (gp && typeof gp === "object" && !Array.isArray(gp)) {
+            const obj = gp;
+            if (obj.owner !== undefined && obj.number !== undefined)
+                return "configured";
+        }
+        return "absent";
+    }
+    catch {
+        return "absent";
+    }
+}
+/**
+ * Inspect the root `.mcp.json` github server's `X-MCP-Toolsets` header for the
+ * `projects` toolset (required for Projects v2 board sync):
+ *   - "present" → header lists `projects`
+ *   - "missing" → github server has a toolset header that omits `projects`
+ *                 (the real-world drift: installs predating the toolset addition)
+ *   - "unknown" → no `.mcp.json`, no github server, or no header (can't judge)
+ *
+ * Scoped to root `.mcp.json` only — bkit deliberately omits the header from
+ * `.cursor/mcp.json`, so its absence there is not drift.
+ */
+export function detectProjectsToolset(cwd) {
+    const mcpPath = path.join(cwd, ".mcp.json");
+    if (!fs.existsSync(mcpPath))
+        return "unknown";
+    try {
+        const cfg = JSON.parse(fs.readFileSync(mcpPath, "utf-8"));
+        const servers = cfg.mcpServers;
+        const gh = servers?.github;
+        const headers = gh?.headers;
+        const toolsets = headers?.["X-MCP-Toolsets"];
+        if (typeof toolsets !== "string")
+            return "unknown";
+        return toolsets
+            .split(",")
+            .map((s) => s.trim())
+            .includes("projects")
+            ? "present"
+            : "missing";
+    }
+    catch {
+        return "unknown";
+    }
+}
+/**
+ * GitHub Projects v2 board-sync prerequisite advisory. Board status sync needs
+ * THREE things, none of which install seeds or verifies end-to-end:
+ * `bkit.githubProject` config, the `projects` MCP toolset, and an org-scoped
+ * Projects R/W PAT. Absent any of the first two (the detectable ones), board
+ * sync silently no-ops — `bkit.githubProject` alone is useless if the toolset
+ * lacks `projects`, and vice versa. Emits one advisory naming what's missing.
+ *
+ * Gates: workflows installed (.claude/ or .cursor/) AND tracker === "github".
+ * Stays quiet on explicit opt-out (`bkit.githubProject: false`) or when both
+ * detectable prerequisites are satisfied (PAT scope can't be checked locally).
+ */
+export function buildGithubProjectAdvisory(cwd) {
+    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
+    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
+    if (!hasClaude && !hasCursor)
+        return null;
+    if (readConsumerIssueTracker(cwd) !== "github")
+        return null;
+    const configState = readGithubProjectConfig(cwd);
+    if (configState === "opted-out")
+        return null;
+    const toolset = detectProjectsToolset(cwd);
+    const configOk = configState === "configured";
+    const toolsetOk = toolset === "present";
+    if (configOk && toolsetOk)
+        return null;
+    const missing = [];
+    if (!configOk)
+        missing.push("`bkit.githubProject` is absent from package.json");
+    if (toolset === "missing")
+        missing.push("the `projects` toolset is missing from `.mcp.json` `X-MCP-Toolsets`");
+    const missingPhrase = missing.length > 0 ? `: ${missing.join("; ")}` : "";
+    return {
+        id: "github-project-board-sync-unconfigured",
+        severity: "advisory",
+        detect: `GitHub tracker is active but Projects v2 board status sync is not fully configured${missingPhrase}. ` +
+            "Board sync silently no-ops — workflows never reflect phase on the project board.",
+        action: "Board status sync is optional (workflows never gate on it) but invisible when half-configured. All three prerequisites are required:\n\n" +
+            "1. Add `bkit.githubProject` to package.json (org-owned board only — fine-grained PATs cannot reach user-owned projects):\n\n" +
+            '       "bkit": {\n' +
+            '         "githubProject": {\n' +
+            '           "owner": "<org>", "number": <project-number>,\n' +
+            '           "statusFieldId": "<id>", "progressOptionId": "<id>",\n' +
+            '           "reviewOptionId": "<id>", "doneOptionId": "<id>"\n' +
+            "         }\n" +
+            "       }\n\n" +
+            "   Discover the field + single-select option IDs: `gh project field-list <number> --owner <org> --format json`.\n\n" +
+            "2. Ensure the root `.mcp.json` github server enables the `projects` toolset (older installs predate it):\n\n" +
+            '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"\n\n' +
+            "3. The `GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
+            "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
+    };
 }
 /**
  * Read `bkit.depUpdater` from the consumer's package.json. Returns the value
@@ -712,8 +1031,13 @@ function hasExplicitCloudAgentsField(cwd) {
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
  * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
- * `bkit install --cloud`; it does NOT ship with `--full`. This nudges consumers
+ * `bkit install --cloud=claude`; it does NOT ship with `--full`. This nudges consumers
  * to make the choice post-install.
+ *
+ * Also performs the cloud=claude config-consistency assertion (T1.8): when
+ * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
+ * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
+ * the `blocker` severity in bkit-preflight caller).
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * "deliberate opt-out" escape hatch):
@@ -726,16 +1050,27 @@ function hasExplicitCloudAgentsField(cwd) {
  */
 export function buildCloudSetupAdvisory(cwd) {
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
-    // `LINEAR_API_KEY` is only a dependency under the Linear tracker (issue #138).
-    const secretsPhrase = readConsumerIssueTracker(cwd) === "linear"
-        ? "`ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets"
-        : "an `ANTHROPIC_API_KEY` repo secret";
     if (fs.existsSync(routerPath)) {
+        // Config-consistency assertion (T1.8): cloud=claude requires id-token: write.
+        // If the recorded variant is "claude" (or back-compat legacy "enabled" mapped to claude)
+        // and the workflow file lacks id-token: write, surface a consistency finding.
+        const recordedVariant = readConsumerCloudAgents(cwd);
+        if (recordedVariant === "claude") {
+            const workflowContent = fs.readFileSync(routerPath, "utf-8");
+            if (!workflowContent.includes("id-token: write")) {
+                return {
+                    id: "cloud-claude-missing-id-token",
+                    severity: "blocker",
+                    detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
+                    action: "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
+                };
+            }
+        }
         return {
             id: "cloud-router",
             severity: "advisory",
-            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present).",
-            action: `The workflow is inert until its dependencies are configured: ${secretsPhrase}, GitHub Actions write permissions (org AND repo), and — for the Cursor half — a Cloud Agents dashboard trigger. See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud\`) and \`.agents/cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
+            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
     // No router present — distinguish deliberate opt-out from undecided.
@@ -749,7 +1084,8 @@ export function buildCloudSetupAdvisory(cwd) {
         id: "cloud-router-none",
         severity: "advisory",
         detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
-        action: `Optional post-install decision. Run \`pnpm bkit install --cloud\` to install the post-CI auto-routing workflow (dispatches bkit-ship on CI pass, bkit-debug on CI fail). It requires ${secretsPhrase}, GitHub Actions write permissions, and (Cursor half) a dashboard trigger — the install prints the full checklist (\`bkit-cloud-setup\`).\n\n` +
+        action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --cloud=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --cloud=cursor --tracker=linear`.\n\n" +
+            "Prerequisites for `cloud=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
             'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
     };
 }
@@ -768,50 +1104,52 @@ export function buildCloudDashboardsAdvisory(cwd) {
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasRouter && !hasClaude && !hasCursor)
         return null;
-    // `LINEAR_API_KEY` is only part of the cloud secret set under the Linear tracker —
-    // a github/none repo's workflow never references it (issue #138).
-    const isLinear = readConsumerIssueTracker(cwd) === "linear";
-    const secretList = isLinear
-        ? "`ANTHROPIC_API_KEY`, `LINEAR_API_KEY`, `GH_BKIT_TOKEN`"
+    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
+    // cloud=cursor path (.cursor/): LINEAR_API_KEY for Cursor dashboard.
+    // Distinguish by recorded variant; fall back to presence-based detection.
+    const recordedVariant = readConsumerCloudAgents(cwd);
+    const isCursorCloud = recordedVariant === "cursor" || (!hasRouter && hasCursor);
+    const secretList = isCursorCloud
+        ? "`LINEAR_API_KEY`, `GH_BKIT_TOKEN`"
         : "`ANTHROPIC_API_KEY`, `GH_BKIT_TOKEN`";
-    const ghSetLines = isLinear
-        ? "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
-            "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
+    const ghSetLines = isCursorCloud
+        ? "       gh secret set LINEAR_API_KEY    --body='<value>'\n" +
             '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
-            "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n"
+            "       Verify: `gh secret list | grep -E 'LINEAR_API_KEY|GH_BKIT_TOKEN'`\n\n"
         : "       gh secret set ANTHROPIC_API_KEY --body='<value>'\n" +
             '       gh secret set GH_BKIT_TOKEN     --body="$GH_BKIT_TOKEN"\n\n' +
             "       Verify: `gh secret list | grep -E 'ANTHROPIC_API_KEY|GH_BKIT_TOKEN'`\n\n";
-    const vendorNote = isLinear
-        ? "ANTHROPIC_API_KEY and LINEAR_API_KEY are read from their respective vendor dashboards (https://console.anthropic.com/settings/keys, https://linear.app/settings/api)."
-        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys).";
+    const vendorNote = isCursorCloud
+        ? "LINEAR_API_KEY is read from the Linear dashboard (https://linear.app/settings/api)."
+        : "ANTHROPIC_API_KEY is read from the Anthropic dashboard (https://console.anthropic.com/settings/keys). The Claude GitHub App (`/install-github-app`) is also required for `cloud=claude`.";
     return {
         id: "cloud-secrets-three-locations",
         severity: "advisory",
-        detect: `The same secrets used by bkit's CI workflow (${secretList}) must also be set in the Cursor Background Agents and Claude Code (web) dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
-        action: "Set each secret in all THREE locations:\n\n" +
+        detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
+        action: "Set each secret in the required locations:\n\n" +
             "1. **GitHub Actions** (used by the bkit-cloud workflow and consumer workflows):\n" +
             ghSetLines +
             "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
-            "Same VALUE in all three places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
+            "Same VALUE in all places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
             vendorNote,
     };
 }
 /**
  * Detect whether the GitHub Actions secrets the bkit-cloud workflow needs are set.
  * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
- * always required (claude-code-action); `LINEAR_API_KEY` is required ONLY under the
- * Linear tracker — a `github`/`none` repo's workflow has no Linear wiring (issue #138),
- * so demanding the key there is a false positive. Returns one finding per missing secret.
+ * always required (claude-code-action) for the cloud=claude path. The workflow is
+ * GitHub-tracker only — no `LINEAR_API_KEY` dependency. Returns one finding per
+ * missing secret.
  */
 export function detectCiRouterSecrets(cwd) {
     const findings = [];
     const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
     if (!fs.existsSync(routerPath))
         return findings;
-    const tracker = readConsumerIssueTracker(cwd);
-    const required = ["ANTHROPIC_API_KEY", ...(tracker === "linear" ? ["LINEAR_API_KEY"] : [])];
+    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — ANTHROPIC_API_KEY only.
+    // No LINEAR_API_KEY dependency (that was the vestigial Linear render branch, now removed).
+    const required = ["ANTHROPIC_API_KEY"];
     for (const name of required) {
         const status = detectGhSecret(name);
         if (status === "missing") {
@@ -926,7 +1264,7 @@ export function formatChecklist(findings) {
     return lines.join("\n");
 }
 /**
- * Render findings as a markdown artifact suitable for `.agents/advisories.md`.
+ * Render findings as a markdown artifact suitable for `.bkit/advisories.md`.
  * Mirrors `formatChecklist` content but in markdown form so the file can be
  * referenced and revisited between installs. Overwritten on every run.
  */
@@ -972,12 +1310,12 @@ export function renderAdvisoriesMarkdown(findings, opts) {
     return lines.join("\n");
 }
 /**
- * Write `.agents/advisories.md` in the consumer's cwd. Best-effort:
+ * Write `.bkit/advisories.md` in the consumer's cwd. Best-effort:
  * mkdir -p `.agents/`, write the rendered markdown, log a one-line status.
  * Any I/O failure is logged but does not throw — the artifact is informational.
  */
 export function writeAdvisoriesArtifact(findings, opts) {
-    const dir = path.join(opts.cwd, ".agents");
+    const dir = path.join(opts.cwd, ".bkit");
     const filePath = path.join(dir, "advisories.md");
     try {
         fs.mkdirSync(dir, { recursive: true });
@@ -987,10 +1325,10 @@ export function writeAdvisoriesArtifact(findings, opts) {
         });
         fs.writeFileSync(filePath, content);
         const n = findings.length;
-        console.log(`${opts.logPrefix} Wrote .agents/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
+        console.log(`${opts.logPrefix} Wrote .bkit/advisories.md (${n} item${n === 1 ? "" : "s"}).`);
     }
     catch (err) {
-        console.error(`${opts.logPrefix} Failed to write .agents/advisories.md: ${err.message}`);
+        console.error(`${opts.logPrefix} Failed to write .bkit/advisories.md: ${err.message}`);
     }
 }
 // ---------------------------------------------------------------------------
@@ -1058,7 +1396,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-unset-shell",
             severity: "advisory",
             detect: "GH_BKIT_TOKEN is not set in the shell environment (undefined).",
-            action: "Set GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .agents/.env.example .agents/.env       # if not already done\n    # edit .agents/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
+            action: "Set GH_BKIT_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then have direnv auto-load it on cd:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_BKIT_TOKEN=<classic PAT, read:packages scope>\n    direnv allow                                 # one-time per repo; requires `brew install direnv` + shell hook\n\nThen restart your editor (Claude Code / Cursor) so the new env reaches MCP servers. Generate the PAT at: https://github.com/settings/tokens (Tokens (classic)). Fine-grained PATs are rejected by GitHub Packages with HTTP 403 — must be classic.\n\nLegacy fallback (if direnv unavailable): export GH_BKIT_TOKEN=<your-pat> in ~/.zshrc / ~/.bashrc.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
     }
@@ -1067,9 +1405,33 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             id: "gh-bkit-token-empty-shell",
             severity: "advisory",
             detect: 'GH_BKIT_TOKEN is set to an empty string (GH_BKIT_TOKEN=""). pnpm will treat this as missing and may silently ignore .npmrc.',
-            action: "Set a non-empty GH_BKIT_TOKEN in .agents/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .agents/.env.\n\n" +
+            action: "Set a non-empty GH_BKIT_TOKEN in .bkit/.env (canonical local-secrets file), then `direnv allow` and restart your shell so the new value loads. An empty string is distinct from unset, but pnpm treats both the same way — it substitutes empty for `${GH_BKIT_TOKEN}` in .npmrc and sends no auth header, producing an opaque 401 from the GH Packages registry. Safest fix: set a real token in .bkit/.env.\n\n" +
                 AGENT_INLINE_SOURCE_GUIDANCE,
         });
+    }
+    // GH_TOKEN shell env — authenticates the GitHub MCP server
+    // (`Authorization: Bearer ${GH_TOKEN}` in .mcp.json), which powers the entire
+    // tracker + PR + Projects MCP surface. Only flag when a github MCP server is
+    // actually configured, and never in CI (no MCP server consumes it there — it
+    // would be log noise, not signal).
+    if (hasGithubMcpServer(cwd) && !process.env.CI) {
+        const ghTokenStatus = detectShellGhToken();
+        if (ghTokenStatus === "missing") {
+            phase3.push({
+                id: "gh-token-unset-shell",
+                severity: "advisory",
+                detect: "GH_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${GH_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
+                action: "Set GH_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+            });
+        }
+        else if (ghTokenStatus === "empty") {
+            phase3.push({
+                id: "gh-token-empty-shell",
+                severity: "advisory",
+                detect: 'GH_TOKEN is set to an empty string (GH_TOKEN=""). The GitHub MCP server sends an empty bearer token and fails to authenticate — distinct from unset, same effect.',
+                action: "Set a non-empty GH_TOKEN in .bkit/.env (fine-grained PAT with Contents / Pull requests / Issues / Actions read & write), then `direnv allow` and restart your editor so MCP servers reload.",
+            });
+        }
     }
     // .npmrc auth
     const npmrcStatus = detectNpmrcAuth(cwd);
@@ -1130,10 +1492,10 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // pushes / mis-targeted PRs are rejected before the workflow runs), main
     // needs branch protection restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
-    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
+    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-protect-main.sh");
     const hasProtectionScript = fs.existsSync(protectionScript);
     const scriptHint = hasProtectionScript
-        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. The script pre-flights that a `bkit-tests` job exists in `.github/workflows/ci.yml` before requiring it as a status check."
+        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-protect-main.sh` — run `bash scripts/ci/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
         : "";
     if (protectionStatus === "missing") {
         phase3.push({
@@ -1143,7 +1505,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             action: "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
                 "    Settings → Branches → Add rule → Branch name pattern: main\n" +
                 "    - Require a pull request before merging\n" +
-                "    - Require status checks: bkit-tests\n" +
+                "    - Require status checks: bkit-tests-check (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-decide, it is always green)\n" +
                 "    - Do not allow bypassing the above settings (enforce for admins)\n" +
                 "    - Require linear history; block force-pushes and deletions\n\n" +
                 "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +
@@ -1159,6 +1521,11 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const trackerSetup = buildTrackerSetupAdvisory(cwd);
     if (trackerSetup)
         phase3.push(trackerSetup);
+    // GitHub Projects v2 board-sync prerequisites (config + toolset + PAT scope) —
+    // the whole feature was unadvised; absent any prerequisite it silently no-ops.
+    const githubProjectSetup = buildGithubProjectAdvisory(cwd);
+    if (githubProjectSetup)
+        phase3.push(githubProjectSetup);
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);
@@ -1168,6 +1535,20 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // bkit-cloud workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
     for (const f of detectCiRouterSecrets(cwd))
         phase3.push(f);
+    // bkit-cloud workflow also needs repo Actions write permissions + PR-creation
+    // allowance, else `actions/checkout` and `gh pr create` 403. Detectable at the
+    // repo level via the Actions API; org-level policy can still override.
+    if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"))) {
+        if (detectActionsWritePermissions() === "missing") {
+            phase3.push({
+                id: "actions-write-permissions-missing",
+                severity: "advisory",
+                detect: "GitHub Actions default workflow permissions on this repo are read-only and/or PR creation by Actions is disabled. `.github/workflows/bkit-cloud.yml` cannot push status commits or open/merge PRs — `actions/checkout` and `gh pr create` will 403.",
+                action: "Grant Actions write access at BOTH org and repo level:\n\n    Settings -> Actions -> General -> Workflow permissions\n    - Read and write permissions\n    - Allow GitHub Actions to create and approve pull requests\n\nOr via CLI (repo level):\n\n    gh api -X PUT repos/{owner}/{repo}/actions/permissions/workflow -f default_workflow_permissions=write -F can_approve_pull_request_reviews=true\n\nThe org-level toggle is not readable with a repo-scoped token — if the repo setting looks correct but workflows still 403, check the organization Actions policy (it can override the repo).",
+            });
+        }
+        // "unknown" -> silent skip (gh CLI unavailable / unauthenticated).
+    }
     // Cloud / IDE-online dashboards — Cursor Background Agents + Claude Code on the web
     // read env vars from their respective online dashboards, NOT from repo files.
     // The same three secrets that GitHub Actions needs must be mirrored there.
@@ -1184,6 +1565,14 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const gha = detectGhaFloatingTags(cwd);
     if (gha)
         phase3.push(gha);
+    // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
+    const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
+    if (cloudGate)
+        phase3.push(cloudGate);
+    // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
+    const ciActionlint = detectCiYmlMissingActionlint(cwd);
+    if (ciActionlint)
+        phase3.push(ciActionlint);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);
@@ -1202,12 +1591,16 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const vale = detectValePackageNotSynced(cwd);
     if (vale)
         phase3.push(vale);
+    // actionlint + shellcheck for local pre-push workflow linting (CI has both)
+    const wfLintTools = detectWorkflowLintToolsMissing(cwd);
+    if (wfLintTools)
+        phase3.push(wfLintTools);
     // devDeps need fetch
     const devDeps = detectDevDepsNeedFetch(ws);
     if (devDeps)
         phase3.push(devDeps);
-    // [mcp-env] direnv + .agents/.env advisories (BAR-260 follow-up).
-    // Wired here in Phase 3 — scaffolds (.agents/.env.example, .envrc) only exist
+    // [mcp-env] direnv + .bkit/.env advisories (BAR-260 follow-up).
+    // Wired here in Phase 3 — scaffolds (.bkit/.env.example, .envrc) only exist
     // after writes, so Phase 1 cannot see them on first install.
     // Pass the consumer's tracker so the mcp-env prose omits LINEAR_API_KEY on github/none
     // repos (issue #138) — they never wire Linear, so asking for the key is a false ask.
