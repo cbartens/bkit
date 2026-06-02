@@ -28,6 +28,16 @@ CI runs the tiers through the 4-job scaffold (full step-by-step in
   _expected_ was skipped, so a green required check means **validated**, not merely
   "nothing failed". Make it the sole branch-protection required check.
 
+## Schema-invariant DB checks (RLS coverage, etc.)
+
+Assert DB-level invariants ("every public table has RLS enabled", no hardcoded list) one of two ways:
+
+- **pgTAP (canonical)** — `supabase/tests/*.sql` run by `supabase db test` in the `bkit-stub:test-db` step against the CI-local DB; keeps the invariant out of app code.
+- **@live catalog-RPC (remote-only CI)** — no local DB? A `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier. Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.
+- **PostgREST gotcha** — `GET /rest/v1/` (OpenAPI) is service_role-only by default: fetch the exposed surface with the service-role key, then probe each table with the ANON key (only the leak assertion must be anon).
+
+An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-denial, no hardcoded table list) is a natural fit for `bkit-tests-live`; bkit may ship it as a template later.
+
 ## CI verbosity (`[verbose ci]`)
 
 See `deployments.md` § Commit-message force tags for the marker mechanics (where to put it: PR title for feature-branch pushes, commit message for direct push to `dev` / `main`). This section covers the testing-specific knobs.

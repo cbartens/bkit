@@ -446,6 +446,12 @@ const BKIT_STUBS: BkitStub[] = [
       "Apply Supabase migrations to the dev project on push-to-dev. Requires SUPABASE_ACCESS_TOKEN, SUPABASE_DEV_DB_PASSWORD, SUPABASE_DEV_PROJECT_REF secrets.",
   },
   {
+    id: "test-db",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Run pgTAP schema-invariant DB tests (`supabase db test` over `supabase/tests/*.sql`) against the CI-local Supabase — the canonical home for schema invariants (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Remote-only CI (no local Supabase) can't run pgTAP: assert the same invariants from the `@live` tier via a SECURITY DEFINER, service_role-only catalog RPC called over REST (direct port-5432 from CI runners is IPv4-flaky). See docs/testing.md § Schema-invariant DB checks.",
+  },
+  {
     id: "vercel-await",
     file: ".github/workflows/ci.yml",
     description:
