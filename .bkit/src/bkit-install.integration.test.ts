@@ -19,6 +19,7 @@ import {
   discardStaging,
   discardAllStaging,
   getStagingDir,
+  runPayload,
   STAGING_ROOT,
 } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
@@ -1057,6 +1058,79 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
       expect(after2).toBe(after1); // idempotent
       expect(after2).toContain(".bkit/.env");
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: runPayload re-points a stale .envrc dotenv directive on upgrade
+//
+// Consumers who first installed on the .agents/ layout carry an .envrc seeded
+// with `dotenv_if_exists .agents/.env`. The .bkit/ move (3.0.0) relocates the
+// env file to .bkit/.env but, because .envrc is Tier-3 seed-or-print, never
+// rewrites the now-stale directive — silently breaking direnv auto-load. These
+// tests lock in the surgical line-migration that re-points ONLY bkit's own line.
+// The beforeEach chdir's into a fresh tmpDir, so isDogfood() is false and the
+// migration steps run (the bkit repo itself is guarded out).
+// ---------------------------------------------------------------------------
+
+describe("Scenario: runPayload .envrc directive migration (.agents/.env → .bkit/.env)", () => {
+  const STALE_ENVRC =
+    "# .envrc — direnv config shipped by bkit.\n" +
+    "dotenv_if_exists .agents/.env\n" +
+    "dotenv_if_exists .agents/.env.local\n";
+
+  it("re-points the stale bkit directive and counts a write", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
+
+    const result = runPayload(false);
+
+    const after = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
+    expect(after).toContain("dotenv_if_exists .bkit/.env");
+    // The bare .agents/.env directive is gone...
+    expect(after).not.toMatch(/^dotenv_if_exists \.agents\/\.env$/m);
+    // ...but the consumer-appended sibling is preserved untouched.
+    expect(after).toContain("dotenv_if_exists .agents/.env.local");
+    // The header comment is preserved.
+    expect(after).toContain("# .envrc — direnv config shipped by bkit.");
+    expect(result.writes).toBeGreaterThanOrEqual(1);
+  });
+
+  it("is idempotent — a second pass makes no further change", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
+    runPayload(false);
+    const afterFirst = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
+
+    const result = runPayload(false);
+    const afterSecond = fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8");
+
+    expect(afterSecond).toBe(afterFirst);
+    // No .envrc rewrite the second time (writes attributable to the directive == 0).
+    expect(result.writes).toBe(0);
+  });
+
+  it("leaves an already-migrated .envrc untouched (no false rewrite)", () => {
+    const fresh = "# header\ndotenv_if_exists .bkit/.env\n";
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), fresh, "utf-8");
+
+    const result = runPayload(false);
+
+    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(fresh);
+    expect(result.writes).toBe(0);
+  });
+
+  it("dry-run reports the write but does not touch the file on disk", () => {
+    fs.writeFileSync(path.join(tmpDir, ".envrc"), STALE_ENVRC, "utf-8");
+
+    const result = runPayload(true);
+
+    expect(fs.readFileSync(path.join(tmpDir, ".envrc"), "utf-8")).toBe(STALE_ENVRC);
+    expect(result.writes).toBeGreaterThanOrEqual(1);
+  });
+
+  it("no-op when .envrc is absent", () => {
+    const result = runPayload(false);
+    expect(fs.existsSync(path.join(tmpDir, ".envrc"))).toBe(false);
+    expect(result.writes).toBe(0);
   });
 });
 

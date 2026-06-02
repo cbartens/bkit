@@ -658,6 +658,7 @@ const MIGRATED_AGENTS_FILES: ReadonlyArray<readonly [string, string]> = [
 
 export function runPayload(dryRun: boolean): { writes: number; deletes: number } {
   let deletes = 0;
+  let writes = 0;
   const tag = dryRun ? "[dry-run] " : "";
 
   if (isDogfood()) return { writes: 0, deletes: 0 };
@@ -712,7 +713,34 @@ export function runPayload(dryRun: boolean): { writes: number; deletes: number }
     }
   }
 
-  return { writes: 0, deletes };
+  // 4. Re-point a stale `.envrc` dotenv directive left behind by the
+  //    .agents/.env → .bkit/.env move in step 3. `.envrc` is Tier-3 seed-or-print,
+  //    so bkit never overwrites it — but the single line bkit itself authored
+  //    (`dotenv_if_exists .agents/.env`) now points at the path the migration just
+  //    emptied, silently breaking direnv auto-load for upgrading consumers. Rewrite
+  //    ONLY that exact, whole-line directive — never a consumer-appended sibling
+  //    such as `dotenv_if_exists .agents/.env.local` (anchored match, no leading/
+  //    trailing-newline capture). Idempotent: an `.envrc` already pointing at
+  //    .bkit/.env (fresh 3.x install or hand-fixed) has no match → no-op.
+  {
+    const envrcPath = ".envrc";
+    if (fs.existsSync(envrcPath)) {
+      const before = fs.readFileSync(envrcPath, "utf-8");
+      const after = before.replace(
+        /^([ \t]*)dotenv_if_exists[ \t]+\.agents\/\.env[ \t]*$/gm,
+        "$1dotenv_if_exists .bkit/.env",
+      );
+      if (after !== before) {
+        console.log(
+          `${LOG_PREFIX} ${tag}payload migrate: re-pointed .envrc directive .agents/.env → .bkit/.env`,
+        );
+        writes++;
+        if (!dryRun) fs.writeFileSync(envrcPath, after, "utf-8");
+      }
+    }
+  }
+
+  return { writes, deletes };
 }
 
 // ---------------------------------------------------------------------------
