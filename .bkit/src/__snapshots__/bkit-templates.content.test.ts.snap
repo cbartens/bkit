@@ -197,13 +197,15 @@ jobs:
       #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
       #     pnpm dlx supabase db push --linked --include-all
 
-      # bkit-stub:test-db — Run pgTAP schema-invariant DB tests (supabase/tests/*.sql) against the CI-local Supabase. The canonical home for schema invariants (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. To enable: uncomment, add pgTAP files under supabase/tests/, delete this stub header.
+      # bkit-stub:test-db — Assert schema-invariant DB checks (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. Two co-equal routes — pick by DEPLOY TOPOLOGY, not by whether you can run pgTAP locally:
+      #   * pgTAP (this step) — fast, hermetic, offline; runs supabase/tests/*.sql against a CI-LOCAL fixture built from supabase/migrations. Caveat: that fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this GREEN while prod RLS is broken. Best when there is NO deploy/@live tier, or for pure-logic DB unit tests.
+      #   * @live catalog-RPC (JOB 3) — validates the REAL deployed schema in bkit-tests-live. Recommended default once you have a deploy + @live tier (RLS/tenancy especially: a passing fixture check is not evidence prod is locked down).
+      # To enable pgTAP: uncomment, add pgTAP files under supabase/tests/, delete this stub header.
       # - name: Run DB Tests (pgTAP)
       #   if: steps.cache.outputs.skip != 'true'
       #   run: pnpm dlx supabase db test   # spins up the local DB and runs supabase/tests/*.sql via pg_prove
-      # Remote-only CI (no local Supabase)? Assert the same invariants from the @live tier instead: a
-      # SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) called over REST
-      # — direct port-5432 from CI runners is IPv4-flaky. See docs/testing.md § Schema-invariant DB checks.
+      # @live route: a SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) called over
+      # REST — direct port-5432 from CI runners is IPv4-flaky. See JOB 3 and docs/testing.md § Schema-invariant DB checks.
 
       # bkit-stub:test-presence — Warn on packages with a test script but zero *.test.ts files. To enable: uncomment the step below and delete this stub header.
       # - name: Test Presence Audit
@@ -383,9 +385,10 @@ jobs:
 #       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
 #       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
 #       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
-# bkit-stub:test-db — [DB] pgTAP schema invariants (\`supabase db test\` over supabase/tests/*.sql)
-#       # against the CI-local DB. Canonical home for "every public table has RLS" etc. (not app-defined).
-#       # Remote-only CI -> assert via a service_role-only catalog RPC from the @live tier (see JOB 3).
+# bkit-stub:test-db — [DB] schema invariants ("every public table has RLS" etc., not app-defined). Two co-equal
+#       # routes by deploy topology: pgTAP (\`supabase db test\` over supabase/tests/*.sql) against a CI-LOCAL fixture
+#       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
+#       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
 #       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
 #       - name: Build All Packages            # [D] source env first
@@ -405,10 +408,11 @@ jobs:
 #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
 #       - name: Run Live Tests               # @live needs the deployed URL (branch alias); --continue. e.g.:
 #       #   DEPLOY_URL=https://your-app.example.com; TEST_URL=$DEPLOY_URL API_URL=$DEPLOY_URL/api/v1 npx turbo run test:live --continue
-#       # SCHEMA INVARIANTS on remote-only CI (no local DB for pgTAP): a @live test calls a SECURITY DEFINER,
-#       # service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) over REST — port-5432 direct from
-#       # CI runners is IPv4-flaky. Note: PostgREST \`GET /rest/v1/\` (OpenAPI) is service_role-only by default —
-#       # fetch the exposed surface with the service-role key, then probe each table with the ANON key.
+#       # SCHEMA INVARIANTS (recommended home once you have a deploy): a @live test validates the REAL deployed
+#       # schema — stronger than pgTAP's CI-local fixture, which can stay green while prod drifts. It calls a
+#       # SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) over REST — port-5432
+#       # direct from CI runners is IPv4-flaky. Note: PostgREST \`GET /rest/v1/\` (OpenAPI) is service_role-only by
+#       # default — fetch the exposed surface with the service-role key, then probe each table with the ANON key.
 #
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the

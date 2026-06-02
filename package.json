@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -20,8 +20,7 @@
     "!.bkit/.env.example",
     "!.bkit/version",
     "!.bkit/advisories.md",
-    "!.bkit/friction.md",
-    "!.bkit/README.md"
+    "!.bkit/friction.md"
   ],
   "engines": {
     "node": ">=20"

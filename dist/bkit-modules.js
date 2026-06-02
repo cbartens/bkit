@@ -11,7 +11,7 @@ import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLeg
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
-import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
 // ---------------------------------------------------------------------------
@@ -251,11 +251,50 @@ const COPY_EXCLUDE = new Set([
 // default skip-if-exists is wrong for canonical bkit-owned content).
 //
 // Currently EMPTY: the former members (prompts.md, workflows.md, IDEs.md, cloud.md)
-// are bkit-authoring docs / engine data that now live package-side under
-// `.bkit/` and are read directly from there — never copied into a consumer,
-// so there is nothing to force-overwrite. Kept as the extension point if a
+// are bkit-authoring docs / engine data that live package-side under `.bkit/` and
+// are read directly from there at runtime (getBkitDocsRoot). They are no longer
+// `.agents/` files at all, so there is nothing to force-overwrite HERE. Their
+// consumer-side mirrors (under `.bkit/`, not `.agents/`) are written by
+// `runBkitDocs` (see BKIT_CANONICAL_DOCS below). Kept as the extension point if a
 // canonical consumer-side `.agents/` file is reintroduced.
 export const CANONICAL_OVERWRITE_RELPATHS = new Set([]);
+// Canonical bkit-authored reference docs that live package-side under `.bkit/`.
+// They are read from there at runtime (getBkitDocsRoot) AND mirrored into the
+// consumer's `.bkit/` on every install so a consumer can read them in-repo without
+// spelunking node_modules. Force-overwritten (Tier 1) — bkit owns them, so a
+// consumer edit is replaced. Source of truth is the package's own `.bkit/<name>`.
+// `README.md` ships only because package.json `files` no longer excludes it; the
+// other five already ship in the tarball. (`advisories.md` is a regenerated runtime
+// artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
+export const BKIT_CANONICAL_DOCS = [
+    "cloud.md",
+    "IDEs.md",
+    "prompts.md",
+    "trackers.md",
+    "workflows.md",
+    "README.md",
+];
+// Mirror the package's canonical `.bkit/*.md` docs into the consumer's `.bkit/`.
+// Tier 1 (force-overwrite + ws-tracked for dry-run/install parity). No-op in
+// dogfood: getBkitDocsRoot() resolves to <cwd>/.bkit, so src === dst and
+// writeTier1 short-circuits on the byte-equal check (no ws write).
+export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
+    const tag = dryRun ? "[dry-run] " : "";
+    const docsRoot = getBkitDocsRoot();
+    for (const name of BKIT_CANONICAL_DOCS) {
+        const srcPath = path.join(docsRoot, name);
+        // Defensive: a partial/corrupt package may be missing a doc — skip rather than
+        // crash the whole install (writeTier1 would throw on a missing src).
+        if (!fs.existsSync(srcPath))
+            continue;
+        const dstPath = path.join(".bkit", name);
+        const prevLen = ws.writes.length;
+        writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+        if (ws.writes.length > prevLen) {
+            console.log(`${logPrefix} ${tag}core: ${dstPath}`);
+        }
+    }
+}
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
     if (!fs.existsSync(src))
@@ -335,6 +374,11 @@ export function runCoreModule(ctx) {
     // Each other module handles its own template files directly.
     console.log(`${logPrefix} ${tag}Running core templates pass`);
     runCoreTemplates(dryRun, ctx.tokens, ws, logPrefix);
+    // 3b. bkit canonical docs pass — mirror the package's `.bkit/*.md` reference docs
+    // (cloud/IDEs/prompts/trackers/workflows/README) into the consumer's `.bkit/` so
+    // they are readable in-repo. Force-overwrite (Tier 1); no-op in dogfood.
+    console.log(`${logPrefix} ${tag}Running bkit docs pass`);
+    runBkitDocs(dryRun, ctx.tokens, ws, logPrefix);
     // 4. .bkit-version write — deferred to postDispatch so it only persists when ALL modules succeed.
     // This ensures a mid-install crash in a subsequent module does not suppress the first-install
     // banner on retry (MED-4).

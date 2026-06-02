@@ -157,6 +157,16 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // their own attributes outside the block, so this is markered-text (not whole-file).
   { path: ".gitattributes", format: "markered-text", module: "core" },
   { path: ".bkit/version", format: "byte-equal-text", module: "core" },
+  // Canonical bkit-authored reference docs. They live package-side under `.bkit/`
+  // and are read from there at runtime (getBkitDocsRoot); these consumer copies are
+  // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
+  // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
+  { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/IDEs.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/prompts.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 
 const CLAUDE_MANIFEST: ManifestEntry[] = [

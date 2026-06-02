@@ -623,12 +623,14 @@ function mirrorDirAlways(
 // In dogfood (running from .bkit/src/ in the bkit repo itself), src and dst
 // resolve to the same paths, so this pass is a no-op.
 // Mirror sources (`.bkit/workflows`, `.bkit/prompts`) and bkit-authoring docs
-// (`.bkit/*.md`) now live package-side and are read directly from there
-// (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). They are never
-// written into a consumer. Consumers upgraded from a layout that DID copy these
-// into `.agents/` carry orphans — `runPayload` removes them so the tree stays
-// clean. (`.agents/rules.md` is NOT relocated — it remains a consumer-shipped
-// Tier-2 file; AGENTS.md/CLAUDE.md reference it.)
+// (`.bkit/*.md`) live package-side and are read directly from there at runtime
+// (see getWorkflowsRoot / getPromptsRoot / getBkitDocsRoot). The reference docs
+// are ALSO mirrored into the consumer's own `.bkit/` by runBkitDocs — but at the
+// NEW `.bkit/` home, never the old `.agents/` one. Consumers upgraded from a
+// layout that copied these into `.agents/` carry orphans at the OLD path —
+// `runPayload` removes those so the tree stays clean. (`.agents/rules.md` is NOT
+// relocated — it remains a consumer-shipped Tier-2 file; AGENTS.md/CLAUDE.md
+// reference it.)
 //
 // Named `runPayload` for call-site stability with the dispatch in runCoreModule;
 // the historical "payload copy" is gone, leaving only orphan cleanup. Never
