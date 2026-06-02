@@ -9,8 +9,24 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Tiers strictly separated — Unit · Integration · E2E · Smoke.
-> - Pre-push runs typecheck + unit tests + `bkit check`; integration and E2E excluded. NEVER `--no-verify`.
+> - Tiers strictly separated — Unit · Integration · E2E · @live · Smoke.
+> - Pre-push runs typecheck + unit tests + `bkit check`; integration, E2E, and @live excluded (they run in CI — see below). NEVER `--no-verify`.
+
+## CI test tiers (the bkit scaffold)
+
+CI runs the tiers through the 4-job scaffold (full step-by-step in
+`.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape in
+`deployments.md` § Run-level decision matrix):
+
+- **`bkit-decide`** (always-on) computes `run_level` + emits the `bkit-test-plan`
+  contract — _what should run_.
+- **`bkit-tests`** runs Unit → Integration → E2E (Integration / E2E gated on
+  `web_affected` / `run_e2e`).
+- **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
+  `run_live`; drop the whole job if you have no deploy).
+- **`bkit-tests-check`** is the capstone — it fails the run if any tier the plan
+  _expected_ was skipped, so a green required check means **validated**, not merely
+  "nothing failed". Make it the sole branch-protection required check.
 
 ## CI verbosity (`[verbose ci]`)
 
@@ -45,6 +61,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 | Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
 | Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI (excluded from pre-push) |
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
+| @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
 ## Consumer-runtime parity rule
 
@@ -110,14 +127,10 @@ Always assert at least one positive signal (a known log prefix like `[bkit-insta
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs every push to `dev`/`main` and PRs into them. Order:
+`.github/workflows/ci.yml` runs the degenerate 3-job scaffold on every push to `dev`/`main` and PRs into them (bkit is single-package with no deploy, so there is no `bkit-tests-live`):
 
-1. `pnpm typecheck`
-2. `pnpm test` (unit + integration)
-3. `pnpm format:check`
-4. `pnpm lint:prose` (vale)
-5. `pnpm lint:slop`
-6. `pnpm check:dist` — rebuilds `dist/` and fails if working tree differs from committed
-7. `pnpm bkit check` — drift gate against the bkit repo itself
+1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON + a `$GITHUB_STEP_SUMMARY` table.
+2. **`bkit-tests`** (`if: run_level != 'none'`) — the suite, in order: `pnpm typecheck` → `pnpm test` (unit + integration) → `pnpm format:check` → `pnpm lint:prose` (vale) → `pnpm lint:slop` → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
+3. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests` succeeded. This is the SOLE branch-protection required check (`scripts/ci/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs steps 1–6 before `npm publish`. Step 7 is intentionally omitted — the tagged tree should already match dev's clean state.
+Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the `bkit-tests` static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.

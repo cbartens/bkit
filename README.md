@@ -12,6 +12,13 @@ Three things that change how you work:
 - **Tied to your tracker.** bkit integrates with GitHub Issues or Linear: it reads the issue for context, posts progress per phase, moves the issue through its states, and links the resulting PR back. Project management stays the source of truth.
 - **Consistent across the team.** Anyone, in Claude Code or Cursor, runs `/bkit-design` and gets the same reviewed, gated, tested pipeline. The rigor lives in the toolkit, not in one person's prompting.
 
+Beyond the pipeline and its tracker integration, every `bkit install` wires in the engineering scaffolding a repo needs on day one:
+
+- **A CI scaffold where green means validated.** A four-job GitHub Actions pipeline — `bkit-decide` (plans what should run) → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check` — whose always-on capstone fails the build if any tier the plan expected was skipped. "CI is green" stops meaning "nothing visibly failed" and starts meaning "the planned tests actually ran and passed"; the capstone is the single branch-protection required check, so a partial, cached, or light run can't pass as validated. Direct pushes auto-escalate to a full run. The complete multi-tier scaffold ships documented step-by-step in the seeded `ci.yml`, ready to adopt as the project grows.
+- **Quality gates, local and CI in lockstep.** Typecheck, Prettier, a Vale prose linter, an LLM-slop scanner, actionlint, and a mirror/drift gate run in the seeded pre-commit / pre-push hooks **and** in CI — the same commands in both places, so a green local push is a green CI run.
+- **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, shipped already configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, and CVE alerts that bypass the weekly schedule.
+- **Cloud agents.** Opt-in autonomous routing: when CI finishes, a Claude Code or Cursor cloud agent picks up automatically — `bkit-ship` on green, `bkit-debug` on red — with no local session running.
+
 For the full pipeline and subagent reference, and a mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see [`docs/bkit-comparison.md`](docs/bkit-comparison.md).
 
 > [!IMPORTANT]

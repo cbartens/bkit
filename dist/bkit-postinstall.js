@@ -406,6 +406,29 @@ const BKIT_STUBS = [
         file: ".github/workflows/ci.yml",
         description: "Post-CI smoke test triggered by `workflow_run` after main-CI succeeds. Cannot share a file with push/pull_request triggers — copy the commented YAML to a new `.github/workflows/smoke.yml` file.",
     },
+    // --- The 4-job "green == validated" scaffold (bkit #203 / gether reference). ---
+    // These ship commented in the FULL CI SCAFFOLD REFERENCE block at the end of the
+    // template ci.yml. Order matters when adopting — see that block.
+    {
+        id: "bkit-decide",
+        file: ".github/workflows/ci.yml",
+        description: "Promote run-level detection into a standalone always-on `bkit-decide` job that emits ONE bkit-test-plan JSON (run_level / web_affected / run_e2e / run_live), consumed by every tier via `fromJSON(needs.bkit-decide.outputs.plan).<field>`. This is the foundation of the scaffold that makes 'CI green' mean 'the planned tests actually ran'. bkit ships a single-package (no affected-graph) version in its OWN .github/workflows/ci.yml — copy from there if you are not a monorepo.",
+    },
+    {
+        id: "affected-graph",
+        file: ".github/workflows/ci.yml",
+        description: "Inside bkit-decide, replace any frozen path-allowlist with `turbo query affected --packages` so run_level / web_affected track the real dependency blast radius. Monorepo-only — drop for single-package repos. Capture turbo stdout/stderr SEPARATELY: `2>&1` merges turbo's banner into the JSON and jq silently falls back to [] (a ghost-green run).",
+    },
+    {
+        id: "bkit-tests-live",
+        file: ".github/workflows/ci.yml",
+        description: "Add a push-only @live canary job (`needs: [bkit-decide, bkit-tests]`; `if: ...run_live && needs.bkit-tests.result == 'success'`) running `test:live` against the DEPLOYED url. Requires a deployed environment + its secrets. Omit the whole job if you have no deploy (bkit itself omits it by design).",
+    },
+    {
+        id: "bkit-tests-check",
+        file: ".github/workflows/ci.yml",
+        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `scripts/ci/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
+    },
 ];
 export function detectBkitStubs(cwd) {
     const findings = [];
@@ -1464,10 +1487,10 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // pushes / mis-targeted PRs are rejected before the workflow runs), main
     // needs branch protection restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
-    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-set-protection.sh");
+    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-protect-main.sh");
     const hasProtectionScript = fs.existsSync(protectionScript);
     const scriptHint = hasProtectionScript
-        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-set-protection.sh` — run `bash scripts/ci/bkit-set-protection.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. The script pre-flights that a `bkit-tests` job exists in `.github/workflows/ci.yml` before requiring it as a status check."
+        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-protect-main.sh` — run `bash scripts/ci/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
         : "";
     if (protectionStatus === "missing") {
         phase3.push({
@@ -1477,7 +1500,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
             action: "main only ever moves via a release PR (release/* -> main); bkit's build/ship workflows keep all feat/* PRs on dev. Gate main at the GitHub layer:\n\n" +
                 "    Settings → Branches → Add rule → Branch name pattern: main\n" +
                 "    - Require a pull request before merging\n" +
-                "    - Require status checks: bkit-tests\n" +
+                "    - Require status checks: bkit-tests-check (the always-on capstone — required-check green then means 'the planned tiers ran', not just 'nothing failed'; do NOT require bkit-decide, it is always green)\n" +
                 "    - Do not allow bypassing the above settings (enforce for admins)\n" +
                 "    - Require linear history; block force-pushes and deletions\n\n" +
                 "enforce-for-admins is load-bearing: agents act with the owner's admin token, so an admin-bypass exemption means the agent is the bypass. Covering admins is the only way protection actually constrains agents. dev is intentionally left unprotected — operators choose direct-push or feat/PR and own that tests ran." +

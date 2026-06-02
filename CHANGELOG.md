@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **CI scaffold backport — `bkit-decide` → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check`, the "green == validated" model (issue [#203](https://github.com/cbartens/bkit/issues/203); reference impl: gether app-gether-life).** "CI green" must mean "the planned tests actually ran and passed", not "nothing visibly failed" — a partial / cached / light run is green by construction but is not validation. bkit's own `.github/workflows/ci.yml` now runs the degenerate scaffold (`bkit-decide` reads markers + computes `run_level` + escalates direct-`dev` pushes to `full` via `commits/{sha}/pulls`; `bkit-tests` gated on `run_level != none`; `bkit-tests-check` capstone asserts the plan was honoured — no `bkit-tests-live`, bkit has no deploy). The consumer template `.bkit/templates/.github/workflows/ci.yml` gains a **FULL CI SCAFFOLD REFERENCE**: every step of the proven 4-job pipeline, in execution order, commented and annotated (`[UNIVERSAL]`/`[MONOREPO]`/`[DEPLOY]`/`[E2E]`/`[DB]`) with why + when to adopt it. New `bkit install` / `upgrade` advisories fire for the `bkit-decide`, `affected-graph`, `bkit-tests-live`, and `bkit-tests-check` stubs. Template git hooks (`.husky/pre-commit` + `pre-push`) gain local↔CI parity notes (fast deterministic gates local; integration/E2E/@live in CI). `docs/deployments.md` (+ template) Run-level decision matrix updated for the scaffold + capstone.
+
+### Changed
+
+- **`scripts/ci/bkit-set-protection.sh` → `scripts/ci/bkit-protect-main.sh`, and the required status check flips `bkit-tests` → `bkit-tests-check`** (the always-on capstone is the SOLE branch-protection required check, so a required-check-green means "validated", not "the tests job did not fail"). The script's preflight now verifies a `bkit-tests-check` job exists before requiring it; single-job starter repos can set `REQUIRED_JOB=bkit-tests` until they adopt the capstone. `bkit-postinstall.ts`'s main-branch-protection quick-path advisory and `docs/pending.md` updated to the new name + check.
+
 ## [2.8.4] — 2026-05-27
 
 ### Fixed

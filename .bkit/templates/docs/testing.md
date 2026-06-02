@@ -9,8 +9,24 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Tiers strictly separated — Unit · Integration · E2E · Smoke.
-> - Pre-push runs typecheck + unit tests + `bkit check`; integration and E2E excluded. NEVER `--no-verify`.
+> - Tiers strictly separated — Unit · Integration · E2E · @live · Smoke.
+> - Pre-push runs typecheck + unit tests + `bkit check`; integration, E2E, and @live excluded (they run in CI — see below). NEVER `--no-verify`.
+
+## CI test tiers (the bkit scaffold)
+
+CI runs the tiers through the 4-job scaffold (full step-by-step in
+`.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape in
+`deployments.md` § Run-level decision matrix):
+
+- **`bkit-decide`** (always-on) computes `run_level` + emits the `bkit-test-plan`
+  contract — _what should run_.
+- **`bkit-tests`** runs Unit → Integration → E2E (Integration / E2E gated on
+  `web_affected` / `run_e2e`).
+- **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
+  `run_live`; drop the whole job if you have no deploy).
+- **`bkit-tests-check`** is the capstone — it fails the run if any tier the plan
+  _expected_ was skipped, so a green required check means **validated**, not merely
+  "nothing failed". Make it the sole branch-protection required check.
 
 ## CI verbosity (`[verbose ci]`)
 

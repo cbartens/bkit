@@ -121,6 +121,7 @@ Bkit's shipped `ci.yml` recognises the tags below. Tags are case-sensitive, must
 | `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
 | `[force build]` | Exposes `should_force_build=true` step output for downstream deploy gates. Has no effect unless the consumer's deploy steps gate on it. | Read by `Detect Direct Push` step |
 | `[force e2e]` | Exposes `should_run_e2e=true` step output. The `bkit-stub:e2e` block (when uncommented) runs E2E on this signal. | Read by `Detect Direct Push` step |
+| `[force live]` | Sets the plan's `run_live=true` so the `bkit-tests-live` @live job runs even off a non-dev/main-push event. No effect unless you have added the `bkit-tests-live` job (full scaffold). | Read by `bkit-decide` (Read Markers → Decide Run Live & E2E) |
 | `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
 | `[skip build]` | Consumer-defined: bkit does not interpret this tag in `ci.yml`. Consumers wiring it into deploy steps add the gate themselves. | Consumer-controlled |
@@ -129,7 +130,7 @@ Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardles
 
 ## Run-level decision matrix
 
-Bkit's shipped `ci.yml` ships _primitives_ (cache check, direct-push detect, tag parsing, integration gate) and does not impose a fixed run-level tier system. Consumers composing tiers on top should align with the table below — it defines a `none` / `partial` / `full` shape that bkit's force tags + auto-detection plug into cleanly.
+Bkit ships a 4-job scaffold — `bkit-decide` (always-on; reads markers, computes `run_level`, emits the `bkit-test-plan` JSON contract) → `bkit-tests` → `bkit-tests-live` → `bkit-tests-check` (the always-on capstone that asserts every tier the plan _expected_ actually ran and passed). The single-job starter `ci.yml` ships the primitives (cache check, marker parsing, direct-push detect, integration gate); the **FULL CI SCAFFOLD REFERENCE** at the end of `.github/workflows/ci.yml` reproduces every step, in execution order, for adopting the tiers. The table below defines the `none` / `partial` / `full` shape those primitives + the plan plug into.
 
 <!-- prettier-ignore -->
 | Run level | When | Runs | Defers |
@@ -144,6 +145,7 @@ Composition guidance:
 - Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
+- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `scripts/ci/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
 ## GitHub Actions pinning
 
