@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.0.1] — 2026-06-02
+
+Patch release. bkit's canonical reference docs now land in a consumer's `.bkit/` on install, and the schema-invariant DB-check guidance is reframed around deploy topology. No breaking changes; both land on `pnpm bkit install` / `upgrade`.
+
+### Added
+
+- **Canonical `.bkit/` reference docs are mirrored into the consumer on install (issue [#218](https://github.com/cbartens/bkit/issues/218)).** `cloud.md`, `IDEs.md`, `prompts.md`, `trackers.md`, `workflows.md`, and `README.md` were package-only (read from `node_modules` at runtime) and absent from a consumer's `.bkit/`, so they couldn't be read in-repo. They are now force-overwritten into the consumer's `.bkit/` on every install — sourced directly from the package's own `.bkit/*.md` (single source of truth, no committed duplication, always version-matched). `package.json` `files[]` no longer excludes `.bkit/README.md` so it ships; the six docs are registered in `CORE_MANIFEST` (`byte-equal-text`) so drift detection and uninstall handle them. Dogfood stays a no-op.
+
+### Changed
+
+- **Schema-invariant DB checks reframed — pick the route by deploy topology, not by local pgTAP availability (consumer feedback from gether; refines [#203](https://github.com/cbartens/bkit/issues/203)).** pgTAP and the `@live` catalog-RPC are now presented as two co-equal routes rather than "canonical" vs "remote-only fallback". pgTAP runs against a CI-local fixture built from `supabase/migrations` (fast, hermetic, offline — but can stay green while prod drifts); the `@live` catalog-RPC validates the **real deployed schema** in `bkit-tests-live` and is the recommended default once a consumer has a deploy + `@live` tier (RLS/tenancy invariants especially). Reworded across the three surfaces — the template `ci.yml` stubs (incl. the JOB 3 `@live` block), the `test-db` install/check advisory, and `docs/testing.md` (+ template). Framing/docs only; no scaffold behaviour change.
+
+---
+
 ## [3.0.0] — 2026-06-02
 
 Major consolidation release. Three structural shifts land together: bkit's own machinery moves out of `.agents/` into a dedicated `.bkit/` directory, the cloud feature is rebuilt on the Claude GitHub App, and CI adopts the "green == validated" scaffold. Two changes need consumer action on upgrade — the branch-protection required status check and its setup script were renamed (see **Changed**). Everything else, including the `.agents/` → `.bkit/` relocation, migrates automatically on `pnpm bkit upgrade`.

@@ -76,7 +76,10 @@ export function getPromptsRoot(): string {
 
 // `.bkit/` root holds bkit-authoring reference docs + engine data (e.g.
 // prompts.md's Cursor model-lookup table) alongside src/, workflows/, prompts/,
-// templates/. Package-only, never shipped to consumers.
+// templates/. This is the runtime read root (package-side). The reference docs
+// (cloud/IDEs/prompts/trackers/workflows/README.md) are ALSO force-overwritten
+// into the consumer's own `.bkit/` on install — a readable mirror — by
+// runBkitDocs (bkit-modules.ts); engine data and src/ stay package-only.
 export function getBkitDocsRoot(): string {
   return path.join(getPkgRoot(), ".bkit");
 }

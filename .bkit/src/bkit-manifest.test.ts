@@ -142,6 +142,17 @@ describe("getInstallManifest", () => {
     expect(versionEntry!.format).toBe("byte-equal-text");
   });
 
+  it("core manifest includes the six canonical .bkit docs as byte-equal-text, non-seed (#218)", () => {
+    const entries = getInstallManifest(["core"]);
+    const docs = ["cloud.md", "IDEs.md", "prompts.md", "trackers.md", "workflows.md", "README.md"];
+    for (const doc of docs) {
+      const entry = entries.find((e) => e.path === `.bkit/${doc}`);
+      expect(entry, `core manifest must list .bkit/${doc}`).toBeDefined();
+      expect(entry!.format).toBe("byte-equal-text");
+      expect(entry!.seedOrPrint ?? false).toBe(false);
+    }
+  });
+
   it("ci manifest includes ci.yml as byte-equal-text", () => {
     const entries = getInstallManifest(["ci"]);
     const ciEntry = entries.find((e) => e.path.includes("ci.yml"));

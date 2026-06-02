@@ -449,7 +449,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "test-db",
     file: ".github/workflows/ci.yml",
     description:
-      "Run pgTAP schema-invariant DB tests (`supabase db test` over `supabase/tests/*.sql`) against the CI-local Supabase — the canonical home for schema invariants (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Remote-only CI (no local Supabase) can't run pgTAP: assert the same invariants from the `@live` tier via a SECURITY DEFINER, service_role-only catalog RPC called over REST (direct port-5432 from CI runners is IPv4-flaky). See docs/testing.md § Schema-invariant DB checks.",
+      "Assert schema-invariant DB checks (e.g. 'every public table has RLS enabled', no hardcoded table list) so they aren't app-defined. Two co-equal routes — pick by deploy topology, not by whether you can run pgTAP locally: (1) pgTAP (`supabase db test` over `supabase/tests/*.sql`) against a CI-local fixture built from `supabase/migrations` — fast, hermetic, offline, but the fixture can differ from prod, so it can stay green while prod RLS is broken; best when there is no deploy/`@live` tier, or for pure-logic DB unit tests. (2) a `@live` catalog-RPC (SECURITY DEFINER, service_role-only, called over REST; direct port-5432 from CI runners is IPv4-flaky) that validates the real deployed schema in `bkit-tests-live` — the recommended default once you have a deploy + `@live` tier (RLS/tenancy especially: a passing local-fixture check is not evidence that prod is locked down). See docs/testing.md § Schema-invariant DB checks.",
   },
   {
     id: "vercel-await",

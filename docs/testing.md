@@ -30,10 +30,10 @@ CI runs the tiers through the 4-job scaffold (full step-by-step in
 
 ## Schema-invariant DB checks (RLS coverage, etc.)
 
-Assert DB-level invariants ("every public table has RLS enabled", no hardcoded list) one of two ways:
+Assert DB-level invariants ("every public table has RLS enabled", no hardcoded list) one of two co-equal ways. Pick by **deploy topology**, not by whether you can run pgTAP locally:
 
-- **pgTAP (canonical)** — `supabase/tests/*.sql` run by `supabase db test` in the `bkit-stub:test-db` step against the CI-local DB; keeps the invariant out of app code.
-- **@live catalog-RPC (remote-only CI)** — no local DB? A `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier. Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.
+- **pgTAP** — `supabase/tests/*.sql` run by `supabase db test` in the `bkit-stub:test-db` step against a CI-local fixture built from `supabase/migrations`. Fast, hermetic, offline; keeps the invariant out of app code. Caveat: the fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this green while prod RLS is actually broken. Best when there is **no** deploy/`@live` tier, or for pure-logic DB unit tests.
+- **@live catalog-RPC** — a `SECURITY DEFINER`, service_role-only RPC (e.g. `public.rls_coverage_gaps()`) called over REST from the `@live` tier, validating the **real deployed schema** in `bkit-tests-live`. Needs a deploy + the RPC. **Recommended default once you have a deploy/`@live` tier** — for RLS/tenancy invariants especially, a passing local-fixture check is not evidence that prod is locked down. (Direct port-5432 from CI runners is IPv4-flaky — use the REST path the tier already has.)
 - **PostgREST gotcha** — `GET /rest/v1/` (OpenAPI) is service_role-only by default: fetch the exposed surface with the service-role key, then probe each table with the ANON key (only the leak assertion must be anon).
 
 An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-denial, no hardcoded table list) is a natural fit for `bkit-tests-live`; bkit may ship it as a template later.

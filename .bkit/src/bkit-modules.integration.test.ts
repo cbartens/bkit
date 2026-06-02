@@ -78,6 +78,56 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
+// #218 — canonical .bkit/*.md docs mirrored into the consumer's .bkit/
+// ---------------------------------------------------------------------------
+
+describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
+  // Test file lives in `.bkit/src/`, so `..` is the package `.bkit/` docs root —
+  // the same source runBkitDocs copies from (getBkitDocsRoot).
+  const PKG_DOCS_ROOT = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+  );
+  const DOCS = ["cloud.md", "IDEs.md", "prompts.md", "trackers.md", "workflows.md", "README.md"];
+
+  it("force-overwrites the six package .bkit/*.md docs into the consumer's .bkit/, byte-equal", () => {
+    const ctx = makeCtx();
+    runCoreModule(ctx);
+    flushPostDispatch(ctx);
+
+    for (const name of DOCS) {
+      const dst = path.join(tmpDir, ".bkit", name);
+      expect(fs.existsSync(dst), `consumer .bkit/${name} must exist after install`).toBe(true);
+      const consumerBytes = fs.readFileSync(dst);
+      const pkgBytes = fs.readFileSync(path.join(PKG_DOCS_ROOT, name));
+      expect(
+        consumerBytes.equals(pkgBytes),
+        `consumer .bkit/${name} must byte-equal the package source`,
+      ).toBe(true);
+    }
+  });
+
+  it("is idempotent: a second core run writes none of the docs again", () => {
+    runCoreModule(makeCtx()); // first install seeds the docs
+    const ctx2 = makeCtx();
+    runCoreModule(ctx2);
+    const docWrites = ctx2.ws.writes.filter((w) =>
+      DOCS.some((d) => w.path === path.join(".bkit", d)),
+    );
+    expect(docWrites).toHaveLength(0);
+  });
+
+  it("overwrites a consumer-tampered doc (bkit owns canonical content)", () => {
+    const dst = path.join(tmpDir, ".bkit", "cloud.md");
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, "consumer tampered content\n", "utf-8");
+    runCoreModule(makeCtx());
+    const pkgBytes = fs.readFileSync(path.join(PKG_DOCS_ROOT, "cloud.md"));
+    expect(fs.readFileSync(dst).equals(pkgBytes)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 6.1b — Substituted ci.yml end-to-end integration test
 // ---------------------------------------------------------------------------
 
