@@ -2,7 +2,7 @@
 name: bkit-plan-complexity-split
 description: Senior architect partitioning a large plan into lossless, self-contained sub-plans.
 effort: high
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep

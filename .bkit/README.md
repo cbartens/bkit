@@ -121,7 +121,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | Parent | Example sub-labels in this workspace | What it controls |
 | --- | --- | --- |
 | `branch` | `dev` | git branch the agent works on |
-| `model` | `claude-4.7-opus-high-thinking`, `composer-2.5`, `gpt-5.4-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
+| `model` | `claude-opus-4-8-thinking-high`, `composer-2.5`, `gpt-5.5-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
 Per-agent (subagent) model assignments live in `.bkit/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/IDEs.md` § Cursor model catalog.
@@ -252,7 +252,7 @@ Open repo root in Claude Code (or run headless via CLI) and run a slash command:
 
 Claude reads issue details, comments, and plan files automatically via the tracker MCP.
 
-**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.7 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
+**Requirements:** `GH_TOKEN`, and an active Claude Code session (subscription or `ANTHROPIC_API_KEY`). `LINEAR_API_KEY` additionally required when `bkit.issueTracker = "linear"`. Session model should match the orchestrator pin in `.bkit/prompts.md` § Orchestrators (Opus 4.8 for `/design` / `/plan` / `/debug`; Sonnet 4.6 for `/build` / `/ship`).
 
 ### From Cursor (interactive — local)
 

@@ -1,7 +1,7 @@
 ---
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

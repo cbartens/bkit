@@ -1,7 +1,7 @@
 ---
 name: bkit-design-brainstorm-ideate-2
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
-model: gpt-5.4-high
+model: gpt-5.5-high
 tools:
   - Read
   - Grep

@@ -2,7 +2,7 @@
 name: bkit-debug-observe-analyse
 description: Senior debug engineer reconciling instrumentation evidence against prior hypotheses.
 effort: high
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep

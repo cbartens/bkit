@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
-model: gpt-5.4-high
+model: gpt-5.5-high
 tools:
   - Read
   - Grep

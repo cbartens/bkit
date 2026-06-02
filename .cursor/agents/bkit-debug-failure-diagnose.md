@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI/runtime failure root-cause analysis.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

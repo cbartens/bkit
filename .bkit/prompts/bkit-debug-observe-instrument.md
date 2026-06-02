@@ -2,7 +2,7 @@
 name: bkit-debug-observe-instrument
 description: Senior debug engineer adding targeted observation logging at hypothesis-test points without changing behaviour.
 effort: high
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep
