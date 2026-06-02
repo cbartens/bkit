@@ -20,7 +20,7 @@ Cut, merge, and publish a new bkit release in one pass, avoiding the KN-20 silen
 2. `git status --porcelain` empty.
 3. `git rev-list --count origin/dev..dev` == 0 (local dev = origin/dev).
 4. `pnpm test && pnpm typecheck && pnpm format:check && pnpm check:dist && pnpm bkit check` green (`check:dist` = no unbuilt `dist/`; `bkit check` = no template/mirror drift).
-5. `package.json` version + `.agents/.bkit-version` `pinnedVersion` + `CHANGELOG.md` top entry all == `VERSION`, AND the `## [VERSION]` block has >= 1 content line (reject a bare version bump with no notes — the changes being shipped must be documented). Feature PR lands these; if not — stop and ask.
+5. `package.json` version + `.bkit/version` `pinnedVersion` + `CHANGELOG.md` top entry all == `VERSION`, AND the `## [VERSION]` block has >= 1 content line (reject a bare version bump with no notes — the changes being shipped must be documented). Feature PR lands these; if not — stop and ask.
 6. No tag `v$VERSION` exists yet (`git ls-remote --tags origin v$VERSION`).
 
 ## Steps

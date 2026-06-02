@@ -77,21 +77,23 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 | Model ID | Tier | Typical use |
 | --- | --- | --- |
 | `composer-2.5` | $ | Fast cheap; build executors, summarizers, ship-summary, utilities |
-| `claude-4.7-opus-high-thinking` | $$$ | High-thought review, audit, design synthesis, debug diagnose, ship docs |
-| `claude-4.6-opus-high-thinking` | $$$ | Previous-gen Opus — kept as fallback / availability hedge |
-| `claude-4.6-opus-high-thinking-fast` | $$$ | Faster 4.6 variant |
-| `claude-4.6-sonnet-thinking` | $$ | Mid-tier reasoning; orchestrator default for build/ship |
-| `gpt-5.4-high` | $$ | Plan generation, parallel-pair slot-2 (cross-family diversity) |
-| `gpt-5.4-high-fast` | $$ | — |
-| `gpt-5.4-xhigh-fast` | $$ | — |
-| `gpt-5.3-codex-high` | $$ | — |
-| `gpt-5.3-codex-high-fast` | $$ | — |
-| `gpt-5.3-codex-xhigh-fast` | $$ | — |
+| `claude-opus-4-8-thinking-high` | $$$ | Current Opus — high-thought review, audit, design synthesis, debug diagnose, ship docs |
+| `claude-opus-4-8-thinking-high-fast` | $$$ | Faster 4.8 variant |
+| `claude-opus-4-7-thinking-high` | $$$ | Previous-gen Opus — fallback / availability hedge |
+| `claude-opus-4-7-thinking-high-fast` | $$$ | Faster 4.7 variant |
+| `claude-4.6-opus-high-thinking` | $$$ | Legacy Opus (older ID word-order) — deep fallback |
+| `claude-4.6-sonnet-thinking` | $$ | Mid-tier reasoning; orchestrator-launch default for build/ship (set via workflow config — not returned by `/v0/models`) |
+| `gpt-5.5-high` | $$ | Current GPT — cross-family diversity (plan generation, parallel-pair slot-2) |
+| `gpt-5.5-high-fast` | $$ | Faster 5.5 variant |
+| `gpt-5.4-high` | $$ | Previous-gen GPT — fallback |
+| `gpt-5.4-high-fast` | $$ | Faster 5.4 variant |
+| `gpt-5.3-codex-high` | $$ | Codex-tuned GPT |
+| `gpt-5.3-codex-high-fast` | $$ | Faster codex variant |
 
-Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.**
+Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.** Opus/GPT IDs above verified against the live `/v0/models` response on 2026-06-02 (issue [#205](https://github.com/cbartens/bkit/issues/205)).
 
 > [!NOTE]
-> **Subagent model whitelist — needs verification.** Cursor may restrict which models are valid as **subagent runners** (separate from main-agent / Cloud Agent model lists). A probe-time signal flagged that `claude-4.7-opus-high-thinking` may not be in the subagent-allowed set, and `composer-2.5` / `gpt-5.4-medium` were referenced as examples of subagent-valid models. The `Cursor model` column in `prompts.md` is currently sourced from the Cloud Agent label catalog above — if Cursor substitutes / rejects on subagent dispatch, expect runtime failures across the 17 subagents pinned to `claude-4.7-opus-high-thinking`. Empirical probe required: dispatch one subagent per model ID via Cursor `Task` tool and confirm the model lands. Open follow-up; not BAR-113 scope.
+> **Subagent model IDs — corrected to the live API format (issue [#205](https://github.com/cbartens/bkit/issues/205)).** The prior pin `claude-4.7-opus-high-thinking` used a word-order the Cursor `/v0/models` API never listed (the API uses `claude-opus-4-N-thinking-high`; only the legacy 4.6 model kept the old order). That format mismatch is the likely root of the earlier "may not be in the subagent-allowed set" signal. The `Cursor model` column in `prompts.md` now pins `claude-opus-4-8-thinking-high` / `gpt-5.5-high`, both **confirmed present in the live `/v0/models` response on 2026-06-02**. Residual caveat: the IDE **subagent-runner** surface is technically distinct from the Cloud Agents API, and per-subagent dispatch of these IDs has not yet been empirically smoke-tested via the Cursor `Task` tool — confirm one dispatch per model ID lands before treating the Cursor side as fully validated.
 
 ### Per-subagent model assignment
 
@@ -106,10 +108,10 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 <!-- prettier-ignore -->
 | Workflow | Cursor model | Claude model + reasoning | Notes |
 | --- | --- | --- | --- |
-| `/bkit-design` | `claude-4.7-opus-high-thinking` | `sonnet` / `medium` | Procedural orchestration; parallel review pair surfaces drift fast. |
-| `/bkit-plan` | `gpt-5.4-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.json plumbing. |
+| `/bkit-design` | `claude-opus-4-8-thinking-high` | `sonnet` / `medium` | Procedural orchestration; parallel review pair surfaces drift fast. |
+| `/bkit-plan` | `gpt-5.5-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.json plumbing. |
 | `/bkit-build` | `composer-2.5` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
-| `/bkit-debug` | `claude-4.7-opus-high-thinking` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
+| `/bkit-debug` | `claude-opus-4-8-thinking-high` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
 | `/bkit-ship` | `composer-2.5` | `sonnet` / `medium` | Short, fully procedural. |
 | CI automations (`ci-pass`, `ci-fail`) | `composer-2.5` | n/a |  |
 
@@ -125,7 +127,9 @@ Automation sessions (Cursor Cloud) use `composer-2.5` for metadata/API plumbing;
 
 ### Cursor model label IDs
 
-Used by Cursor Cloud Agents UI for label-based routing:
+Used by Cursor Cloud Agents UI for label-based routing.
+
+> **Stale-risk (#205, 2026-06-02):** these are dashboard label-routing UUIDs — a surface distinct from the `/v0/models` API model IDs. They lag the current pins; there are no rows yet for `claude-opus-4-8-thinking-high` / `gpt-5.5-high`. Re-pull from the Cursor Cloud dashboard before relying on label routing. The per-subagent `model:` frontmatter does **not** use these UUIDs — it uses the API model-ID string.
 
 <!-- prettier-ignore -->
 | Label | ID |

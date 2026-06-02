@@ -2,7 +2,7 @@
 name: bkit-design-brainstorm-ideate-1
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 effort: high
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep

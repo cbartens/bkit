@@ -1,7 +1,7 @@
 ---
 name: bkit-debug-observe-revert
 description: Senior cleanup engineer stripping diagnostic logging back to a verifiably clean tree.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

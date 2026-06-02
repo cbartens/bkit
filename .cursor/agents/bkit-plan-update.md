@@ -1,7 +1,7 @@
 ---
 name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

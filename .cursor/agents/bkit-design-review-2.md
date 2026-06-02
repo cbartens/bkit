@@ -1,7 +1,7 @@
 ---
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
-model: gpt-5.4-high
+model: gpt-5.5-high
 tools:
   - Read
   - Grep

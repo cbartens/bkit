@@ -117,7 +117,7 @@ describe("T2 — command body rewrites", () => {
 describe("T3 — subagent frontmatter rewrite", () => {
   const modelLookup = new Map([
     ["build-plan", "composer-2.5"],
-    ["design-synthesize", "claude-4.7-opus-high-thinking"],
+    ["design-synthesize", "claude-opus-4-8-thinking-high"],
   ]);
 
   it("emits name, description, model, tools (passthrough)", () => {
@@ -165,7 +165,7 @@ describe("T3 — subagent frontmatter rewrite", () => {
   it("emits Cursor model from lookup", () => {
     const input = `---\nname: design-synthesize\ndescription: merge brainstorms\neffort: high\n---\nBody.\n`;
     const result = applyT3(input, modelLookup);
-    expect(result).toContain("model: claude-4.7-opus-high-thinking");
+    expect(result).toContain("model: claude-opus-4-8-thinking-high");
   });
 
   it("preserves multi-line YAML description verbatim", () => {

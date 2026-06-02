@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

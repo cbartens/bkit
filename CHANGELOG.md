@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.1.0] — 2026-06-02
+
+Model refresh for the subagent fleet: every Opus-pinned agent and the Opus orchestrators move to Opus 4.8, and the Cursor model IDs are corrected to the format Cursor's live API actually serves. Model pins only — no behaviour or scaffold change; lands on `pnpm bkit install` / `upgrade`.
+
+### Changed
+
+- **Subagent + orchestrator model pins bumped to Opus 4.8; Cursor IDs format-corrected; cross-family GPT slots bumped to 5.5 (issue [#205](https://github.com/cbartens/bkit/issues/205)).** All 25 Opus-pinned agents move `claude-opus-4-7` → `claude-opus-4-8` on the Claude side (Sonnet 4.6 / Haiku 4.5 are already the latest in their families — untouched). On the Cursor side the pins are corrected from `claude-4.7-opus-high-thinking` to **`claude-opus-4-8-thinking-high`** — the prior word-order was never present in Cursor's `/v0/models` catalog (only the legacy 4.6 model used it), the likely root of the long-standing "may not be subagent-valid" caveat in `IDEs.md`; the corrected ID was verified against the live `/v0/models` API on 2026-06-02. The cross-family Cursor slots move `gpt-5.4-high` → `gpt-5.5-high`, and the `/design` / `/plan` / `/debug` orchestrator pins move to Opus 4.8. `IDEs.md`'s Cursor model catalog was rewritten to match the live API, and the dashboard label-routing UUID table was flagged as lagging (re-pull before relying on label routing). `.claude/agents` + `.cursor/agents` mirrors regenerated.
+
+---
+
 ## [3.0.1] — 2026-06-02
 
 Patch release. bkit's canonical reference docs now land in a consumer's `.bkit/` on install, and the schema-invariant DB-check guidance is reframed around deploy topology. No breaking changes; both land on `pnpm bkit install` / `upgrade`.

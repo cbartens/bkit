@@ -1,7 +1,7 @@
 ---
 name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep

@@ -2,7 +2,7 @@
 name: bkit-utility-audit-security
 description: Senior security engineer auditing auth, secrets, validation, and data exposure.
 effort: high
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep

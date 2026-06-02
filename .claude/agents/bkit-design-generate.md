@@ -2,7 +2,7 @@
 name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
 effort: xhigh
-model: claude-opus-4-7
+model: claude-opus-4-8
 tools:
   - Read
   - Grep

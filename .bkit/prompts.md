@@ -53,9 +53,9 @@ maxTurns: <int> # safety cap on agent turns (NOT runtime budget)
 | --- | --- | --- |
 | `low` | `claude-haiku-4-5-20251001` | Pure synthesizers / summary writers. Fast + cheap; no deep reasoning needed. |
 | `medium` | `claude-sonnet-4-6` | Single-shot writers, fix executors with clear input. Solid mid-tier reasoning. |
-| `high` | `claude-opus-4-7` | Adversarial review, broad audits, observability. Standard 200K context Opus. |
-| `xhigh` | `claude-opus-4-7` | Top-of-pipeline synthesizers. Same model ID as `high`; differs by `effort: xhigh` thinking-budget allocation. |
-| `max` | `claude-opus-4-7` | Same model as `xhigh`; differs by `effort: max` thinking-budget allocation. Reserved tier — escalate from `xhigh` only after observed truncation. |
+| `high` | `claude-opus-4-8` | Adversarial review, broad audits, observability. Standard 200K context Opus. |
+| `xhigh` | `claude-opus-4-8` | Top-of-pipeline synthesizers. Same model ID as `high`; differs by `effort: xhigh` thinking-budget allocation. |
+| `max` | `claude-opus-4-8` | Same model as `xhigh`; differs by `effort: max` thinking-budget allocation. Reserved tier — escalate from `xhigh` only after observed truncation. |
 
 Pinning `model:` ensures the agent runs on the same model regardless of which Claude model the orchestrator's session is using. Without a pin, subagents inherit the session's default — running `/bkit-plan` from a Sonnet session would silently downgrade every Opus-tier agent.
 
@@ -118,53 +118,53 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 
 Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the `Cursor model` column (cross-family diversity via real model selection), Claude via the `Claude model` column (locked to a specific Claude model ID, independent of session default). Claude `effort:` is the thinking-budget knob layered on top of the pinned model. `maxTurns` is the runaway-loop cap (Claude only); see § `maxTurns` calibration above for workload-class rationale.
 
-> **Context-window note:** Claude Code's `model:` frontmatter accepts standard model IDs (e.g. `claude-opus-4-7`); bracket-suffix variants like `claude-opus-4-7[1m]` for the 1M-context build are NOT documented as supported in subagent frontmatter. xhigh-tier agents currently pin to `claude-opus-4-7` (200K context). If input-size truncation surfaces, options are: (a) verify whether `claude-opus-4-7[1m]` works empirically and switch, (b) split the agent's inputs, (c) escalate via env var `CLAUDE_CODE_SUBAGENT_MODEL`.
+> **Context-window note:** Claude Code's `model:` frontmatter accepts standard model IDs (e.g. `claude-opus-4-8`); bracket-suffix variants like `claude-opus-4-8[1m]` for the 1M-context build are NOT documented as supported in subagent frontmatter. xhigh-tier agents currently pin to `claude-opus-4-8` (200K context). If input-size truncation surfaces, options are: (a) verify whether `claude-opus-4-8[1m]` works empirically and switch, (b) split the agent's inputs, (c) escalate via env var `CLAUDE_CODE_SUBAGENT_MODEL`.
 
 <!-- prettier-ignore -->
 | name | Cursor model | Claude model | Claude effort | maxTurns | role hint |
 | --- | --- | --- | --- | --- | --- |
-| `bkit-design-brainstorm-ideate-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 (pragmatic lens) |
-| `bkit-design-brainstorm-ideate-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | parallel slot 2 (optimal-tradeoff lens; cross-family on Cursor; cross-tier on Claude) |
-| `bkit-design-brainstorm-ideate-3` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 3 (risk-premortem lens) |
-| `bkit-design-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
-| `bkit-design-review-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
-| `bkit-design-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
-| `bkit-design-organise` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
+| `bkit-design-brainstorm-ideate-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | parallel slot 1 (pragmatic lens) |
+| `bkit-design-brainstorm-ideate-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `medium` | 50 | parallel slot 2 (optimal-tradeoff lens; cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-brainstorm-ideate-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | parallel slot 3 (risk-premortem lens) |
+| `bkit-design-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
+| `bkit-design-review-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
+| `bkit-design-organise` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
 | `bkit-design-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
-| `bkit-design-generate` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
+| `bkit-design-generate` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
 | `bkit-plan-complexity-check` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | complexity check |
-| `bkit-plan-generate` | `gpt-5.4-high` | `claude-opus-4-7` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
-| `bkit-plan-review-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 1 (tightness + design-coverage) |
-| `bkit-plan-review-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
-| `bkit-plan-review-3` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | review slot 3 (regression-risk + design-coverage) |
-| `bkit-plan-scope-check-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
-| `bkit-plan-scope-check-2` | `gpt-5.4-high` | `claude-sonnet-4-6` | `medium` | 25 | scope audit slot 2 |
-| `bkit-plan-complexity-split` | `gpt-5.4-high` | `claude-opus-4-7` | `high` | 50 | split large plan |
+| `bkit-plan-generate` | `gpt-5.5-high` | `claude-opus-4-8` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
+| `bkit-plan-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | review slot 1 (tightness + design-coverage) |
+| `bkit-plan-review-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
+| `bkit-plan-review-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | review slot 3 (regression-risk + design-coverage) |
+| `bkit-plan-scope-check-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
+| `bkit-plan-scope-check-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `medium` | 25 | scope audit slot 2 |
+| `bkit-plan-complexity-split` | `gpt-5.5-high` | `claude-opus-4-8` | `high` | 50 | split large plan |
 | `bkit-plan-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
-| `bkit-plan-update` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
+| `bkit-plan-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
 | `bkit-build-install-skills` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | skill identifier |
-| `bkit-build-challenge-1` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
-| `bkit-build-challenge-2` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
-| `bkit-build-challenge-reconcile` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
+| `bkit-build-challenge-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
+| `bkit-build-challenge-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
+| `bkit-build-challenge-reconcile` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
 | `bkit-build-challenge-tests` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 50 | test generator (source modifier, no test loop) |
 | `bkit-build-plan-execute` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |
 | `bkit-build-challenge-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | fix challenge findings (source modifier with test loop) |
 | `bkit-build-plan-gaps-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | fix verification gaps (source modifier with test loop) |
 | `bkit-build-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
-| `bkit-build-plan-verify` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | verify impl vs plan |
+| `bkit-build-plan-verify` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | verify impl vs plan |
 | `bkit-debug-abort-handover` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | handover writer |
-| `bkit-debug-failure-diagnose` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `xhigh` | 50 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
-| `bkit-debug-observe-analyse` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | analyse observability data |
-| `bkit-debug-observe-instrument` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | add debug logging (source modifier, no test loop) |
-| `bkit-debug-observe-revert` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 25 | remove debug logging |
+| `bkit-debug-failure-diagnose` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `xhigh` | 50 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
+| `bkit-debug-observe-analyse` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | analyse observability data |
+| `bkit-debug-observe-instrument` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | add debug logging (source modifier, no test loop) |
+| `bkit-debug-observe-revert` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 25 | remove debug logging |
 | `bkit-debug-failure-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | implement diagnosis fixes (source modifier with test loop) |
 | `bkit-debug-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
 | `bkit-ship-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `low` | 25 | summary writer |
-| `bkit-ship-update-docs` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | update completed.md (multi-doc writer) |
+| `bkit-ship-update-docs` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | update completed.md (multi-doc writer) |
 | `bkit-ship-conflict-resolve` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 100 | mechanical rebase-conflict resolver (source modifier with test loop) |
-| `bkit-utility-audit-codebase` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | codebase audit |
-| `bkit-utility-audit-security` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | security audit |
-| `bkit-utility-audit-tests` | `claude-4.7-opus-high-thinking` | `claude-opus-4-7` | `high` | 50 | test coverage audit |
+| `bkit-utility-audit-codebase` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | codebase audit |
+| `bkit-utility-audit-security` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | security audit |
+| `bkit-utility-audit-tests` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `high` | 50 | test coverage audit |
 | `bkit-utility-compress-markdown` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | token-optimize markdown |
 | `bkit-utility-audit-logs` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 25 | scan production logs |
 | `bkit-utility-update-documentation` | `composer-2.5` | `claude-sonnet-4-6` | `medium` | 50 | doc sync (multi-doc writer) |
@@ -187,9 +187,9 @@ Canonical per-agent metadata lookup. Both hosts pin per-agent — Cursor via the
 <!-- prettier-ignore -->
 | Orchestrator | Claude model | Cursor model | Role / why |
 | --- | --- | --- | --- |
-| `/design` | Opus 4.7 | `claude-4.7-opus-high-thinking` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
-| `/plan` | Opus 4.7 | `claude-4.7-opus-high-thinking` | Decides single vs split; merges review (triplet) + scope-check (pair) critiques. |
-| `/debug` | Opus 4.7 | `claude-4.7-opus-high-thinking` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
+| `/design` | Opus 4.8 | `claude-opus-4-8-thinking-high` | Synthesizes conflicting brainstorms; resolves design ambiguity. |
+| `/plan` | Opus 4.8 | `claude-opus-4-8-thinking-high` | Decides single vs split; merges review (triplet) + scope-check (pair) critiques. |
+| `/debug` | Opus 4.8 | `claude-opus-4-8-thinking-high` | Picks remediation path under uncertainty; Standard / Pivot / Final escalation. |
 | `/build` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Fixed pipeline: dispatch → verify → challenge → tests → summary. Subagents own the heavy reasoning (`bkit-build-challenge-1`/`-2`/`-reconcile`, `bkit-build-plan-verify` are `high`/`medium`/`xhigh` effort). |
 | `/ship` | Sonnet 4.6 | `claude-4.6-sonnet-thinking` | Mostly mechanical: merge + archive + parallel docs/summary. |
 

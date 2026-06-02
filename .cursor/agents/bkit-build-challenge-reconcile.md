@@ -1,7 +1,7 @@
 ---
 name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
-model: claude-4.7-opus-high-thinking
+model: claude-opus-4-8-thinking-high
 tools:
   - Read
   - Grep
