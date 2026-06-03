@@ -96,7 +96,7 @@
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design", "bkit:auto"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:design"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
@@ -477,10 +477,9 @@
      Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
    - **Else** → set `{SUB_TITLE}` = `WS-{N}: {NAME}`, `{SUB_BODY}` = description block below.
        
-     Two-step:
-     1. `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:auto"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}`.
-     2. `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
-        Description block:
+     `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:design"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}` → `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
+
+     Description block:
 
      ```description
      ## Workstream Create — {FID}

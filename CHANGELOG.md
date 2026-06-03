@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.2.1] — 2026-06-03
+
+Tightens issue-label handling across the phase workflows: workflow-created issues are no longer auto-enrolled into `bkit:auto`, and each workflow now stamps the correct phase label when it has to mint an issue. Workflow-source only — lands on `pnpm bkit install` / `upgrade`.
+
+### Changed
+
+- **`bkit:auto` is now manual-enrollment only — no workflow stamps it on a created issue.** Previously the `/design`, `/plan`, `/build`, `/debug`, and `/ship` "no issue ID in prompt → create one" paths (GitHub + Linear) and `/design`'s workstream sub-issue creation all stamped `bkit:auto`, silently enrolling workflow-minted issues into cloud automation. That label is the bkit-cloud trigger gate / live kill switch, so enrollment is now always a deliberate human action. Phase-transition steps still _preserve_ `bkit:auto` when a human added it, and the kill-switch / `bkit [auto route]` marker reads are unchanged.
+
+### Fixed
+
+- **All five phase workflows stamped `bkit:design` when creating an issue, regardless of phase.** The create-issue snippet was copied from `/design` into the other four without adjusting the label, so a freshly created issue was mislabeled — briefly for `/plan`, `/build`, `/ship` (the next step drops the stray label, but a failure in between strands the issue at `bkit:design`), and **permanently** for `/debug`, whose phase-transition is additive and never dropped it (leaving `bkit:design` + `bkit:debug`). Each workflow now stamps its own phase — `/plan`→`bkit:plan`, `/build`→`bkit:build`, `/debug`→`bkit:debug`, `/ship`→`bkit:ship`. `/design`'s workstream sub-issues now stamp `bkit:design` (was `bkit:auto`), and their create-then-attach is written as the standard `→` flow.
+
+---
+
 ## [3.2.0] — 2026-06-03
 
 Adds a bounded, advisory related-issues search to the `/design`, `/plan`, and `/debug` phases so a new feature starts already aware of prior tracker issues, and fixes a `.bkit/`-migration regression that left `.envrc` pointing at the now-empty `.agents/.env`. Both land on `pnpm bkit install` / `upgrade`.
