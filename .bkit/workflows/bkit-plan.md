@@ -203,7 +203,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Commit any uncommitted changes before new worktree branch:
+1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
@@ -300,12 +300,18 @@ description: "Plan Feature — Autonomous plan generation"
 
 ## 🧠 Step 3 — Generate Plan
 
-1. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
+1. <!-- bkit:tracker github start -->
+   `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` (feature nouns, no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` (feature nouns, no stopwords) → `mcp__linear__list_issues({ query: "{QUERY}", team: "{LINEAR_TEAM}", limit: 15, orderBy: "updatedAt desc" })` → drop any whose `identifier` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__linear__list_comments({ issueId: "{identifier}", orderBy: "createdAt desc", limit: 250 })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## {identifier} — {title} ({state.name})` heading, the `description` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+   <!-- bkit:tracker linear end -->
+2. **Subagent:** Invoke `@bkit-plan-generate` using `Agent` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Update status and commit:
+3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -314,7 +320,7 @@ description: "Plan Feature — Autonomous plan generation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
-4. <!-- bkit:tracker github start -->
+5. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -335,6 +341,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-v1-draft.md`)
 - [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
 <!-- bkit:tracker true start -->
+- [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
 <!-- bkit:tracker true end -->
 

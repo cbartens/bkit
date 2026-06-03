@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.2.0] — 2026-06-03
+
+Adds a bounded, advisory related-issues search to the `/design`, `/plan`, and `/debug` phases so a new feature starts already aware of prior tracker issues, and fixes a `.bkit/`-migration regression that left `.envrc` pointing at the now-empty `.agents/.env`. Both land on `pnpm bkit install` / `upgrade`.
+
+### Added
+
+- **Bounded related-issues search across `/design`, `/plan`, and `/debug` (issue [#135](https://github.com/cbartens/bkit/issues/135)).** A numbered, tracker-gated search step now runs early in design, plan, and debug: it searches the active tracker's issues (GitHub or Linear) by keywords drawn from the phase input (`*-input.md` for design/plan, the error signature for debug), across all states and recency-sorted, fetches each hit's comments, and writes the top 10 as `## #N — title (state)` + body + comments into `related-issues.md` (design/plan) or `debug-context-related-*.md` (debug). The synthesisers read it `(if present)` and pin a condensed reference list for dedup and scope-awareness. Always advisory — capped at 10, never gates, never auto-expands scope; under `none` (no tracker wired) the step collapses to the standard skip stub, so there is no search and no file. Also hardens the git-safety deny list (force-push, `reset --hard`, `checkout`/`restore`/`stash drop`, `rebase -i`) and adds an explicit "NEVER push" to the build/ship worktree setup.
+
+### Fixed
+
+- **`.envrc` left pointing at the now-empty `.agents/.env` after the `.bkit/` migration, silently breaking direnv auto-load.** The 3.0.0 `.bkit/` layout move relocates `.agents/.env` → `.bkit/.env` via `runPayload`, but `.envrc` is Tier-3 seed-or-print so bkit never rewrote the directive it had seeded — consumers upgraded from the `.agents/` layout were left with `.envrc` sourcing a file that no longer exists (the merge advisory is print-only). `runPayload` now re-points only bkit's own whole-line `dotenv_if_exists .agents/.env` directive to `.bkit/.env`, paired with the step-3 file move. The anchored match leaves consumer-appended siblings (e.g. `.agents/.env.local`) and comment lines untouched; idempotent, dogfood-guarded, and dry-run aware. Adds 5 integration cases.
+
+---
+
 ## [3.1.0] — 2026-06-02
 
 Model refresh for the subagent fleet: every Opus-pinned agent and the Opus orchestrators move to Opus 4.8, and the Cursor model IDs are corrected to the format Cursor's live API actually serves. Model pins only — no behaviour or scaffold change; lands on `pnpm bkit install` / `upgrade`.

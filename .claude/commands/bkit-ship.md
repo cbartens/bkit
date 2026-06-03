@@ -157,7 +157,7 @@ description: "Ship Feature — Autonomous merge and archive"
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Commit any uncommitted changes before new worktree branch:
+1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short

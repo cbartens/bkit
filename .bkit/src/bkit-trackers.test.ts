@@ -255,3 +255,34 @@ describe("real workflow sources", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// issue-scan call sites (#135) — bounded related-issue scan wired into
+// design/plan/debug entry; advisory, capped, degrades to a no-op under none.
+// ---------------------------------------------------------------------------
+
+describe("issue-scan call sites (#135)", () => {
+  const scanned = ["bkit-design", "bkit-plan", "bkit-debug"];
+  const read = (wf: string) =>
+    fs.readFileSync(path.join(REPO_ROOT, ".bkit", "workflows", `${wf}.md`), "utf-8");
+
+  for (const wf of scanned) {
+    it(`${wf} wires a github scan that fetches each hit's comments`, () => {
+      const out = substituteWorkflow(read(wf), "github").output;
+      expect(out).toContain("mcp__github__search_issues");
+      expect(out).toContain('method: "get_comments"');
+    });
+
+    it(`${wf} wires the linear scan with per-hit comment fetch`, () => {
+      const out = substituteWorkflow(read(wf), "linear").output;
+      expect(out).toContain("mcp__linear__list_issues");
+      expect(out).toContain("mcp__linear__list_comments");
+    });
+
+    it(`${wf} omits the scan entirely under none (no tracker call)`, () => {
+      const out = substituteWorkflow(read(wf), "none").output;
+      expect(out).not.toContain("mcp__github__search_issues");
+      expect(out).not.toContain("mcp__linear__list_issues");
+    });
+  }
+});

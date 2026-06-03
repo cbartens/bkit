@@ -342,7 +342,8 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    RUNTIME_LOGS=$({customised command} 2>/dev/null)
    [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${DEBUG_ATTEMPT}.md"
    ```
-8. Update status and commit:
+8. `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-${DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+9. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -357,16 +358,17 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): fetch-context attempt ${DEBUG_ATTEMPT}"
    ```
-9. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
-   `{BODY}` = fenced block below — ONLY add artifact links if present:
-   ```comment
-   ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
-   [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
-   [debug-context-diff-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md)
-   [debug-context-tests-local-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md)
-   [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
-   [debug-context-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md)
-   ```
+10. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+    `{BODY}` = fenced block below — ONLY add artifact links if present:
+    ```comment
+    ### Step 3 — Fetch Context - Verdict: {FETCH_VERDICT}
+    [debug-context-ci-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-ci-{DEBUG_ATTEMPT}.md)
+    [debug-context-diff-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-diff-{DEBUG_ATTEMPT}.md)
+    [debug-context-tests-local-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-local-{DEBUG_ATTEMPT}.md)
+    [debug-context-tests-e2e-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-tests-e2e-{DEBUG_ATTEMPT}.md)
+    [debug-context-runtime-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-{DEBUG_ATTEMPT}.md)
+    [debug-context-related-{DEBUG_ATTEMPT}.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-{DEBUG_ATTEMPT}.md)
+    ```
 
 ### 🔒 Gate 3 — Fetch Context
 
@@ -380,6 +382,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Artifacts written (if output available, `debug-context-ci-{DEBUG_ATTEMPT}.md`, `debug-context-diff-{DEBUG_ATTEMPT}.md`, `debug-context-tests-local-{DEBUG_ATTEMPT}.md`, `debug-context-tests-e2e-{DEBUG_ATTEMPT}.md`, `debug-context-runtime-{DEBUG_ATTEMPT}.md`)
 - [ ] `FETCH_VERDICT` derived
 - [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
+- [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section, links only for written artifacts)
 
 ---

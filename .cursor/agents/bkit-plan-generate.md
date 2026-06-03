@@ -36,10 +36,11 @@ tools:
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Build chronological steps and strict 🔒 Gates per `docs/plans/template.md`.
 6. Every `Agent Execution Runbook` task MUST carry a `Done when` entry — terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Tasks without it are rejected. Derive from matching `Derived Test Matrix` row where applicable.
-7. `Acceptance Scenario` per template section (expand NOT replace on design if provided).
-8. `Supersession Inventory` per template section. If plan adds without replacing then `None`.
-9. New architecture/technology decisions (if any) → append `docs/decisions.md`; check existing entries first.
-10. Out-of-scope ideas (if any) → append `docs/pending.md`; check existing entries first.
+7. `Related Issues` per template section (if any); do NOT expand scope.
+8. `Acceptance Scenario` per template section; expand NOT replace on design if provided.
+9. `Supersession Inventory` per template section. If plan adds without replacing then `None`.
+10. New architecture/technology decisions (if any) → append `docs/decisions.md`; check existing entries first.
+11. Out-of-scope ideas (if any) → append `docs/pending.md`; check existing entries first.
 
 **Output format:** See `docs/plans/template.md`.
 

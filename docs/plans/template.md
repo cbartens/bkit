@@ -17,6 +17,10 @@
 
 - [1-3 bullet points defining "done" (e.g., "Users can upload profile pictures").]
 
+**Related Issues:**
+
+- [Related issues search results. Tracker issue refs ONLY (e.g. `#N — title (state)`); NOT full content. Considered for dedup / scope-awareness; NOT a scope mandate. None / scan unavailable → `None`.]
+
 ---
 
 ## 👤 ⚠️ Acceptance Scenario — HUMAN REVIEW REQUIRED
@@ -377,6 +381,10 @@ _No DB changes: "Code-only — `git revert` sufficient."_
 **Success Criteria:**
 
 - [1-3 bullet points defining "done" (e.g., "Users can upload profile pictures").]
+
+**Related Issues:**
+
+- [Related issues search results. Tracker issue refs ONLY (e.g. `#N — title (state)`); NOT full content. Considered for dedup / scope-awareness; NOT a scope mandate. None / scan unavailable → `None`.]
 
 ---
 
