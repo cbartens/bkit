@@ -160,10 +160,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    <!-- bkit:tracker false end -->
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker false start -->
    No tracker wired — set `STATE`, `LABELS`, `DESCRIPTION`, `COMMENTS` all empty; the input artifact is built from the session prompt alone.
@@ -736,11 +736,13 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    {FID-debug-summary.md content verbatim}
    ```
    <!-- bkit:tracker true end -->
-7. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/debug-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-8. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+7. Final return: Display `debug-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+   <!-- bkit:tracker true start -->
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   <!-- bkit:tracker true end -->
+8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 12.
+9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Summary
 

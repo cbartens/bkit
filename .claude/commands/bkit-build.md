@@ -130,7 +130,7 @@ description: "Build Feature — Autonomous implementation"
 4. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 5. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:build"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 7. Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
 8. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID`. **Else** → **Failure Path**.
 9. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
@@ -841,11 +841,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
    ```
-7. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-8. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+7. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
+9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 16 — Summary
 

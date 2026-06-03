@@ -167,10 +167,10 @@ description: "Build Feature — Autonomous implementation"
    <!-- bkit:tracker false end -->
 6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    <!-- bkit:tracker github start -->
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
-   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
+   `mcp__linear__get_issue({ id: "{ISSUE_ID}" })` → extract `state.name` → `STATE`, `labels[].name` → `LABELS`, `description` → `DESCRIPTION`, `title` → `TITLE`, `url` → `URL`. Then `mcp__linear__list_comments({ issueId: "{ISSUE_ID}", orderBy: "createdAt desc", limit: 250 })` → extract comments → `COMMENTS`.
    <!-- bkit:tracker linear end -->
 7. <!-- bkit:tracker github start -->
    Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
@@ -1053,11 +1053,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    {build-summary.md content verbatim}
    ```
    <!-- bkit:tracker true end -->
-7. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-8. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+7. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+   <!-- bkit:tracker true start -->
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   <!-- bkit:tracker true end -->
+8. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
+9. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+10. **Else** → **Failure Path**.
 
 ### 🔒 Gate 16 — Summary
 

@@ -99,7 +99,7 @@
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:plan"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
    Format `{ISSUE_ID}-{slug}` — slug <=3 tokens, kebab, lowercase, no stopwords. Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -516,11 +516,11 @@
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
    ```
-8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-9. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-10. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-12. **Else** → **Failure Path**.
+8. Final return: Display `plan-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+11. **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
 
