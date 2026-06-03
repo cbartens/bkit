@@ -44,7 +44,7 @@ maxTurns: 50
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 6. Read historical gotchas: Search `docs/knowledge.md` → grep entries by symptom / error-class / workflow-step. **If** any matches → add to `Prior Knowledge`.
 7. Read scar-tissue: Search for reverted commits with candidate files. **If** any matches capture what was tried and why reverted → add to `Prior Knowledge`.
-8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
+8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs, related issues. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
 9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent dep bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
 10. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 11. Rot-signal check: **If** stack trace / root-cause analysis shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis already require.
@@ -76,6 +76,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Prior Knowledge
 
 [Matched `docs/knowledge.md` entries that informed this diagnosis - per line `KN-{N}: <one-line summary> — applied as <how>`. If no matches then `None`; initially set to `PENDING`.]
+
+## Related Issues
+
+[Related issues, one `- #N — title (state)` entry per prior-incident match. If none then `None`; initially set to `PENDING`.]
 
 ## Failures
 

@@ -129,7 +129,7 @@
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Commit any uncommitted changes before new worktree branch:
+1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
@@ -216,7 +216,8 @@
 
 ## 🧠 Step 3 — Brainstorm & Ideate
 
-1. Launch all three subagents in parallel using `Task` tool. Each carries a distinct lens; the synthesiser merges across them:
+1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/design-input.md` (feature nouns, no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+2. Launch all three subagents in parallel using `Task` tool. Each carries a distinct lens; the synthesiser merges across them:
    - **Subagent:** Invoke `@bkit-design-brainstorm-ideate-1`
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
@@ -229,8 +230,8 @@
      Context: You are a subagent in the Design phase running in parallel with two other agents. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
      Read: `docs/plans/{YYYYMM}/logs/{FID}/design-input.md`.
      Create: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
-2. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Update status and commit:
+3. Wait for all subagents to complete. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -239,7 +240,7 @@
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): brainstorm-ideate"
    ```
-4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Brainstorm & Ideate
@@ -250,6 +251,7 @@
 - [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, `@bkit-design-brainstorm-ideate-3`, no inline work)
 - [ ] Artifacts written (`design-brainstorm-ideate-1.md`, `design-brainstorm-ideate-2.md`, `design-brainstorm-ideate-3.md`, non-empty)
 - [ ] Workflow status updated (step `design-brainstorm-ideate` recorded with `parentSha`)
+- [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
@@ -258,7 +260,7 @@
 
 1. **Subagent:** Invoke `@bkit-design-generate` using `Task` tool:
    Context: You are a subagent in the Design phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations. Inputs carry distinct lenses — merge across them, do NOT collapse to a consensus.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-1.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-2.md`, `docs/plans/{YYYYMM}/logs/{FID}/design-brainstorm-ideate-3.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/design-v1-draft.md`.
 2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 3. Update status and commit:

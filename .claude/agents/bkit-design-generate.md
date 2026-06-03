@@ -37,7 +37,7 @@ maxTurns: 50
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
-5. Identify themes, complementary ideas, conflicts. Risk-premortem mitigations are additive — layer them onto whichever approach is selected, NOT as a separate approach.
+5. Identify themes, complementary ideas, conflicts, related issues. Risk-premortem mitigations are additive — layer them onto whichever approach is selected, NOT as a separate approach.
 6. Each conflict → pick stronger, justify.
 7. Draft `Acceptance Scenario` — initial draft only (expanded later):
    - Narrative: 2–3 sentences, user POV (NOT system POV).
@@ -51,6 +51,10 @@ maxTurns: 50
 
 ```markdown
 # Design: [Feature Name]
+
+## Related Issues
+
+[Related issues, one `- #N — title (state)` entry per prior-incident match. If none then `None`; initially set to `PENDING`.]
 
 ## Acceptance Scenario
 

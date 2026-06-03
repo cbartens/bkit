@@ -9,7 +9,7 @@
   "canonicalHashes": {
     "docs/deployments.md": "351ff9c2bbedd33bac3da2c54d3597d7f7b7c0606855f2dfe830546e71b5d3d7",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
-    ".claude/settings.json": "5a07bba2ae7b29166d2934c32dcaff3ab39097f677734a48c5b3f2afe7bf64c7",
+    ".claude/settings.json": "2053ebde336b372761629c6b4b732161d5cbe15df8c91dbce523779d64e52cb5",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
@@ -38,7 +38,7 @@
     "docs/webhooks.md": "c8c11dcd84fae1815a36978e7a83ab26d45406edbbd6d66697c0eb7bdadff7e9",
     "slop-scan.config.json": "6186de06a906ba7340a6faa95a4acb42f37f1d18500c8f5e3bf1e104e44e098e",
     ".gitattributes": "3e6c8fd37a3c56237b3538bbee2aa37f6996d4d596a79ab216703a3392cb5520",
-    "docs/plans/template.md": "2625d99937bb15ccc0793f7411490dd363b3e23d28e7a9c1ce93201a8220a331",
+    "docs/plans/template.md": "768c2868307278f03b58062cce63ea33619a5ccb5fbd52b1d1bd69f262bf9dbf",
     "docs/dispatch.md": "f5b8265f91b58e26c5b84f3b76916653d1898f75a3327445f283b220a3689da6",
     ".lintstagedrc.json": "d01fcf8246e226896f16c4614d899d0a28d507657fb935caf37795850f5db66f",
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",

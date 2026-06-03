@@ -133,7 +133,7 @@
 
 ## 🤖 Step 2 — Worktree Setup
 
-1. Commit any uncommitted changes before new worktree branch:
+1. Commit any uncommitted changes before new worktree branch — NEVER push:
    ```bash
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
@@ -221,12 +221,13 @@
 
 ## 🧠 Step 3 — Generate Plan
 
-1. **Subagent:** Invoke `@bkit-plan-generate` using `Task` tool:
+1. `{QUERY}` = 3–6 keywords from `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md` (feature nouns, no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
+2. **Subagent:** Invoke `@bkit-plan-generate` using `Task` tool:
    Context: You are a subagent in the Plan phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/plan-input.md`, `docs/plans/{YYYYMM}/logs/{FID}/related-issues.md` (if present).
    Create: `docs/plans/{YYYYMM}/logs/{FID}/plan-v1-draft.md`.
-2. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-3. Update status and commit:
+3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
+4. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
@@ -235,7 +236,7 @@
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): generate-plan"
    ```
-4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 3 — Generate Plan
@@ -248,6 +249,7 @@
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
 - [ ] No PENDING placeholders remain (`plan-v1-draft.md`)
 - [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
+- [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
 
 ---
