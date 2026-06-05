@@ -921,6 +921,10 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   If your hook does NOT already format staged files / run a prose lint,
   consider adopting the reference, or merging the missing commands into yours.
 
+  Monorepo note: do not add eslint to lint-staged. In a workspace it must run
+  per-package via turbo (at pre-push) so each package's own flat config resolves;
+  lint-staged passes repo-root-absolute paths that bypass per-package config.
+
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
   # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
   the hook as a full-file template (Tier 3 seed-or-print). If your file still
@@ -945,6 +949,12 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   three gates — in that case, add \`pnpm slop:delta\` + \`pnpm bkit check\` after your
   existing command. If your hook does NOT already run those gates, consider adopting the
   reference, or merging the missing commands into yours.
+
+  Monorepo note: eslint is the one lint that legitimately belongs at pre-push rather
+  than in lint-staged/pre-commit — it must run per-package via turbo (\`npx turbo run
+  lint\`) so each package's own flat config resolves, and turbo scopes it to changed
+  packages and caches the result. eslint placement is the only sanctioned deviation
+  from bkit's lint-hook layout; keep format/prose/slop/drift gates where bkit puts them.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
   # bkit:end) around its hook commands and failed CI on drift. v2.0.4+ ships
