@@ -49,17 +49,23 @@ else
 fi
 
 wt="$(mktemp -d "${TMPDIR:-/tmp}/slop-delta.XXXXXX")"
+json="$(mktemp "${TMPDIR:-/tmp}/slop-delta.json.XXXXXX")"
 cleanup() {
   git worktree remove --force "$wt" >/dev/null 2>&1 || true
   rm -rf "$wt" >/dev/null 2>&1 || true
+  rm -f "$json" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 git worktree add -q --detach "$wt" "$base_sha"
 
 echo "[slop:delta] base $base_sha (${base_ref}) vs working tree"
-"${slop[@]}" delta --base "$wt" --head . --json | node -e '
-const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+# Stage delta --json to a temp file rather than piping into readFileSync(0): set -e then
+# catches a non-zero slop-scan exit directly, with no partial-read / SIGPIPE risk from
+# draining a stream. The JSON net-delta gate logic below is unchanged.
+"${slop[@]}" delta --base "$wt" --head . --json >"$json"
+node -e '
+const d = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
 const s = d.summary || {};
 const added = s.addedCount || 0, resolved = s.resolvedCount || 0, worsened = s.worsenedCount || 0;
 const netCount = s.netFindingCount || 0, netScore = s.netRepoScore || 0;
@@ -70,4 +76,4 @@ if (netCount > 0 || netScore > 0.001) {
   process.exit(1);
 }
 console.error("[slop:delta] OK — no net-new or worsened findings (baseline line-shifts ignored).");
-'
+' "$json"
