@@ -995,6 +995,15 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
      "format:check", "lint:prose", "lint:slop", "slop:delta". Run 'bkit install
      --lint' to seed them, or add manually.
 
+  7. The reference adds two gates an older workflow likely lacks:
+       - an 'Install Vale' step (pinned tarball + 'vale sync') before the prose
+         lint — without it 'pnpm lint:prose' silently skips (vale not installed)
+         and the prose gate enforces nothing.
+       - a 'Run Slop Delta' step (PR-only, 'pnpm slop:delta') — the enforcing
+         slop gate. 'lint:slop' ('slop-scan scan') is report-only and never fails.
+     Add both, and set 'fetch-depth: 0' on the checkout so slop:delta can
+     materialise the base ref as a worktree.
+
   Do NOT remove or duplicate top-level 'name:', 'on:', or 'jobs:' keys.
   YAML allows only one of each per file.
 

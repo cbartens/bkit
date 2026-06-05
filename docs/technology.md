@@ -56,7 +56,7 @@ See `docs/testing.md` for tier boundaries, CI execution order, and spawning patt
 | --- | --- | --- |
 | Prettier | `^3.5`, `.prettierrc.json` | Code and markdown formatting (`pnpm format:check` in CI) |
 | Vale | system-installed | Prose linting of `.agents/` and root markdown files (`pnpm lint:prose`) |
-| slop-scan | `^0.3`, `slop-scan.config.json` | Detects low-quality phrasing in markdown (`pnpm lint:slop`) |
+| slop-scan | `^0.3`, `slop-scan.config.json` | Detects code-shaped slop in source — empty catches, over-fragmentation, pass-through wrappers. `pnpm lint:slop` reports (never fails); `pnpm slop:delta` is the gate that fails on net-new findings vs the base |
 
 ## Git Hooks
 
