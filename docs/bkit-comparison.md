@@ -97,7 +97,6 @@ Output: a remediated commit pushed to the feature branch. Two modes — normal (
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
 | `bkit-debug-observe-instrument` | Instrument | Adds targeted logging / tracing to surface the bug. High effort. |
-| `bkit-debug-observe-analyse` | Analyse | Reads what the instrumentation revealed and pinpoints cause. |
 | `bkit-debug-observe-revert` | Clean up | Reverts the instrumentation so diagnostic scaffolding never ships. |
 
 **Escape hatch**

@@ -50,7 +50,7 @@
 
 - `git revert` of a cross-branch squash (e.g. a `feat/*` branch that landed directly on `main` instead of `dev`) can delete files that surviving code in `main` still references. The result is a tree that fails CI even though git history is "clean".
 - The `feat/*`-onto-`main` path is the root cause that makes recovery destructive; production merges MUST come from `dev` to keep the squash diff scoped to a single feature.
-- The pre-push hook is bypassed on `revert-*` branches (test suite skipped — only typecheck + format:check run) so a revert PR can be pushed even when its source state is transitionally inconsistent.
+- On `revert-*` branches the pre-push hook skips only the **test suite** — typecheck, format:check, prose, slop:delta and the bkit drift gate still run — so a revert PR can be pushed even when its source state is transitionally inconsistent.
 
 ### Post-rollback verification
 

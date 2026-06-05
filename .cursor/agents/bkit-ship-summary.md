@@ -25,7 +25,6 @@ tools:
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
 - **Mandate:** Summarise only; do NOT build, install, or write code.
 - **Parallel run:** **If** Context indicates parallel run → do NOT reference other agents' outputs.
-- **Output cap:** Apply MAX 500 token limit to **Create** outputs; NO other output limits.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 
 **Process:**
@@ -65,6 +64,10 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 ## Recommended Next Step
 
 [Copy-paste handoff. Advisory only, NEVER auto-trigger. `<ref>` = issue ID from `FID` in Create path (`160-slug` → `160`; `abc-123-slug` → `ABC-123`). `PASS`/`CONCERNS` → no command (feature merged; note any post-merge monitoring); `FAIL` → fix merge blocker, then `/bkit-ship`. Emit `text` block: `<cmd> <ref>` if any (else `_No further bkit command — feature shipped._`), then `Brief: <post-merge follow-ups or the blocker — 1-3 lines>`. Initially set to `PENDING`.]
+
+## Deferred & Out-of-Scope
+
+[Full list of every deferred item from deferred-sweep, both `Blocking Deferrals` and `Exempt (out-of-scope)`. One summarised line per item: What is deferred + where declared + blocking or exempt. List all; do NOT condense or trim. If sweep recorded none then `None`; initially set to `PENDING`.]
 ```
 
 > ⛔ **STOP after summarising and producing output. Do NOT edit files.**

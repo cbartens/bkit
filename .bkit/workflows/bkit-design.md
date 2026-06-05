@@ -187,7 +187,7 @@ description: "Design Feature — Autonomous design phase"
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
-- [ ] `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 <!-- bkit:tracker true start -->
@@ -284,7 +284,7 @@ description: "Design Feature — Autonomous design phase"
 ### 🔒 Gate 2 — Worktree Setup
 
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
-- [ ] `BRANCH` non-empty (updated to worktree branch)
+- [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Artifact written (`design-input.md`, non-empty)
 - [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `design-start-workflow` and `design-worktree-setup` recorded with `parentSha`)
 <!-- bkit:tracker true start -->
@@ -432,8 +432,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagents invoked (`@bkit-design-review-1`, `@bkit-design-review-2`, no inline work)
 - [ ] Artifacts written (`design-review-1.md` and `design-review-2.md`, non-empty)
-- [ ] Verdict extracted (`REVIEW_VERDICT`, worst-of-two)
-- [ ] Verdict valid (each review's `Verdict` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`REVIEW_VERDICT` = worst-of-two; each review's `Verdict` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`design-review-1.md` and `design-review-2.md`)
 - [ ] Routed correctly (FAIL → Failure Path; PASS/CONCERNS → Step 6)
 - [ ] Workflow status updated (step `design-review` recorded with `parentSha`, `verdict`)
@@ -478,8 +477,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagent invoked (`@bkit-design-update`, no inline work)
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
-- [ ] Verdict extracted (`APPLY_REVIEW_VERDICT`)
-- [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 6` section)
@@ -523,8 +521,7 @@ description: "Design Feature — Autonomous design phase"
 
 - [ ] Subagent invoked (`@bkit-design-organise`, no inline work)
 - [ ] Artifact written (`design-v3-organised.md`, non-empty)
-- [ ] Verdict extracted (`ORGANISE_VERDICT`)
-- [ ] Verdict valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-organise` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 7` section)
@@ -568,21 +565,17 @@ description: "Design Feature — Autonomous design phase"
    {design-summary.md content verbatim}
    ```
    <!-- bkit:tracker true end -->
-8. Final return: Display `design-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
-   <!-- bkit:tracker true start -->
-   Append issue link [{ISSUE_ID} {TITLE}]({URL})
-   <!-- bkit:tracker true end -->
-9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+8. Route:
+   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 9.
+   - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Summary
 
-- [ ] `DESIGN_FINAL` resolved to highest `design-v*.md`
+- [ ] Design final resolved (`DESIGN_FINAL` = highest `design-v*.md`)
 - [ ] Subagent invoked (`@bkit-design-summary`, no inline work)
 - [ ] Artifact written (`design-summary.md`, non-empty)
-- [ ] Verdict extracted (`SUMMARY_VERDICT`)
-- [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
 <!-- bkit:tracker true start -->
@@ -595,7 +588,7 @@ description: "Design Feature — Autonomous design phase"
 
 <!-- bkit:tracker true start -->
 
-**Run only if** uppercase `{LABELS}` contains MILESTONE **and** `SUMMARY_VERDICT` = PASS or CONCERNS.
+**Run only if** uppercase `{LABELS}` contains MILESTONE **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS).
 
 1. Read `design-v3-organised.md` section `Suggested Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
 2. <!-- bkit:tracker github start -->
@@ -782,7 +775,15 @@ description: "Design Feature — Autonomous design phase"
    No-op (log `Board status carried by issue state — no separate update.`).
    <!-- bkit:tracker linear end -->
 
-6. <!-- bkit:tracker github start -->
+6. <!-- bkit:tracker true start -->
+   Build `{ARTIFACTS}` link list:
+   ```bash
+   RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
+   ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/design-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
+   printf '%s\n' "$ARTIFACTS"
+   ```
+   <!-- bkit:tracker true end -->
+7. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
@@ -792,20 +793,27 @@ description: "Design Feature — Autonomous design phase"
    `{BODY}` = fenced block below:
    ```comment
    ### Step 10 — Close Workflow
+   Artifacts:
+   {ARTIFACTS}
    ```
    <!-- bkit:tracker true end -->
-7. **HARD STOP:** Design requires human review. Do NOT invoke `/plan`.
+8. Final return: Display `design-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP** — design requires human review; do NOT invoke `/plan`.
+   <!-- bkit:tracker true start -->
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
+   <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 10 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
-- [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
+- [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical design copied (`docs/plans/{YYYYMM}/{FID}-design.md`, verified on `dev` post-merge — `{YYYYMM}` = creation month)
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Workflow status updated (`design` `DONE`, step `design-close-workflow` recorded with `parentSha`)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
+- [ ] Final return displayed (`design-summary.md` content verbatim)
 <!-- bkit:tracker true start -->
 - [ ] Issue update attempted (phase label `bkit:design` preserved, status/state `In Review`)
+- [ ] Artifact link list embedded in `Step 10` comment
 - [ ] Issue comment attempted (`Step 10` section)
 <!-- bkit:tracker true end -->

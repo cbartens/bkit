@@ -41,7 +41,7 @@ tools:
    - `FINAL` → Re-diagnose fundamentally: Right problem? Plan flawed? Upstream root cause? Explicit comparison to prior attempts required.
 6. Read historical gotchas: Search `docs/knowledge.md` → grep entries by symptom / error-class / workflow-step. **If** any matches → add to `Prior Knowledge`.
 7. Read scar-tissue: Search for reverted commits with candidate files. **If** any matches capture what was tried and why reverted → add to `Prior Knowledge`.
-8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs, related issues. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
+8. Investigate supplied inputs: CI logs, diff vs last-passing CI, local test results, E2E test results, runtime logs, related issues. **If** any live tests failed on functional assertion → anchor diagnosis on that real-boundary ground truth; do NOT theorise past it. **If** any live tests could not reach boundaries (auth / credential / connection / missing env) → treat as environment problem, NEVER as features being broken. ONLY re-run narrower filters via Bash if hypothesis needs specific probing.
 9. Check dep versions: **If** investigation surfaces version-shaped hypothesis (dep mismatch, recent dep bump, runtime drift) → `npx {TOOL} --version`, `brew info`, `pnpm outdated`.
 10. Update **Create** output with ALL considered hypotheses including dismissed — append log entry at EOF via Bash `echo {log entry} >> {output}`; heredoc for multi-line. Refuted hypotheses MUST remain; do NOT delete. **If** `Result` not yet known when appending → write `PENDING` and set later via `Edit`.
 11. Rot-signal check: **If** stack trace / root-cause analysis shows evidence of ANY rot pattern on-path (`architecture, hotpath, config, reliability, observability, debt, dead-code, deps, security, tests, docs-drift`), list applicable slugs under `Rot Signals` with one-line evidence per match. Do NOT investigate beyond what stack trace / root-cause analysis already require.
@@ -52,15 +52,21 @@ tools:
     - `PASS` = root cause identified, concrete fix, blast radius handled.
     - `CONCERNS` = ambiguous root cause but plausible fix, or any rot-signals detected.
     - `FAIL` = cannot diagnose, or blast radius shows unhandled break in any affected surface.
+16. Escalation check: Default `Mode` = NORMAL. **If** `Verdict` != PASS **and** root cause cannot be localised from evidence (no stack-trace / failing-assertion pinpoint) and only iterative instrument-fix-reverify against real boundary will crack it → set `Mode` = `SOAK` via `Edit` and record one-line reason in `Mode Reasoning`.
 
 **Output format:**
 
 ```markdown
 Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
+Mode: NORMAL | SOAK [Default `NORMAL`.]
 
 <!-- verdict:end -->
 
 # Debug Failure Diagnosis
+
+## Mode Reasoning
+
+[One-line reason why `Mode` = NORMAL or SOAK. `NORMAL` = cause localised, concrete fix exists. `SOAK` = cause not localisable from evidence, only iterative real-boundary instrument-fix-reverify will crack it. Initially set to `PENDING`.]
 
 ## CI Run
 

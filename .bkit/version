@@ -7,7 +7,7 @@
     ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "351ff9c2bbedd33bac3da2c54d3597d7f7b7c0606855f2dfe830546e71b5d3d7",
+    "docs/deployments.md": "c58a6613640e199c440fd7d9ddfad2075fd111505da3a4f09ffe7759075f0784",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
     ".claude/settings.json": "2053ebde336b372761629c6b4b732161d5cbe15df8c91dbce523779d64e52cb5",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -44,7 +44,7 @@
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "839c727d18c7d62c9120c9fbc2cdfc870489bcdfc1b2f5ddfa1a615e24ca3214",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
-    "docs/observability.md": "8b2efc3b22555255f8d742106df3c885ccc388126b04d463a1a344b47fb60e98",
+    "docs/observability.md": "94e74015a02fe6bcb2cac7b998a9471de656c6781b543c6e447b5e95cf408a08",
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
     ".gitignore": "1fc62a838c6c929928be1debe1536a56281b28711554e13432eb15c1e1d76cc2",
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",

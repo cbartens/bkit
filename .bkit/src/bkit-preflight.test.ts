@@ -637,6 +637,18 @@ describe("detectObservabilityDebugFetchMissing", () => {
     expect(f).toBeNull();
   });
 
+  it("does NOT flag when a NAMED debug-fetch block exists after bkit:end", () => {
+    writeObservability(
+      BKIT_BLOCK_WITH_EXAMPLE +
+        "\n## Consumer\n\n" +
+        "<!-- debug-fetch:start vercel -->\n" +
+        "```bash\nvercel logs --scope acme --json\n```\n" +
+        "<!-- debug-fetch:end -->\n",
+    );
+    const f = detectObservabilityDebugFetchMissing(tmpDir);
+    expect(f).toBeNull();
+  });
+
   it("does NOT flag when docs/observability.md has no bkit-managed block (consumer-owned)", () => {
     writeObservability("# Observability\n\nFully consumer-managed file, no bkit markers here.\n");
     const f = detectObservabilityDebugFetchMissing(tmpDir);

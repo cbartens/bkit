@@ -63,7 +63,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Test Status
 
-[Pass first run or fixed? What broke?; initially set to `PENDING`.]
+[Pass first run or fixed? What broke? Live tests ran and passed? Initially set to `PENDING`.]
 
 ## Challenge
 
