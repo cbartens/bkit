@@ -6,6 +6,17 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.3.1] — 2026-06-06
+
+A patch release: the `slop:delta` enforcing gate now stages its JSON to a temp file instead of reading a pipe, and the husky hook-setup advisories record eslint as the one sanctioned monorepo deviation from bkit's lint-hook layout. Both land on `pnpm bkit install` / `upgrade`.
+
+### Changed
+
+- **`slop:delta` stages `slop-scan delta --json` to a temp file instead of `readFileSync(0)` on a pipe (refines [#226](https://github.com/cbartens/bkit/issues/226)).** The enforcing slop gate piped `delta --json` into an inline `node readFileSync(0)` reader — a fragile idiom that leans on `pipefail` to surface slop-scan's own non-zero exit and carries partial-read / SIGPIPE risk if node exits before draining the stream. It now redirects the JSON to a `mktemp` file (folded into the existing cleanup trap) that node reads via `process.argv[1]`, so `set -e` catches a non-zero slop-scan exit directly. Defensive hardening at zero behavioural cost — the net-delta gate logic (`netFindingCount` / `netRepoScore`, so position-keyed line-shifts don't false-positive) is unchanged. Ships via the template `scripts/tooling/slop-delta.sh`.
+- **Husky hook-setup advisories record eslint as the one sanctioned monorepo deviation from bkit's lint-hook layout.** The `.husky/pre-commit` and `.husky/pre-push` merge-instructions (printed when a consumer already owns those hooks) now note that eslint legitimately belongs at pre-push, run per-package via turbo so each package's own flat config resolves — never in lint-staged, which passes repo-root-absolute paths that bypass per-package config. Format, prose, slop, and drift gates still follow bkit's placement.
+
+---
+
 ## [3.3.0] — 2026-06-05
 
 Ships two real CI gates to consumers that previously enforced nothing — `slop:delta` (net-new LLM-slop) and Vale prose — redesigns `/debug` around reproduce-first, run-the-real-thing empirical debugging with a NORMAL → OBSERVE → SOAK mode ladder, and makes every phase orchestrator return its `{phase}-summary.md` verbatim with a tracker issue link. All three land on `pnpm bkit install` / `upgrade`.
