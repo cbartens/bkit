@@ -451,8 +451,8 @@ export function runCoreModule(ctx) {
         }
     });
     // 5. First-run extra logging (only when .bkit-version was absent at start of install)
-    // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, prepare)
-    // are auto-added by their respective modules — no manual copy-paste required.
+    // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, slop:delta,
+    // prepare) are auto-added by their respective modules — no manual copy-paste required.
     if (isFirstInstall) {
         advisories.push({
             id: "first-install-postinstall-steps",
@@ -470,7 +470,7 @@ export function runCoreModule(ctx) {
                 "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
                 "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
-                "prepare) are auto-added by bkit when their parent module installs. Run\n" +
+                "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
                 "`pnpm bkit install --full` to seed them all. Existing scripts are preserved\n" +
                 "(consumer values always win).",
         });
@@ -815,8 +815,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
      fail if it is missing or conflicts with a 'with: version:' block.
 
   6. Ensure the package.json scripts referenced by the workflow exist:
-     "format:check", "lint:prose", "lint:slop". Run 'bkit install --lint'
-     to seed them, or add manually.
+     "format:check", "lint:prose", "lint:slop", "slop:delta". Run 'bkit install
+     --lint' to seed them, or add manually.
 
   Do NOT remove or duplicate top-level 'name:', 'on:', or 'jobs:' keys.
   YAML allows only one of each per file.
@@ -1284,7 +1284,7 @@ export function runLintModule(ctx) {
             id: "lint-package-json-missing",
             severity: "advisory",
             detect: "package.json not found — cannot ensure lint scripts.",
-            action: "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop` scripts to package.json.",
+            action: "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`, `slop:delta` scripts to package.json.",
         });
     }
     else if (lintScripts.malformed) {
