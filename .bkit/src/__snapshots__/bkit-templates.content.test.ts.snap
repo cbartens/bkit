@@ -48,6 +48,9 @@ jobs:
     # bkit:end verbose-ci-env
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Full history so slop:delta can materialise the PR base ref as a worktree.
+          fetch-depth: 0
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -161,6 +164,19 @@ jobs:
           TURBO_FORCE: \${{ steps.detect.outputs.turbo_force }}
         run: pnpm format:check
 
+      # vale is not on the runner and .vale/styles/ is gitignored, so without this step
+      # \`pnpm lint:prose\` guard-skips (write-good missing) and the prose gate is silently
+      # dead. Pinned tarball + \`vale sync\` (else E100: write-good missing).
+      - name: Install Vale
+        if: steps.cache.outputs.skip != 'true'
+        env:
+          VALE_VERSION: "3.9.1"
+        run: |
+          curl -sfL "https://github.com/errata-ai/vale/releases/download/v\${VALE_VERSION}/vale_\${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/vale" sync
+
       - name: Run Vale Prose Lint
         if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:prose
@@ -168,6 +184,15 @@ jobs:
       - name: Run Slop Scan
         if: steps.cache.outputs.skip != 'true'
         run: pnpm lint:slop
+
+      # The ENFORCING slop gate (lint:slop above is an advisory full-scan that never fails).
+      # PR-only: materialises the PR base as a worktree and fails on findings this PR ADDS or
+      # WORSENS vs base. Needs fetch-depth: 0 (set on checkout) so the base SHA is present.
+      - name: Run Slop Delta
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request'
+        env:
+          BASE_SHA: \${{ github.event.pull_request.base.sha }}
+        run: pnpm slop:delta "$BASE_SHA"
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (\${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts

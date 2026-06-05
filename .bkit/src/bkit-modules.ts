@@ -1088,10 +1088,11 @@ const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists —
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose && pnpm lint:slop\`.
+  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose\` (fast staged
+  gate). The enforcing slop gate (\`pnpm slop:delta\`) and the heavier gates live in pre-push.
   Most consumers using turbo or their own lint-staged config already cover the
   equivalent — in that case, ignore this advisory and keep your existing hook.
-  If your hook does NOT already format staged files / run prose + slop scans,
+  If your hook does NOT already format staged files / run a prose lint,
   consider adopting the reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
@@ -1109,13 +1110,15 @@ const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bki
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`
-  followed by \`pnpm bkit check\` (the same drift gate CI runs — catching it
-  locally saves a wasted CI cycle when someone bumps @cbartens/bkit without
-  re-running \`bkit install\`). Most consumers using turbo (e.g.
+  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`,
+  then \`pnpm lint:prose\` + \`pnpm slop:delta\` (the enforcing slop gate — fails only on
+  findings this push adds/worsens vs the base), then \`pnpm bkit check\` (the same drift gate
+  CI runs — catching it locally saves a wasted CI cycle when someone bumps @cbartens/bkit
+  without re-running \`bkit install\`). Together these make pre-push a full deterministic
+  mirror of CI. Most consumers using turbo (e.g.
   \`npx turbo run lint typecheck format:check test\`) already cover the first
-  three gates — in that case, just add \`pnpm bkit check\` after your existing
-  command. If your hook does NOT already run those gates, consider adopting the
+  three gates — in that case, add \`pnpm slop:delta\` + \`pnpm bkit check\` after your
+  existing command. If your hook does NOT already run those gates, consider adopting the
   reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
@@ -1506,6 +1509,10 @@ export function runLintModule(ctx: ModuleContext): void {
     }
   }
 
+  // Note: scripts/tooling/slop-delta.sh (the `slop:delta` gate helper) ships via the core
+  // templates pass (scripts/ is a core template dir), like scripts/ci/bkit-protect-main.sh —
+  // no per-module copy needed; the core pass preserves its +x bit.
+
   // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
   // expect actually exist in package.json. Add-if-missing; consumer values win.
   const lintScripts = ensurePackageJsonScripts(
@@ -1519,6 +1526,8 @@ export function runLintModule(ctx: ModuleContext): void {
         // hook with no actionable signal.
         'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
       "lint:slop": "slop-scan scan .",
+      // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
+      "slop:delta": "bash scripts/tooling/slop-delta.sh",
     },
     dryRun,
     ws,
