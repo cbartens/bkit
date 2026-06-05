@@ -22,6 +22,15 @@ else
   pnpm typecheck && pnpm test && pnpm format:check
 fi
 
+# Prose + slop now run here too, so pre-push is a full deterministic mirror of CI
+# (previously prose was CI-only and slop never gated anywhere). prose = vale on the
+# curated md set; slop:delta fails ONLY on findings this push ADDS or WORSENS vs
+# origin/dev — the pre-existing baseline is not yours to fix on the way out. Both run
+# on revert pushes too (md prose is unaffected by deleted code; removals show as
+# 'resolved', never 'added', so slop:delta stays green).
+pnpm lint:prose < /dev/null
+pnpm slop:delta < /dev/null
+
 # bkit-repo only — fail push if `.agents/*` edits weren't mirrored via `pnpm bkit install`.
 pnpm bkit check < /dev/null
 
