@@ -94,10 +94,10 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 
 ### 🔒 Gate 1 — Start Workflow
 
-- [ ] `PHASE` and `MODE` determined
+- [ ] Phase and mode determined (`PHASE`, `MODE`)
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
-- [ ] `ISSUE_ID` non-empty (if tracker wired)
-- [ ] `PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID` non-empty (if `MODE` = CI)
+- [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
+- [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
 - [ ] Issue comment attempted (`Step 1` section)
 
 ---

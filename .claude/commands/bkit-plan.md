@@ -103,7 +103,7 @@ description: "Plan Feature — Autonomous plan generation"
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:plan"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 6. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 7. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
    Format `{ISSUE_ID}-{slug}` — slug <=3 tokens, kebab, lowercase, no stopwords. Assert format `[[ "{FID}" =~ ^[0-9]+-[a-z0-9-]+$ ]]`. **Else** → **Failure Path**.
@@ -126,10 +126,10 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
-- [ ] `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] `PARENT_FID` extraction from issue description attempted
+- [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
 - [ ] Issue update attempted (phase label `bkit:plan`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
@@ -215,7 +215,7 @@ description: "Plan Feature — Autonomous plan generation"
 ### 🔒 Gate 2 — Worktree Setup
 
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
-- [ ] `BRANCH` non-empty (updated to worktree branch)
+- [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Artifact written (`plan-input.md`, non-empty)
 - [ ] Parent design appended (if present)
 - [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `plan-start-workflow` and `plan-worktree-setup` recorded with `parentSha`)
@@ -294,8 +294,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagents invoked (`@bkit-plan-review-1`, `@bkit-plan-review-2`, `@bkit-plan-review-3`, no inline work)
 - [ ] Artifacts written (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`, non-empty)
-- [ ] Verdicts extracted (`REVIEW_VERDICT`, `REVIEW_FAILURES`)
-- [ ] Verdict valid (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid, failures extracted (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`; `REVIEW_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`)
 - [ ] Workflow status updated (step `plan-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 4` section)
@@ -330,8 +329,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Artifact written (`plan-v2-reviewed.md`, non-empty)
-- [ ] Verdict extracted (`APPLY_REVIEW_VERDICT`)
-- [ ] Verdict valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v2-reviewed.md`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 5` section)
@@ -370,8 +368,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagents invoked (`@bkit-plan-scope-check-1`, `@bkit-plan-scope-check-2`, no inline work)
 - [ ] Artifacts written (`plan-scope-check-1.md` and `plan-scope-check-2.md`, non-empty)
-- [ ] Verdicts extracted (`SCOPE_VERDICT`, `SCOPE_FAILURES`)
-- [ ] Verdict valid (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid, failures extracted (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`; `SCOPE_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
 - [ ] Workflow status updated (step `plan-scope-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 6` section)
@@ -408,8 +405,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Subagent invoked (`@bkit-plan-update`, no inline work)
 - [ ] Scope expansions in `docs/pending.md` (if any)
 - [ ] Artifact written (`plan-v3-checked.md`, non-empty)
-- [ ] Verdict extracted (`APPLY_SCOPE_VERDICT`)
-- [ ] Verdict valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v3-checked.md`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 7` section)
@@ -443,7 +439,7 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-check`, no inline work)
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
-- [ ] `COMPLEXITY_VERDICT` extracted
+- [ ] Verdict extracted and valid (`COMPLEXITY_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `plan-complexity-check` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
 
@@ -474,17 +470,17 @@ description: "Plan Feature — Autonomous plan generation"
    ### Step 9 — Complexity Split - Verdict: {SPLIT_VERDICT}
    [plan-v4-split.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-v4-split.md)
    ```
-6. **If** `SPLIT_VERDICT` = PASS → Step 10.
-7. **If** `SPLIT_VERDICT` = FAIL → **Failure Path**.
-8. **Else** → **Failure Path**.
+6. Route:
+   - **If** `SPLIT_VERDICT` = PASS → Step 10.
+   - **If** `SPLIT_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 9 — Complexity Split
 
 - [ ] Subagent invoked (`@bkit-plan-complexity-split`, no inline work)
 - [ ] Artifact written (`plan-v4-split.md`, non-empty)
 - [ ] Children written (`plan-v4-1.md` ... `plan-v4-N.md`, non-empty)
-- [ ] Verdict extracted (`SPLIT_VERDICT`)
-- [ ] Verdict valid (`SPLIT_VERDICT` in `PASS|FAIL`)
+- [ ] Verdict extracted and valid (`SPLIT_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v4-split.md`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 9` section)
@@ -520,19 +516,17 @@ description: "Plan Feature — Autonomous plan generation"
    [plan-summary.md](https://github.com/{OWNER_REPO}/blob/dev/docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md)
    {plan-summary.md content verbatim}
    ```
-8. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/plan-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-9. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-10. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
-11. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-12. **Else** → **Failure Path**.
+8. Route:
+   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 11.
+   - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Summary
 
-- [ ] `PLAN_FINAL` resolved to highest `plan-v*.md` (excluding child `plan-v4-N.md`)
+- [ ] Plan final resolved (`PLAN_FINAL` = highest `plan-v*.md`, excluding child `plan-v4-N.md`)
 - [ ] Subagent invoked (`@bkit-plan-summary`, no inline work)
 - [ ] Artifact written (`plan-summary.md`, non-empty)
-- [ ] Verdict extracted (`SUMMARY_VERDICT`)
-- [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
@@ -601,21 +595,32 @@ description: "Plan Feature — Autonomous plan generation"
    **If** `bkit.githubProject` absent → log `GitHub project not configured in package.json` → skip. **Else** extract `{ owner, number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` → ensure on board `mcp__github__projects_write({ method: "add_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_type: "issue", item_owner: "{OWNER}", item_repo: "{REPO}", issue_number: {ISSUE_ID} })` → resolve numeric item id `mcp__github__projects_list({ method: "list_project_items", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, query: "{ISSUE_ID}" })` → entry whose content issue number == `{ISSUE_ID}` → numeric `id` → `{ITEM_ID}` → set status `mcp__github__projects_write({ method: "update_project_item", owner: "{bkit.githubProject.owner}", owner_type: "org", project_number: {bkit.githubProject.number}, item_id: {ITEM_ID}, updated_field: { id: {bkit.githubProject.statusFieldId}, value: "{bkit.githubProject.reviewOptionId}" } })`.
 
 
-6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. Build `{ARTIFACTS}` link list:
+   ```bash
+   RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=dev
+   ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/plan-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
+   printf '%s\n' "$ARTIFACTS"
+   ```
+7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 11 — Close Workflow
+   Artifacts:
+   {ARTIFACTS}
    ```
-7. **HARD STOP:** Plan requires human review. Do NOT invoke `/build`.
+8. Final return: Display `plan-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke. **HARD STOP** — plan requires human review; do NOT invoke `/build`.
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
 ### 🔒 Gate 11 — Close Workflow
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
-- [ ] `SUMMARY_VERDICT` = PASS or CONCERNS confirmed
+- [ ] Summary verdict confirmed (`SUMMARY_VERDICT` = PASS or CONCERNS)
 - [ ] Canonical plan copied (`docs/plans/{YYYYMM}/{FID}-plan.md`, verified on `dev` post-merge; same for each `{FID}-plan-N.md` if SPLIT — `{YYYYMM}` = creation month)
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] Workflow status updated (`plan` `DONE`, step `plan-close-workflow` recorded with `parentSha`)
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
+- [ ] Final return displayed (`plan-summary.md` content verbatim)
 - [ ] Issue update attempted (status/state `In Review`; phase label `bkit:plan` preserved)
+- [ ] Artifact link list embedded in `Step 11` comment
 - [ ] Issue comment attempted (`Step 11` section)

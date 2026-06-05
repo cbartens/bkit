@@ -50,7 +50,7 @@
 
 - `git revert` of a cross-branch squash (e.g. a `feat/*` branch that landed directly on `main` instead of `dev`) can delete files that surviving code in `main` still references. The result is a tree that fails CI even though git history is "clean".
 - The `feat/*`-onto-`main` path is the root cause that makes recovery destructive; production merges MUST come from `dev` to keep the squash diff scoped to a single feature.
-- The pre-push hook is bypassed on `revert-*` branches (test suite skipped — only typecheck + format:check run) so a revert PR can be pushed even when its source state is transitionally inconsistent.
+- On `revert-*` branches the pre-push hook skips only the **test suite** — typecheck, format:check, prose, slop:delta and the bkit drift gate still run — so a revert PR can be pushed even when its source state is transitionally inconsistent.
 
 ### Post-rollback verification
 
@@ -274,12 +274,14 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 | 1 | Typecheck | `pnpm typecheck` | bkit-managed | TS error → fix source. |
 | 2 | Unit + integration tests | `pnpm test` | bkit-managed | Test failure → fix code, never delete the test. |
 | 3 | Prettier format check | `pnpm format:check` | bkit-managed | Unformatted file → run `pnpm exec prettier --write <path>` (or `pnpm format`) and re-stage. Mirrors CI step "Run Prettier Format Check"; without this gate, formatting failures only surface in CI after push. |
-| 4 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
-| 5 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
+| 4 | Prose lint | `pnpm lint:prose` | bkit-managed | Vale warning → fix the prose. Guard-skips when vale / write-good is absent (install vale to enforce locally); CI installs vale so it always enforces there. |
+| 5 | Slop delta | `pnpm slop:delta` | bkit-managed | A finding this push ADDS or WORSENS vs the base → fix it (the pre-existing baseline is not gated). Materialises the base ref as a worktree and runs `slop-scan delta --fail-on added,worsened`. Note `lint:slop` (`slop-scan scan`) is report-only and is NOT a gate. |
+| 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
+| 7 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 
-**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` and runs only `pnpm typecheck && pnpm format:check`. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Gate 4 (`pnpm bkit check`) still runs in both the consumer template and the source-repo variant. Gate 5 (`pnpm check:dist`) still runs in the source-repo variant (consumers do not have it). Non-revert branches always run all applicable gates.
+**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–7 (prose, slop:delta, bkit check, and source-repo check:dist) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
 
-Pre-commit (`.husky/pre-commit`) runs `pnpm lint:prose && pnpm lint:slop` — those gates fire earlier in the cycle, not at push time. CI runs them again as steps 4 + 5 of the `bkit-tests` job for belt-and-braces.
+Pre-commit (`.husky/pre-commit`) runs `pnpm lint-staged && pnpm lint:prose` — fast staged-file gates that fire earlier in the cycle, not at push time. The enforcing slop gate moved to pre-push (`pnpm slop:delta`, Gate 5); `pnpm lint:slop` (`slop-scan scan`) is report-only and is no longer wired into a hook. CI re-runs prose + slop:delta in the `bkit-tests` job for belt-and-braces.
 
 When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-verify` and do NOT amend over a failed hook (see auto-memory: "skip-ci commits must not be HEAD when PR is created"). If the gate is genuinely broken (e.g. flaky external call), STOP and document the blocker — do not push.
 

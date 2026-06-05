@@ -280,6 +280,7 @@ const LINT_MANIFEST: ManifestEntry[] = [
         "lint:prose":
           'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
         "lint:slop": "slop-scan scan .",
+        "slop:delta": "bash scripts/tooling/slop-delta.sh",
       },
       devDependencies: {
         prettier: "^3.5.3",

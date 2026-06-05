@@ -73,6 +73,16 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
 | @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
+## Live-test gates in the agent workflows
+
+`/bkit-build` and `/bkit-debug` gate on the declared live tier (`test:live` / `test:integration:live` / `test:e2e:live`) when a consumer declares one — appended to the Run-Tests command (opt-out via `[live=off]`); what actually ran is recorded in `TEST_SCOPE` (no separate capability flag).
+
+- **Build** appends the curated `test:live` LAST in its pre-PR run and will not raise a PR if it fails (`scope` records the verbatim test command).
+- **Debug** runs the live boundary as iteration 1 of its Run-Tests loop (the reproduce), anchors diagnosis on the live-tier failure (treating infra/credential failures as environment, not feature-broken), and requires the live tier to flip fail -> pass before close (the empirical fail-then-pass gate).
+- **Soak** (`DEBUG_MODE = SOAK`, the terminal rung of the `1 NORMAL -> 2 OBSERVE -> 3 SOAK` ladder, or chosen up front for unknown-cause bugs) replaces diagnose+remediate with one accumulating-context instrument-or-fix step per loop iteration against the live boundary, bounded by `MAX_TEST_ATTEMPT`.
+
+When no live tier is declared (or `[live=off]`), these gates degrade to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own runs degrade to CONCERNS by design.
+
 ## Consumer-runtime parity rule
 
 bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit install`. The repo and its consumers run the same `.bkit/src/*` code, so a release tag must not ship an install path the repo's own CI hasn't exercised end-to-end.

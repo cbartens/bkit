@@ -72,7 +72,7 @@ Verdict: PASS | CONCERNS | FAIL [Initially set to `PENDING`.]
 
 ## Remediation Status
 
-[Fix applied? Tests passing? Or aborted at attempt N?; initially set to `PENDING`.]
+[Fix applied? Tests passing? Or aborted at attempt N? Live tests ran and passed? Initially set to `PENDING`.]
 
 ## Observation
 

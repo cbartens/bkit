@@ -1,11 +1,13 @@
 #!/usr/bin/env sh
 # bkit pre-push (Tier-3 seed-or-print — modify freely). FAST deterministic gates only:
-# typecheck + unit tests + format:check + the bkit drift gate (no Docker/network). Heavier
-# tiers run in CI, NOT here: integration + E2E -> bkit-tests (gated on web_affected / run_e2e);
-# @live -> bkit-tests-live; "did the planned tiers run?" -> bkit-tests-check. See ci.yml
-# § FULL CI SCAFFOLD REFERENCE — keep slow/network/deploy checks OUT so a green push never
-# implies more than these gates verified. Turbo monorepos: scope with
-# `--filter="...[origin/<default>]"` + `pnpm slop:delta`; never add integration/E2E/@live.
+# typecheck + unit tests + format:check + prose + the enforcing slop gate (slop:delta) +
+# the bkit drift gate (no Docker/network). This is the full deterministic mirror of CI, so
+# a green push can't red-CI on those gates. Heavier tiers run in CI, NOT here: integration +
+# E2E -> bkit-tests (gated on web_affected / run_e2e); @live -> bkit-tests-live; "did the
+# planned tiers run?" -> bkit-tests-check. See ci.yml § FULL CI SCAFFOLD REFERENCE — keep
+# slow/network/deploy checks OUT so a green push never implies more than these gates
+# verified. Turbo monorepos: scope tests with `--filter="...[origin/<default>]"`; never add
+# integration/E2E/@live.
 #
 # Revert-branch bypass: rolling back leaves the tree intentionally inconsistent (deleted
 # files referenced by surviving tests) — skip the suite so recovery lands; lint + typecheck still run.
@@ -25,6 +27,14 @@ if [ "$IS_REVERT" = "1" ]; then
 else
   pnpm typecheck && pnpm test && pnpm format:check
 fi
+
+# Prose + the enforcing slop gate run here too, so pre-push is a full deterministic mirror
+# of CI. prose = vale (guard-skips if vale/write-good absent — install to enforce locally);
+# slop:delta fails ONLY on findings this push ADDS or WORSENS vs origin/<default>, never the
+# pre-existing baseline. Both are safe on revert pushes (md prose is unaffected by deleted
+# code; removals show as 'resolved', never 'added').
+pnpm lint:prose < /dev/null
+pnpm slop:delta < /dev/null
 
 # bkit mirror-drift gate — fails fast if `.agents/*` was edited without `bkit install`
 # regenerating the `.claude/*`/`.cursor/*`/`.husky/*` mirrors (same check CI runs).

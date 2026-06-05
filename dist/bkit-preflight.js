@@ -359,17 +359,18 @@ export function detectPlaywrightReporterHostile(cwd) {
 }
 /**
  * Advisory: consumer's `docs/observability.md` has the bkit-managed block (which
- * ships an `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` example
- * inside it) but no customised `debug-fetch` marker pair AFTER `<!-- bkit:end -->`.
+ * ships inert `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->`
+ * examples inside it) but no `debug-fetch` block AFTER `<!-- bkit:end -->`.
  *
- * `/bkit-debug`'s runtime sub-fetch only reads the first `debug-fetch` block
- * occurring after `<!-- bkit:end -->` (consumer section) — the example shipped
- * inside the managed block is intentionally skipped. Without consumer-section
- * markers, the runtime-log artifact (`debug-context-runtime-{ATTEMPT}.md`) is
- * silently empty on every debug run.
+ * `/bkit-debug`'s runtime sub-fetch runs every `debug-fetch` block occurring
+ * after `<!-- bkit:end -->` (consumer section) — the examples shipped inside the
+ * managed block are intentionally skipped. With no consumer-section block, no
+ * runtime-log artifact (`debug-context-runtime-<name>-{ATTEMPT}.md`) is produced
+ * on any debug run.
  *
- * Only fires when the consumer has the bkit-managed block at all. Consumers
- * who fully own `docs/observability.md` (no markers) are not nagged.
+ * Markers may be named (`debug-fetch:start vercel`) or unnamed (legacy). Only
+ * fires when the consumer has the bkit-managed block at all; consumers who fully
+ * own `docs/observability.md` (no markers) are not nagged.
  */
 export function detectObservabilityDebugFetchMissing(cwd) {
     const filePath = path.join(cwd, "docs", "observability.md");
@@ -382,16 +383,17 @@ export function detectObservabilityDebugFetchMissing(cwd) {
         return null;
     const afterBkitEnd = content.slice(endIdx);
     // Consumer-section markers must be line-anchored to mirror the workflow's
-    // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md:298`).
-    const hasStart = /^<!-- debug-fetch:start -->$/m.test(afterBkitEnd);
+    // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md` Step 5). The start
+    // marker carries an optional block name (`debug-fetch:start vercel`).
+    const hasStart = /^<!-- debug-fetch:start(?: [\w.-]+)? -->$/m.test(afterBkitEnd);
     const hasEnd = /^<!-- debug-fetch:end -->$/m.test(afterBkitEnd);
     if (hasStart && hasEnd)
         return null;
     return {
         id: "observability-debug-fetch-missing",
         severity: "advisory",
-        detect: "docs/observability.md has the bkit-managed block but no customised `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` pair after `<!-- bkit:end -->`. `/bkit-debug`'s runtime-log sub-fetch will silently produce an empty artifact.",
-        action: "Copy the `<!-- debug-fetch:start --> ... <!-- debug-fetch:end -->` block (with its fenced `bash` query) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then customise the query for your log backend (`gcloud logging read` / `aws logs filter-log-events` / `datadog logs query` etc.). Keep it idempotent and read-only — the agent customises severity / freshness / limit at run-time.",
+        detect: "docs/observability.md has the bkit-managed block but no `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
+        action: "Copy one of the named `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. Each block self-gates (missing CLI / token => no output, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit at run-time.",
     };
 }
 /**

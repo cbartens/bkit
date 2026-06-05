@@ -11,14 +11,14 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 > [!CAUTION]
 > This command always shows what will be deleted and never removes branches without asking. Check ahead/behind status before pruning unsync'd work.
 
-## Step 1 — Parse Arguments
+## Parse Arguments
 
 1. `git rev-parse --show-toplevel` → extract `REPO_ROOT`. Assert non-empty.
 
 **If** `{FID}` argument provided → jump to **Single Worktree Path**.
 **Else** → **List All Path**.
 
-## Step 2 — List All Path
+## List All Path
 
 1. `git worktree list` → display full worktree list.
 2. List all Claude-managed worktrees:
@@ -45,7 +45,7 @@ description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 7. **If** human enters `all` → prune each FID in turn (run Single Worktree Path logic for each, skipping the per-FID branch-delete prompt and instead asking once at the end: `Delete all listed feature branches? [y/N]`).
 8. **Else** → treat input as `{FID}` → continue to Single Worktree Path.
 
-## Step 1 — Single Worktree Path
+## Single Worktree Path
 
 1. `WORKTREE_PATH` = `"$REPO_ROOT/.worktrees/{FID}"`.
 2. **If** `$WORKTREE_PATH` does not exist → print `Error: worktree not found at $WORKTREE_PATH` and STOP.

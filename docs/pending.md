@@ -211,3 +211,33 @@
 - **Description:** #160 re-points the SHIPPED `renovate.json5` template `ignorePaths` `.agents/templates/** → .bkit/templates/**`. The bkit repo's OWN Renovate config (`renovate-local.json5` / repo-level overrides) is not touched by #160. If, after the move, Renovate on the bkit repo itself emits onboarding-PR noise scanning the relocated `.bkit/` tree, add a parallel `ignorePaths`/fence to the bkit repo's own Renovate config. Out of scope for #160. No work required unless noise is observed.
 - **Source:** phase
 - **Related:** #160, `.github/renovate-local.json5`
+
+## Unify the #143 `LIVE_API`/`@smoke` convention with the #203 `@live`/`run_live` scaffold (2026-06-03)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** normal
+- **Status:** deferred
+- **Description:** #143 was built keyed on the EXISTING #203 vocabulary (`@live` tier, `test:live` suffix, `run_live` gate, `bkit-tests-live` job) rather than the plan's `LIVE_API` flag + `@smoke` tag + `test:smoke` script. The gether consumer (gether-life/app-gether-life#399/#403/#422) adopted the `LIVE_API`/`@smoke`/`test:smoke` side and validated it green — bkit's scaffold and a real consumer now speak two overlapping live-test dialects. A future pass should pick ONE (likely consumer-first, since gether already migrated): either teach bkit's live-tier probe + docs to recognise `test:smoke`/`@smoke`/`LIVE_API`, or migrate gether to `test:live`/`@live`. The #143 gates are vocabulary-agnostic (they probe for whatever live script the consumer declares), so this is convention-alignment, not a gate rewrite.
+- **Source:** human
+- **Related:** #143, #203, DE-23, gether-life/app-gether-life#399, `docs/testing.md`, `.bkit/templates/.github/workflows/ci.yml`
+
+## #143 script-naming rename (typecheck -> check:type, format:check -> check:format, lint/check/test umbrellas) (2026-06-03)
+
+- **Type:** feature
+- **Category:** infra
+- **Severity:** low
+- **Status:** deferred
+- **Description:** The #143 plan's WS-1 atomic script rename + umbrella aggregates was intentionally NOT built (decision: keep what's in dev; the rename is the exact atomic-or-red-CI blast radius across installer TS / manifests / CI / husky / templates / dist / mirrors / tests to avoid, and #203 already shipped a working naming/CI standard). If a single naming standard is later wanted, do it as its own atomic change with probe-both back-compat (legacy names survive as discovery-loop aliases) so un-migrated consumers keep gating.
+- **Source:** human
+- **Related:** #143, DE-23, `docs/decisions.md`
+
+## Tighter per-paid-endpoint soak-iteration cap for `DEBUG_MODE = SOAK` (2026-06-03)
+
+- **Type:** feature
+- **Category:** agentic
+- **Severity:** low
+- **Status:** deferred
+- **Description:** Soak loops the live test on the shared `MAX_TEST_ATTEMPT` (= 3) inner-loop budget. For paid endpoints (real model / API calls), three full instrument->fix->re-verify iterations per invocation can be costly. A future refinement could add a per-endpoint or per-cost soak-iteration cap (tighter than the shared inner-loop budget) for expensive live boundaries. Out of scope for #143 (the shared cap bounds spend adequately for the common case).
+- **Source:** human
+- **Related:** #143, DE-24, `.bkit/workflows/bkit-debug.md` (Step 8 soak-remediate), `.bkit/prompts/bkit-debug-soak.md`

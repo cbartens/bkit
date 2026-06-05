@@ -6,6 +6,21 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.3.0] — 2026-06-05
+
+Ships two real CI gates to consumers that previously enforced nothing — `slop:delta` (net-new LLM-slop) and Vale prose — redesigns `/debug` around reproduce-first, run-the-real-thing empirical debugging with a NORMAL → OBSERVE → SOAK mode ladder, and makes every phase orchestrator return its `{phase}-summary.md` verbatim with a tracker issue link. All three land on `pnpm bkit install` / `upgrade`.
+
+### Added
+
+- **Real `slop:delta` + Vale prose gates now ship to consumer pre-push and CI (issue [#226](https://github.com/cbartens/bkit/issues/226)).** `lint:slop` was report-only and Vale was never installed in CI, so both "gates" silently enforced nothing. A new `scripts/tooling/slop-delta.sh` runs a worktree-based `slop-scan delta` and fails only on findings a change **adds or worsens** versus the base — gating on net `findingCount` / `repoScore` so slop-scan 0.3.0's position-keyed deltas don't false-positive on innocent line-shifts (a pure shift nets to zero and passes; a genuinely new or worsened finding raises the net count/score and fails). It ships via the core-templates pass (`+x` preserved) and the `slop:delta` script is seeded through `runLintModule` + lint managed keys. The template **pre-push** gains `lint:prose` + `slop:delta` (a full deterministic CI mirror) and the template **pre-commit** drops the dead `lint:slop` scan; the template **`ci.yml`** gains `Install Vale` + `vale sync` (consumer prose was a dead gate — Vale was never installed), a `Run Slop Delta` step on PRs, and `fetch-depth: 0` for the base worktree. `slop-scan` stays a managed consumer devDep and Vale guard-skips when absent. Upgrade advisories (first-install note, the lint-script advisories, the `ci.yml` setup help, and the `deployments.md` pre-push gate table + revert-bypass list) are synced to enumerate the full gate set and the two CI steps existing consumers must add on upgrade.
+
+### Changed
+
+- **`/debug` redesigned around reproduce-first, empirical debugging (issue [#143](https://github.com/cbartens/bkit/issues/143)).** A 12-step debug loop now runs a mode ladder — NORMAL → OBSERVE (2nd pass) → SOAK (3rd+) — with a session-prompt `[soak]` override and a mid-run NORMAL→SOAK fast-track driven by the diagnose `Mode` field. A new `bkit-debug-soak` agent runs one accumulating-context instrument-or-fix step per iteration against the failing boundary (replacing the observe-analyse split). Live-test plumbing (`TESTS_LIVE` / `TEST_SCOPE` verbatim command / `TESTS_LIVE_SKIPPED`) is threaded across build + debug with `scope` recorded in `status.jsonl`, and summaries fold the dedicated Live Tests section into a single "Live tests ran and passed?" question. Gate items are canonicalised to "Verdict extracted and valid (`VAR` in `ENUM`)" across build/plan/ship/debug, `bkit-ship-deferred-sweep` is aligned to the standing-directive corpus, and labelled decision blocks (`Route:` / `Decide:`) are documented (DE-24). `.claude` / `.cursor` mirrors regenerated.
+- **Phase orchestrators return the `{phase}-summary.md` content verbatim as their final message, plus a tracker issue link (issue [#224](https://github.com/cbartens/bkit/issues/224)).** `/build`, `/debug`, `/design`, `/plan`, and `/ship` now display the summary markdown verbatim (identical to the tracker summary comment, including its Recommended Next Step) instead of extracting a separate next-step line, then append a `[{ISSUE_ID} {TITLE}]({URL})` link. The title and URL are captured at the Step-1 issue read; the link sits in a tracker-wired block so it renders for GitHub/Linear and is dropped under no-tracker. Mirrors regenerated.
+
+---
+
 ## [3.2.1] — 2026-06-03
 
 Tightens issue-label handling across the phase workflows: workflow-created issues are no longer auto-enrolled into `bkit:auto`, and each workflow now stamps the correct phase label when it has to mint an issue. Workflow-source only — lands on `pnpm bkit install` / `upgrade`.

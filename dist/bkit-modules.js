@@ -451,8 +451,8 @@ export function runCoreModule(ctx) {
         }
     });
     // 5. First-run extra logging (only when .bkit-version was absent at start of install)
-    // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, prepare)
-    // are auto-added by their respective modules — no manual copy-paste required.
+    // Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop, slop:delta,
+    // prepare) are auto-added by their respective modules — no manual copy-paste required.
     if (isFirstInstall) {
         advisories.push({
             id: "first-install-postinstall-steps",
@@ -470,7 +470,7 @@ export function runCoreModule(ctx) {
                 "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
                 "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
-                "prepare) are auto-added by bkit when their parent module installs. Run\n" +
+                "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
                 "`pnpm bkit install --full` to seed them all. Existing scripts are preserved\n" +
                 "(consumer values always win).",
         });
@@ -815,8 +815,17 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
      fail if it is missing or conflicts with a 'with: version:' block.
 
   6. Ensure the package.json scripts referenced by the workflow exist:
-     "format:check", "lint:prose", "lint:slop". Run 'bkit install --lint'
-     to seed them, or add manually.
+     "format:check", "lint:prose", "lint:slop", "slop:delta". Run 'bkit install
+     --lint' to seed them, or add manually.
+
+  7. The reference adds two gates an older workflow likely lacks:
+       - an 'Install Vale' step (pinned tarball + 'vale sync') before the prose
+         lint — without it 'pnpm lint:prose' silently skips (vale not installed)
+         and the prose gate enforces nothing.
+       - a 'Run Slop Delta' step (PR-only, 'pnpm slop:delta') — the enforcing
+         slop gate. 'lint:slop' ('slop-scan scan') is report-only and never fails.
+     Add both, and set 'fetch-depth: 0' on the checkout so slop:delta can
+     materialise the base ref as a worktree.
 
   Do NOT remove or duplicate top-level 'name:', 'on:', or 'jobs:' keys.
   YAML allows only one of each per file.
@@ -905,10 +914,11 @@ const HUSKY_PRE_COMMIT_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-commit exists —
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose && pnpm lint:slop\`.
+  bkit's reference pre-commit hook runs \`pnpm lint-staged && pnpm lint:prose\` (fast staged
+  gate). The enforcing slop gate (\`pnpm slop:delta\`) and the heavier gates live in pre-push.
   Most consumers using turbo or their own lint-staged config already cover the
   equivalent — in that case, ignore this advisory and keep your existing hook.
-  If your hook does NOT already format staged files / run prose + slop scans,
+  If your hook does NOT already format staged files / run a prose lint,
   consider adopting the reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
@@ -925,13 +935,15 @@ const HUSKY_PRE_PUSH_MERGE_INSTRUCTIONS = `[bkit] .husky/pre-push exists — bki
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`
-  followed by \`pnpm bkit check\` (the same drift gate CI runs — catching it
-  locally saves a wasted CI cycle when someone bumps @cbartens/bkit without
-  re-running \`bkit install\`). Most consumers using turbo (e.g.
+  bkit's reference pre-push hook runs \`pnpm typecheck && pnpm test && pnpm format:check\`,
+  then \`pnpm lint:prose\` + \`pnpm slop:delta\` (the enforcing slop gate — fails only on
+  findings this push adds/worsens vs the base), then \`pnpm bkit check\` (the same drift gate
+  CI runs — catching it locally saves a wasted CI cycle when someone bumps @cbartens/bkit
+  without re-running \`bkit install\`). Together these make pre-push a full deterministic
+  mirror of CI. Most consumers using turbo (e.g.
   \`npx turbo run lint typecheck format:check test\`) already cover the first
-  three gates — in that case, just add \`pnpm bkit check\` after your existing
-  command. If your hook does NOT already run those gates, consider adopting the
+  three gates — in that case, add \`pnpm slop:delta\` + \`pnpm bkit check\` after your
+  existing command. If your hook does NOT already run those gates, consider adopting the
   reference, or merging the missing commands into yours.
 
   Migration note: bkit versions <= 2.0.3 wrote a marker-block (# bkit:start ..
@@ -1255,6 +1267,9 @@ export function runLintModule(ctx) {
             console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
         }
     }
+    // Note: scripts/tooling/slop-delta.sh (the `slop:delta` gate helper) ships via the core
+    // templates pass (scripts/ is a core template dir), like scripts/ci/bkit-protect-main.sh —
+    // no per-module copy needed; the core pass preserves its +x bit.
     // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
     // expect actually exist in package.json. Add-if-missing; consumer values win.
     const lintScripts = ensurePackageJsonScripts({
@@ -1267,6 +1282,8 @@ export function runLintModule(ctx) {
         // hook with no actionable signal.
         'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
         "lint:slop": "slop-scan scan .",
+        // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
+        "slop:delta": "bash scripts/tooling/slop-delta.sh",
     }, dryRun, ws);
     if (lintScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
@@ -1276,7 +1293,7 @@ export function runLintModule(ctx) {
             id: "lint-package-json-missing",
             severity: "advisory",
             detect: "package.json not found — cannot ensure lint scripts.",
-            action: "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop` scripts to package.json.",
+            action: "Configs are installed but ci.yml steps will fail until you add `format:check`, `lint:prose`, `lint:slop`, `slop:delta` scripts to package.json.",
         });
     }
     else if (lintScripts.malformed) {

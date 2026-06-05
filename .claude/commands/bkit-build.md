@@ -130,7 +130,7 @@ description: "Build Feature — Autonomous implementation"
 4. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
 5. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:build"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 6. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
-   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
+   `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 7. Parse `{DESCRIPTION}` (already populated by `issue-read`) for `<!-- bkit:blocked-by start -->` ... `<!-- bkit:blocked-by end -->` block. **If** block absent → no blockers, proceed. **Else** extract each `- #N` line into `{BLOCKER_ISSUES}` array. For each `N` in `{BLOCKER_ISSUES}` → `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: N })` → extract `state`. **If** any blocker `state` != `"closed"` → **Failure Path**.
 8. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID`. **Else** → **Failure Path**.
 9. **If** NO `FID` → create `FID` → lowercase Linear `ISSUE_ID` and kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
@@ -157,11 +157,11 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 1 — Start Workflow
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
-- [ ] `ISSUE_ID` resolved (non-empty when tracker wired; may be empty under `none`)
+- [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
-- [ ] Blocker check attempted (not blocked by any related issues)
 - [ ] Long-branch advisory emitted
+- [ ] Blocker check attempted (not blocked by any related issues)
 - [ ] Issue update attempted (phase label `bkit:build`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
 
@@ -272,7 +272,7 @@ description: "Build Feature — Autonomous implementation"
 ### 🔒 Gate 2 — Worktree Setup
 
 - [ ] Worktree created/resumed (`.worktrees/{FID}`, `pwd` inside worktree)
-- [ ] `BRANCH` non-empty (updated to worktree branch)
+- [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Plan files in `docs/plans/{YYYYMM}/` (canonical bucket)
 - [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
 - [ ] Artifact written (`build-input.md`, non-empty)
@@ -383,7 +383,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Subagent invoked (`@bkit-build-plan-execute`, no inline work)
 - [ ] Artifact written (`build-plan-execute-{SUB_PLAN}-log.md`, non-empty)
 - [ ] Source files implemented
-- [ ] `EXECUTE_VERDICT` extracted
+- [ ] Verdict extracted and valid (`EXECUTE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-plan-execute-{SUB_PLAN}-log.md`)
 - [ ] Workflow status updated (step `build-plan-execute` recorded with `parentSha`, `verdict`, `subPlan`)
 - [ ] Issue comment attempted (`Step 5` section)
@@ -424,11 +424,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 6 — Plan Verify
 
-- [ ] `VERIFY_ATTEMPT` incremented
+- [ ] Verify attempt incremented (`VERIFY_ATTEMPT` + 1)
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, no inline work)
 - [ ] Artifact written (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`, non-empty)
-- [ ] Verdicts extracted (`VERIFY_VERDICT`, `VERIFY_FAILURES`)
-- [ ] Verdict valid (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid, failures extracted (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`; `VERIFY_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-plan-verify` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`)
 - [ ] Issue comment attempted (`Step 6` section)
@@ -445,7 +444,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
     PRIOR_STRATEGY=$(jq -s -r --arg s "build-plan-gaps-remediate" --argjson sp "$SUB_PLAN" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .subPlan==$sp and .status=="DONE")] | last.strategy // ""' \
       "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
     ```
-18. Set next `STRATEGY`:
+18. Decide `STRATEGY`:
     - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
     - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
     - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
@@ -478,7 +477,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Subagent invoked (`@bkit-build-plan-gaps-remediate`, no inline work)
 - [ ] Artifact written (`build-plan-gaps-remediate-{SUB_PLAN}-{VERIFY_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
-- [ ] Verdict and strategy extracted (`REMEDIATE_VERDICT`, `STRATEGY`)
+- [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `build-plan-gaps-remediate` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`, `strategy`)
 - [ ] Issue comment attempted (`Step 7` section)
 
@@ -508,16 +507,16 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```comment
    ### Step 8 — Plan Verify Holistic - Verdict: {HOLISTIC_VERDICT} - Failures: {HOLISTIC_FAILURES}
    ```
-6. **If** `HOLISTIC_VERDICT` = PASS or CONCERNS → Step 9.
-7. **If** `HOLISTIC_VERDICT` = FAIL → **Failure Path**.
-8. **Else** → **Failure Path**.
+6. Route:
+   - **If** `HOLISTIC_VERDICT` = PASS or CONCERNS → Step 9.
+   - **If** `HOLISTIC_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 8 — Plan Verify Holistic
 
 - [ ] Subagent invoked (`@bkit-build-plan-verify`, holistic, no inline work)
 - [ ] Artifact written (`build-plan-verify-holistic.md`, non-empty)
-- [ ] Verdicts extracted (`HOLISTIC_VERDICT`, `HOLISTIC_FAILURES`)
-- [ ] Verdict valid (`HOLISTIC_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid, failures extracted (`HOLISTIC_VERDICT` in `PASS|CONCERNS|FAIL`; `HOLISTIC_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-holistic.md`)
 - [ ] Workflow status updated (step `build-plan-verify-holistic` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 8` section)
@@ -584,19 +583,19 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```comment
    ### Step 10 — Reconcile Build Challenge - Verdict: {CHALLENGE_VERDICT} - Failures: {CHALLENGE_FAILURES} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
-6. **If** `CHALLENGE_VERDICT` = PASS → Step 13.
-7. **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
-8. **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13.
-9. **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
-10. **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → **Failure Path**.
-11. **Else** → **Failure Path**.
+6. Route:
+   - **If** `CHALLENGE_VERDICT` = PASS → Step 13.
+   - **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
+   - **If** `CHALLENGE_VERDICT` = CONCERNS AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → Step 13.
+   - **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` < 1 → Step 11.
+   - **If** `CHALLENGE_VERDICT` = FAIL AND `CHALLENGE_REMEDIATE_ATTEMPT` >= 1 → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 10 — Reconcile Build Challenge
 
 - [ ] Subagent invoked (`@bkit-build-challenge-reconcile`, no inline work)
 - [ ] Artifact written (`build-challenge.md`, non-empty)
-- [ ] Verdicts extracted (`CHALLENGE_VERDICT`, `CHALLENGE_FAILURES`)
-- [ ] Verdict valid (`CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid, failures extracted (`CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`; `CHALLENGE_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-challenge.md`)
 - [ ] Workflow status updated (step `build-challenge-reconcile` recorded with `parentSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 10` section)
@@ -605,7 +604,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ## 🧠 Step 11 — Build Challenge Remediate
 
-**Run only if** Step 10 `CHALLENGE_VERDICT` = CONCERNS or FAIL **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
+**Run only if** Step 10 (`CHALLENGE_VERDICT` = CONCERNS **or** FAIL) **and** `CHALLENGE_REMEDIATE_ATTEMPT` < 1.
 
 1. Increment `CHALLENGE_REMEDIATE_ATTEMPT` + 1.
 2. **Subagent:** Invoke `@bkit-build-challenge-remediate` using `Agent` tool:
@@ -629,16 +628,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```comment
    ### Step 11 — Build Challenge Remediate - Verdict: {REMEDIATE_CHALLENGE_VERDICT} - Attempt: {CHALLENGE_REMEDIATE_ATTEMPT}
    ```
-7. **If** `REMEDIATE_CHALLENGE_VERDICT` = FAIL → **Failure Path**.
-8. **Else** → Step 12.
+7. Route:
+   - **If** `REMEDIATE_CHALLENGE_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → Step 12.
 
 ### 🔒 Gate 11 — Build Challenge Remediate
 
-- [ ] `CHALLENGE_REMEDIATE_ATTEMPT` incremented
+- [ ] Challenge-remediate attempt incremented (`CHALLENGE_REMEDIATE_ATTEMPT` + 1)
 - [ ] Subagent invoked (`@bkit-build-challenge-remediate`, no inline work)
 - [ ] Artifact written (`build-challenge-remediate-log.md`, non-empty)
 - [ ] Source files modified or classify-gate FAIL recorded
-- [ ] `REMEDIATE_CHALLENGE_VERDICT` extracted (in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`REMEDIATE_CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-challenge-remediate` recorded with `parentSha`, `verdict`, `attempt`)
 - [ ] Issue comment attempted (`Step 11` section)
 
@@ -668,14 +668,16 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    ```comment
    ### Step 12 — Build Challenge Tests - Verdict: {CHALLENGE_TESTS_VERDICT}
    ```
-6. **If** `CHALLENGE_VERDICT` = FAIL → **Re-run Step 9**. **Else** → Step 13.
+6. Route:
+   - **If** `CHALLENGE_VERDICT` = FAIL → **Re-run Step 9**.
+   - **Else** → Step 13.
 
 ### 🔒 Gate 12 — Build Challenge Tests
 
 - [ ] Subagent invoked (`@bkit-build-challenge-tests`, no inline work)
 - [ ] Artifact written (`build-challenge-tests.md`, non-empty)
 - [ ] Test files created/updated
-- [ ] `CHALLENGE_TESTS_VERDICT` extracted
+- [ ] Verdict extracted and valid (`CHALLENGE_TESTS_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-challenge-tests` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 12` section)
 - [ ] Routing applied (re-run Step 9 if `CHALLENGE_VERDICT` = FAIL; else Step 13)
@@ -687,42 +689,52 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 1. Increment `TEST_ATTEMPT` + 1.
 2. Run verbatim — do NOT modify quoting, filter, or glob:
    ```bash
+   TESTS_LIVE=0
+   if ! grep -q '\[live=off\]' "docs/plans/{YYYYMM}/logs/{FID}/build-input.md" 2>/dev/null \
+      && { jq -e '.scripts["test:live"]' package.json >/dev/null 2>&1 || { [ -f turbo.json ] && pnpm turbo run test:live --dry-run >/dev/null 2>&1; }; }; then
+     TESTS_LIVE=1
+   fi
    if [ -f turbo.json ]; then
-     pnpm turbo lint typecheck test --filter='...[origin/dev]' --continue
+     TEST_SCOPE="pnpm turbo lint typecheck test$([ "$TESTS_LIVE" = 1 ] && printf ' test:live') --filter='...[origin/dev]' --continue"
    else
-     set -e
-     for s in typecheck test format:check lint:slop lint:prose; do
-       if jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1; then pnpm "$s"; fi
+     TEST_SCOPE=""
+     for s in typecheck test format:check lint:slop lint:prose $([ "$TESTS_LIVE" = 1 ] && printf 'test:live'); do
+       jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm $s"
      done
    fi
+   echo "TEST_SCOPE=$TEST_SCOPE"
+   eval "$TEST_SCOPE"
    ```
-3. Set `TEST_VERDICT` and `TEST_FAILURES` from exit code: **If** all tests passed `TEST_VERDICT` = PASS and `TEST_FAILURES` = 0. **Else** `TEST_VERDICT` = FAIL and `TEST_FAILURES` = count of failing test suites (>=1).
-4. Update status and commit:
+3. Decide `TEST_VERDICT` + `TEST_FAILURES` from exit code:
+   - **If** all tests passed → `TEST_VERDICT` = PASS, `TEST_FAILURES` = 0.
+   - **Else** → `TEST_VERDICT` = FAIL, `TEST_FAILURES` = count of failing test suites (>=1).
+4. Extract `TEST_SCOPE` from run block `TEST_SCOPE=` line.
+5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
-     '{type:"step-done", workflow:"build", step:"build-run-tests", status:"DONE", verdict:$v, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$TEST_VERDICT" --arg sc "$TEST_SCOPE" --argjson a "$TEST_ATTEMPT" --argjson f "$TEST_FAILURES" \
+     '{type:"step-done", workflow:"build", step:"build-run-tests", status:"DONE", verdict:$v, scope:$sc, attempt:$a, failures:$f, at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): run-tests attempt ${TEST_ATTEMPT}"
    ```
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
-   ### Step 13 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Attempt: {TEST_ATTEMPT}
+   ### Step 13 — Run Tests - Verdict: {TEST_VERDICT} - Failures: {TEST_FAILURES} - Scope: {TEST_SCOPE} - Attempt: {TEST_ATTEMPT}
    ```
-6. **If** all tests PASS → Step 16.
-7. **If** some tests FAIL:
-   - **If** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 14.
+7. Route:
+   - **If** all tests PASS → Step 16.
+   - **If** some tests FAIL **and** `TEST_ATTEMPT` <= `MAX_TEST_ATTEMPT` → Step 14.
+   - **If** some tests FAIL **and** `TEST_ATTEMPT` > `MAX_TEST_ATTEMPT` → **Failure Path**.
    - **Else** → **Failure Path**.
-8. **Else** → **Failure Path**.
 
 ### 🔒 Gate 13 — Run Tests
 
-- [ ] `TEST_ATTEMPT` incremented
-- [ ] Tests executed (turbo path if `turbo.json`, else single-package script fallback)
-- [ ] Verdicts extracted (`TEST_VERDICT`, `TEST_FAILURES`)
-- [ ] Workflow status updated (step `build-run-tests` recorded with `parentSha`, `verdict`)
+- [ ] Test attempt incremented (`TEST_ATTEMPT` + 1)
+- [ ] Tests executed (turbo path if `turbo.json`)
+- [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
+- [ ] Workflow status updated (step `build-run-tests` recorded with `parentSha`, `verdict`, `scope`)
 - [ ] Issue comment attempted (`Step 13` section)
 
 ---
@@ -737,7 +749,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    PRIOR_STRATEGY=$(jq -s -r --arg s "build-failure-diagnose" "$FOLD"' fold | [.[] | .steps[] | select(.step==$s and .status=="DONE")] | last.strategy // ""' \
      "$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl")
    ```
-2. Set next `STRATEGY`:
+2. Decide `STRATEGY`:
    - **If** `PRIOR_STRATEGY` empty → `STRATEGY` = STANDARD.
    - **If** `PRIOR_STRATEGY` = STANDARD → `STRATEGY` = PIVOT.
    - **If** `PRIOR_STRATEGY` = PIVOT → `STRATEGY` = FINAL.
@@ -765,11 +777,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 14 — Failure Diagnose
 
-- [ ] `STRATEGY` computed before invocation
+- [ ] Strategy computed before invocation (`STRATEGY`)
 - [ ] Subagent invoked (`@bkit-debug-failure-diagnose`, no inline work)
 - [ ] Artifact written (`build-failure-diagnose-{TEST_ATTEMPT}.md`, non-empty)
-- [ ] Verdict extracted (`DIAGNOSE_VERDICT`)
-- [ ] Verdict valid (`DIAGNOSE_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`DIAGNOSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
 - [ ] Issue comment attempted (`Step 14` section)
@@ -808,7 +819,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Subagent invoked (`@bkit-debug-failure-remediate`, no inline work)
 - [ ] Artifact written (`build-failure-remediate-{TEST_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
-- [ ] `REMEDIATE_VERDICT` extracted
+- [ ] Verdict extracted and valid (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-failure-remediate` recorded with `parentSha`, `verdict`)
 - [ ] Issue comment attempted (`Step 15` section)
 
@@ -841,18 +852,16 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    [build-summary.md](https://github.com/{OWNER_REPO}/blob/{BRANCH}/docs/plans/{YYYYMM}/logs/{FID}/build-summary.md)
    {build-summary.md content verbatim}
    ```
-7. Read `Recommended Next Step` section from `docs/plans/{YYYYMM}/logs/{FID}/build-summary.md` → extract `{NEXT_STEP}` without heading. **If** missing → set `{NEXT_STEP}` = `No next-step recommendation`.
-8. Final return: Present `{NEXT_STEP}` verbatim in final message to user — do NOT auto-invoke.
-9. **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
-10. **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
-11. **Else** → **Failure Path**.
+7. Route:
+   - **If** `SUMMARY_VERDICT` = PASS or CONCERNS → Step 17.
+   - **If** `SUMMARY_VERDICT` = FAIL → **Failure Path**.
+   - **Else** → **Failure Path**.
 
 ### 🔒 Gate 16 — Summary
 
 - [ ] Subagent invoked (`@bkit-build-summary`, no inline work)
 - [ ] Artifact written (`build-summary.md`, non-empty)
-- [ ] Verdict extracted (`SUMMARY_VERDICT`)
-- [ ] Verdict valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
+- [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `build-summary` recorded with `parentSha`, `verdict`)
@@ -927,8 +936,10 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
-     '{type:"step-done", workflow:"build", step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
+   TESTS_LIVE_SKIPPED=""
+   echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
+     '{type:"step-done", workflow:"build", step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
      >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
@@ -952,12 +963,22 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 4. Re-read issue labels post-push:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
    After reading issue (`issue-read`): **If** `bkit:auto` NOT in `LABELS` → kill switch active → terminate workflow normally (current run finishes, no further automation).
-5. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+5. Build `{ARTIFACTS}` link list:
+   ```bash
+   RR=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)"); BR=$(git branch --show-current)
+   ARTIFACTS=$( { git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/" | grep -E "docs/plans/{YYYYMM}/{FID}-[^/]+$"; git -C "$RR" ls-tree -r --name-only "$BR" -- "docs/plans/{YYYYMM}/logs/{FID}/" | grep -E "/build-[^/]+$"; } | while read -r f; do printf -- '- [%s](https://github.com/{OWNER_REPO}/blob/%s/%s)\n' "$(basename "$f")" "$BR" "$f"; done )
+   printf '%s\n' "$ARTIFACTS"
+   ```
+6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
    ### Step 18 — Close Workflow
    [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
+   Artifacts:
+   {ARTIFACTS}
    ```
+7. Final return: Display `build-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
+   Append issue link [{ISSUE_ID} {TITLE}]({URL})
 
 ### 🔒 Gate 18 — Close Workflow
 
@@ -966,9 +987,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
 - [ ] HEAD-Subject Assertion passed
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
-- [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`)
+- [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
+- [ ] Final return displayed (`build-summary.md` content verbatim)
 - [ ] Issue update attempted (phase label `bkit:build` preserved, status/state `In Review`)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
+- [ ] Artifact link list embedded in `Step 18` comment
 - [ ] Issue comment attempted (`Step 18` section)
