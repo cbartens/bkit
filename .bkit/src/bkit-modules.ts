@@ -1056,13 +1056,25 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   rules apply with no parse errors.
 `;
 
-const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge if useful.
+const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge the build-output ignores (see below).
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open slop-scan.config.json. Compare against the bkit reference below.
   Merge any new patterns/exclusions you find useful into the existing
   file. Keep your existing project-specific entries.
+
+  IMPORTANT — build-output ignores: ensure your "ignores" array carries the
+  depth-agnostic build-output globs from the reference — "**/dist/**",
+  "**/coverage/**", "**/node_modules/**", "**/.next/**", "**/.turbo/**". The
+  slop:delta gate scans the live working tree (--head .) against a clean base
+  worktree, so any build output present locally but absent from that base reads
+  as net-new slop and FAILs the gate. slop-scan honours only the ROOT
+  .gitignore, so build output ignored by a nested .gitignore (e.g.
+  apps/web/.gitignore) is NOT excluded — list it here. Root-relative globs
+  ("dist/**") do NOT match nested build dirs ("apps/web/dist/"); use the "**/"
+  form. Add your own generated dirs the same way (e.g. "**/.svelte-kit/**",
+  "**/.nuxt/**", "**/out/**").
 
   --- begin bkit reference slop-scan.config.json ---
 {{TEMPLATE_CONTENT}}
