@@ -1,5 +1,12 @@
 {
-  "ignores": ["dist/**", "coverage/**", "node_modules/**", "**/*.generated.ts"],
+  "ignores": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/*.generated.ts"
+  ],
   "rules": {
     "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
     "structure.over-fragmentation": { "enabled": true },

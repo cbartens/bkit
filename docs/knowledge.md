@@ -510,3 +510,15 @@
 - **Severity:** high (breaks the auto-route fail-safe; any bkit:auto repo with a malformed/missing PR body marker hits a red job)
 - **Source:** build-challenge (challenge-1 + challenge-2 merged finding)
 - **Related:** #141, DE-21, `.github/workflows/bkit-cloud.yml`
+
+## KN-32: `slop:delta` scans `--head .` (live tree) against a clean base worktree — gitignored build output surfaces as phantom "added" findings (2026-06-06)
+
+- **Category:** infra
+- **Symptom:** A consumer's `pnpm slop:delta` failed on hundreds of phantom "added" findings (707, all from `apps/web/.next/`) before anything shipped. The build output exists in the live tree but not in the base, so the gate read it as net-new slop and FAILed spuriously. After adding `**/.next/**` to the consumer's `slop-scan.config.json` ignores, net dropped to -1 and the gate passed.
+- **Root cause:** Two compounding facts. (1) `slop-scan delta --base <wt> --head .` is asymmetric — the base is a detached `git worktree` (a fresh checkout: tracked files only, no untracked or gitignored build output), while `--head .` scans the real working tree (which has `.next/`, `.turbo/`, etc. from local builds). Any path present live but absent from the base checkout reads as added. (2) slop-scan respects only the **root** `.gitignore`, not nested ones; in a monorepo, build output ignored by a package-level `.gitignore` (e.g. `apps/web/.gitignore`) is never excluded. The shipped default ignores compounded it by being root-relative (`dist/**`, which matches only the repo root, not `apps/web/dist/` — confirmed: `dist/**` still flags the nested path, `**/dist/**` does not).
+- **Fix or rule:** Ship depth-agnostic, monorepo-safe build-output ignores in the default `slop-scan.config.json` — `**/dist/**`, `**/coverage/**`, `**/node_modules/**`, `**/.next/**`, `**/.turbo/**` (`**/X/**` matches root and nested alike, so bkit's own tracked root `dist/` stays ignored). Never slop-scan build output. Residual: the `--head .`-vs-clean-worktree asymmetry makes any untracked or gitignored build artifact a latent false-positive source, so a consumer with other generated dirs (`.svelte-kit/`, `.nuxt/`, `out/`) still adds them to their own `slop-scan.config.json`. CI checks out a clean tree (no prior build) and never sees this; local pre-push on a built tree does.
+- **Type:** gotcha
+- **Confidence:** high (both mechanisms — glob depth and root-only `.gitignore` — reproduced in isolation)
+- **Severity:** medium (spurious local pre-push FAIL for any consumer with build artifacts in the tree; the consumer-side ignore unblocks immediately; never ships bad code)
+- **Source:** consumer dogfood feedback
+- **Related:** #226, `scripts/tooling/slop-delta.sh`, `slop-scan.config.json`
