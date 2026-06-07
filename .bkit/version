@@ -4,12 +4,13 @@
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
     ".github/renovate.json5": "bbd32e18195b64407eb919610454bd4976cc93728a153a1408650f1664237b53",
-    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb"
+    ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb",
+    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3"
   },
   "canonicalHashes": {
     "docs/deployments.md": "c58a6613640e199c440fd7d9ddfad2075fd111505da3a4f09ffe7759075f0784",
     "docs/testing.md": "ef05ff3ef70be0a6fae3cf8ecf28b52596b0235117a0da5620ae7e6c8212196c",
-    ".claude/settings.json": "2053ebde336b372761629c6b4b732161d5cbe15df8c91dbce523779d64e52cb5",
+    ".claude/settings.json": "9fd0c032b2f5b90c6d793647f736fb01968b22daf2cdd0e5e1e01ad5a357a6df",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
@@ -59,6 +60,8 @@
     "docs/pending.md": "785b8bfeda66a5857304399da5ccf332255e6d32c112af4f52ad5277065a7efa",
     "docs/technology.md": "b53991e4116da14297236d1ae6e855450e21fc9ae0cb61e4f20dffa70329ea2d",
     ".github/workflows/bkit-cloud.yml": "dcd487653369d965bd666755cef6a9bbdee5afe8eba1f4abd1d0cd7582e89edb",
-    ".github/renovate-local.json5": "544dfe7090ac2a93d497f69aca729d6a599f25c82a4254e1cb4474dcd33a91b6"
-  }
+    ".github/renovate-local.json5": "544dfe7090ac2a93d497f69aca729d6a599f25c82a4254e1cb4474dcd33a91b6",
+    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3"
+  },
+  "pinnedCommit": "1bc4fb080f33a5a25b28cc6513393a4172ac0aee"
 }

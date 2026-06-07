@@ -24,8 +24,10 @@
 > - **Root cause:** why
 > - **Fix or rule:** action
 > - **Type:** gotcha | pattern | config | dependency | workaround | post-mortem
-> - **Confidence:** high | medium | low
+> - **Confidence:** high | medium | low — raise on re-observation, lower on contradiction/correction
+> - **Last-confirmed:** YYYY-MM-DD — most recent re-verification; defaults to entry date
 > - **Severity:** critical | normal
+> - **Scope:** bkit-repo | consumer | universal
 > - **Source:** agent | human | phase
 > - **Related:** {FID}, Linear IDs BAR-{N}, PRs PR-{N}, Commits {SHA}, Decisions DE-{N}, Knowledge KN-{N}, paths, etc
 > ```

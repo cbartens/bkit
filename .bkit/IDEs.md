@@ -199,6 +199,13 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 
 **Install behaviour:** hook scripts are **template drops** (per-host, NOT generated from `.agents/`). Semantic differences above (blocking vs non-blocking, stdin shape, output JSON shape) make a single canonical script impossible. Maintain two parallel implementations under `bkit/templates/<host>/hooks/`. Keep them functionally equivalent.
 
+### GateGuard (PreToolUse — Claude only)
+
+`gateguard.cjs` is an advisory `PreToolUse` hook on `Edit|Write|MultiEdit` (registered in `.claude/settings.json` → `hooks.PreToolUse`). On the first touch of a file per session it injects an investigation checklist via `additionalContext`; gate-config paths (tsconfig / eslint / prettier / vitest / vale / slop / lint-staged) get a "fix the code, don't weaken the gate" advisory instead. It is **fail-open** (never exits non-zero), **subagent-exempt** (skips when `agent_id` is present in the payload), and dedup'd per `(session, file)` via OS-temp state with a 24h TTL.
+
+- **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny the first touch per file (checklist as the reason), then allow the retry. The deny flip is dogfood-gated — flip via env, no code change. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses the gate-config advisory.
+- **Cursor divergence:** Cursor's hook model has SessionStart/Stop-class events plus `afterFileEdit` (post-hoc), but **no pre-edit event that injects model-visible context before the edit runs** — so GateGuard has no faithful Cursor port and is **Claude-only** by design. Note: unlike SessionStart, a Claude `PreToolUse` hook CAN block (exit 2 / `permissionDecision: deny`) — `deny` mode uses that; the "Cannot block" row above is specific to SessionStart.
+
 ---
 
 ## Permissions / auto-approve

@@ -12,6 +12,7 @@ import {
   hashFile,
   shouldDeleteTier3,
   isConsumerModified,
+  resolveBkitCommit,
   type BkitVersion,
 } from "./bkit-version";
 
@@ -357,5 +358,70 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
       true,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pinnedCommit provenance (E1) — parse + resolve
+// ---------------------------------------------------------------------------
+
+describe("pinnedCommit — parse", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+  it("extracts pinnedCommit when present in JSON", () => {
+    const json = JSON.stringify({ pinnedVersion: "3.4.0", pinnedCommit: SHA });
+    const result = parseBkitVersion(json);
+    expect(result!.pinnedCommit).toBe(SHA);
+  });
+
+  it("omits pinnedCommit when absent (backward-compat)", () => {
+    const result = parseBkitVersion(JSON.stringify({ pinnedVersion: "3.4.0" }));
+    expect(result!.pinnedCommit).toBeUndefined();
+  });
+
+  it("ignores a non-string / empty pinnedCommit", () => {
+    expect(
+      parseBkitVersion(JSON.stringify({ pinnedVersion: "3.4.0", pinnedCommit: "" }))!.pinnedCommit,
+    ).toBeUndefined();
+    expect(
+      parseBkitVersion(JSON.stringify({ pinnedVersion: "3.4.0", pinnedCommit: 42 }))!.pinnedCommit,
+    ).toBeUndefined();
+  });
+
+  it("round-trips pinnedCommit through serialize → parse", () => {
+    const original: BkitVersion = {
+      pinnedVersion: "3.4.0",
+      tier3Hashes: {},
+      canonicalHashes: {},
+      pinnedCommit: SHA,
+    };
+    const parsed = parseBkitVersion(serializeBkitVersion(original));
+    expect(parsed!.pinnedCommit).toBe(SHA);
+  });
+});
+
+describe("resolveBkitCommit", () => {
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+  it("prefers a valid gitHead from the package.json", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", version: "1.0.0", gitHead: SHA }),
+      "utf-8",
+    );
+    expect(resolveBkitCommit(tmpDir)).toBe(SHA);
+  });
+
+  it("ignores an invalid gitHead and falls through (non-git tmp dir → undefined)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", version: "1.0.0", gitHead: "not-a-sha" }),
+      "utf-8",
+    );
+    expect(resolveBkitCommit(tmpDir)).toBeUndefined();
+  });
+
+  it("returns undefined when there is no package.json and no git repo", () => {
+    expect(resolveBkitCommit(tmpDir)).toBeUndefined();
   });
 });

@@ -358,6 +358,50 @@ export function detectPlaywrightReporterHostile(cwd) {
     };
 }
 /**
+ * Line-anchored consumer opt-out marker for the debug-fetch advisories. A repo
+ * that legitimately enables no runtime-log source places this below
+ * `<!-- bkit:end -->` to dismiss both `observability-debug-fetch-missing` and
+ * `observability-debug-fetch-source-not-enabled`.
+ */
+const DEBUG_FETCH_NONE_RE = /^<!-- debug-fetch:none(?: [^>]*)? -->$/m;
+/**
+ * Map of debug-fetch source name -> predicate proving THIS repo actually runs
+ * that backend. Evidence-gates `observability-debug-fetch-source-not-enabled`
+ * so a single-backend consumer (e.g. Vercel-only) is never nagged about a
+ * backend it does not use (e.g. Supabase). A shipped example whose name has no
+ * entry here is never flagged (cannot prove use => stay quiet).
+ */
+const DEBUG_FETCH_BACKEND_EVIDENCE = {
+    supabase: (cwd) => fs.existsSync(path.join(cwd, "supabase", "config.toml")) ||
+        readDependencyNames(cwd).some((d) => d.startsWith("@supabase/")),
+    vercel: (cwd) => fs.existsSync(path.join(cwd, "vercel.json")) ||
+        fs.existsSync(path.join(cwd, ".vercel")) ||
+        readDependencyNames(cwd).includes("vercel"),
+};
+/** Every dependency name across the four package.json dependency fields. */
+function readDependencyNames(cwd) {
+    let pkg;
+    try {
+        pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
+    }
+    catch {
+        return [];
+    }
+    const names = [];
+    for (const field of [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ]) {
+        const deps = pkg[field];
+        if (deps && typeof deps === "object") {
+            names.push(...Object.keys(deps));
+        }
+    }
+    return names;
+}
+/**
  * Advisory: consumer's `docs/observability.md` has the bkit-managed block (which
  * ships inert `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->`
  * examples inside it) but no `debug-fetch` block AFTER `<!-- bkit:end -->`.
@@ -370,7 +414,8 @@ export function detectPlaywrightReporterHostile(cwd) {
  *
  * Markers may be named (`debug-fetch:start vercel`) or unnamed (legacy). Only
  * fires when the consumer has the bkit-managed block at all; consumers who fully
- * own `docs/observability.md` (no markers) are not nagged.
+ * own `docs/observability.md` (no markers) are not nagged. Dismissable with a
+ * `<!-- debug-fetch:none ... -->` marker below `<!-- bkit:end -->`.
  */
 export function detectObservabilityDebugFetchMissing(cwd) {
     const filePath = path.join(cwd, "docs", "observability.md");
@@ -382,6 +427,10 @@ export function detectObservabilityDebugFetchMissing(cwd) {
     if (endIdx === -1)
         return null;
     const afterBkitEnd = content.slice(endIdx);
+    // Consumer opt-out: dismiss when a `<!-- debug-fetch:none ... -->` marker is
+    // present below `<!-- bkit:end -->` (repo legitimately enables no source).
+    if (DEBUG_FETCH_NONE_RE.test(afterBkitEnd))
+        return null;
     // Consumer-section markers must be line-anchored to mirror the workflow's
     // `sed`/`awk` extraction (`.bkit/workflows/bkit-debug.md` Step 5). The start
     // marker carries an optional block name (`debug-fetch:start vercel`).
@@ -394,6 +443,71 @@ export function detectObservabilityDebugFetchMissing(cwd) {
         severity: "advisory",
         detect: "docs/observability.md has the bkit-managed block but no `<!-- debug-fetch:start [name] --> ... <!-- debug-fetch:end -->` block after `<!-- bkit:end -->`. `/bkit-debug` runs every block in that consumer section — with none, no runtime-log artifact is produced.",
         action: "Copy one of the named `<!-- debug-fetch:start <name> --> ... <!-- debug-fetch:end -->` example blocks (e.g. `vercel`, `supabase`) out of the bkit-managed section and paste it after `<!-- bkit:end -->`, then set its env vars. Each block self-gates (missing CLI / token => no output, not an error), so enable only the sources you use; add your own block for any other log backend (`gcloud` / `aws` / `datadog`). Keep blocks read-only and idempotent — the agent customises severity / freshness / limit at run-time.",
+    };
+}
+/**
+ * Advisory: `docs/observability.md` ships a NAMED debug-fetch example (e.g.
+ * `supabase`) in the bkit-managed region, this repo demonstrably runs that
+ * backend, yet the consumer section after `<!-- bkit:end -->` enables no block
+ * for it — so `/bkit-debug` fetches no runtime logs for a source the repo uses.
+ *
+ * Distinct from `observability-debug-fetch-missing` (consumer section has NO
+ * block at all): this targets PARTIAL enablement — the post-upgrade footgun
+ * where an upgrade ships a fresh `supabase` example while the consumer section
+ * still holds only a legacy `vercel` block. The two are mutually exclusive: this
+ * one only runs once the consumer section already has at least one block.
+ *
+ * Evidence-gated to avoid nagging single-backend consumers: a source is flagged
+ * only when `DEBUG_FETCH_BACKEND_EVIDENCE[name]` proves the repo runs it. A
+ * source counts as enabled when its name appears anywhere in the consumer
+ * section — a named marker (`debug-fetch:start supabase`) OR an unnamed block
+ * body (`vercel logs`, `api.supabase.com`) — so a legacy unnamed block is not a
+ * false positive. Dismissable via `<!-- debug-fetch:none ... -->` below
+ * `<!-- bkit:end -->`.
+ */
+export function detectObservabilityDebugFetchSourceNotEnabled(cwd) {
+    const filePath = path.join(cwd, "docs", "observability.md");
+    if (!fs.existsSync(filePath))
+        return null;
+    const content = fs.readFileSync(filePath, "utf-8");
+    const endIdx = content.search(/^<!-- bkit:end -->$/m);
+    if (endIdx === -1)
+        return null;
+    const managed = content.slice(0, endIdx);
+    const consumer = content.slice(endIdx);
+    // Consumer opt-out marker dismisses the advisory.
+    if (DEBUG_FETCH_NONE_RE.test(consumer))
+        return null;
+    // Only PARTIAL enablement: when the consumer section has no block at all,
+    // `observability-debug-fetch-missing` owns that case (avoid double-firing).
+    const hasStart = /^<!-- debug-fetch:start(?: [\w.-]+)? -->$/m.test(consumer);
+    const hasEnd = /^<!-- debug-fetch:end -->$/m.test(consumer);
+    if (!(hasStart && hasEnd))
+        return null;
+    // Named example sources shipped in the bkit-managed region.
+    const shipped = new Set();
+    for (const m of managed.matchAll(/^<!-- debug-fetch:start ([\w.-]+) -->$/gm)) {
+        shipped.add(m[1]);
+    }
+    if (shipped.size === 0)
+        return null;
+    const consumerLower = consumer.toLowerCase();
+    const missing = [...shipped].filter((name) => {
+        const evidence = DEBUG_FETCH_BACKEND_EVIDENCE[name];
+        if (!evidence || !evidence(cwd))
+            return false; // no proof the repo runs it
+        return !consumerLower.includes(name.toLowerCase()); // name absent below bkit:end
+    });
+    if (missing.length === 0)
+        return null;
+    const names = missing.join(", ");
+    const slash = missing.join("/");
+    const plural = missing.length > 1;
+    return {
+        id: "observability-debug-fetch-source-not-enabled",
+        severity: "advisory",
+        detect: `docs/observability.md ships ${plural ? "" : "a "}debug-fetch example${plural ? "s" : ""} for ${names} in the bkit-managed region and this repo uses ${plural ? "those backends" : "that backend"}, but no ${slash} block is enabled after \`<!-- bkit:end -->\`. \`/bkit-debug\` will fetch no ${slash} runtime logs.`,
+        action: `Copy the \`<!-- debug-fetch:start ${missing[0]} --> ... <!-- debug-fetch:end -->\` block${plural ? "s" : ""} (${names}) out of the bkit-managed section to after \`<!-- bkit:end -->\`, then set each block's env vars. Each block self-gates (missing CLI / token => no output, not an error). If you do not use ${slash} for runtime logs, add \`<!-- debug-fetch:none intentional -->\` below \`<!-- bkit:end -->\` to dismiss. Do not edit above \`<!-- bkit:end -->\` (drift-gated).`,
     };
 }
 /**
@@ -997,6 +1111,9 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const observabilityDebugFetch = detectObservabilityDebugFetchMissing(cwd);
     if (observabilityDebugFetch)
         advisories.push(observabilityDebugFetch);
+    const observabilityDebugFetchSource = detectObservabilityDebugFetchSourceNotEnabled(cwd);
+    if (observabilityDebugFetchSource)
+        advisories.push(observabilityDebugFetchSource);
     // Missing MCP server advisory — one finding per missing required key, per file.
     // Tracker-aware: when issueTracker === "github", only github MCP server is required
     // (Linear gate is a no-op on GitHub tracker — gate moved into workflow Step 1 via MCP).

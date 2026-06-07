@@ -20,6 +20,7 @@ import {
   detectCiYmlVerboseCiBlockMissing,
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
+  detectObservabilityDebugFetchSourceNotEnabled,
   detectMissingMcpServers,
   detectExtraMcpServers,
   REQUIRED_MCP_SERVERS,
@@ -675,6 +676,127 @@ describe("detectObservabilityDebugFetchMissing", () => {
   it("returns null when docs/observability.md does not exist", () => {
     const f = detectObservabilityDebugFetchMissing(tmpDir);
     expect(f).toBeNull();
+  });
+});
+
+describe("detectObservabilityDebugFetchSourceNotEnabled", () => {
+  function writeObservability(content: string): void {
+    const dir = path.join(tmpDir, "docs");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "observability.md"), content, "utf-8");
+  }
+  function writeSupabaseConfig(): void {
+    const dir = path.join(tmpDir, "supabase");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "config.toml"), 'project_id = "x"\n', "utf-8");
+  }
+  function writeVercelJson(): void {
+    fs.writeFileSync(path.join(tmpDir, "vercel.json"), "{}\n", "utf-8");
+  }
+  function writePackageJson(obj: unknown): void {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify(obj), "utf-8");
+  }
+
+  // Managed region shipping NAMED vercel + supabase examples (mirrors template).
+  const BKIT_NAMED_EXAMPLES =
+    "<!-- bkit:start -->\n" +
+    "# Observability\n\n" +
+    "<!-- debug-fetch:start vercel -->\n" +
+    "```bash\nvercel logs --scope acme --json\n```\n" +
+    "<!-- debug-fetch:end -->\n\n" +
+    "<!-- debug-fetch:start supabase -->\n" +
+    "```bash\ncurl https://api.supabase.com/v1/projects/x/...\n```\n" +
+    "<!-- debug-fetch:end -->\n\n" +
+    "<!-- bkit:end -->\n";
+  // Consumer-section blocks.
+  const UNNAMED_VERCEL_BLOCK =
+    "\n## Consumer\n\n" +
+    "<!-- debug-fetch:start -->\n" +
+    "```bash\nvercel logs --scope acme --json\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+  const NAMED_SUPABASE_BLOCK =
+    "\n<!-- debug-fetch:start supabase -->\n" +
+    "```bash\ncurl https://api.supabase.com/v1/projects/y/...\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+  const UNNAMED_AWS_BLOCK =
+    "\n## Consumer\n\n" +
+    "<!-- debug-fetch:start -->\n" +
+    "```bash\naws logs filter-log-events --log-group-name app --limit 50\n```\n" +
+    "<!-- debug-fetch:end -->\n";
+
+  it("flags supabase when repo uses supabase but only a legacy vercel block is enabled (visitfrasercoast case)", () => {
+    writeSupabaseConfig();
+    writeVercelJson();
+    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f).toBeDefined();
+    expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("supabase");
+    // vercel IS enabled (its name appears in the unnamed block body) — not named.
+    expect(f?.detect).not.toContain("vercel");
+    expect(f?.action).toContain("debug-fetch:none intentional");
+    expect(f?.action).toContain("Do not edit above");
+  });
+
+  it("detects supabase use via an @supabase/* dependency (no config.toml)", () => {
+    writePackageJson({ dependencies: { "@supabase/supabase-js": "^2" } });
+    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK);
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
+    expect(f?.detect).toContain("supabase");
+  });
+
+  it("does NOT flag a backend the repo does not use (no supabase evidence)", () => {
+    writeVercelJson(); // vercel-only repo
+    writeObservability(
+      BKIT_NAMED_EXAMPLES +
+        "\n<!-- debug-fetch:start vercel -->\n```bash\nvercel logs --json\n```\n<!-- debug-fetch:end -->\n",
+    );
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT flag when the used backend's block is already enabled", () => {
+    writeSupabaseConfig();
+    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + NAMED_SUPABASE_BLOCK);
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("is dismissed by a <!-- debug-fetch:none --> marker", () => {
+    writeSupabaseConfig();
+    writeVercelJson();
+    writeObservability(
+      BKIT_NAMED_EXAMPLES + UNNAMED_VERCEL_BLOCK + "\n<!-- debug-fetch:none intentional -->\n",
+    );
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f).toBeNull();
+  });
+
+  it("does NOT fire when the consumer section has zero blocks (missing advisory owns that case)", () => {
+    writeSupabaseConfig();
+    writeObservability(BKIT_NAMED_EXAMPLES + "\n## Consumer\n\nNo blocks here yet.\n");
+    expect(detectObservabilityDebugFetchSourceNotEnabled(tmpDir)).toBeNull();
+    // The generic missing advisory still covers it.
+    expect(detectObservabilityDebugFetchMissing(tmpDir)?.id).toBe(
+      "observability-debug-fetch-missing",
+    );
+  });
+
+  it("flags both backends (plural) when both are used and neither name appears below bkit:end", () => {
+    writeSupabaseConfig();
+    writeVercelJson();
+    writeObservability(BKIT_NAMED_EXAMPLES + UNNAMED_AWS_BLOCK);
+    const f = detectObservabilityDebugFetchSourceNotEnabled(tmpDir);
+    expect(f?.id).toBe("observability-debug-fetch-source-not-enabled");
+    expect(f?.detect).toContain("vercel");
+    expect(f?.detect).toContain("supabase");
+    expect(f?.detect).toContain("those backends");
+  });
+
+  it("returns null when docs/observability.md does not exist", () => {
+    expect(detectObservabilityDebugFetchSourceNotEnabled(tmpDir)).toBeNull();
   });
 });
 

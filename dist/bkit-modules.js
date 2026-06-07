@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
-import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
+import { readBkitVersion, writeBkitVersion, hashFile, resolveBkitCommit } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
@@ -437,16 +437,26 @@ export function runCoreModule(ctx) {
             ...existingCanonical,
             ...newCanonicalEntries,
         };
-        // Decide whether a write is needed: version mismatch, first install, or new canonical entries.
+        // Provenance: the bkit-source commit that produced this install. Preserve a
+        // previously-recorded commit if the current resolve comes up empty (no clobber).
+        const pinnedCommit = resolveBkitCommit(path.dirname(PKG_PACKAGE_JSON)) ?? existingVersion?.pinnedCommit;
+        // Decide whether a write is needed: version mismatch, first install, new canonical
+        // entries, or a changed source commit (keeps pinnedCommit fresh across dogfood commits).
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
         const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
-        const needsWrite = versionChanged || hasNewEntries;
+        const commitChanged = (existingVersion?.pinnedCommit ?? undefined) !== pinnedCommit;
+        const needsWrite = versionChanged || hasNewEntries || commitChanged;
         if (needsWrite) {
             console.log(`${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
             ws.writes.push({ path: versionFile, action: "write" });
             if (!dryRun) {
                 fs.mkdirSync(target, { recursive: true });
-                writeBkitVersion(versionFile, { pinnedVersion: pkgVersion, tier3Hashes, canonicalHashes });
+                writeBkitVersion(versionFile, {
+                    pinnedVersion: pkgVersion,
+                    tier3Hashes,
+                    canonicalHashes,
+                    ...(pinnedCommit ? { pinnedCommit } : {}),
+                });
             }
         }
     });
@@ -551,6 +561,20 @@ export function runClaudeModule(ctx) {
         if (fs.existsSync(src)) {
             const prevLen = ws.writes.length;
             writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
+            }
+        }
+    }
+    // byte-equal-text — GateGuard advisory PreToolUse hook (Node script, fully
+    // bkit-owned). writeTier1 force-overwrites on install/upgrade; consumers tune
+    // behaviour via env vars (BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT), not by editing.
+    {
+        const src = path.join(claudeTemplates, "hooks", "gateguard.cjs");
+        const dst = ".claude/hooks/gateguard.cjs";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            writeTier1(src, dst, tokens, dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }

@@ -29,6 +29,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
+import { spawnSync } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // Schema types
@@ -37,6 +38,16 @@ import * as crypto from "node:crypto";
 export interface BkitVersion {
   /** Semver string of the installed bkit version, e.g. "0.7.0". */
   pinnedVersion: string;
+  /**
+   * Git commit SHA of the bkit source that produced this install (provenance).
+   * (additive, optional, v3.4.x+) Resolved at install time from the package's
+   * publish-time `gitHead` (npm-published artifacts) or `git rev-parse HEAD` at the
+   * package root (source / dogfood installs). Absent when neither is available
+   * (e.g. an npm install whose published package.json carried no `gitHead`) —
+   * `pinnedVersion` remains the coarse identifier. Sharpens upgrade/repair
+   * diagnostics: pins the EXACT commit that shipped, not just the version.
+   */
+  pinnedCommit?: string;
   /**
    * sha256 hex digests of Tier-3 files at install time.
    * Key: consumer-relative path (e.g. ".github/workflows/ci.yml")
@@ -100,7 +111,13 @@ export function parseBkitVersion(content: string): BkitVersion | null {
         !Array.isArray(parsed.canonicalHashes)
           ? (parsed.canonicalHashes as Record<string, string>)
           : {};
-      return { pinnedVersion, tier3Hashes, canonicalHashes };
+      const pinnedCommit =
+        typeof parsed.pinnedCommit === "string" && parsed.pinnedCommit.trim()
+          ? parsed.pinnedCommit.trim()
+          : undefined;
+      const result: BkitVersion = { pinnedVersion, tier3Hashes, canonicalHashes };
+      if (pinnedCommit) result.pinnedCommit = pinnedCommit;
+      return result;
     } catch {
       // Fall through to plain-text parse
     }
@@ -140,6 +157,68 @@ export function serializeBkitVersion(v: BkitVersion): string {
 export function writeBkitVersion(versionFilePath: string, v: BkitVersion): void {
   fs.mkdirSync(path.dirname(versionFilePath), { recursive: true });
   fs.writeFileSync(versionFilePath, serializeBkitVersion(v), "utf-8");
+}
+
+// ---------------------------------------------------------------------------
+// resolveBkitCommit — provenance: the bkit-source commit that produced an install
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the git commit SHA of the bkit source being installed, for the
+ * `pinnedCommit` provenance field. Best-effort — returns undefined when no commit
+ * is determinable (the field is then simply omitted; never throws).
+ *
+ * Resolution order:
+ *   1. `gitHead` in the package's own package.json — npm stamps this into the
+ *      published tarball, so it is the commit that produced an npm-installed
+ *      artifact. Preferred when present.
+ *   2. `git rev-parse HEAD` with cwd = `pkgRoot` — covers source/dogfood installs
+ *      where the package root is itself a git checkout. npm-installed consumers
+ *      live under `node_modules/` (not a repo) and fall through to undefined.
+ *
+ * `pkgRoot`: absolute path to the bkit package root (the dir holding its package.json).
+ */
+export function resolveBkitCommit(pkgRoot: string): string | undefined {
+  // 1. Published-artifact provenance (npm `gitHead`) — preferred for npm installs.
+  const stamped = readGitHeadField(pkgRoot);
+  if (stamped) return stamped;
+  // 2. Source / dogfood: the package root is itself a git checkout.
+  return gitHeadFromRepo(pkgRoot);
+}
+
+// Read a valid `gitHead` SHA from the package's package.json, or undefined.
+// package.json validity is a caller precondition — the install reads and parses it
+// for `pkgVersion` before this runs, and npm-published packages always ship valid
+// JSON — so no parse guard is needed (a parse here would only re-raise what the
+// caller already validated).
+function readGitHeadField(pkgRoot: string): string | undefined {
+  const pkgPath = path.join(pkgRoot, "package.json");
+  if (!fs.existsSync(pkgPath)) return undefined;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<string, unknown>;
+  const head = pkg["gitHead"];
+  return typeof head === "string" && /^[0-9a-f]{7,40}$/i.test(head.trim())
+    ? head.trim()
+    : undefined;
+}
+
+// `git rev-parse HEAD` at pkgRoot, or undefined when it is not a git checkout.
+// spawnSync is status-checked (no throw on a non-repo / missing git), so the
+// "not a git checkout" case — the norm for npm-installed consumers — is ordinary
+// control flow rather than a thrown-and-swallowed error. Git-hook env is stripped
+// so the call resolves the repo at pkgRoot, not a hook-injected GIT_DIR/GIT_WORK_TREE.
+function gitHeadFromRepo(pkgRoot: string): string | undefined {
+  const env = { ...process.env };
+  delete env["GIT_DIR"];
+  delete env["GIT_WORK_TREE"];
+  delete env["GIT_INDEX_FILE"];
+  const res = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: pkgRoot,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    env,
+  });
+  const sha = (res.stdout || "").trim();
+  return res.status === 0 && /^[0-9a-f]{40}$/i.test(sha) ? sha : undefined;
 }
 
 // ---------------------------------------------------------------------------

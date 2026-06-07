@@ -11,7 +11,7 @@
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
 > - Append-only at EOF, do NOT overwrite.
-> - Once written, ONLY edit `Recovery` / `Status` as required; NEVER edit `Description` / `Suggested fix`.
+> - Once written, ONLY edit `Recovery` / `Status` / `Confidence` / `Last-confirmed` as required; NEVER edit `Description` / `Suggested fix`.
 >
 > **Format:**
 >
@@ -19,6 +19,7 @@
 > ## {Title} (YYYY-MM-DD)
 >
 > - **Category:** {one of above}
+> - **Scope:** bkit-repo | consumer | universal
 > - **Workflow:** design | plan | build | debug | ship
 > - **Step:** {N} — {Step Name} (or `orchestrator` if outside a step)
 > - **Source:** orchestrator | {subagent-name}
@@ -27,6 +28,8 @@
 > - **Related:** {FID}, Linear IDs BAR-{N}, PRs PR-{N}, Commits {SHA}, paths, etc
 > - **Recovery:** what unblocked it (manual fix, subagent retry, workaround in commit `{SHA}`, n/a)
 > - **Status:** `OPEN` (default) | `RECOVERED` | `FIXED-IN: {REF}`
+> - **Confidence:** high | medium | low — real recurring gap vs one-off; raise on recurrence
+> - **Last-confirmed:** YYYY-MM-DD — most recent recurrence; defaults to entry date
 > ```
 
 <!-- bkit:end -->
