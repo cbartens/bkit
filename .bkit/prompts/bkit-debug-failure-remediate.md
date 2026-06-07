@@ -54,9 +54,9 @@ maxTurns: 100
 10. Once all remediations verified (tests pass) → append gotchas (if any) to `docs/knowledge.md`; check existing entries first.
 11. Forced architecture/technology decision (if any) → append `docs/decisions.md`; check existing entries first.
 12. Update **Create** output - set `Verdict` via `Edit`; mapping:
-    - `PASS` = every remediation step has a `DONE` entry across logs AND local tests pass.
-    - `FAIL` = unable to remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR local tests still fail.
-    - `CONCERNS` = remediation applied, tests pass, but introduced non-blocking flake/warning needing follow-up.
+    - `PASS` = every remediation step has `DONE` entry across logs AND all local tests pass.
+    - `FAIL` = unable to remediate failure; any remediation step ends in a `BLOCKED` entry with NO later `DONE` entry across logs OR some local tests still fail.
+    - `CONCERNS` = remediation applied, all local tests pass, but introduced non-blocking flake/warning needing follow-up.
 
 **Output format:**
 
