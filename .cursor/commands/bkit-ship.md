@@ -793,6 +793,7 @@
    printf '%s\n' "$ARTIFACTS"
    ```
 
+
 6. 
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    
@@ -803,6 +804,7 @@
    Artifacts:
    {ARTIFACTS}
    ```
+
 
 7. Final return: Display `ship-summary.md` content verbatim as final message to user; do NOT summarise or trim; do NOT auto-invoke.
    Append issue link [{ISSUE_ID} {TITLE}]({URL})

@@ -19,7 +19,7 @@ import {
   type WriteSet,
   type JsonValue,
 } from "./bkit-tiers.js";
-import { readBkitVersion, writeBkitVersion, hashFile, resolveBkitCommit } from "./bkit-version.js";
+import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
@@ -549,17 +549,11 @@ export function runCoreModule(ctx: ModuleContext): void {
       ...newCanonicalEntries,
     };
 
-    // Provenance: the bkit-source commit that produced this install. Preserve a
-    // previously-recorded commit if the current resolve comes up empty (no clobber).
-    const pinnedCommit =
-      resolveBkitCommit(path.dirname(PKG_PACKAGE_JSON)) ?? existingVersion?.pinnedCommit;
-
-    // Decide whether a write is needed: version mismatch, first install, new canonical
-    // entries, or a changed source commit (keeps pinnedCommit fresh across dogfood commits).
+    // Decide whether a write is needed: version mismatch, first install, or new
+    // canonical entries.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
     const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
-    const commitChanged = (existingVersion?.pinnedCommit ?? undefined) !== pinnedCommit;
-    const needsWrite = versionChanged || hasNewEntries || commitChanged;
+    const needsWrite = versionChanged || hasNewEntries;
 
     if (needsWrite) {
       console.log(
@@ -572,7 +566,6 @@ export function runCoreModule(ctx: ModuleContext): void {
           pinnedVersion: pkgVersion,
           tier3Hashes,
           canonicalHashes,
-          ...(pinnedCommit ? { pinnedCommit } : {}),
         });
       }
     }

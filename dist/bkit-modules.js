@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
-import { readBkitVersion, writeBkitVersion, hashFile, resolveBkitCommit } from "./bkit-version.js";
+import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
@@ -437,15 +437,11 @@ export function runCoreModule(ctx) {
             ...existingCanonical,
             ...newCanonicalEntries,
         };
-        // Provenance: the bkit-source commit that produced this install. Preserve a
-        // previously-recorded commit if the current resolve comes up empty (no clobber).
-        const pinnedCommit = resolveBkitCommit(path.dirname(PKG_PACKAGE_JSON)) ?? existingVersion?.pinnedCommit;
-        // Decide whether a write is needed: version mismatch, first install, new canonical
-        // entries, or a changed source commit (keeps pinnedCommit fresh across dogfood commits).
+        // Decide whether a write is needed: version mismatch, first install, or new
+        // canonical entries.
         const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
         const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
-        const commitChanged = (existingVersion?.pinnedCommit ?? undefined) !== pinnedCommit;
-        const needsWrite = versionChanged || hasNewEntries || commitChanged;
+        const needsWrite = versionChanged || hasNewEntries;
         if (needsWrite) {
             console.log(`${logPrefix} ${tag}write version pin: ${path.relative(cwd, versionFile)} (${pkgVersion})`);
             ws.writes.push({ path: versionFile, action: "write" });
@@ -455,7 +451,6 @@ export function runCoreModule(ctx) {
                     pinnedVersion: pkgVersion,
                     tier3Hashes,
                     canonicalHashes,
-                    ...(pinnedCommit ? { pinnedCommit } : {}),
                 });
             }
         }
