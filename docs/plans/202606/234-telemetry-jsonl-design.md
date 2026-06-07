@@ -366,3 +366,63 @@ The highest-blast-radius (consumer-facing) migration, isolated and opt-in:
 #### Rationale
 
 A distinct, deliberately-isolated workstream because it is the only one that touches consumer repos and re-creates the pinnedCommit (`611b438`) bricking class if done wrong. It reuses WS-1's envelope, `key`/`aliases` model, identity tuples, and exemption mechanism but introduces no dependency on the grader or counters — it can ship at any time after WS-1. Separating it preserves the opt-in/dry-run/dogfood-first discipline and keeps the consumer-mutating migration plumbing out of the bkit-local read/grade paths.
+
+---
+
+## Post-Review Decision Addendum (2026-06-07)
+
+Owner decisions made after design close. **These SUPERSEDE conflicting statements above** (file placement, harvest model, P5 migration). `/bkit-plan` MUST follow this addendum where it differs from the body.
+
+### A1 — File placement: bkit-machinery in `.bkit/`, repo work in `docs/`
+
+Telemetry that is bkit-tooling signal stays in `.bkit/`; ledgers that are repo work needing human follow-up move to `docs/` (where `pending.md` already lives).
+
+| File              | Location     | Replaces            | Harvest        |
+| ----------------- | ------------ | ------------------- | -------------- |
+| `stats.jsonl`     | `.bkit/`     | —                   | **copy**       |
+| `friction.jsonl`  | `.bkit/`     | `.bkit/friction.md` | **copy**       |
+| `deferrals.jsonl` | **`docs/`**  | `docs/pending.md`   | **count-only** |
+| `failures.jsonl`  | **`docs/`**  | — (new)             | **count-only** |
+| `knowledge.jsonl` | `docs/` (P5) | `docs/knowledge.md` | n/a            |
+| `decisions.jsonl` | `docs/` (P5) | `docs/decisions.md` | n/a            |
+
+Supersedes the body's "four files under `.bkit/`". Scoped `merge=union` lines + slop/manifest exemptions now span both `.bkit/` and `docs/`.
+
+### A2 — Mandatory dimensional envelope on EVERY row
+
+Every entry (all kinds, incl. count-only `deferrals`/`failures`) MUST carry: `ts` (ms id), `kind`, `repo`, `bkitVersion`, `workflow`, `step`, `subagent`, `severity`, plus `key`, `references[]`, `aliases[]`, `schemaVersion` (+ `counterSource` on counters; + per-kind payload incl. prose like `description`/`root_cause`). Rationale: count-only harvest is **dimensional** — it slices counts by `repo`/`workflow`/`step`/`subagent`/`severity` to pinpoint what needs refining, so these fields are load-bearing even for files whose prose is never copied.
+
+### A3 — Counters: per-plan `status.jsonl` during run → central `.bkit/stats.jsonl` at close
+
+- Workflow **control counters** (debug/verify/challenge/etc. attempts) live in the per-plan `docs/plans/.../logs/{FID}/status.jsonl` _during execution_ (P3/#58 makes these deterministic — shell, not LLM prose).
+- At **workflow close**, the workflow appends summary rows (final counters, compliance, run-outcome) into the central `.bkit/stats.jsonl` (survives plan archival, unlike `status.jsonl`).
+- The **harvest script** (ad-hoc, NOT a workflow step) aggregates consumers' `.bkit/stats.jsonl` into bkit's central store cross-repo.
+
+So central stats is fed by close-step writes (local, per repo) AND by the ad-hoc cross-repo harvest.
+
+### A4 — Harvest copy vs count (final)
+
+- **COPY** (full rows — content bkit acts on): `.bkit/stats.jsonl`, `.bkit/friction.jsonl`.
+- **COUNT-ONLY** (dimensional aggregates from envelope metadata; prose NOT copied): `docs/deferrals.jsonl`, `docs/failures.jsonl` — consumer repo work to fix, not bkit's; bkit wants the sliced counts as #183 outcome signals only.
+
+### A5 — P5 migration: automatic cutover + destructive port script (supersedes opt-in/dry-run)
+
+We control all consumers, so:
+
+- **Code cutover is automatic on upgrade**: workflows/rules/steps read+write `.jsonl` going forward. Non-destructive — it does NOT touch existing `.md` data, it simply stops consulting it.
+- Ship a **`.md → .jsonl` data-migration script** that ports historical entries into `.jsonl` AND **deletes the `.md`**. Idempotent; verifies row-count parity before deleting (transient `.md.bak` until confirmed).
+- **If the script isn't run:** the old `.md` lingers (orphaned, ignored); `.jsonl` is authoritative from cutover.
+- **Caveat (knowledge/decisions):** once code reads `knowledge.jsonl`/`decisions.jsonl`, historical gotchas in `knowledge.md` are invisible to agents until ported — so the migration script MUST run as part of the rollout for knowledge/decisions (friction/deferrals/failures may start fresh). Dogfood on bkit's repo first + validate via packed tarball in a clean consumer dir.
+
+Supersedes the body's "opt-in, dry-run-by-default, writes alongside, never deletes, never auto-migrate".
+
+### A6 — Format/schema home (replaces the per-file `.md` headers)
+
+- **Machine schema (source of truth):** the TS codec `bkit-telemetry.ts` discriminated-union types + `validate()`.
+- **Agent-readable catalog:** a single shipped `docs/telemetry.md` (`bkit:start/end`, indexed in `.agents/docs.md`) carrying the old `.md` headers' Purpose / Categories enums (friction's `human-confirm|permission-prompt|…`, knowledge's category enum) / field meanings — one catalog, not per-file headers.
+- **Behavioral rules:** `rules.md` `bkit:start/end` block (never-drop→`docs/deferrals.jsonl`, bug→`docs/failures.jsonl`, append-only, mutable state via new row).
+
+### A7 — Rules reinforcement + consuming-step audit (WS-1 scope)
+
+- Reinforce the never-drop / found-bug rules in the **workflow CAUTION headers** of all workflows (alongside the existing `Friction:` line, which updates `.bkit/friction.md` → `.bkit/friction.jsonl`), with `deferrals`/`failures` lines pointing at the `docs/` files.
+- **Repo-wide reference sweep (WS-1):** audit + update EVERY workflow/prompt/rule that reads or writes the legacy ledgers to the `.jsonl` equivalents + new read/write idioms. Known sites: `bkit-ship` deferred-sweep (`docs/pending.md` → `docs/deferrals.jsonl`), the close-step friction sweep (`.bkit/friction.md` → `.bkit/friction.jsonl`), `knowledge.md` gotcha-check references, the `.agents/docs.md` index. The cutover is incomplete until this sweep lands.
