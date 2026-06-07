@@ -900,15 +900,79 @@ export function buildGithubProjectAdvisory(cwd) {
             '       "bkit": {\n' +
             '         "githubProject": {\n' +
             '           "owner": "<org>", "number": <project-number>,\n' +
-            '           "statusFieldId": "<id>", "progressOptionId": "<id>",\n' +
-            '           "reviewOptionId": "<id>", "doneOptionId": "<id>"\n' +
+            '           "statusFieldId": <numeric-field-id>, "progressOptionId": "<option-id>",\n' +
+            '           "reviewOptionId": "<option-id>", "doneOptionId": "<option-id>"\n' +
             "         }\n" +
             "       }\n\n" +
-            "   Discover the field + single-select option IDs: `gh project field-list <number> --owner <org> --format json`.\n\n" +
+            "   Discover the ids: `gh api /orgs/<org>/projectsV2/<number>/fields --jq '.[] | select(.name==\"Status\")'` → the Status field's " +
+            "numeric `id` → `statusFieldId` (a JSON number, NOT quoted); each `options[].id` (e.g. `47fc9ee4`) → " +
+            "the option ids (quoted strings). `gh project field-list`'s `id` is the GraphQL node id (`PVTSSF_…`) " +
+            "and must NOT be used for `statusFieldId` — `projects_write` rejects it with " +
+            "`updated_field.id: value must be a number`.\n\n" +
             "2. Ensure the root `.mcp.json` github server enables the `projects` toolset (older installs predate it):\n\n" +
             '       "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"\n\n' +
             "3. The `GH_TOKEN` PAT needs organization-scoped Projects read & write (repo scope is not enough).\n\n" +
             "To opt out and silence this advisory, set `bkit.githubProject` to `false` in package.json.",
+    };
+}
+/**
+ * Static-validate the `statusFieldId` shape on an otherwise-configured board.
+ * Projects v2 board sync feeds `statusFieldId` straight into `projects_write`
+ * `updated_field.id`, which requires the NUMERIC field id; a GraphQL node id
+ * (`PVTSSF_…` — what `gh project field-list` returns) or any non-number value is
+ * rejected with `updated_field.id: value must be a number`. Because sync is
+ * best-effort and never gates, that rejection is a SILENT no-op — the board never
+ * reflects phase and nobody notices. This catches it at install/check time, no
+ * network needed.
+ *
+ * Gates: workflows installed AND tracker === "github" AND `bkit.githubProject` is
+ * an object carrying `owner` + `number` (an otherwise-usable board) AND
+ * `statusFieldId` is present but not a JSON number. An absent `statusFieldId` is
+ * the setup advisory's job; opt-out (`false`) and absent config never reach here.
+ */
+export function detectGithubProjectFieldIdFormat(cwd) {
+    const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
+    const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
+    if (!hasClaude && !hasCursor)
+        return null;
+    if (readConsumerIssueTracker(cwd) !== "github")
+        return null;
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return null;
+    let gp;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const bkitField = pkg.bkit;
+        const raw = bkitField?.githubProject;
+        if (raw && typeof raw === "object" && !Array.isArray(raw))
+            gp = raw;
+    }
+    catch {
+        return null;
+    }
+    // Only judge a board that is otherwise configured (owner + number present) and
+    // has a statusFieldId set — absent statusFieldId is handled by the setup advisory.
+    if (!gp || gp.owner === undefined || gp.number === undefined)
+        return null;
+    const sfid = gp.statusFieldId;
+    if (sfid === undefined || typeof sfid === "number")
+        return null; // absent or already correct
+    const looksLikeNodeId = typeof sfid === "string" && /^PVT/.test(sfid);
+    const shape = looksLikeNodeId
+        ? "a GraphQL node id (`PVTSSF_…`)"
+        : `a ${typeof sfid} (\`${String(sfid)}\`)`;
+    return {
+        id: "github-project-status-field-id-format",
+        severity: "advisory",
+        detect: `\`bkit.githubProject.statusFieldId\` is ${shape}, but Projects v2 board sync feeds it to ` +
+            "`projects_write` `updated_field.id`, which requires the numeric field id and rejects anything " +
+            "else (`updated_field.id: value must be a number`). Board sync silently no-ops — the board never reflects phase.",
+        action: "Re-derive the numeric Status field id and store it unquoted:\n\n" +
+            "       gh api /orgs/<org>/projectsV2/<number>/fields --jq '.[] | select(.name==\"Status\")'\n\n" +
+            "The Status field's numeric `id` (e.g. `350038178`) → `statusFieldId` (a JSON number, NOT quoted); " +
+            "each `options[].id` (e.g. `47fc9ee4`) → the option ids (quoted strings). `gh project field-list`'s " +
+            "`id` is the GraphQL node id (`PVTSSF_…`) and must NOT be used for `statusFieldId`.",
     };
 }
 /**
@@ -1131,6 +1195,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
             ghSetLines +
             "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
+            "**Debug-fetch (`/bkit-debug` in the cloud):** if you run the debug workflow in these cloud agents, the observability creds your `docs/observability.md` debug-fetch blocks use (e.g. `VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`, `GOOGLE_APPLICATION_CREDENTIALS`) must ALSO be set in the same dashboards above — non-interactively, since headless agents cannot `vercel login` / `gcloud auth login`. These are operator/observability READ creds, not app-runtime secrets. Commit the non-secret selectors (team scope / project ref / `--environment`) in your copied block so they need no dashboard entry.\n\n" +
             "Same VALUE in all places. GH_BKIT_TOKEN must be a PAT with `read:packages` (classic) or `Packages: read` (fine-grained) scope. " +
             vendorNote,
     };
@@ -1526,6 +1591,11 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const githubProjectSetup = buildGithubProjectAdvisory(cwd);
     if (githubProjectSetup)
         phase3.push(githubProjectSetup);
+    // A configured board can still silently no-op if statusFieldId holds the GraphQL
+    // node id instead of the numeric field id projects_write requires.
+    const githubProjectFieldId = detectGithubProjectFieldIdFormat(cwd);
+    if (githubProjectFieldId)
+        phase3.push(githubProjectFieldId);
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);

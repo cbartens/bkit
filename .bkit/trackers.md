@@ -86,7 +86,7 @@ Phase-label set + additive-label semantics are documented in `.bkit/workflows.md
 
 ## github — Projects v2 board (optional, #137)
 
-The `issue-update-status` block reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover the ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields` (Status field's numeric `id` → `statusFieldId`; each option's raw `id` → the option id, e.g. `47fc9ee4`). Requires the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` is the single-select **option id**, not the option name. On failure → retry once after 5s, then continue.
+The `issue-update-status` block reads `package.json` `bkit.githubProject` = `{ owner (org login), number, statusFieldId, progressOptionId, reviewOptionId, doneOptionId }` (non-secret, committed). Absent → board sync skipped (best-effort, never gates). Discover the ids once: `gh api /orgs/{owner}/projectsV2/{number}/fields --jq '.[] | select(.name=="Status")'` (Status field's numeric `id` → `statusFieldId`; each option's raw `id` → the option id, e.g. `47fc9ee4`; the `PVTSSF_…` node id from `gh project field-list` is NOT the field id — `projects_write` rejects it). Requires the `projects` toolset in `.mcp.json` (`X-MCP-Toolsets`) + `GH_TOKEN` org Projects R/W. Org-owned boards only — fine-grained PATs cannot reach user-owned projects. `value` is the single-select **option id**, not the option name. On failure → retry once after 5s, then continue.
 
 ## linear — notes
 

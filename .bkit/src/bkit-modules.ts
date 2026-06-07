@@ -1212,8 +1212,13 @@ const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .bkit/.env.example exists — bki
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .bkit/.env.example. Compare against the bkit reference below.
-  Merge any new token entries you find (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY)
-  into your existing file. Keep any project-specific additions you have.
+  Merge any new entries you find into your existing file — tracker/cloud-agent
+  tokens (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY, ANTHROPIC_API_KEY,
+  CURSOR_API_KEY) and the observability / debug-fetch operator creds
+  (VERCEL_TOKEN, SUPABASE_ACCESS_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, plus
+  their non-secret selectors). Those debug-fetch creds are account-level READ
+  creds, NOT app-runtime secrets — keep your app's keys out of this file. Keep
+  any project-specific additions you have.
 
   --- begin bkit reference .bkit/.env.example ---
 {{TEMPLATE_CONTENT}}

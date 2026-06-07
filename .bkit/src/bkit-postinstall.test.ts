@@ -13,6 +13,7 @@ import {
   detectActionsWritePermissions,
   detectProjectsToolset,
   buildGithubProjectAdvisory,
+  detectGithubProjectFieldIdFormat,
   detectNpmrcAuth,
   detectGhSecret,
   detectMainBranchProtection,
@@ -257,7 +258,7 @@ describe("buildGithubProjectAdvisory", () => {
   const validProject = {
     owner: "acme",
     number: 7,
-    statusFieldId: "F",
+    statusFieldId: 350038178, // numeric field id (what projects_write updated_field.id requires)
     progressOptionId: "p",
     reviewOptionId: "r",
     doneOptionId: "d",
@@ -330,6 +331,88 @@ describe("buildGithubProjectAdvisory", () => {
     const result = buildGithubProjectAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toContain("`bkit.githubProject` is absent");
+  });
+
+  it("steers discovery to `gh api …/projectsV2/…/fields`, not `gh project field-list`", () => {
+    pkg({ issueTracker: "github" });
+    writeToolset("context,issues,pull_requests"); // force the advisory to fire
+    const action = buildGithubProjectAdvisory(tmpDir)!.action;
+    // The fix: field-list returns the GraphQL node id, not the numeric field id —
+    // so it must NOT be the discovery command, only a warning against its misuse.
+    expect(action).not.toContain(
+      "Discover the field + single-select option IDs: `gh project field-list",
+    );
+    expect(action).toContain("gh api /orgs/<org>/projectsV2/<number>/fields");
+    expect(action).toContain("must NOT be used for `statusFieldId`");
+    // Template must store statusFieldId as an UNQUOTED number, not a quoted string.
+    expect(action).toContain('"statusFieldId": <numeric-field-id>');
+    expect(action).not.toContain('"statusFieldId": "<id>"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectGithubProjectFieldIdFormat
+// ---------------------------------------------------------------------------
+
+describe("detectGithubProjectFieldIdFormat", () => {
+  const pkg = (bkit: Record<string, unknown>) =>
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x", bkit }));
+  const gp = (extra: Record<string, unknown>) => ({ owner: "acme", number: 7, ...extra });
+
+  beforeEach(() => {
+    // Mirrors the board-sync advisory gating: only fires with workflows installed.
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+  });
+
+  it("returns null when statusFieldId is a numeric field id (correct shape)", () => {
+    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: 350038178 }) });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+  });
+
+  it("flags a GraphQL node id (PVTSSF_…) — the live silent-no-op failure", () => {
+    pkg({
+      issueTracker: "github",
+      githubProject: gp({ statusFieldId: "PVTSSF_lADOD_iMUM4BYWt1zhTdKKI" }),
+    });
+    const result = detectGithubProjectFieldIdFormat(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("github-project-status-field-id-format");
+    expect(result!.detect).toContain("GraphQL node id");
+    expect(result!.detect).toContain("value must be a number");
+    expect(result!.action).toContain("gh api /orgs/<org>/projectsV2/<number>/fields");
+  });
+
+  it("flags a quoted numeric string (projects_write still rejects a string)", () => {
+    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: "350038178" }) });
+    const result = detectGithubProjectFieldIdFormat(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("github-project-status-field-id-format");
+  });
+
+  it("returns null when statusFieldId is absent (the setup advisory's job)", () => {
+    pkg({ issueTracker: "github", githubProject: gp({}) });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+  });
+
+  it("returns null without owner/number (not an otherwise-configured board)", () => {
+    pkg({ issueTracker: "github", githubProject: { statusFieldId: "PVTSSF_x" } });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+  });
+
+  it("returns null on explicit opt-out (bkit.githubProject: false)", () => {
+    pkg({ issueTracker: "github", githubProject: false });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+  });
+
+  it("returns null when tracker is not github", () => {
+    pkg({ issueTracker: "linear", githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
+  });
+
+  it("returns null when workflows are not installed", () => {
+    fs.rmSync(path.join(tmpDir, ".claude"), { recursive: true, force: true });
+    pkg({ issueTracker: "github", githubProject: gp({ statusFieldId: "PVTSSF_x" }) });
+    expect(detectGithubProjectFieldIdFormat(tmpDir)).toBeNull();
   });
 });
 
@@ -1355,6 +1438,17 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result!.detect).not.toContain("LINEAR_API_KEY");
     expect(result!.action).not.toContain("LINEAR_API_KEY");
     expect(result!.action).toContain("ANTHROPIC_API_KEY");
+  });
+
+  it("lists cloud debug-fetch creds (VERCEL_TOKEN etc.) for /bkit-debug in the cloud", () => {
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    const result = buildCloudDashboardsAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.action).toContain("/bkit-debug");
+    expect(result!.action).toContain("VERCEL_TOKEN");
+    expect(result!.action).toContain("GOOGLE_APPLICATION_CREDENTIALS");
+    // Non-interactive guidance is the load-bearing bit for headless cloud agents.
+    expect(result!.action).toContain("vercel login");
   });
 
   it("cloud=cursor variant: LINEAR_API_KEY appears in the checklist (cursor path)", () => {

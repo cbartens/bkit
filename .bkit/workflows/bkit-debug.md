@@ -548,15 +548,18 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    SECTION=$(sed -n '/^<!-- bkit:end -->/,$p' docs/observability.md 2>/dev/null)
    FETCH_NAMES=$(printf '%s\n' "$SECTION" | awk '/^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); print n }')
    ```
-7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) → **if** output non-empty write to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`:
+7. **For each** block in `FETCH_NAMES` → extract fenced body by name → use as starting template → customise per failure context (severity, freshness, limit) → execute via Bash → capture stdout (prefer JSON) and stderr → write stdout when non-empty, else the `[debug-fetch:<name>] skipped` stderr breadcrumb, to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-${DEBUG_ATTEMPT}.md`:
    ````bash
    BLOCK=$(printf '%s\n' "$SECTION" | awk -v want="$NAME" '
      /^<!-- debug-fetch:start/ { n=$0; sub(/^<!-- debug-fetch:start[ ]*/,"",n); sub(/[ ]*-->$/,"",n); cur=(n==want); next }
      /^<!-- debug-fetch:end -->$/ { cur=0; next }
      cur' | sed -n '/^```/,/^```/p' | sed '/^```/d')
    SUFFIX="${NAME:+$NAME-}"
-   RUNTIME_LOGS=$({customised BLOCK} 2>/dev/null)
-   [ -n "$RUNTIME_LOGS" ] && printf '%s' "$RUNTIME_LOGS" > "docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${SUFFIX}${DEBUG_ATTEMPT}.md"
+   ERRF=$(mktemp)
+   RUNTIME_LOGS=$({customised BLOCK} 2>"$ERRF")
+   SKIP=$(grep -m1 '^\[debug-fetch:' "$ERRF"); rm -f "$ERRF"
+   OUT="docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-${SUFFIX}${DEBUG_ATTEMPT}.md"
+   if [ -n "$RUNTIME_LOGS" ]; then printf '%s' "$RUNTIME_LOGS" > "$OUT"; elif [ -n "$SKIP" ]; then printf '%s\n' "$SKIP" > "$OUT"; fi
    ````
 8. <!-- bkit:tracker github start -->
    `{QUERY}` = 3–6 keywords from error signature / symptom (error class, failing-test name, exception terms; no stopwords) → `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "{QUERY} in:title,body", perPage: 15, sort: "updated", order: "desc" })` → top 15 `items`, drop any whose `number` == `{ISSUE_ID}`, keep first 10 → per hit `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {number} })` → write `docs/plans/{YYYYMM}/logs/{FID}/debug-context-related-${DEBUG_ATTEMPT}.md` → per hit `## #{number} — {title} ({state})` heading, the `body` from `items`, every comment verbatim; 0 hits → `None.`; on call error / timeout → `Search unavailable.`
