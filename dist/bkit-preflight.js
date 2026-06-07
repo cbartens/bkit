@@ -354,7 +354,7 @@ export function detectPlaywrightReporterHostile(cwd) {
         id: "playwright-reporter-line-override-hostile",
         severity: "advisory",
         detect: ".github/workflows/ci.yml has a `playwright test` invocation that passes `--reporter=line`. Under `[verbose ci]` with `--trace=on`, trace artifacts are written but no reporter surfaces them — pure cost.",
-        action: "Drop the `--reporter=line` flag so `playwright.config.ts`'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: `pnpm test:e2e ${VERBOSE_CI:+-- --trace=on}` — never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they're `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config's `list` reporter.",
+        action: 'Drop the `--reporter=line` flag so `playwright.config.ts`\'s configured reporter chain runs (typically `[list, html, github, json]`). Verbose-aware pattern: have `test:e2e` read `VERBOSE_CI` and append `--trace=on` to its own `playwright test` call (e.g. `TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE`), then run it plainly as `pnpm test:e2e` — do NOT pass `--trace=on` through a turbo / pnpm `-- --trace=on` passthrough, which appends to the script string and breaks any test:e2e ending in a bash construct (fi / done / esac). Never pass `--reporter`. Note that `--video` and `--screenshot` are NOT Playwright CLI flags (they\'re `use:` keys in playwright.config.ts); the trace.zip already captures snapshots / network / console / source. Default-mode output stays clean via the config\'s `list` reporter.',
     };
 }
 /**
