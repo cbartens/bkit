@@ -1,0 +1,57 @@
+Verdict: CONCERNS
+Failures: 3
+
+<!-- verdict:end -->
+
+# Plan Review
+
+Lens: Regression risk, design-coverage.
+
+## Surface-Area Map
+
+Per-workstream surface trace (files / symbols / consumers touched), with regression-relevant consumers grepped against the live tree.
+
+**WS-1 (substrate, P1)**
+
+- NEW `.bkit/src/bkit-telemetry.ts` — new export surface (`fold`/`foldFrom`/`parse`/`appendLine`/`validate`/`identity`, `ARCHIVE_SHARD_TEMPLATE`, `MAX_ROWS_BEFORE_ROLLUP`). No existing consumers yet; downstream consumers are WS-2 grader, WS-3 invariant test, WS-4 harvest/analysis, WS-5 migrate. Cloned from `.bkit/src/bkit-status.ts` — verified the three divergences are real: `parseStatus` does a bare `JSON.parse(l)` and throws (`bkit-status.ts:139`); no unknown-`kind` reject path; ISO `at` not ms `ts`.
+- MODIFY `.gitattributes` + `.bkit/templates/.gitattributes` — verified the existing blanket-glob prohibition comment is live (`.gitattributes:16-18`) and the file already scopes `docs/plans/**/status.jsonl` explicitly. Consumers: `git merge` driver on every consumer clone (high blast radius — a wrong glob corrupts consumer non-append-only `.jsonl`).
+- MODIFY `slop-scan.config.json` + `.bkit/src/bkit-manifest.test.ts` — drift guard for the four data files staying out of `format`.
+- MODIFY all 5 workflows `.bkit/workflows/bkit-{design,plan,build,debug,ship}.md` — inline-jq writers at existing step boundaries. Verified the existing `jq -nc … >> "$STATUS"` idiom uses `--arg t "$(date -u +%FT%TZ)"` (`bkit-build.md:330-338`); the plan's portable `now*1000|floor` is a deliberate divergence.
+- MODIFY `.agents/rules.md`, NEW `docs/telemetry.md`, MODIFY `.agents/docs.md`. Verified `.agents/docs.md` currently lists `docs/pending.md` (Workflow Matrix row 44 + Full Catalog line 99) and `docs/knowledge.md`/`docs/decisions.md` (lines 61-62, 31, 30) — all need the cutover sweep.
+- DELETE `.bkit/friction.md`, `docs/pending.md` + templates. Consumers of these paths: workflow read/write sites (grepped below).
+
+**WS-2 (grader, P2)**
+
+- NEW `.bkit/src/bkit-comply.ts`, `.bkit/src/bkit-paths-policy.ts`, `.claude/hooks/gate-paths.generated.cjs` (+ drift test). Path-policy table mirrors `gateguard.cjs`'s `GATE_CONFIG_PATTERNS`; consumer = `gateguard.cjs` (via generated `.cjs`) + grader.
+- MODIFY `.bkit/src/bkit-cli.ts` — extend `Verb` union. Verified live union is exactly `"install" | "check" | "doctor" | "uninstall" | "upgrade" | "help"` (`bkit-cli.ts:30`), no sub-verb parser. Consumers: `bkit-cli.test.ts`, the install entrypoint `dist/bkit-install.js`.
+- MODIFY 5 (or ship-only) workflow close gates — fail-open grader invocation.
+
+**WS-3 (counter refactor, P3)**
+
+- NEW shell counter bus + `MAX_*` config + `scripts/tooling/counter-bus.bats`.
+- MODIFY `.bkit/workflows/bkit-{build,debug,plan,design}.md` control-flow. Verified the prose surface is large and live: `_ATTEMPT`/`MAX_*` appears 65× in `bkit-build.md`, 82× in `bkit-debug.md`, 26× in `bkit-ship.md` (173 total). Verified the `dev` mode-matched-counter work is present in `bkit-debug.md:47` (`DEBUG_ATTEMPT`/`MAX_DEBUG_ATTEMPT`, `NORMAL_ATTEMPT`/`MAX_NORMAL_ATTEMPT`, `SOAK_ATTEMPT`/`MAX_SOAK_ATTEMPT` mode-matched pairs) — the reconciliation hazard is real.
+- NEW invariant + prose-audit tests.
+
+**WS-4 (harvest+analysis, P4)** — NEW harvest/analysis CLIs + rollup writer; MODIFY `bkit-ship.md` summary + `bkit-cli.ts`; DELETE `utility-harvest-friction` agent. Boundary: consumer filesystem (read-only).
+
+**WS-5 (migration, P5)** — NEW `docs/knowledge.jsonl`/`docs/decisions.jsonl` + DESTRUCTIVE `bkit telemetry migrate`. Consumers: every `KN-`/`DE-` reference (~1,460) + agent gotcha-check reads. Verified `docs/knowledge.md` uses `KN-CORE-{N}` (shipped, ported to consumers on upgrade) AND consumer `KN-{N}` namespaces (`knowledge.md:35`) — the migration must preserve BOTH namespaces in `aliases[]`.
+
+## CRITICAL
+
+**C-1 (FAIL vector) — WS-5 destructive `.md` delete re-enters a KNOWN consumer-bricking pattern (KN-8) without acknowledging the prior fix.** `docs/knowledge.md` KN-8 records: "bkit upgrade silently overwrote `.cursor/hooks.json` and `.claude/settings.json` ... destroying the consumer's hook block ... Recovered only by `git revert` of the install commit." The design body itself flags the `611b438` provenance-stamp revert as "the repo-bricking footgun" and made P5 opt-in/dry-run/never-deletes for exactly this reason. Addendum A5 then SUPERSEDES that to a destructive delete on the strength of "we control all consumers" + "code cutover is automatic on upgrade". The plan carries A5 forward (plan §Breaking-Changes lines 164-169, WS5-T2) but its Pre-Flight `Project Context` item only says to "read knowledge.md for relevant patterns" generically — no task, gate, or `Done when` cites KN-8 or KN-CORE-\* by the bricking mechanism, and no task verifies that the destructive delete cannot run on a consumer via the automatic-upgrade cutover path. Because the design explicitly walked this back once and the addendum walked it forward again, the plan MUST contain an explicit task that (a) re-confirms KN-8's mechanism, (b) proves the destructive script is NOT reachable from the `bkit upgrade` hot path (the plan claims "code cutover is automatic on upgrade ... non-destructive" but does not pin a test that the upgrade path NEVER invokes the delete), and (c) the `.md.bak`/parity-gate cannot be skipped under partial failure. As written this is a regression vector into a documented bricking class with mitigation asserted in prose but not verified by any runbook `Done when`. Add a WS-5 task with a boundary test: "running `bkit upgrade` on a fixture consumer leaves all `.md` ledgers intact (ground-truth: consumer file content + mtime unchanged); only an explicit `bkit telemetry migrate` invocation deletes, and only post-parity."
+
+**C-2 — WS-3 counter refactor: the prose→shell migration has no test asserting control-flow equivalence per migrated site, only an aggregate prose-audit + a single-counter invariant.** WS3-T3's `Done when` is the grep audit (`bkit-counter-prose-audit.test.ts` finds no `*_ATTEMPT`/`MAX_*` outside fenced shell) and WS3-T4's invariant covers exactly ONE counter (`counters.verifyAttempt == count of plan-verify rows`). The live surface is 173 `_ATTEMPT`/`MAX_*` occurrences across build/debug/ship, including the mode-matched triple in `bkit-debug.md:47` (`DEBUG/NORMAL/SOAK_ATTEMPT` with distinct reset semantics — SOAK resets to 0 on entry, DEBUG is a cross-invocation index that starts a fresh SOAK run on overflow). A grep that confirms "no comparison in prose" plus an invariant on one counter does NOT prove that `decide_next`/`check_max` reproduce the per-mode branch routing and reset semantics of the prose they replace. The reconciliation note (WS3-T1) is a written artifact, not an executed test. Given this is the highest control-flow blast radius (a wrong branch silently mis-routes all 5 workflows — design Risk + Rollback row both call it out), the plan needs a `counter-bus.bats` scenario PER mode-matched counter (DEBUG/NORMAL/SOAK reset + overflow-routing), not just the generic `decide_next`/`check_max` exit-code coverage WS3-T2 specifies. As written, the bats coverage names the helpers but not the mode-matched reset/overflow edge cases that the `dev` change introduced — a coverage gap on the exact surface the plan flags as the reconciliation hazard.
+
+**C-3 — ms-`ts` collision dedup is asserted in the codec unit test but the inline-jq writers (the actual collision producers) have no parity test that covers the SAME-key SAME-ms case end to end.** The Derived Test Matrix has `fold` composite-dedup (unit) and inline-jq parity (a jq row parses identically). Neither row exercises the collision edge the design names as load-bearing: two branches writing the same ms `ts` for the same logical key under `merge=union`, where correctness "depends entirely on the reducer's per-`kind` identity()". The unit `fold` test will dedup hand-constructed events; the parity test proves one jq row round-trips. But there is no test that (a) two jq-written rows with identical `now*1000|floor` `ts` and identical key, concatenated as `merge=union` would produce, fold to one row, AND (b) the composite identity tuple actually differs from bare `ts` so the dedup is the composite path not an accidental `ts`-equality. Since `now*1000|floor` makes same-step same-key collisions plausible (one step emitting several rows — design Data Model `ts` note), and the whole correctness argument rests on composite-not-`ts` identity, the plan should add an explicit "two same-`ts` same-key jq rows fold to one via composite identity (not via `ts`)" assertion. Without it, a composite-identity bug that happens to also dedup on `ts` in the fixture would pass — exactly the silent regression the design warns about. This is a test-coverage gap on a high-risk surface (the dedup correctness invariant), not merely an optional hardening.
+
+## OPTIONAL
+
+- **Blanket-glob footgun is well covered** (WS1-T4 boundary test asserts `git check-attr merge` resolves `union` for each scoped path AND that an unlisted `.bkit/foo.jsonl` does NOT). Optional hardening: also assert the NEGATIVE for `docs/foo.jsonl` (the `docs/` files now carry `merge=union` too per A1, so a `docs/*.jsonl` blanket glob is an equal footgun and should be asserted-absent symmetrically). The plan's boundary test names only `.bkit/foo.jsonl`.
+- **Tolerant-parse NEW behaviour is covered** (WS1-T2 truncated-line fixture, `malformedLineCount >= 1` and no throw — verified `parseStatus` throws at `bkit-status.ts:139`, so the divergence is correctly called out as NOT inherited). Optional: add a fixture with a malformed line in the MIDDLE (not just truncated trailing) since harvest reads whole consumer files, not only live tails — the design says "skips a malformed line" generally while the fixture as specified is trailing-only.
+- **Grader fail-open idiom is verifiable** (WS2-T6 `Done when` greps the `|| echo` guard on EVERY invocation + a forced-failure exit-0 check; Manual Verification Step 2 breaks `dist/` live). This is the correct mechanical check; no gap. Optional: extend the grep to also assert no grader invocation is inside a `set -e` block that would defeat the `|| echo` — `set -e` + `|| echo` is safe, but a bare `pnpm bkit comply` on its own line under `set -e` elsewhere would not be; a structural lint is cheap insurance.
+- **WS-1 reference sweep (A7)** WS1-T8 `Done when` greps `.bkit/workflows/`, `.bkit/prompts/`, `.agents/rules.md` for unswept legacy refs. Optional: include `.agents/docs.md` and `.bkit/templates/` in the grep target set — verified `.agents/docs.md` still lists `docs/pending.md` (line 44, 99) and templates carry their own copies; the sweep `Done when` names docs.md as an edit target in the task body but the grep assertion does not include it.
+
+## OUT OF SCOPE
+
+- A regression-snapshot/golden test of the full set of migrated `MAX_*` thresholds (one config vs the pre-refactor inline values) would strengthen WS-3 beyond this plan's scope — flagged as a possible follow-up, not a blocker for this plan.
+- A consumer-upgrade integration matrix (install → upgrade → migrate across N real consumer fixtures) for the WS-5 path is broader than the single dogfood + tarball validation specified; expansion belongs in a separate hardening plan if the destructive cutover proves fragile in practice.
