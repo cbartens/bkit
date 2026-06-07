@@ -80,7 +80,7 @@ Output: a pull request to `dev`. The heaviest phase — most steps verify the wo
 
 ### Phase 4 — `/bkit-debug`
 
-Output: a remediated commit pushed to the feature branch. Two modes — normal (fix a known failure) and observe (instrument → analyse → revert).
+Output: a remediated commit pushed to the feature branch. Two modes — normal (diagnose → remediate a localisable failure) and soak (one accumulating-context instrument → observe → fix loop for non-localisable / runtime-only failures). Normal escalates to soak mid-run when the diagnose agent can't localise the cause, or when the normal loop exhausts all three strategies; observation logging (`[DEBUG-OBSERVE]`) lives inside soak and is stripped before any fix ships.
 
 **Normal mode**
 
@@ -91,13 +91,12 @@ Output: a remediated commit pushed to the feature branch. Two modes — normal (
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced. L-tier with test loop. |
 | `bkit-debug-summary` | Summarise | Tracker-facing summary. |
 
-**Observe mode**
+**Soak mode**
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-observe-instrument` | Instrument | Adds targeted logging / tracing to surface the bug. High effort. |
-| `bkit-debug-observe-revert` | Clean up | Reverts the instrumentation so diagnostic scaffolding never ships. |
+| `bkit-debug-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration EITHER adds `[DEBUG-OBSERVE]` instrumentation OR applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
 
 **Escape hatch**
 

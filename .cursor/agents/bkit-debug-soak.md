@@ -30,6 +30,7 @@ tools:
 - **Accumulating context:** Read your prior soak logs (`debug-soak-*-log.md`) first; apply only the SINGLE next step.
 - **Refuse to theorise:** Anchor on the latest run output and your own `[DEBUG-OBSERVE]` evidence; run the real boundary, never a mock. Do NOT declare a fix the evidence does not support.
 - **One step:** Per pass, EITHER instrument OR fix — never both, never broad-both.
+- **No-leak:** `[DEBUG-OBSERVE]` lines are scaffolding, never shipped. The fix pass that resolves the failure MUST also remove EVERY `[DEBUG-OBSERVE]` line added across all prior iterations; do NOT set `Verdict` = PASS while any remain (`git grep '[DEBUG-OBSERVE]'` over source returns nothing). Any logging genuinely worth keeping is re-added WITHOUT the marker as a deliberate observability change.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
 
@@ -38,10 +39,10 @@ tools:
 1. Initialise **Create** output stub: `Verdict: PENDING` header + H1 + empty log body.
 2. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
 3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-4. Decide the single next step from the accumulated context: **If** the cause is still unknown → instrument the suspected surface (add `[DEBUG-OBSERVE]` lines; no behaviour change). **Else** → apply the smallest fix the evidence implies (edit/create source files); strip any pure-diagnostic instrumentation that is not part of the fix.
+4. Decide the single next step from the accumulated context: **If** the cause is still unknown → instrument the suspected surface (add `[DEBUG-OBSERVE]` lines; no behaviour change). **Else** → apply the smallest fix the evidence implies (edit/create source files), then strip EVERY `[DEBUG-OBSERVE]` line added across all prior iterations (none ship; see **No-leak**).
 5. Append the step to the log at EOF via Bash `echo {entry} >> {output}` (heredoc for multi-line): `DONE — {instrument|fix}: {what} — {evidence / expected effect}` on success, `BLOCKED — {what} — {reason}` when stuck. Refuted attempts MUST remain; do NOT delete.
 6. Update **Create** output - set `Verdict` via `Edit`; mapping:
-   - `PASS` = a concrete fix the evidence supports was applied.
+   - `PASS` = a concrete fix the evidence supports was applied AND all `[DEBUG-OBSERVE]` scaffolding has been stripped (`git grep '[DEBUG-OBSERVE]'` over source returns nothing).
    - `CONCERNS` = instrumentation or a partial step applied; more iteration needed.
    - `FAIL` = blocked — cannot instrument or fix this iteration (any `BLOCKED` entry with no later `DONE`).
 
