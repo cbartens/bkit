@@ -238,6 +238,6 @@
 - **Category:** agentic
 - **Severity:** low
 - **Status:** deferred
-- **Description:** Soak loops the live test on the shared `MAX_TEST_ATTEMPT` (= 3) inner-loop budget. For paid endpoints (real model / API calls), three full instrument->fix->re-verify iterations per invocation can be costly. A future refinement could add a per-endpoint or per-cost soak-iteration cap (tighter than the shared inner-loop budget) for expensive live boundaries. Out of scope for #143 (the shared cap bounds spend adequately for the common case).
+- **Description:** Soak loops the live test on the dedicated `MAX_SOAK_ATTEMPT` (= 3) budget (reset to 0 on each SOAK entry). For paid endpoints (real model / API calls), three full instrument->fix->re-verify iterations per invocation can be costly. A future refinement could add a per-endpoint or per-cost soak-iteration cap (tighter than the SOAK budget) for expensive live boundaries. Out of scope for #143 (the cap bounds spend adequately for the common case).
 - **Source:** human
-- **Related:** #143, DE-24, `.bkit/workflows/bkit-debug.md` (Step 8 soak-remediate), `.bkit/prompts/bkit-debug-soak.md`
+- **Related:** #143, DE-24, DE-25, `.bkit/workflows/bkit-debug.md` (Step 7 soak-remediate), `.bkit/prompts/bkit-debug-soak.md`

@@ -549,7 +549,8 @@ export function runCoreModule(ctx: ModuleContext): void {
       ...newCanonicalEntries,
     };
 
-    // Decide whether a write is needed: version mismatch, first install, or new canonical entries.
+    // Decide whether a write is needed: version mismatch, first install, or new
+    // canonical entries.
     const versionChanged = !existingVersion || existingVersion.pinnedVersion !== pkgVersion;
     const hasNewEntries = Object.keys(newCanonicalEntries).length > 0;
     const needsWrite = versionChanged || hasNewEntries;
@@ -561,7 +562,11 @@ export function runCoreModule(ctx: ModuleContext): void {
       ws.writes.push({ path: versionFile, action: "write" });
       if (!dryRun) {
         fs.mkdirSync(target, { recursive: true });
-        writeBkitVersion(versionFile, { pinnedVersion: pkgVersion, tier3Hashes, canonicalHashes });
+        writeBkitVersion(versionFile, {
+          pinnedVersion: pkgVersion,
+          tier3Hashes,
+          canonicalHashes,
+        });
       }
     }
   });
@@ -679,6 +684,21 @@ export function runClaudeModule(ctx: ModuleContext): void {
     if (fs.existsSync(src)) {
       const prevLen = ws.writes.length;
       writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}claude: ${dst}`);
+      }
+    }
+  }
+
+  // byte-equal-text — GateGuard advisory PreToolUse hook (Node script, fully
+  // bkit-owned). writeTier1 force-overwrites on install/upgrade; consumers tune
+  // behaviour via env vars (BKIT_GATEGUARD / BKIT_ALLOW_CONFIG_EDIT), not by editing.
+  {
+    const src = path.join(claudeTemplates, "hooks", "gateguard.cjs");
+    const dst = ".claude/hooks/gateguard.cjs";
+    if (fs.existsSync(src)) {
+      const prevLen = ws.writes.length;
+      writeTier1(src, dst, tokens, dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}claude: ${dst}`);
       }
@@ -1056,13 +1076,25 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   rules apply with no parse errors.
 `;
 
-const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge if useful.
+const SLOP_SCAN_MERGE_INSTRUCTIONS = `[bkit] slop-scan.config.json exists — bkit will not overwrite. Review the reference defaults and merge the build-output ignores (see below).
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open slop-scan.config.json. Compare against the bkit reference below.
   Merge any new patterns/exclusions you find useful into the existing
   file. Keep your existing project-specific entries.
+
+  IMPORTANT — build-output ignores: ensure your "ignores" array carries the
+  depth-agnostic build-output globs from the reference — "**/dist/**",
+  "**/coverage/**", "**/node_modules/**", "**/.next/**", "**/.turbo/**". The
+  slop:delta gate scans the live working tree (--head .) against a clean base
+  worktree, so any build output present locally but absent from that base reads
+  as net-new slop and FAILs the gate. slop-scan honours only the ROOT
+  .gitignore, so build output ignored by a nested .gitignore (e.g.
+  apps/web/.gitignore) is NOT excluded — list it here. Root-relative globs
+  ("dist/**") do NOT match nested build dirs ("apps/web/dist/"); use the "**/"
+  form. Add your own generated dirs the same way (e.g. "**/.svelte-kit/**",
+  "**/.nuxt/**", "**/out/**").
 
   --- begin bkit reference slop-scan.config.json ---
 {{TEMPLATE_CONTENT}}
@@ -1180,8 +1212,13 @@ const ENV_EXAMPLE_MERGE_INSTRUCTIONS = `[bkit] .bkit/.env.example exists — bki
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .bkit/.env.example. Compare against the bkit reference below.
-  Merge any new token entries you find (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY)
-  into your existing file. Keep any project-specific additions you have.
+  Merge any new entries you find into your existing file — tracker/cloud-agent
+  tokens (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY, ANTHROPIC_API_KEY,
+  CURSOR_API_KEY) and the observability / debug-fetch operator creds
+  (VERCEL_TOKEN, SUPABASE_ACCESS_TOKEN, GOOGLE_APPLICATION_CREDENTIALS, plus
+  their non-secret selectors). Those debug-fetch creds are account-level READ
+  creds, NOT app-runtime secrets — keep your app's keys out of this file. Keep
+  any project-specific additions you have.
 
   --- begin bkit reference .bkit/.env.example ---
 {{TEMPLATE_CONTENT}}

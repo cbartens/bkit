@@ -109,7 +109,7 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 | Workflow | Cursor model | Claude model + reasoning | Notes |
 | --- | --- | --- | --- |
 | `/bkit-design` | `claude-opus-4-8-thinking-high` | `sonnet` / `medium` | Procedural orchestration; parallel review pair surfaces drift fast. |
-| `/bkit-plan` | `gpt-5.5-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.json plumbing. |
+| `/bkit-plan` | `gpt-5.5-high` | `sonnet` / `medium` | Many gates, each = verdict-extract + status.jsonl plumbing. |
 | `/bkit-build` | `composer-2.5` | `opus` / `medium` → `sonnet` / `medium` once stable | Longest workflow, most gate loops, real code changes. |
 | `/bkit-debug` | `claude-opus-4-8-thinking-high` | `opus` / `medium` → `sonnet` / `medium` once stable | Failure-diagnosis remediation loops have most variability. |
 | `/bkit-ship` | `composer-2.5` | `sonnet` / `medium` | Short, fully procedural. |
@@ -117,7 +117,7 @@ Model running orchestrator command itself, NOT subagents. On Cursor: set at work
 
 **Rationale:** orchestrator does sequential step execution, bash/`jq`/`git`, Linear MCP calls, verdict extraction from subagent files, gate verification. Hard reasoning is delegated to subagents (pinned `model:`, no inheritance from session). Sonnet 4.6 handles strict procedural execution.
 
-**Reasoning depth — default `medium`** (both Sonnet and Opus orchestrators). Orchestration is procedural, not deep reasoning; `medium` thinking suffices for verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching. Higher thinking budget on Sonnet tends to **worsen** inlining drift — deeper reflection surfaces "I could just do this myself" temptation. Correct escalation on observed drift is `sonnet/medium → opus/medium`, NOT `sonnet/medium → sonnet/high`. Reserve `high` thinking for one-off debugging of an orchestrator step that consistently mis-extracts verdicts or malforms `status.json` — not as a default tier.
+**Reasoning depth — default `medium`** (both Sonnet and Opus orchestrators). Orchestration is procedural, not deep reasoning; `medium` thinking suffices for verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching. Higher thinking budget on Sonnet tends to **worsen** inlining drift — deeper reflection surfaces "I could just do this myself" temptation. Correct escalation on observed drift is `sonnet/medium → opus/medium`, NOT `sonnet/medium → sonnet/high`. Reserve `high` thinking for one-off debugging of an orchestrator step that consistently mis-extracts verdicts or malforms `status.jsonl` — not as a default tier.
 
 **Risk — inlining drift.** Sonnet slightly more prone than Opus to "helping" by doing a subagent's work itself when the work looks tractable (especially review / scope-check steps). `rules.md` § Orchestrators ("Inlining subagent steps or producing output directly is NOT compliance") + per-command CAUTION block mitigate. If observed → bump that command back to Opus (NOT to higher Sonnet reasoning).
 
@@ -175,7 +175,7 @@ Used by Cursor Cloud Agents UI for label-based routing.
 ### Body
 
 - Subagent invocation phrasing differs — see § Subagent invocation transform above.
-- Everything else (Linear MCP calls, `git`, `gh`, `pnpm`, step structure, `Failure Path`, gates, status.json/lock logic) is identical.
+- Everything else (Linear MCP calls, `git`, `gh`, `pnpm`, step structure, `Failure Path`, gates, status.jsonl/lock logic) is identical.
 
 ### Slash-command activation
 
@@ -198,6 +198,13 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 | Telemetry | Not part of host (custom in script) | Not part of host (custom in script — see `postflight.sh` log-drain pattern) |
 
 **Install behaviour:** hook scripts are **template drops** (per-host, NOT generated from `.agents/`). Semantic differences above (blocking vs non-blocking, stdin shape, output JSON shape) make a single canonical script impossible. Maintain two parallel implementations under `bkit/templates/<host>/hooks/`. Keep them functionally equivalent.
+
+### GateGuard (PreToolUse — Claude only)
+
+`gateguard.cjs` is an advisory `PreToolUse` hook on `Edit|Write|MultiEdit` (registered in `.claude/settings.json` → `hooks.PreToolUse`). On the first touch of a file per session it injects an investigation checklist via `additionalContext`; gate-config paths (tsconfig / eslint / prettier / vitest / vale / slop / lint-staged) get a "fix the code, don't weaken the gate" advisory instead. It is **fail-open** (never exits non-zero), **subagent-exempt** (skips when `agent_id` is present in the payload), and dedup'd per `(session, file)` via OS-temp state with a 24h TTL.
+
+- **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny the first touch per file (checklist as the reason), then allow the retry. The deny flip is dogfood-gated — flip via env, no code change. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses the gate-config advisory.
+- **Cursor divergence:** Cursor's hook model has SessionStart/Stop-class events plus `afterFileEdit` (post-hoc), but **no pre-edit event that injects model-visible context before the edit runs** — so GateGuard has no faithful Cursor port and is **Claude-only** by design. Note: unlike SessionStart, a Claude `PreToolUse` hook CAN block (exit 2 / `permissionDecision: deny`) — `deny` mode uses that; the "Cannot block" row above is specific to SessionStart.
 
 ---
 

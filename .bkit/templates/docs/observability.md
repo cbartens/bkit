@@ -16,18 +16,23 @@
 
 `/bkit-debug` runs **every** `bash` fenced block between `<!-- debug-fetch:start [name] -->` / `<!-- debug-fetch:end -->` that appears **after** `<!-- bkit:end -->` (this consumer-owned section). The bkit-shipped examples _inside_ the managed block above are reference-only and never executed. Per block the agent customises (severity / freshness / limit), executes, and writes stdout to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` (unnamed block => `debug-context-runtime-{DEBUG_ATTEMPT}.md`).
 
-**Enabling:** copy an example block below to **after** `<!-- bkit:end -->`, then set its env vars. Each block self-gates — missing CLI / token prints nothing and exits 0 — so enable only the sources you use.
+**Enabling:** copy an example block below to **after** `<!-- bkit:end -->`, then set its env vars. Each block self-gates — missing CLI / token prints a one-line `[debug-fetch:<name>] skipped — …` breadcrumb to stderr and exits 0 — so enable only the sources you use, and an empty source reads as "not wired up", not "no errors". Re-check after each upgrade: a freshly shipped example (e.g. a new `supabase` block) is inert until copied down. To intentionally enable none, add `<!-- debug-fetch:none intentional -->` after `<!-- bkit:end -->` to dismiss the bkit advisory.
 
-**Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on the credential/tool you need (`command -v <tool>` + token check `|| exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
+**Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud agents, which are headless and never see `.bkit/.env`. Authenticate non-interactively — env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) or `GOOGLE_APPLICATION_CREDENTIALS=<service-account.json>` for `gcloud`, never `vercel login` / `gcloud auth login`. Put each secret token in the cloud agent's dashboard env; non-secret selectors (scope / project ref / `--environment`) can be committed directly in your copied block so cloud agents inherit them. The token is identical across preview/prod — only the selector changes.
+
+**Authoring your own:** tool-agnostic (`gcloud` / `aws` / `datadog` / …). Read-only + idempotent. Self-gate on the credential/tool you need (`command -v <tool>` + token check; on a miss, emit one `[debug-fetch:<name>] skipped — …` line to stderr, then `exit 0`). Cover severity, time window, log name / stream, label filters. Empty output = no signal.
 
 **Examples (reference only — copy below `<!-- bkit:end -->` to enable):**
 
 <!-- debug-fetch:start vercel -->
 
 ```bash
-# Vercel errors. Enable: `vercel login` + set VERCEL_SCOPE (team slug).
-command -v vercel >/dev/null && [ -n "${VERCEL_SCOPE:-}" ] || exit 0
+# Vercel errors (read-only). Headless: set VERCEL_TOKEN + VERCEL_SCOPE (team slug);
+# no `vercel login`. VERCEL_SCOPE is non-secret — commit it for cloud agents.
+command -v vercel >/dev/null && [ -n "${VERCEL_TOKEN:-}" ] && [ -n "${VERCEL_SCOPE:-}" ] \
+  || { echo "[debug-fetch:vercel] skipped — vercel CLI / VERCEL_TOKEN / VERCEL_SCOPE missing" >&2; exit 0; }
 vercel logs \
+  --token "$VERCEL_TOKEN" \
   --scope "$VERCEL_SCOPE" \
   --environment "${VERCEL_ENV:-preview}" \
   --level error --level fatal \
@@ -44,7 +49,8 @@ vercel logs \
 ```bash
 # Supabase Postgres errors (Management API; window <= 24h).
 # Enable: set SUPABASE_PROJECT_ID + SUPABASE_ACCESS_TOKEN. API 4xx/5xx: edge_logs status_code >= 400.
-[ -n "${SUPABASE_PROJECT_ID:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] || exit 0
+[ -n "${SUPABASE_PROJECT_ID:-}" ] && [ -n "${SUPABASE_ACCESS_TOKEN:-}" ] \
+  || { echo "[debug-fetch:supabase] skipped — SUPABASE_PROJECT_ID or SUPABASE_ACCESS_TOKEN unset" >&2; exit 0; }
 START="${SINCE_ISO:-$(date -u -v-4H +%FT%TZ 2>/dev/null || date -u -d '4 hours ago' +%FT%TZ)}"
 END="$(date -u +%FT%TZ)"
 SQL=$(cat <<'SQL_EOF'

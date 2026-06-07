@@ -284,8 +284,14 @@ jobs:
       #     exit 1
 
       # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
-      # Under bkit [verbose ci]: appends --trace=on so Playwright writes per-test trace.zip
-      # (snapshots + network + console + source) — the canonical e2e debug artifact.
+      # Under bkit [verbose ci]: your test:e2e script reads VERBOSE_CI (in the job env) and
+      # appends --trace=on to its own \`playwright test\` call, so Playwright writes per-test
+      # trace.zip (snapshots + network + console + source) — the canonical e2e debug artifact.
+      # Recommended test:e2e form (package.json):
+      #   TRACE=; [ "$VERBOSE_CI" = "1" ] && TRACE=--trace=on; playwright test $TRACE
+      # Do NOT pass --trace=on via a turbo / pnpm \`-- --trace=on\` passthrough: both append
+      # passthrough args to the script STRING, breaking any test:e2e that ends in a bash
+      # construct (fi / done / esac). Call test:e2e plainly and let it read VERBOSE_CI.
       # \`--video\` and \`--screenshot\` are NOT Playwright CLI flags — they're \`use:\` keys in
       # playwright.config.ts. Enabling standalone video / screenshot files requires editing
       # the config (out of scope for this stub). Trace's snapshot timeline covers the
@@ -298,9 +304,7 @@ jobs:
       #   env:
       #     TARGET_URL: \${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
       #   run: |
-      #     EXTRA_ARGS=""
-      #     [ "$VERBOSE_CI" = "1" ] && EXTRA_ARGS="--trace=on"
-      #     pnpm test:e2e \${EXTRA_ARGS:+-- $EXTRA_ARGS}
+      #     pnpm test:e2e
 
       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
       # \`if: always()\` captures both failure AND job-timeout cancel: Playwright's HTML reporter

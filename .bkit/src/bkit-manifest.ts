@@ -172,6 +172,10 @@ const CORE_MANIFEST: ManifestEntry[] = [
 const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
+  // GateGuard advisory PreToolUse hook — fully bkit-owned Node script (no consumer
+  // edits expected; configured via env vars), so byte-equal-text (force-overwrite
+  // on install, hash-tracked for upgrade/uninstall). Wired in .claude/settings.json.
+  { path: ".claude/hooks/gateguard.cjs", format: "byte-equal-text", module: "claude" },
   // .claude/hooks/cloud-bootstrap.sh moved to the opt-in `cloud` module (CLOUD_MANIFEST) —
   // it only matters once a Claude Code on the web env is wired (a manual, opt-in step).
   // The SessionStart hook entry in .claude/settings.json is guarded (`test -f … || true`)

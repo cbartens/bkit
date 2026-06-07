@@ -1,5 +1,12 @@
 {
-  "ignores": ["dist/**", "coverage/**", "node_modules/**", "**/*.generated.ts"],
+  "ignores": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/.turbo/**",
+    "**/*.generated.ts"
+  ],
   "rules": {
     "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
     "structure.over-fragmentation": { "enabled": true },
@@ -25,6 +32,12 @@
       "rules": {
         "structure.duplicate-function-signatures": { "enabled": false },
         "tests.duplicate-mock-setup": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src", ".bkit/src/**"],
+      "rules": {
+        "structure.directory-fanout-hotspot": { "enabled": false }
       }
     }
   ]

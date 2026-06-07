@@ -24,7 +24,7 @@
 | `pnpm` | matches `package.json#packageManager` (`10.33.0`) — install via `corepack enable && corepack prepare pnpm@10.33.0 --activate` | Workspace install, lint/typecheck/test gates, bkit CLI. |
 | `git` | `>=2.5` | Worktree operations. |
 | `gh` | latest, authenticated (`gh auth login`) | PR create / view / merge, CI run log fetch. |
-| `jq` | latest | `status.json` mutations inside workflows. |
+| `jq` | latest | `status.jsonl` append operations inside workflows. |
 | `vale` | `3.9.1` | Prose lint (`pnpm lint:prose`). Tarball from `errata-ai/vale` releases; cloud agents install via setup script / Dockerfile. |
 
 ## Local environment variables

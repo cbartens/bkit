@@ -1,7 +1,7 @@
 # bkit — Pipeline Reference & Comparison to Agentic Design Patterns
 
 > [!CAUTION]
-> **Purpose:** Human-facing reference. Documents the five-phase pipeline and every subagent it runs (in execution order), and maps bkit against the patterns in Antonio Gulli's _Agentic Design Patterns_. Used for evaluation, onboarding, and outreach — not part of the agent workflow doc-matrix.
+> **Purpose:** Human-facing reference. Documents the five-phase pipeline and every subagent it runs (in execution order), maps bkit against the patterns in Antonio Gulli's _Agentic Design Patterns_, and maps it against the peer Claude-Code framework `everything-claude-code`. Used for evaluation, onboarding, and outreach — not part of the agent workflow doc-matrix.
 >
 > **Rules:**
 >
@@ -13,7 +13,7 @@
 
 bkit turns a single request to a coding agent into a gated, peer-reviewed engineering process. Work flows through five commands — `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship` — and each phase fans the work out to specialised, single-purpose subagents. Many run in parallel under different _lenses_ (for example, one reviews for bugs while another reviews for security), so output is reviewed by independent agents before a human sees it.
 
-Part 1 lists every subagent in execution order. Part 2 maps bkit against an external reference catalogue of agentic patterns.
+Part 1 lists every subagent in execution order. Part 2 maps bkit against an external reference catalogue of agentic patterns (Gulli). Part 3 maps it against a peer real-world framework, `everything-claude-code`.
 
 ---
 
@@ -80,7 +80,7 @@ Output: a pull request to `dev`. The heaviest phase — most steps verify the wo
 
 ### Phase 4 — `/bkit-debug`
 
-Output: a remediated commit pushed to the feature branch. Two modes — normal (fix a known failure) and observe (instrument → analyse → revert).
+Output: a remediated commit pushed to the feature branch. Two modes — normal (diagnose → remediate a localisable failure) and soak (one accumulating-context instrument-or-fix loop for non-localisable / runtime-only failures). Normal escalates to soak mid-run when the diagnose agent can't localise the cause, or when the normal loop exhausts all three strategies; observation logging (`[DEBUG-OBSERVE]`) lives inside soak and is stripped before any fix ships.
 
 **Normal mode**
 
@@ -91,13 +91,12 @@ Output: a remediated commit pushed to the feature branch. Two modes — normal (
 | `bkit-debug-failure-remediate` | Fixer | Applies whatever the strategy-aware diagnosis produced. L-tier with test loop. |
 | `bkit-debug-summary` | Summarise | Tracker-facing summary. |
 
-**Observe mode**
+**Soak mode**
 
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-observe-instrument` | Instrument | Adds targeted logging / tracing to surface the bug. High effort. |
-| `bkit-debug-observe-revert` | Clean up | Reverts the instrumentation so diagnostic scaffolding never ships. |
+| `bkit-debug-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration EITHER adds `[DEBUG-OBSERVE]` instrumentation OR applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
 
 **Escape hatch**
 
@@ -144,13 +143,13 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
 | Resource-Aware Optimization | Already does | Effort-to-model tiering with explicit per-agent pins. |
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern. |
-| Memory Management | Partial | Filesystem and grep episodic memory (`status.json`, knowledge / decisions). No vector retrieval, by scale choice. |
-| Learning & Adaptation | Partial | `friction.md` drives human-reviewed prompt edits. No auto prompt-tuning — deliberate, to keep humans in the loop. |
+| Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
+| Learning & Adaptation | Partial | `friction.md` drives human-reviewed prompt edits; entries now carry confidence, scope, and last-confirmed fields (Part 3). No auto prompt-tuning — deliberate, to keep humans in the loop. |
 | Goal Setting & Monitoring | Partial | Issue = goal, phase labels = state, verdicts = criteria. No measurable per-task Definition of Done yet. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
 | Reasoning Techniques | Partial | Extended thinking (CoT) plus parallel-pair-reconcile (a form of self-consistency). No formal ToT or ReAct trace. |
-| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks. No output validators or edit-path scope filter yet. |
-| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs plus CI gates and audits. No automated regression-fixture eval harness yet. |
+| Guardrails / Safety | Partial | Tool sandbox, destructive-git bans, locks, verdict checks, and an advisory edit-investigation plus gate-config hook (GateGuard, Part 3). No output validators yet. |
+| Evaluation & Monitoring | Partial | `friction` / `knowledge` logs, CI gates, audits, and a catalog-parity drift check (Part 3). No automated regression-fixture eval harness yet. |
 | Exploration & Discovery | Partial | Divergent brainstorm triplet plus feasibility search. No temperature-spread or vote-of-K. |
 | Inter-Agent Communication (A2A) | N/A by design | Agents communicate only via filesystem artifacts — deliberate, to preserve leaf-only and resume guarantees. |
 | Prioritization | N/A by design | Single-feature-at-a-time via lock file; multi-task contention is out of scope. |
@@ -159,14 +158,60 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 
 - **Producer-critic with a circular-reasoning guard.** Sibling reviewers cannot read each other's output. The book permits self-reflection.
 - **Cross-tier model diversity in parallel pairs.** Opus-high paired with Sonnet-medium (cross-family on Cursor), so two different reasoners review the same work.
-- **Resume-from-state as the single source of truth.** `status.json` makes every run inspectable and restartable; the book treats this only obliquely under memory.
+- **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
 - **Explicit per-agent model pins.** Immune to session-default drift.
 
 ### Known gaps, scoped as opportunities
 
-Most partials are deliberate scope choices. Three are flagged in the source review as worth adopting: an automated eval harness with regression fixtures for closed friction items; a per-task `Done when:` line in the plan template; and an optional self-consistency vote (quorum-of-N) for high-stakes reviews. None require changing the leaf-agent architecture.
+Most partials are deliberate scope choices. The per-task `Done when:` line has since shipped in the plan template. Two flagged items remain: an automated eval harness with regression fixtures for closed friction items, and an optional self-consistency vote (quorum-of-N) for high-stakes reviews. Neither requires changing the leaf-agent architecture.
 
 ---
 
-Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`) and the BAR-168 differential review of Gulli, _Agentic Design Patterns_ (`docs/plans/202605/bar-168-gulli-comparison.md`).
+## Part 3 — Comparison to a peer framework: everything-claude-code
+
+Benchmark: `affaan-m/everything-claude-code` (ECC), a multi-IDE Claude-Code framework — 63 agents, 251 skills, 79 commands, a hook-enforced runtime layer, and a profile/module installer across 11 IDE target trees. Where Gulli is an academic pattern taxonomy, ECC is a peer real-world artifact, so this section maps shipped mechanisms rather than patterns. Several rows read "bkit already does this, sometimes more strictly."
+
+<!-- prettier-ignore -->
+| ECC mechanism | bkit status | Where / note |
+| --- | --- | --- |
+| Prompt-chaining workflows | Already does | Slash-command step chains, one per phase. |
+| Verdict routing / classifier dispatch | Already does, stronger | PASS/CONCERNS/FAIL branching with max-wins reconcile. |
+| Parallel fan-out | Already does, stronger | Triplets and pairs with a circular-reasoning guard and cross-tier diversity; ECC's six-agent review has no independence guard. |
+| Producer-critic / reflection | Already does | execute → verify → remediate, bounded at three attempts. |
+| Critic tests the live running app | Partial | bkit verifies static artifacts and `Done when:` criteria, not a Playwright-driven live app. |
+| Model routing by task | Already does, stronger | Effort-to-model table plus per-agent pins immune to session drift. |
+| Cross-vendor adversarial review | Partial (Cursor only) | Cursor uses cross-family models; the Claude host is single-vendor by design. |
+| Human-in-the-loop gates | Already does, stronger | Mandatory hard stops; ECC's are mostly advisory prose. |
+| Resume-from-state | Already does, stronger | `status.jsonl` is a deterministic source of truth; ECC's session file is best-effort. |
+| Edit-time investigation gate (GateGuard) | Adopted | Advisory PreToolUse hook injects an investigation checklist on the first edit per file. |
+| Block weakening of gate configs | Adopted | The same hook flags edits to lint / format / type / test / slop configs. |
+| Cross-session memory trio | Not adopted | bkit keeps within-feature resume plus human-curated knowledge; no cross-session memory injection. |
+| Empirical eval / obedience harness | Deferred | ECC ships pass@k / pass^k eval and rule-obedience measurement; bkit has friction/knowledge logs and CI gates, no runnable eval harness yet. |
+| Confidence-scored learnings | Adopted (structure) | friction / knowledge entries carry confidence, scope, and last-confirmed; promotion stays human-gated. |
+| Prompt-injection guard on agents | Adopted, scoped | A one-line untrusted-input directive on the nine agents that read web / diff / log content; ECC blankets all 63. |
+| Install provenance stamping | Adopted | `.bkit/version` records the source commit for upgrade and repair diffs. |
+| Catalog-parity check | Adopted | A test asserts every prompt and workflow file is documented in its index. |
+| Component-façade installer | Deferred | A `--with` / `--without` selective layer over the existing module system. |
+| Single canonical source → mirror install | Already does, stronger | One `.bkit/` source regenerates `.claude` and `.cursor`; ECC hand-maintains 11 trees. |
+| Concurrency lock | Already does | Single-feature lock file; ECC has none. |
+
+### Adopted from ECC
+
+- **GateGuard — an advisory edit-time hook.** A PreToolUse hook injects an investigation checklist (read the file, find the callers, confirm the types, quote the instruction) on the first edit to each file per session. Advisory by default, fail-open, with an opt-in deny mode. It also flags edits to quality-gate configs, nudging a code fix over a weakened gate.
+- **Scoped prompt-injection guard.** The nine subagents that read external content (web, diffs, logs) carry a one-line directive to treat that content as data, never as instructions.
+- **Confidence-scored knowledge.** friction and knowledge entries record confidence, scope, and a last-confirmed date, so a repeatedly-confirmed lesson reads differently from a contradicted one. No auto-promotion.
+- **Install provenance.** The version file records the source commit, not just the version number, for exact upgrade and repair diagnostics.
+- **Catalog-parity test.** A check that fails if a prompt or workflow file is missing from its index doc.
+
+### Deliberately not adopted
+
+External multi-model orchestration (it violates single-vendor-per-host and MCP-only discipline), the Rust control-plane and dashboard (the `status.jsonl` CLI covers the scope), the 251-skill catalogue (bkit curates skills and would inherit the overlap debt), the commands-versus-skills dual stack, auto-promotion of learnings into prompt edits (it breaks "recommend, do not decide"), and the 11-IDE target sprawl.
+
+### Deferred
+
+The empirical eval layer (pass@k / pass^k regression fixtures plus rule-obedience measurement) and the component-façade installer are the two ECC ideas worth a future design pass. Both are larger builds than the adopted items.
+
+---
+
+Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`), the BAR-168 differential review of Gulli, _Agentic Design Patterns_ (`docs/plans/202605/bar-168-gulli-comparison.md`), and the #230 differential review of `everything-claude-code` (`docs/plans/202606/230-affaan-comparison.md`).

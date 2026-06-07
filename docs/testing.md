@@ -79,7 +79,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 
 - **Build** appends the curated `test:live` LAST in its pre-PR run and will not raise a PR if it fails (`scope` records the verbatim test command).
 - **Debug** runs the live boundary as iteration 1 of its Run-Tests loop (the reproduce), anchors diagnosis on the live-tier failure (treating infra/credential failures as environment, not feature-broken), and requires the live tier to flip fail -> pass before close (the empirical fail-then-pass gate).
-- **Soak** (`DEBUG_MODE = SOAK`, the terminal rung of the `1 NORMAL -> 2 OBSERVE -> 3 SOAK` ladder, or chosen up front for unknown-cause bugs) replaces diagnose+remediate with one accumulating-context instrument-or-fix step per loop iteration against the live boundary, bounded by `MAX_TEST_ATTEMPT`.
+- **Soak** (`DEBUG_MODE = SOAK`, entered at invocation start when `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` or `[soak]` is set, mid-run when the diagnose agent sets `Mode: SOAK`, or when the NORMAL loop exhausts all three strategies) replaces diagnose+remediate with one accumulating-context instrument-or-fix step per loop iteration against the live boundary, bounded by `MAX_SOAK_ATTEMPT`.
 
 When no live tier is declared (or `[live=off]`), these gates degrade to CONCERNS with a consumer-neutral `testsLiveSkipped` recorded in status.jsonl and the close comment — a green result is never silently equated with "works." bkit itself declares all live tiers absent (no deploy), so its own runs degrade to CONCERNS by design.
 

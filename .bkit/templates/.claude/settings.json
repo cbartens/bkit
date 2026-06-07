@@ -69,6 +69,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f .claude/hooks/gateguard.cjs && node .claude/hooks/gateguard.cjs || true"
+          }
+        ]
+      }
     ]
   }
 }
