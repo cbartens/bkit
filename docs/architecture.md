@@ -41,7 +41,7 @@ cbartens/bkit (this repo)
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
 │   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
-│   └── bkit-status.ts      # status.json schema + invariant validator
+│   └── bkit-status.ts      # status.jsonl schema + invariant validator
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
 ├── .bkit/prompts/        # Subagent prompt files

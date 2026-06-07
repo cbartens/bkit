@@ -269,7 +269,9 @@ GH_TOKEN=<fine-grained PAT — same permissions as the Claude side>
 
 ## How Linear dispatch works
 
-1. You assign a Linear issue to **Cursor** (the integration user) or comment `@cursor /design ISSUE-NNN`.
+`@cursor` is **Cursor's native Linear integration**, not a bkit component — bkit does not intercept the mention or run its own Linear webhook. The spawned agent picks up bkit only because every Cursor cloud agent reads root `AGENTS.md`, which routes the `/bkit-*` slash command to the matching workflow in `.bkit/workflows/`.
+
+1. You assign a Linear issue to **Cursor** (the integration user) or comment `@cursor /bkit-design ISSUE-NNN` — handled by Cursor's standard Linear integration.
 2. Cursor receives a webhook, opens a background agent against your repo with `is_background_agent: true` and `LINEAR_ISSUE_ID` set.
 3. `sessionStart` fires `preflight.sh`. With `failClosed: true`, a non-zero exit hard-stops the agent before it can do work.
 4. Preflight skips on IDE sessions (`is_background_agent !== true`), so local Cursor IDE work is unaffected.
@@ -366,7 +368,7 @@ Flip **both** org and repo before the first router run, otherwise `actions/check
 
 `ANTHROPIC_API_KEY` is the only required secret. **No `LINEAR_API_KEY`** — the Claude `bkit-cloud` path is GitHub-tracker only. The workflow grants `id-token: write` so `claude-code-action@v1` can authenticate as the Claude GitHub App via OIDC — the App is a base requirement (`/install-github-app`). Repo git/gh access uses the auto-provided `github.token` scoped by the `permissions:` block.
 
-The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-cloud.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.json push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
+The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-cloud.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.jsonl push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
 
 ## Routing decision (router orchestrator)
 

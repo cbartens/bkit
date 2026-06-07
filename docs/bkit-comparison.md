@@ -80,7 +80,7 @@ Output: a pull request to `dev`. The heaviest phase — most steps verify the wo
 
 ### Phase 4 — `/bkit-debug`
 
-Output: a remediated commit pushed to the feature branch. Two modes — normal (diagnose → remediate a localisable failure) and soak (one accumulating-context instrument → observe → fix loop for non-localisable / runtime-only failures). Normal escalates to soak mid-run when the diagnose agent can't localise the cause, or when the normal loop exhausts all three strategies; observation logging (`[DEBUG-OBSERVE]`) lives inside soak and is stripped before any fix ships.
+Output: a remediated commit pushed to the feature branch. Two modes — normal (diagnose → remediate a localisable failure) and soak (one accumulating-context instrument-or-fix loop for non-localisable / runtime-only failures). Normal escalates to soak mid-run when the diagnose agent can't localise the cause, or when the normal loop exhausts all three strategies; observation logging (`[DEBUG-OBSERVE]`) lives inside soak and is stripped before any fix ships.
 
 **Normal mode**
 
@@ -143,7 +143,7 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 | Human-in-the-Loop | Already does | Mandatory hard stops after design / plan / ship; "recommend, do not decide." |
 | Resource-Aware Optimization | Already does | Effort-to-model tiering with explicit per-agent pins. |
 | Context Engineering | Already does | Phase doc-matrix, lazy-load, output caps, stubbed-output pattern. |
-| Memory Management | Partial | Filesystem and grep episodic memory (`status.json`, knowledge / decisions). No vector retrieval, by scale choice. |
+| Memory Management | Partial | Filesystem and grep episodic memory (`status.jsonl`, knowledge / decisions). No vector retrieval, by scale choice. |
 | Learning & Adaptation | Partial | `friction.md` drives human-reviewed prompt edits; entries now carry confidence, scope, and last-confirmed fields (Part 3). No auto prompt-tuning — deliberate, to keep humans in the loop. |
 | Goal Setting & Monitoring | Partial | Issue = goal, phase labels = state, verdicts = criteria. No measurable per-task Definition of Done yet. |
 | Knowledge Retrieval (RAG) | Partial | Deterministic doc-matrix retrieval plus web search in design review. No embedding RAG (Grep wins at repo scale). |
@@ -158,7 +158,7 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 
 - **Producer-critic with a circular-reasoning guard.** Sibling reviewers cannot read each other's output. The book permits self-reflection.
 - **Cross-tier model diversity in parallel pairs.** Opus-high paired with Sonnet-medium (cross-family on Cursor), so two different reasoners review the same work.
-- **Resume-from-state as the single source of truth.** `status.json` makes every run inspectable and restartable; the book treats this only obliquely under memory.
+- **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
 - **Explicit per-agent model pins.** Immune to session-default drift.
 

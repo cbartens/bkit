@@ -10,19 +10,19 @@ This README covers what bkit does, how to install it, and what env / tracker set
 
 Typical cycle for issue `ISSUE-123` "Add feature X":
 
-1. **Tracker issue** is created with the **`Auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
-2. **Trigger** — tracker comment (`@curspr /bkit-plan ISSUE-123`) or slash command in Claude Code / Cursor (`/bkit-plan ISSUE-123`).
-3. **Workflow Step 1** — preflight hook checks the `Auto` label, acquires `.lock`, sets tracker label `Plan` + state `In Progress`, creates one workflow comment.
+1. **Tracker issue** is created with the **`bkit:auto`** label and a non-terminal state (e.g. `Backlog`, `In Progress`).
+2. **Trigger** — tracker comment (`@cursor /bkit-plan ISSUE-123`) or slash command in Claude Code / Cursor (`/bkit-plan ISSUE-123`).
+3. **Workflow Step 1** — preflight hook checks the `bkit:auto` label, acquires `.lock`, sets tracker label `bkit:plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on branch `feat/issue-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
 5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket, set at design start) and appends one fenced section to the tracker comment.
-6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(issue-123-…): summary [skip build] [skip ci]` (design / plan) or `chore(issue-123-…): summary` (build / debug / ship) → push.
+6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(issue-123-…): summary bkit [skip build] bkit [skip ci]` (design / plan) or `chore(issue-123-…): summary` (build / debug / ship) → push.
 7. **Close Workflow** — transitions tracker state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/issue-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/{YYYYMM}/{FID}-{design,plan}.md` (canonical, durable). Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
 10. **CI** — runs on the PR. Red CI? Trigger `/bkit-debug` (PR debug mode pulls failed run logs via `gh run view --log-failed`). Green? Trigger `/bkit-ship`.
-11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, prunes worktree, closes issue (`Done`). Plans stay at canonical `docs/plans/{YYYYMM}/` — no archive move (files never move under the new layout).
+11. **`/bkit-ship`** — squash-merges PR, runs `@bkit-ship-update-docs` ‖ `@bkit-ship-summary` (parallel) on `dev`, prunes worktree, moves issue to `In Review` (adds `bkit:merged`; bkit never auto-closes — a human reviews and closes). Plans stay at canonical `docs/plans/{YYYYMM}/` — no archive move (files never move under the new layout).
 
-Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and own all tracker MCP calls — subagents are leaves with read-only tracker access (none) and write access scoped by their `tools:` allowlist.
+Throughout: workflows hold the `.lock`, write `status.jsonl` (resume SoT), and own all tracker MCP calls — subagents are leaves with read-only tracker access (none) and write access scoped by their `tools:` allowlist.
 
 ---
 
@@ -34,12 +34,12 @@ Throughout: workflows hold the `.lock`, write `status.json` (resume SoT), and ow
 | Design | `/bkit-design` | 10 | `docs/plans/{YYYYMM}/{FID}-design.md` | Yes — review before plan |
 | Plan | `/bkit-plan` | 11 | `docs/plans/{YYYYMM}/{FID}-plan.md` (+ `-N.md` if split) | Yes — review before build |
 | Build | `/bkit-build` | 18 | PR to `dev` | No — CI continues |
-| Debug | `/bkit-debug` | 12 | Remediation commit on feature branch | No |
-| Ship | `/bkit-ship` | 11 | Squash-merged PR, issue `Done` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
+| Debug | `/bkit-debug` | 10 | Remediation commit on feature branch | No |
+| Ship | `/bkit-ship` | 13 | Squash-merged PR, issue `In Review` + `bkit:merged` (plans stay canonical at `docs/plans/{YYYYMM}/`) | Yes |
 
 Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch into IDE branch) and `/bkit-worktree-prune` (remove worktree and optionally branch).
 
-**Per-step detail, verdict routing, retry / timeout constants, label flips, status.json shape, comment lifecycle:** `.bkit/workflows.md`.
+**Per-step detail, verdict routing, retry / timeout constants, label flips, status.jsonl shape, comment lifecycle:** `.bkit/workflows.md`.
 
 **Per-subagent scope, effort tier, tool surface, `maxTurns`, model assignment:** `.bkit/prompts.md`.
 
@@ -55,7 +55,7 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 | `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .bkit/src/bkit-install.ts` in bkit's own dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
-| `jq` | latest | `status.json` mutations in workflow Bash |
+| `jq` | latest | `status.jsonl` append operations in workflow Bash |
 | Claude Code CLI | latest | Local-IDE workflow execution |
 | Cursor (optional) | 2.4+ | Cloud Agent execution; honours `tools:` frontmatter allowlist |
 
@@ -95,7 +95,7 @@ GH_TOKEN=""
 | `ANTHROPIC_API_KEY` | all | Claude Code (headless / CI) | Required when Claude is invoked outside an interactive session (e.g. cloud automation, CI runs). |
 | `CURSOR_API_KEY` | all | Cursor Cloud Agent dashboard / programmatic invocation | Required for non-interactive Cursor sessions. |
 | `LINEAR_API_KEY` | linear | Preflight hooks (`.{claude,cursor}/hooks/preflight.sh`); workflow Linear MCP via OAuth fallback | Query issue state + labels for the `Auto` gate; fail-fast if absent. |
-| `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@curspr` mentions. Set in the Linear ↔ Cursor integration config. |
+| `LINEAR_WEBHOOK_SECRET` | linear | Linear → Cursor integration backend | Verifies webhook signatures on `@cursor` mentions. Set in the Linear ↔ Cursor integration config. |
 
 `LINEAR_ISSUE_ID` (Linear tracker) and `GITHUB_ISSUE_ID` (GitHub tracker) are set automatically by the workflow context — do not set them manually.
 
@@ -222,15 +222,15 @@ Three trigger paths: Linear comment (cloud), Claude Code (interactive local), Cu
 
 ### From a tracker comment (cloud — Cursor Cloud Agent)
 
-**Linear tracker:** Mention `@curspr` in any Linear comment with a slash command and the issue ID:
+**Linear tracker:** Mention `@cursor` in any Linear comment with a slash command and the issue ID:
 
 ```
-@curspr /bkit-plan ISSUE-123
-@curspr /bkit-build ISSUE-123
-@curspr /bkit-ship ISSUE-123
+@cursor /bkit-plan ISSUE-123
+@cursor /bkit-build ISSUE-123
+@cursor /bkit-ship ISSUE-123
 ```
 
-The Linear ↔ Cursor integration spawns a Cloud Agent session, posts the session URL back as a Linear comment, and the workflow runs unattended. Progress lands in subsequent comments as each step completes.
+`@cursor` is **Cursor's standard Linear integration** — not a bkit-specific hook, and bkit runs no Linear webhook of its own. The native integration spawns a Cloud Agent session and posts the session URL back as a Linear comment; that agent runs the bkit workflow only because every Cursor cloud agent reads root `AGENTS.md`, which routes the `/bkit-*` slash command from the comment to the matching file in `.bkit/workflows/`. Progress lands in subsequent comments as each step completes.
 
 **GitHub tracker:** Dispatch is via PR-label trigger — Cursor Automations "Pull request label changed" event. The `bkit:auto` label on the PR (written by `bkit-build`) triggers the dispatch; the phase label (`bkit:plan`, `bkit:build`, etc.) tells Cursor which workflow to run. Issue comments are posted via the GitHub MCP. `/bkit-design` and `/bkit-plan` have no PR so they are local-IDE-only on Cursor cloud for the GitHub tracker.
 
