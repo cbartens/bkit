@@ -139,7 +139,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor", "patch"],
       matchDepTypes: ["devDependencies"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -148,7 +148,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["patch"],
       matchDepTypes: ["dependencies"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -157,7 +157,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor"],
       matchDepTypes: ["dependencies"],
-      groupName: "bkit: renovate minor dependencies",
+      groupName: "minor dependencies",
       // Minor prod bumps ship new behavior to users — review manually.
       // Explicit (not just absent) so the policy is greppable and can't be
       // silently flipped true by an earlier automerge rule.
@@ -179,14 +179,14 @@
     {
       matchPackagePatterns: ["^@types/"],
       matchUpdateTypes: ["minor", "patch"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
     {
       matchPackagePatterns: ["^eslint", "^@eslint/", "^@typescript-eslint/"],
       matchUpdateTypes: ["minor", "patch"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
@@ -201,19 +201,19 @@
     {
       matchPackagePatterns: ["^@tanstack/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major tanstack",
+      groupName: "major tanstack",
       automerge: false,
     },
     {
       matchPackagePatterns: ["^vitest", "^@vitest/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major vitest",
+      groupName: "major vitest",
       automerge: false,
     },
     {
       matchPackagePatterns: ["^@playwright/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major playwright",
+      groupName: "major playwright",
       automerge: false,
     },
 
@@ -224,7 +224,7 @@
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["github-actions"],
-      groupName: "bkit: renovate github-actions",
+      groupName: "github-actions",
       // Pin to SHA + tag comment; Renovate maintains the tag comment.
       pinDigests: true,
       // Reviewed manually — a workflow action bump can change CI behavior.
