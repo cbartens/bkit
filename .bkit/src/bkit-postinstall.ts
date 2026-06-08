@@ -1425,7 +1425,11 @@ export function formatChecklist(findings: PreflightFinding[]): string {
   lines.push(banner);
   lines.push(
     "\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
-      "coding assistant to apply each item. Each ACTION is self-contained.\n",
+      "coding assistant to apply each item. Each ACTION is self-contained.\n" +
+      "\nTemplate reference: canonical bkit-managed files (husky hooks, CI workflows,\n" +
+      ".claude/settings.json, .cursor/ config, renovate, vale, etc.) live at\n" +
+      "node_modules/bkit/.bkit/templates/ — read them to see the ideal state\n" +
+      "before applying any action.\n",
   );
 
   for (let i = 0; i < findings.length; i++) {
