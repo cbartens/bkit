@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.4.1] — 2026-06-08
+
+A patch release refining the cloud debug-fetch operator-cred guidance shipped in 3.4.0. The seeded `.bkit/.env.example` no longer carries an orphaned `GOOGLE_APPLICATION_CREDENTIALS` or the non-secret selectors, and the `observability.md` example blocks now show how to make those selectors portable to headless cloud agents. Lands on `pnpm bkit install` / `upgrade`.
+
+### Changed
+
+- **Non-secret debug-fetch selectors move out of `.bkit/.env.example` into the `observability.md` blocks that use them (refines [#227](https://github.com/cbartens/bkit/issues/227)).** `VERCEL_SCOPE` and `SUPABASE_PROJECT_ID` were seeded as `.bkit/.env` stubs, but a headless cloud agent never reads that file — and `.envrc` force-`unset`s `SUPABASE_PROJECT_ID` on a Supabase-CLI repo (the CLI mis-reads it as a `config.toml` override) — so the only portable home for a non-secret selector is the copied debug-fetch block itself. Each shipped `vercel` / `supabase` block now carries a commented `VERCEL_SCOPE=` / `SUPABASE_PROJECT_ID=` assignment line to uncomment; the `vercel` block documents that `--environment` defaults to `preview` (set `VERCEL_ENV=production` for production logs) and the `supabase` block notes preview and production are separate project refs. Both the `observability-debug-fetch-missing` and `observability-debug-fetch-source-not-enabled` advisories now state the in-block selector requirement, and the two surviving secret tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) carry a note that they need not be duplicated in `.bkit/.env` when `apps/*/.env` already exposes them via direnv.
+
+### Removed
+
+- **`GOOGLE_APPLICATION_CREDENTIALS` removed from the shipped `.bkit/.env.example` and the observability advisories.** 3.4.0 seeded it for a non-interactive `gcloud` debug-fetch path, but no `gcloud` example block ships, no consumer uses it (the dogfood repos authenticate to GCP via inline `GCP_CLIENT_EMAIL` / `GCP_PRIVATE_KEY`, not a `GOOGLE_APPLICATION_CREDENTIALS` file path), and it sat orphaned among the `gcloud` / `aws` / `datadog` "author your own" backends that get no seeded stub. The generic "author your own" guidance still names `gcloud`.
+
+---
+
 ## [3.4.0] — 2026-06-07
 
 Removes the OBSERVE debug mode introduced in 3.3.0 — observation logging now lives only inside SOAK — hardens the shipped `slop:delta` gate against build output, and fixes the verbose-CI Playwright-trace guidance so a `-- --trace=on` passthrough can no longer break a `test:e2e` script. Workflow, gate-config, and advisory changes land on `pnpm bkit install` / `upgrade`.
