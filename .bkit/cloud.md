@@ -108,6 +108,13 @@ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 
 Claude pairs with the **GitHub** tracker (see § Cloud-agent support matrix), so no `LINEAR_API_KEY` / `LINEAR_ISSUE_ID` — GitHub MCP + `gh` authenticate via `GH_TOKEN`.
 
+Optional (debug-fetch — only if you use the `docs/observability.md` blocks; non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
+
+```
+VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
+SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/dashboard/account/tokens>
+```
+
 Release-only:
 
 ```
@@ -287,6 +294,13 @@ GH_BKIT_TOKEN=<classic PAT with read:packages — consumer repos only>
 ```
 
 `LINEAR_ISSUE_ID` is injected per-session by the Cursor / Linear integration — do not hardcode.
+
+Optional (debug-fetch — only if you use the `docs/observability.md` blocks; non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
+
+```
+VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
+SUPABASE_ACCESS_TOKEN=<Supabase Management API token — https://supabase.com/dashboard/account/tokens>
+```
 
 ## After modifying `.cursor/*`
 
