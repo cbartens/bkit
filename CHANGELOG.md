@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [3.4.2] — 2026-06-08
+
+Adds a template-reference pointer to every advisory surface so agents acting on findings can immediately locate the canonical bkit-managed files without spelunking `node_modules`.
+
+### Changed
+
+- **Generated `.bkit/advisories.md` and the inline console checklist (`formatChecklist`) now include a template-reference line after the AI-agent instructions block.** After the #160 layout refactor, `node_modules/bkit/.bkit/templates/` became the only location for canonical bkit-managed files (husky hooks, CI workflow, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) — but nothing told agents where to look before applying an advisory action. The pointer fires on any non-empty advisory run (install, upgrade, check, doctor) and is absent on clean runs.
+
+---
+
 ## [3.4.1] — 2026-06-08
 
 A patch release refining the cloud debug-fetch operator-cred guidance shipped in 3.4.0. The seeded `.bkit/.env.example` no longer carries an orphaned `GOOGLE_APPLICATION_CREDENTIALS` or the non-secret selectors, and the `observability.md` example blocks now show how to make those selectors portable to headless cloud agents. Lands on `pnpm bkit install` / `upgrade`.

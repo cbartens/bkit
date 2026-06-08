@@ -237,30 +237,35 @@ describe("formatChecklist — byte-for-byte snapshot (Plan §F5)", () => {
 
     const result = formatChecklist(findings);
     expect(result).toMatchInlineSnapshot(`
-"
-==========================================================
-[bkit] Post-install checklist (2 items)
-==========================================================
+      "
+      ==========================================================
+      [bkit] Post-install checklist (2 items)
+      ==========================================================
 
-INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
-coding assistant to apply each item. Each ACTION is self-contained.
+      INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
+      coding assistant to apply each item. Each ACTION is self-contained.
+
+      Template reference: canonical bkit-managed files (husky hooks, CI workflows,
+      .claude/settings.json, .cursor/ config, renovate, vale, etc.) live at
+      node_modules/bkit/.bkit/templates/ — read them to see the ideal state
+      before applying any action.
 
 
---- 1/2 [advisory] husky-no-markers-precommit ---
-DETECT: .husky/pre-commit exists but has no bkit-managed block markers.
-ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.
+      --- 1/2 [advisory] husky-no-markers-precommit ---
+      DETECT: .husky/pre-commit exists but has no bkit-managed block markers.
+      ACTION: bkit will append its managed block to .husky/pre-commit. To keep your custom content and the bkit block in the same file, ensure the file has \`# bkit:start\` / \`# bkit:end\` markers around the bkit section. Run \`pnpm bkit install --git-hooks\` after adding markers.
 
---- 2/2 [advisory] gh-bkit-token-unset-shell ---
-DETECT: GH_BKIT_TOKEN is not set in the shell environment.
-ACTION: Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
+      --- 2/2 [advisory] gh-bkit-token-unset-shell ---
+      DETECT: GH_BKIT_TOKEN is not set in the shell environment.
+      ACTION: Export GH_BKIT_TOKEN in your shell profile (e.g. ~/.zshrc or ~/.bashrc):
 
-    export GH_BKIT_TOKEN=<your-pat>
+          export GH_BKIT_TOKEN=<your-pat>
 
-The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
+      The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens
 
-==========================================================
-"
-`);
+      ==========================================================
+      "
+    `);
   });
 
   it("matches inline snapshot for a single blocker finding", () => {
@@ -276,22 +281,27 @@ The token must be a GitHub PAT with read:packages scope (classic) or Packages: r
 
     const result = formatChecklist(findings);
     expect(result).toMatchInlineSnapshot(`
-"
-==========================================================
-[bkit] Post-install checklist (1 item)
-==========================================================
+      "
+      ==========================================================
+      [bkit] Post-install checklist (1 item)
+      ==========================================================
 
-INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
-coding assistant to apply each item. Each ACTION is self-contained.
+      INSTRUCTIONS FOR AN AI AGENT — copy this entire block into a
+      coding assistant to apply each item. Each ACTION is self-contained.
+
+      Template reference: canonical bkit-managed files (husky hooks, CI workflows,
+      .claude/settings.json, .cursor/ config, renovate, vale, etc.) live at
+      node_modules/bkit/.bkit/templates/ — read them to see the ideal state
+      before applying any action.
 
 
---- 1/1 [blocker] no-package-json ---
-DETECT: package.json not found in the current directory.
-ACTION: Run \`npm init -y\` to create a minimal package.json, or copy one from an existing project, then re-run \`pnpm bkit install\`.
+      --- 1/1 [blocker] no-package-json ---
+      DETECT: package.json not found in the current directory.
+      ACTION: Run \`npm init -y\` to create a minimal package.json, or copy one from an existing project, then re-run \`pnpm bkit install\`.
 
-==========================================================
-"
-`);
+      ==========================================================
+      "
+    `);
   });
 
   it("returns empty string (not a whitespace-only string) for empty findings array", () => {
