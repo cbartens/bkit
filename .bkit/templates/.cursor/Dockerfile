@@ -11,7 +11,7 @@
 # Edit canonical via `.agents/templates/.cursor/Dockerfile` in the bkit repo;
 # never edit this generated mirror directly in consumer repos.
 
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node >=20 are on PATH
