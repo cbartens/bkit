@@ -1489,6 +1489,10 @@ export function renderAdvisoriesMarkdown(
     "> INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.",
   );
   lines.push("");
+  lines.push(
+    "> **Template reference:** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/bkit/.bkit/templates/` — read them to see the ideal state before applying any action.",
+  );
+  lines.push("");
 
   const total = findings.length;
   for (let i = 0; i < total; i++) {
