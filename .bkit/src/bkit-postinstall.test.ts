@@ -1446,7 +1446,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(result).not.toBeNull();
     expect(result!.action).toContain("/bkit-debug");
     expect(result!.action).toContain("VERCEL_TOKEN");
-    expect(result!.action).toContain("GOOGLE_APPLICATION_CREDENTIALS");
+    expect(result!.action).toContain("SUPABASE_ACCESS_TOKEN");
     // Non-interactive guidance is the load-bearing bit for headless cloud agents.
     expect(result!.action).toContain("vercel login");
   });
