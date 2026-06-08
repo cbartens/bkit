@@ -1,5 +1,5 @@
 {
-  "pinnedVersion": "3.4.0",
+  "pinnedVersion": "3.4.1",
   "tier3Hashes": {
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
@@ -45,7 +45,7 @@
     "scripts/rollback-main.sh": "a321b933a4cc2f33f159d63e3a7a33fa1d6cc191109ca3aea3f7aee3c155c1a8",
     ".claude/hooks/cloud-bootstrap.sh": "ea774d926905f85042f3ab06bb6042fa0116954815eec9d954b9d37fe4a12495",
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
-    "docs/observability.md": "c6808e6757aa21ef844eb00d70347c5b9e558c0df8ae147d418ea73275a6d426",
+    "docs/observability.md": "6e53db9598ce16dfa113a7599fec10232d8aadc292fa4e5e073496d91bc2b072",
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
     ".gitignore": "107d4ecfe6e96ef435c08b99d196d6a2867e30b9131c2c1c4049d97adcc40d8e",
     ".cursor/mcp.json": "3303bcc673bb5961b72468158e8a6303a0f363bc0e14b111f3c59977a65b2bff",
@@ -62,7 +62,7 @@
     ".github/workflows/bkit-cloud.yml": "98512955244d90efe276aa9543dd729c0ee44ee38a493d602d812fed8e1d10b5",
     ".github/renovate-local.json5": "544dfe7090ac2a93d497f69aca729d6a599f25c82a4254e1cb4474dcd33a91b6",
     ".claude/hooks/gateguard.cjs": "2e76e5d620ea84dfce9fea1645e58ed82ba1a35fdfd24cfaa2095109615a0ba1",
-    ".bkit/.env.example": "79a101f1e0f4719c30d537614cbe541b18963f1018f17ef9d9dbdf616fa89a92",
+    ".bkit/.env.example": "6def0c1d9c5d45c6514928177fa28a34f9c25cfeab92e1b677650820437677d6",
     ".bkit/friction.md": "7cc7937f5921370f38c9ce3151172cb314a61b82690a49097381f65cef6b44e0",
     "scripts/ci/bkit-protect-main.sh": "b9a9191a85170ed33f00443b62c3c3255cc1fc6c413f8ecdad256a030a311d4e",
     "scripts/tooling/slop-delta.sh": "43ed5d0f8bc0ea4060f0cfca62d340f20fdd0bb29f6b6ffde99534ef1427c2b2"
