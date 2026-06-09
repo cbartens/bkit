@@ -141,6 +141,30 @@ const CURSOR_MANIFEST = [
     { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
     // Mirrors from .agents/ — managed dynamically; not listed individually.
 ];
+// opencode is opt-in via `bkit install --opencode=<provider>` — additive alongside
+// always-on claude/cursor. Agent and command mirrors are managed dynamically (like
+// claude/cursor); listed entries cover the static config + plugin files.
+//
+// opencode.json is Tier-2 deep-contained (writeTier2JsonContained) — it is
+// ownership-mixed: consumers add their own provider keys, model lists, and mcp entries,
+// so bkit must reconverge only the bkit-managed keys on upgrade (KN-17). Seed-or-print
+// (Tier-3) would silently abandon bkit's managed keys on consumer-modified files.
+//
+// gateguard.js is byte-equal-text (writeTier1 force-overwrite) — consumers configure
+// via env vars, not by editing; fully bkit-owned like .claude/hooks/gateguard.cjs.
+//
+// Dir names confirmed by spike: .opencode/agent/ (singular), .opencode/command/
+// (singular), .opencode/plugin/ (singular). See spike-verdict.md §(e).
+export const OPENCODE_MANIFEST = [
+    // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
+    // writeTier2JsonContained throws on malformed destination (KN-19 guard).
+    { path: ".opencode/opencode.json", format: "json", module: "opencode" },
+    // gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite; consumers use env vars).
+    { path: ".opencode/plugin/gateguard.js", format: "byte-equal-text", module: "opencode" },
+    // Agent and command mirrors are managed dynamically (not listed individually here —
+    // the exact set depends on the bkit-prefix prompt/workflow files at install time).
+    // Uninstall uses the BKIT_PREFIX filter for .opencode/agent/ and .opencode/command/.
+];
 const CI_MANIFEST = [
     // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
     // duplicate top-level keys, so consumers own it after the initial seed.
@@ -252,6 +276,7 @@ const MODULE_MANIFESTS = {
     core: CORE_MANIFEST,
     claude: CLAUDE_MANIFEST,
     cursor: CURSOR_MANIFEST,
+    opencode: OPENCODE_MANIFEST,
     ci: CI_MANIFEST,
     lint: LINT_MANIFEST,
     "git-hooks": GIT_HOOKS_MANIFEST,

@@ -22,7 +22,15 @@ import {
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens, type TokenMap } from "./bkit-tokens.js";
 import type { ModuleFlag } from "./bkit-cli.js";
-import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
+import {
+  runPayload,
+  applyT1,
+  applyT2,
+  applyT3,
+  applyOpencodeAgent,
+  applyOpencodeCommand,
+  remapTemplateDest,
+} from "./bkit-install.js";
 import type { PreflightFinding } from "./bkit-preflight.js";
 import {
   getPkgRoot,
@@ -141,6 +149,19 @@ export interface ModuleContext {
   dryRun: boolean;
   tokens: TokenMap;
   modelLookup: Map<string, string>;
+  /**
+   * opencode model lookup — additive field for the opencode module. Using a separate
+   * field (not reshaping modelLookup) keeps the shared cursor model-lookup stable:
+   * modelLookup is consumed by runCursorModule; reshaping it would be a high-risk
+   * shared-utility change touching all module signatures for no functional gain.
+   * Populated only when --opencode is in the module set. Empty map when absent.
+   */
+  opencodeModelLookup: Map<string, string>;
+  /**
+   * opencode provider chosen via `--opencode=<provider>`. null = not specified.
+   * Used by runOpencodeModule to seed the provider block in opencode.json.
+   */
+  opencodeProvider?: string | null;
   /** Structured advisory accumulator — replaces the legacy printSink: string[] channel. */
   advisories: PreflightFinding[];
   ws: WriteSet;
@@ -195,6 +216,7 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
   ".prettierignore",
   ".cursor",
   ".claude",
+  ".opencode",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -989,6 +1011,275 @@ export function runCursorModule(ctx: ModuleContext): void {
 }
 
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
+
+// ---------------------------------------------------------------------------
+// runOpencodeModule — opencode provider-agnostic host (opt-in via --opencode=<provider>)
+//
+// Additive alongside always-on claude/cursor: .opencode/agent/*.md (via applyOpencodeAgent),
+// .opencode/command/*.md (via applyOpencodeCommand + tracker substitution),
+// .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/gateguard.js (Tier-1).
+//
+// Dir names confirmed by spike (plan-v4-1 item (e)):
+//   .opencode/agent/    (singular, not agents/)
+//   .opencode/command/  (singular, not commands/)
+//   .opencode/plugin/   (singular, not plugins/)
+//
+// Provider config is seeded into opencode.json; consumers tune model IDs and provider
+// keys after install. opencode.json is Tier-2 deep-contained (ownership-mixed) so bkit
+// reconverges its keys on upgrade without clobbering consumer additions (KN-17).
+// ---------------------------------------------------------------------------
+
+// Per-provider provider key name + base URL + env var suggestions.
+// These are sane defaults; consumers tune after install.
+const OPENCODE_PROVIDER_DEFAULTS: Record<
+  string,
+  { envVar: string; baseURL: string; apiPlaceholder: string }
+> = {
+  ollama: {
+    envVar: "OLLAMA_BASE_URL",
+    baseURL: "http://localhost:11434/v1",
+    apiPlaceholder: "ollama",
+  },
+  nvidia: {
+    envVar: "NVIDIA_API_KEY",
+    baseURL: "https://integrate.api.nvidia.com/v1",
+    apiPlaceholder: "${NVIDIA_API_KEY}",
+  },
+  openrouter: {
+    envVar: "OPENROUTER_API_KEY",
+    baseURL: "https://openrouter.ai/api/v1",
+    apiPlaceholder: "${OPENROUTER_API_KEY}",
+  },
+  gemini: {
+    envVar: "GEMINI_API_KEY",
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+    apiPlaceholder: "${GEMINI_API_KEY}",
+  },
+};
+
+// Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
+const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
+const OPENCODE_PROVIDER_KEY_SENTINEL = "@@OPENCODE_PROVIDER_KEY@@";
+const OPENCODE_PROVIDER_ENV_VAR_SENTINEL = "@@OPENCODE_PROVIDER_ENV_VAR@@";
+const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
+
+/**
+ * Render the opencode.json template with tracker-filtered mcp + provider config.
+ * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
+ * and fills in provider-specific fields.
+ */
+function renderOpencodeJson(templatePath: string, tracker: IssueTracker, provider: string): string {
+  const raw = fs.readFileSync(templatePath, "utf-8");
+  const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? {
+    envVar: `${provider.toUpperCase()}_API_KEY`,
+    baseURL: `https://${provider}.example.com/v1`,
+    apiPlaceholder: `\${${provider.toUpperCase()}_API_KEY}`,
+  };
+
+  // Resolve tracker MCP entry
+  let mcpEntry: string;
+  if (tracker === "github") {
+    mcpEntry =
+      '"github": { "type": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer ${GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+  } else if (tracker === "linear") {
+    mcpEntry = '"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }';
+  } else {
+    mcpEntry = "";
+  }
+
+  let rendered = raw.replace(OPENCODE_TRACKER_MCP_SENTINEL, mcpEntry);
+  rendered = rendered.replace(OPENCODE_PROVIDER_KEY_SENTINEL, provider);
+  rendered = rendered.replace(OPENCODE_PROVIDER_ENV_VAR_SENTINEL, providerDefaults.envVar);
+  rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
+
+  // For ollama (local server, no key), apiKey is the literal string "ollama"
+  if (provider === "ollama") {
+    rendered = rendered.replace(`"\${${providerDefaults.envVar}}"`, `"ollama"`);
+  }
+
+  // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
+  try {
+    const parsed = JSON.parse(rendered) as Record<string, unknown>;
+    // Clean up empty mcp object when tracker=none
+    const mcp = parsed.mcp as Record<string, unknown> | undefined;
+    if (mcp && Object.keys(mcp).length === 0) {
+      delete parsed.mcp;
+    }
+    return JSON.stringify(parsed, null, 2) + "\n";
+  } catch {
+    return rendered;
+  }
+}
+
+const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .opencode/opencode.json. Compare against the bkit reference below.
+  bkit owns: the \`permission.rules\` block, the \`plugins\` array, and the \`mcp\` entries
+  it seeded. You own: any additional \`provider\` entries, model lists, and custom mcp servers.
+
+  Required merge actions:
+  1. Ensure the \`permission.rules\` array contains the bkit reference entries.
+  2. Ensure the \`plugins\` array includes ".opencode/plugin/gateguard.js".
+  3. Preserve your provider configuration and any custom mcp servers.
+
+  --- begin bkit reference .opencode/opencode.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .opencode/opencode.json ---
+`;
+
+export function runOpencodeModule(ctx: ModuleContext): void {
+  const { dryRun, opencodeModelLookup, advisories, ws, logPrefix } = ctx;
+  const tag = dryRun ? "[dry-run] " : "";
+
+  const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+  const provider = ctx.opencodeProvider ?? "ollama";
+
+  // --- Agents: applyOpencodeAgent ---
+  {
+    const src = getPromptsRoot();
+    const dest = ".opencode/agent";
+    ensureDir(dest);
+    const files = listMdFiles(src, BKIT_PREFIX);
+    const sourceSet = new Set(files);
+
+    for (const f of files) {
+      const transform = (c: string) => applyOpencodeAgent(c, opencodeModelLookup);
+      if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+      }
+    }
+
+    // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agent
+    // is a dynamic mirror dir like .claude/agents and .cursor/agents)
+    if (!dryRun && fs.existsSync(dest)) {
+      for (const f of fs.readdirSync(dest)) {
+        if (!f.endsWith(".md")) continue;
+        if (!f.startsWith(BKIT_PREFIX)) continue;
+        if (!sourceSet.has(f)) {
+          fs.rmSync(path.join(dest, f));
+          console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+        }
+      }
+    }
+  }
+
+  // --- Commands: tracker substitution + applyOpencodeCommand ---
+  {
+    const src = getWorkflowsRoot();
+    const dest = ".opencode/command";
+    ensureDir(dest);
+    const files = listMdFiles(src, BKIT_PREFIX);
+    const sourceSet = new Set(files);
+
+    for (const f of files) {
+      const transform = (c: string) =>
+        applyOpencodeCommand(substituteWorkflow(c, issueTracker).output);
+      if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+        console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+      }
+    }
+
+    if (!dryRun && fs.existsSync(dest)) {
+      for (const f of fs.readdirSync(dest)) {
+        if (!f.endsWith(".md")) continue;
+        if (!f.startsWith(BKIT_PREFIX)) continue;
+        if (!sourceSet.has(f)) {
+          fs.rmSync(path.join(dest, f));
+          console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+        }
+      }
+    }
+  }
+
+  // --- opencode.json — Tier-2 deep-contained (reconverged on upgrade) ---
+  {
+    const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+    const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+    const jsonDst = ".opencode/opencode.json";
+    if (fs.existsSync(jsonSrc)) {
+      // Render the template with tracker-filtered mcp + provider config
+      const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
+      // Write a rendered temp file for writeTier2JsonContained to compare against
+      const tmpSrc = path.join(process.cwd(), ".bkit-staging", "opencode-json-rendered.json");
+      ensureDir(path.dirname(tmpSrc));
+      if (!dryRun) {
+        fs.writeFileSync(tmpSrc, rendered, "utf-8");
+      }
+      const prevLen = ws.writes.length;
+      if (dryRun) {
+        // In dry-run, just check if the current destination differs from rendered
+        if (!fs.existsSync(jsonDst) || fs.readFileSync(jsonDst, "utf-8") !== rendered) {
+          ws.writes.push({ path: jsonDst, action: "write" });
+        }
+      } else {
+        writeTier2JsonContained(tmpSrc, jsonDst, dryRun, ws);
+        // Clean up temp
+        try {
+          fs.rmSync(tmpSrc, { force: true });
+          const stagingDir = path.dirname(tmpSrc);
+          if (fs.existsSync(stagingDir) && fs.readdirSync(stagingDir).length === 0) {
+            fs.rmdirSync(stagingDir);
+          }
+        } catch {
+          // non-fatal cleanup
+        }
+      }
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
+      }
+    }
+  }
+
+  // --- gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite) ---
+  {
+    const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+    const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
+    const pluginDst = ".opencode/plugin/gateguard.js";
+    if (fs.existsSync(pluginSrc)) {
+      ensureDir(path.dirname(pluginDst));
+      const prevLen = ws.writes.length;
+      writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
+      }
+    }
+  }
+
+  // opencode post-install advisory — provider key + launch + model-ID lookup pointer.
+  advisories.push({
+    id: "opencode-setup",
+    severity: "advisory",
+    detect: `opencode host installed (provider: ${provider}). The opencode CLI and your provider credentials are required before running agents.`,
+    action:
+      `opencode setup for provider "${provider}":\n\n` +
+      (() => {
+        const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+        if (!pd) {
+          return (
+            `  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
+            `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`
+          );
+        }
+        if (provider === "ollama") {
+          return (
+            `  1. Ollama runs locally — no API key needed.\n` +
+            `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
+            `  3. Pull models you want to use: \`ollama pull qwen2.5:14b\`.\n`
+          );
+        }
+        return (
+          `  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
+          `     ${pd.envVar}=<your-api-key>\n` +
+          `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`
+        );
+      })() +
+      `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
+      `  4. Model IDs: see .bkit/providers.md § Models for the per-provider live /v1/models lookup recipe.\n` +
+      `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // AI-actionable Tier 3 merge instructions
@@ -2285,6 +2576,7 @@ export const MODULE_REGISTRY: Partial<Record<ModuleFlag, ModuleFn>> = {
   core: runCoreModule,
   claude: runClaudeModule,
   cursor: runCursorModule,
+  opencode: runOpencodeModule,
   ci: runCiModule,
   lint: runLintModule,
   "git-hooks": runGitHooksModule,
@@ -2299,6 +2591,7 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
   "core",
   "claude",
   "cursor",
+  "opencode",
   "ci",
   "lint",
   "git-hooks",

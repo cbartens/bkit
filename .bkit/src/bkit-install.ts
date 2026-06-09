@@ -153,10 +153,18 @@ const BKIT_PREFIX = "bkit-";
 // so log scanners can tell which verb actually ran.
 let LOG_PREFIX = "[bkit-install]";
 
-export type Host = "claude" | "cursor";
+export type Host = "claude" | "cursor" | "opencode";
 
-// Parse .bkit/prompts.md § Models table → Map<name, cursorModel>
-export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, columnValue>.
+ * columnHeader is the column header label to extract (e.g. "Cursor model", "opencode model").
+ * The function is header-addressed: it finds the column by name, never by position.
+ * Hard-fails (process.exit(1)) if the section or column header is not found.
+ */
+export function parseModelLookupForColumn(
+  subagentsMdPath: string,
+  columnHeader: string,
+): Map<string, string> {
   const content = fs.readFileSync(subagentsMdPath, "utf-8");
   const map = new Map<string, string>();
 
@@ -168,6 +176,7 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
 
   const lines = content.slice(modelsIdx).split("\n");
   let inTable = false;
+  let columnIndex = -1;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -176,23 +185,153 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
       continue;
     }
     inTable = true;
-    if (trimmed.includes("---") || trimmed.toLowerCase().includes("cursor model")) continue;
 
     const cols = trimmed
       .split("|")
       .map((c) => c.trim())
       .filter(Boolean);
-    if (cols.length < 2) continue;
+
+    // Header row: find the column index for our target header
+    if (columnIndex === -1) {
+      // Check if this is the header row by looking for the target column
+      const lowerCols = cols.map((c) => c.toLowerCase().replace(/`/g, ""));
+      const targetLower = columnHeader.toLowerCase().replace(/`/g, "");
+      const idx = lowerCols.findIndex((c) => c === targetLower);
+      if (idx !== -1) {
+        columnIndex = idx;
+      }
+      // Also skip separator rows (all --- cells)
+      if (trimmed.includes("---")) continue;
+      continue;
+    }
+
+    // Separator row
+    if (trimmed.includes("---")) continue;
+
+    if (cols.length <= columnIndex) continue;
 
     const nameMatch = cols[0].match(/^`([^`]+)`$/);
     if (!nameMatch) continue;
     // Strip optional backtick wrapping from model value (table cells may use `model-name`)
-    const modelRaw = cols[1];
+    const modelRaw = cols[columnIndex];
     const modelClean = modelRaw.replace(/^`|`$/g, "");
     map.set(nameMatch[1], modelClean);
   }
 
+  if (columnIndex === -1) {
+    console.error(
+      `${LOG_PREFIX} Could not find column "${columnHeader}" in ## Models table in ${subagentsMdPath}`,
+    );
+    process.exit(1);
+  }
+
   return map;
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, cursorModel>.
+ * Header-addressed: finds the "Cursor model" column by header name.
+ * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
+ */
+export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, "Cursor model");
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel>.
+ * Header-addressed: finds the "opencode model" column by header name.
+ */
+export function parseOpencodeModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, "opencode model");
+}
+
+// Effort → reasoningEffort mapping for opencode frontmatter.
+// Claude's effort knob (low/medium/high/xhigh/max) maps to opencode's reasoningEffort.
+const EFFORT_TO_REASONING_EFFORT: Record<string, string> = {
+  low: "none",
+  medium: "low",
+  high: "medium",
+  xhigh: "high",
+  max: "max",
+};
+
+// Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
+const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
+
+/**
+ * OC1: opencode agent frontmatter rewrite.
+ * Emits: mode, name, description, model, tools (passthrough), reasoningEffort (from effort).
+ * Drops: Claude-only fields (permissionMode, maxTurns, is_background, readonly) and the
+ * original effort field (replaced by reasoningEffort).
+ * Hard-fails with non-zero exit if model lookup missing for name.
+ */
+export function applyOpencodeAgent(
+  content: string,
+  opencodeModelLookup: Map<string, string>,
+): string {
+  const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+  if (!fmMatch) return content;
+
+  const fmBlock = fmMatch[2];
+  const afterFm = content.slice(fmMatch[0].length);
+  const parsed = parseFrontmatter(fmBlock);
+
+  const name = parsed.get("name") ?? "";
+  if (!name) {
+    console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
+    process.exit(1);
+  }
+
+  const opencodeModel = opencodeModelLookup.get(name);
+  if (!opencodeModel) {
+    console.error(`${LOG_PREFIX} Missing opencode model lookup for ${name}`);
+    process.exit(1);
+  }
+
+  const description = parsed.get("description") ?? "";
+  const effort = parsed.get("effort");
+  const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+
+  let newFm = "---\n";
+  newFm += `mode: subagent\n`;
+  newFm += `name: ${name}\n`;
+  if (description.includes("\n")) {
+    const indented = description.split("\n").join("\n  ");
+    newFm += `description: |\n  ${indented}\n`;
+  } else {
+    newFm += `description: ${description}\n`;
+  }
+  newFm += `model: ${opencodeModel}\n`;
+  if (toolsBlock) newFm += `${toolsBlock}\n`;
+  if (effort) {
+    const reasoningEffort = EFFORT_TO_REASONING_EFFORT[effort];
+    if (reasoningEffort) {
+      newFm += `reasoningEffort: ${reasoningEffort}\n`;
+    }
+  }
+  newFm += "---\n";
+
+  return newFm + afterFm;
+}
+
+/**
+ * OC2: opencode command rewrite.
+ * - Strips leading YAML frontmatter block (same as T1).
+ * - Rewrites invocation spelling for opencode:
+ *   - `Agent` tool → `Task` tool (subagent invocations)
+ *   - `Skill` tool → `Task` tool (slash-command invocations)
+ *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ */
+export function applyOpencodeCommand(content: string): string {
+  // Step 1: strip frontmatter (same as T1)
+  const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
+  // Step 2: rewrite invocations (same as T2)
+  let result = stripped.replace(/`Agent` tool/g, "`Task` tool");
+  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  return result;
 }
 
 // T1: Strip leading YAML frontmatter block from command files for Cursor
@@ -800,9 +939,16 @@ function getInstallingVersion(): string {
 }
 
 async function main() {
-  const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force } = parseArgs(
-    process.argv.slice(2),
-  );
+  const {
+    verb,
+    modules,
+    uninstallFlags,
+    upgradeFlags,
+    tracker,
+    cloudVariant,
+    opencodeProvider,
+    force,
+  } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
@@ -1028,12 +1174,20 @@ async function main() {
   // prompt files about to be installed and avoids a mid-install hard-fail in
   // applyT3 ("Missing model lookup for <name>").
   let modelLookup: Map<string, string> = new Map();
+  let opencodeModelLookup: Map<string, string> = new Map();
   const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
   if (fs.existsSync(promptsMdPath)) {
     try {
       modelLookup = parseModelLookup(promptsMdPath);
     } catch {
       // Not fatal — cursor module will fail per-file if a model is missing
+    }
+    if (modules.has("opencode")) {
+      try {
+        opencodeModelLookup = parseOpencodeModelLookup(promptsMdPath);
+      } catch {
+        // Not fatal — opencode module will fail per-file if a model is missing
+      }
     }
   }
 
@@ -1133,6 +1287,8 @@ async function main() {
     dryRun,
     tokens,
     modelLookup,
+    opencodeModelLookup,
+    opencodeProvider,
     advisories,
     ws,
     logPrefix: LOG_PREFIX,
