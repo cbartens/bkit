@@ -9,7 +9,8 @@
 # keep selecting a distinct model per subagent.
 #
 # ── Install the shim once (in ~/.zshrc or ~/.bashrc) ────────────────────────
-#     source /ABS/PATH/TO/bkit-mode.sh
+# `bkit install` seeds this file to `.bkit/bkit-mode.sh` and advises adding:
+#     source <repo>/.bkit/bkit-mode.sh
 #
 # ── Then, from anywhere in the repo (verb + flags, like `bkit install --auto=…`) ──
 #     bkit mode --cloud=claude     # Anthropic API, direct (no router)
@@ -234,42 +235,104 @@ _bkit_router_stop() {
 # Prints ✓/✗ advisories. Returns non-zero if a HARD requirement is missing
 # (route can't activate); soft gaps (direnv/jq) only warn.
 # ---------------------------------------------------------------------------
+# Preflight a (mode, provider): emit bkit-style advisories for every gap (DETECT +
+# ACTION, same shape as `bkit install`), with a blocker/advisory split + summary.
+# Runs on EVERY `bkit mode --cloud=…/--local=…` switch (not just `--doctor`) so the
+# user sees exactly what to fix. Returns non-zero iff a BLOCKER is present.
+# Note: model loops use here-strings (NOT pipes) so counters propagate — a `… | while`
+# runs in a subshell and would silently drop the increments.
 _bkit_preflight() {
   local mode="$1" provider="$2"
   local root; root="$(git rev-parse --show-toplevel 2>/dev/null)" || root="$PWD"
-  local env_file="$root/.bkit/.env" hard_fail=0
+  local env_file="$root/.bkit/.env"
+  local blockers=0 advisories=0
 
-  _ok()   { echo "   ✓ $1"; }
-  _warn() { echo "   ⚠ $1" >&2; }
-  _bad()  { echo "   ✗ $1" >&2; hard_fail=1; }
+  _ok() { echo "   ✓ $1"; }
+  # _adv <blocker|advisory> <id> <detect> <action>
+  _adv() {
+    printf '\n   --- [%s] mode-%s ---\n   DETECT: %s\n   ACTION: %s\n' "$1" "$2" "$3" "$4" >&2
+    if [ "$1" = blocker ]; then blockers=$((blockers + 1)); else advisories=$((advisories + 1)); fi
+  }
 
-  # Always needed.
-  command -v git >/dev/null 2>&1 && _ok "git" || _bad "git not found (repo-root resolution)"
-  command -v sed >/dev/null 2>&1 && _ok "sed" || _bad "sed not found (header rewrite)"
-  command -v direnv >/dev/null 2>&1 && _ok "direnv" || _warn "direnv not found — run 'direnv allow' manually after switching"
+  # --- always needed ---
+  command -v git >/dev/null 2>&1 && _ok "git" \
+    || _adv blocker no-git "git is not on PATH; bkit mode resolves the repo root with it." "Install git (xcode-select --install on macOS) and re-run."
+  command -v sed >/dev/null 2>&1 && _ok "sed" \
+    || _adv blocker no-sed "sed is not on PATH; the per-agent header rewrite needs it." "Install coreutils/sed and re-run."
+  command -v direnv >/dev/null 2>&1 && _ok "direnv" \
+    || _adv advisory no-direnv "direnv not found; the .bkit/.env key toggle won't auto-load into new shells." "brew install direnv (then 'direnv allow'), or export the keys manually after each switch."
 
-  # Router-backed providers (everything except cloud/claude).
+  # --- router-backed providers (everything except cloud/claude) ---
   if [ "$mode/$provider" != "cloud/claude" ]; then
     if [ -n "$(_bkit_router_bin)" ]; then _ok "claude-code-router ($(_bkit_router_bin))"
-    else _bad "claude-code-router missing → npm install -g @musistudio/claude-code-router"; fi
-    command -v node >/dev/null 2>&1 && _ok "node $(node -v 2>/dev/null)" || _bad "node not found (claude-code-router needs Node)"
-    command -v curl >/dev/null 2>&1 && _ok "curl" || _warn "curl not found — 'bkit mode --list' won't work"
+    else _adv blocker router-missing \
+      "claude-code-router (ccr) is not installed; it bridges Claude Code's Anthropic API to the OpenAI-format $provider backend. Without it the route cannot activate." \
+      "npm install -g @musistudio/claude-code-router, then re-run 'bkit mode'. (Set BKIT_ROUTER_URL if you run ccr on a non-default host/port.)"
+    fi
+    command -v node >/dev/null 2>&1 && _ok "node $(node -v 2>/dev/null)" \
+      || _adv blocker no-node "node is not on PATH; claude-code-router is a Node CLI." "Install Node 18+ (e.g. via nvm) and re-run."
+    command -v curl >/dev/null 2>&1 && _ok "curl" \
+      || _adv advisory no-curl "curl not found; model-catalog verification and 'bkit mode --list' won't work." "Install curl and re-run."
   fi
 
   case "$provider" in
     ollama)
       if command -v ollama >/dev/null 2>&1; then _ok "ollama CLI"
-      else _warn "ollama CLI not found — install from https://ollama.com"; fi
+      else _adv advisory ollama-cli "ollama CLI not found; can't verify or pull local models from here (the server may still be running via the app)." "Install from https://ollama.com"; fi
       if curl -s -m 2 http://localhost:11434/api/tags >/dev/null 2>&1; then _ok "ollama server up (:11434)"
-      else _bad "ollama server unreachable (:11434) → run 'ollama serve'"; fi
+      else _adv blocker ollama-server "the Ollama server is not reachable at http://localhost:11434; the route points there." "Start it: 'ollama serve' (or open the Ollama app), then re-run."; fi
+      # Every distinct Ollama model the matrix targets must be pulled.
+      if command -v ollama >/dev/null 2>&1; then
+        local have want m missing_list="" missing_cmds=""
+        have="$(ollama list 2>/dev/null | awk 'NR>1{print $1}')"
+        want="$(_bkit_agent_matrix | cut -d'|' -f3 | sort -u)"
+        while IFS= read -r m; do
+          [ -z "$m" ] && continue
+          printf '%s\n' "$have" | grep -qx "$m" || {
+            missing_list="${missing_list:+$missing_list, }$m"
+            missing_cmds="${missing_cmds:+$missing_cmds && }ollama pull $m"
+          }
+        done <<EOF
+$want
+EOF
+        if [ -n "$missing_list" ]; then
+          _adv blocker ollama-models-missing "Ollama models the matrix assigns to agents are not pulled: $missing_list. Those subagents would fail at run time." "Pull them: $missing_cmds  (sizes target an M5 / 32 GB box; edit _bkit_agent_matrix to use smaller tags if needed.)"
+        else _ok "all matrix Ollama models pulled"; fi
+      fi
       ;;
     nvidia)
       local key; key="$(_bkit_env_get NVIDIA_API_KEY "$env_file")"
       if [ -n "$key" ]; then _ok "NVIDIA_API_KEY set"
-      else _bad "NVIDIA_API_KEY empty in .bkit/.env → add nvapi-… (build.nvidia.com)"; fi
+      else _adv blocker nvidia-key "NVIDIA_API_KEY is empty in .bkit/.env; the router can't authenticate to NVIDIA NIM." "Generate a key at https://build.nvidia.com/models (any model → Get API Key) and set NVIDIA_API_KEY=\"nvapi-…\" in .bkit/.env, then 'direnv allow'."; fi
+      # Every distinct NVIDIA model the matrix targets must exist in the live catalog.
+      if [ -n "$key" ] && command -v curl >/dev/null 2>&1; then
+        local base cat want m missing_list=""
+        base="$(_bkit_registry | grep '/nvidia|' | cut -d'|' -f2)"
+        cat="$(curl -s -m 15 "${base}/models" -H "Authorization: Bearer ${key}" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("\n".join(x["id"] for x in d.get("data",[])))' 2>/dev/null)"
+        want="$(_bkit_agent_matrix | cut -d'|' -f4 | sort -u)"
+        if [ -n "$cat" ]; then
+          while IFS= read -r m; do
+            [ -z "$m" ] && continue
+            printf '%s\n' "$cat" | grep -qx "$m" || missing_list="${missing_list:+$missing_list, }$m"
+          done <<EOF
+$want
+EOF
+          if [ -n "$missing_list" ]; then
+            _adv blocker nvidia-models-missing "NVIDIA model ids the matrix targets are not in the live catalogue: $missing_list (ids version-drift)." "Run 'bkit mode --list=nvidia' to see current ids and update the nvidia column in _bkit_agent_matrix."
+          else _ok "all matrix NVIDIA models in catalog"; fi
+        else
+          _adv advisory nvidia-catalog "couldn't fetch the NVIDIA model catalogue to verify the matrix (network down, or key rejected)." "Check connectivity and that NVIDIA_API_KEY is valid: 'bkit mode --list=nvidia'."
+        fi
+      fi
       ;;
   esac
-  return $hard_fail
+
+  if [ $((blockers + advisories)) -eq 0 ]; then
+    echo "   ✓ all prerequisites satisfied"
+  else
+    printf '\n   %d blocker(s), %d advisory(ies) — fix the blockers before the route works.\n' "$blockers" "$advisories" >&2
+  fi
+  [ "$blockers" -gt 0 ] && return 1 || return 0
 }
 
 # `bkit mode --doctor` — preflight every provider at a glance.
@@ -324,8 +387,10 @@ _bkit_mode_apply() {
     if [ "$provider" = "nvidia" ] && [ "$key" = "dummy" ]; then
       echo "   ! NVIDIA_API_KEY not set in .bkit/.env — add NVIDIA_API_KEY=\"nvapi-…\"." >&2
     fi
-    # Pick a sane router default = the model the highest-tier agent uses.
-    local defmodel; defmodel="$(_bkit_target_model "$provider" claude-opus-4-8 qwen3.6:27b)"
+    # Pick a sane router default = the provider's model for the first matrix agent
+    # (derived from the table so it can't drift from the 4-column schema).
+    local defmodel
+    defmodel="$(_bkit_agent_matrix | head -1 | { IFS='|' read -r _f c o n; _bkit_target_model "$provider" "$c" "$o" "$n"; })"
     local cfg; cfg="$(_bkit_router_config "$provider" "$base" "$key" "$defmodel")"
     echo "   router config: $cfg"
     if _bkit_router_ensure; then
@@ -398,6 +463,26 @@ _bkit_mode_list() {
 # ===========================================================================
 # The `bkit` shim — handle mode/auto in-shell, forward all else to the binary
 # ===========================================================================
+# Detect a global `bkit` binary ONCE at source time — before the function below shadows
+# the name (after definition, `command -v bkit` would just report the function).
+if command -v bkit >/dev/null 2>&1; then _BKIT_GLOBAL=1; else _BKIT_GLOBAL=""; fi
+
+# Run the REAL bkit binary, resolved across setups: global install → package-local bin
+# (consumer repos) → the `pnpm bkit` run-script (this repo). So sourcing the shim never
+# breaks `bkit install` / `bkit upgrade`, even with no global bkit on PATH.
+_bkit_real() {
+  if [ -n "${_BKIT_GLOBAL:-}" ]; then command bkit "$@"; return $?; fi
+  local root; root="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$root" ] && [ -x "$root/node_modules/.bin/bkit" ]; then
+    "$root/node_modules/.bin/bkit" "$@"
+  elif [ -n "$root" ] && command -v pnpm >/dev/null 2>&1 && grep -q '"bkit"[[:space:]]*:' "$root/package.json" 2>/dev/null; then
+    ( cd "$root" && pnpm bkit "$@" )
+  else
+    echo "bkit: no bkit binary found — install it globally, or run 'pnpm bkit $*' / 'pnpm exec bkit $*'." >&2
+    return 127
+  fi
+}
+
 bkit() {
   if [ "$1" = "mode" ]; then
     shift
@@ -414,9 +499,9 @@ bkit() {
     esac
     return $?
   fi
-  # All other verbs (install/uninstall/check/doctor/upgrade) go to the real binary.
+  # All other verbs (install/uninstall/check/upgrade) go to the real binary.
   # The cloud-agent lane is a normal install flag: `bkit install --auto=claude`.
-  command bkit "$@"
+  _bkit_real "$@"
 }
 
 # Refuse direct execution — it can't mutate your shell, and the shim wouldn't persist.

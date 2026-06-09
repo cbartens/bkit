@@ -18,6 +18,7 @@
     "!.bkit/src/__snapshots__",
     "!.bkit/.env",
     "!.bkit/.env.example",
+    "!.bkit/bkit-mode.sh",
     "!.bkit/version",
     "!.bkit/advisories.md",
     "!.bkit/friction.md"

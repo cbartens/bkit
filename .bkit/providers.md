@@ -264,9 +264,9 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 
 ## Local / NVIDIA model swap (`bkit mode`)
 
-> Tool: `.bkit/src/bkit-mode.sh` (dogfood — not yet shipped by the installer). Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
+> Tool: `.bkit/bkit-mode.sh` — seeded by `bkit install` (Tier-3 seed-or-print; consumers edit `_bkit_agent_matrix` for their own models, upgrade won't clobber). Install emits a `mode-shim-not-sourced` advisory with the `source …` line to add to your shell rc. Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
 
-Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/src/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
+Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
 
 <!-- prettier-ignore -->
 | command | backend |

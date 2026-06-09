@@ -115,7 +115,7 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gi
 // Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
-const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
+const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example", "bkit-mode.sh"]);
 // Files that live under a core-owned template dir (e.g. `scripts/`) but are
 // actually owned by an OPT-IN module — skip in the core pass so they ship ONLY
 // when the consumer opts into that module, never on default `--full` install.
@@ -246,6 +246,9 @@ const COPY_EXCLUDE = new Set([
     // file already written by payload copy in live mode, skips its own write,
     // and dry-run vs install writesets diverge. Tier 3 owns this file.
     ".env.example",
+    // Same reason — .bkit/bkit-mode.sh is Tier-3 seed-or-print (writeTier3 in the claude
+    // module owns it); keep it out of the payload copy to avoid the double-write.
+    "bkit-mode.sh",
 ]);
 // Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
 // default skip-if-exists is wrong for canonical bkit-owned content).
@@ -627,6 +630,30 @@ export function runClaudeModule(ctx) {
             else if (result.suggested) {
                 console.log(`${logPrefix} ${tag}claude: ${envrcDst} (exists; AI merge instructions printed)`);
             }
+        }
+    }
+    // Byte-equal-text — .bkit/bkit-mode.sh — Tier 3 seed-or-print (bkit mode shim, #243/#244).
+    // Seeds the cloud/local/NVIDIA inference-swap shell shim; consumers edit its matrix.
+    {
+        const modeSrc = path.join(getTemplatesRoot(), ".bkit", "bkit-mode.sh");
+        const modeDst = ".bkit/bkit-mode.sh";
+        if (fs.existsSync(modeSrc)) {
+            const prevLen = ws.writes.length;
+            const result = writeTier3(modeSrc, modeDst, dryRun, advisories, ws, BKIT_MODE_MERGE_INSTRUCTIONS);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${modeDst}`);
+            }
+            else if (result.suggested) {
+                console.log(`${logPrefix} ${tag}claude: ${modeDst} (exists; AI merge instructions printed)`);
+            }
+            // The shim only takes effect once SOURCED — bkit cannot edit the user's shell rc,
+            // so remind on every install/upgrade (same philosophy as the GH_BKIT_TOKEN setup).
+            advisories.push({
+                id: "mode-shim-not-sourced",
+                severity: "advisory",
+                detect: ".bkit/bkit-mode.sh is in place, but `bkit mode` only works once the shim is sourced into your shell — bkit does not edit your ~/.zshrc.",
+                action: "Add to ~/.zshrc (or ~/.bashrc): source <repo-abs-path>/.bkit/bkit-mode.sh — then `source ~/.zshrc`. Run `bkit mode --doctor` to check per-provider prerequisites (claude-code-router / Ollama / NVIDIA key + models). Use `bkit mode --cloud=nvidia` / `--local=ollama` / `--reset`.",
+            });
         }
     }
 }
@@ -1047,6 +1074,18 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   --- begin bkit reference .envrc ---
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .envrc ---
+`;
+const BKIT_MODE_MERGE_INSTRUCTIONS = `[bkit] .bkit/bkit-mode.sh exists — bkit will not overwrite (you may have edited _bkit_agent_matrix for your own models). Review the reference for fixes/new providers and merge by hand.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .bkit/bkit-mode.sh. Compare against the bkit reference below. Preserve any
+  consumer edits inside \`_bkit_agent_matrix\` (per-machine model choices) and to the
+  provider registry; adopt any new providers, checks, or bug-fixes from the reference.
+
+  --- begin bkit reference .bkit/bkit-mode.sh ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .bkit/bkit-mode.sh ---
 `;
 const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
 

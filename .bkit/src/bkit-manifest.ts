@@ -183,6 +183,10 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+  // bkit mode shell shim — seeded so consumers can `source .bkit/bkit-mode.sh` to swap
+  // Claude Code's inference between cloud/local/NVIDIA (#243/#244). Tier-3 seed-or-print:
+  // consumers edit `_bkit_agent_matrix` for their own models, so upgrade must not clobber.
+  { path: ".bkit/bkit-mode.sh", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   // Mirrors from .agents/ — managed dynamically; not listed individually here
   // because the exact set depends on the bkit-prefix prompt/workflow files at
   // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
