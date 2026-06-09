@@ -262,6 +262,30 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 
 ---
 
+## Local / NVIDIA model swap (`bkit mode`)
+
+> Tool: `.bkit/src/bkit-mode.sh` (dogfood — not yet shipped by the installer). Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
+
+Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/src/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
+
+<!-- prettier-ignore -->
+| command | backend |
+| --- | --- |
+| `bkit mode --cloud=claude` | Anthropic API, direct (default) |
+| `bkit mode --cloud=nvidia` | NVIDIA NIM, via claude-code-router |
+| `bkit mode --local=ollama` | Ollama, via claude-code-router |
+| `bkit mode --status` / `--doctor` / `--list=<p>` / `--reset` | inspect / per-provider preflight / live `/v1/models` / restore default cloud |
+
+**Why a router:** Claude Code speaks the Anthropic Messages API; Ollama and NVIDIA NIM are OpenAI-format. `claude-code-router` (`ccr`, `npm i -g @musistudio/claude-code-router`) bridges them and routes each request to a provider by matching the model name — so per-agent `model:` headers keep selecting per-subagent models. `--cloud=claude` is direct, no router.
+
+**Model table:** `_bkit_agent_matrix` in the script is the single source of truth across all providers — one row per agent, `file|claude|ollama|nvidia`; `bkit mode` just picks the column. The ollama/nvidia columns **mirror the Claude tier** (one model per opus/sonnet/haiku); intra-tier diversity between parallel fan-out slots comes from the prompt **lens** (identical across providers), exactly as on Claude — not from picking different models per slot. NVIDIA ids are verified live (`bkit mode --list=nvidia`) and all support OpenAI function-calling (required — subagents are tool-heavy). Per-agent capability overrides are a planned config (see the override issue).
+
+**Local hardware:** the `--local=ollama` model defaults (`qwen3.6:27b` / `gemma4:12b` / `deepseek-r1:14b` / `qwen2.5-coder:1.5b`) were sized for a **MacBook Air M5 with 32 GB unified memory** — the set fits that ceiling (one ~27B model resident at a time plus small background workers). On larger machines, bump the cells in `_bkit_agent_matrix` to bigger local models.
+
+**Keys:** `NVIDIA_API_KEY` (`nvapi-…`) in `.bkit/.env`; the swap comments out `ANTHROPIC_API_KEY` in router modes and restores it on `--reset` (+ `direnv allow`).
+
+---
+
 ## System-prompt / memory files
 
 <!-- prettier-ignore -->

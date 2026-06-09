@@ -25,12 +25,12 @@ tools:
 **Contract:**
 
 - **Mandate:** Move harvest content from each consumer worktree's `.bkit/friction.md` into the bkit repo's `.bkit/friction.md`; truncate source.
-- **Single pass:** One pass over consumers listed in `docs/bkit-consumers.md`; do NOT recurse into other files or paths.
+- **Single pass:** One pass over consumers listed in `.bkit/consumers.md`; do NOT recurse into other files or paths.
 
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start; do NOT trust session memory.
-2. Read `docs/bkit-consumers.md` → list of absolute consumer-repo paths. Trim each line; drop blanks.
+2. Read `.bkit/consumers.md` → list of absolute consumer-repo paths. Trim each line; drop blanks.
 3. For each consumer path `{CONSUMER}`:
    - Verify the directory exists and is a git repo (`git -C {CONSUMER} rev-parse --git-dir`).
    - Run `git -C {CONSUMER} worktree list --porcelain`. Parse `worktree <path>` and `branch <ref>` (or `detached`) pairs.

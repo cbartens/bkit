@@ -1,4 +1,4 @@
-name: bkit-cloud
+name: bkit-auto
 
 # Phase-routed cloud-agent workflow (issue #119). A single workflow runs ANY bkit
 # phase inside a fresh Claude Code session on the runner via claude-code-action.
@@ -12,7 +12,7 @@ name: bkit-cloud
 #
 # The job body is phase-agnostic: it resolves PHASE + a brief-context arg (PR for the
 # CI-driven ship/debug path, issue number for dispatched runs), then invokes the
-# mirrored `/bkit-cloud` orchestrator. The orchestrator ingests the brief from the
+# mirrored `/bkit-auto` orchestrator. The orchestrator ingests the brief from the
 # tracker (issue description + comments, MCP-only, most-recent-wins) and routes to the
 # matching phase skill. Cursor consumers configure the equivalent trigger in the Cursor
 # cloud agents dashboard — this YAML is the Claude half only.
@@ -48,17 +48,17 @@ on:
         type: string
 
 # Dynamic run name (shown in the Actions runs list). Dispatched runs render
-# `bkit cloud <phase>(<issue>)`; CI-driven runs echo the triggering commit subject
-# (`head_commit.message` — already `{type}({scope}): {message}`) prefixed with `bkit cloud`.
+# `bkit auto <phase>(<issue>)`; CI-driven runs echo the triggering commit subject
+# (`head_commit.message` — already `{type}({scope}): {message}`) prefixed with `bkit auto`.
 run-name: >-
   ${{ inputs.phase
-      && format('bkit cloud {0}({1})', inputs.phase, inputs.issue)
-      || format('bkit cloud {0}', github.event.workflow_run.head_commit.message) }}
+      && format('bkit auto {0}({1})', inputs.phase, inputs.issue)
+      || format('bkit auto {0}', github.event.workflow_run.head_commit.message) }}
 
 concurrency:
   # Serialises concurrent runs WITHIN each trigger surface:
-  #   - dispatch path  keys on inputs.issue     (e.g. bkit-cloud-141)
-  #   - CI-completion  keys on head_branch       (e.g. bkit-cloud-feat/141-cloud-app)
+  #   - dispatch path  keys on inputs.issue     (e.g. bkit-auto-141)
+  #   - CI-completion  keys on head_branch       (e.g. bkit-auto-feat/141-cloud-app)
   #
   # Cross-surface collapse (dispatch vs the auto-ship it triggers) is NOT achievable
   # via a concurrency expression: GitHub evaluates concurrency.group from trigger-payload
@@ -70,7 +70,7 @@ concurrency:
   # expression functions alone. Cross-boundary races between a dispatched build and the
   # auto-ship it triggers are handled by the orchestrator stale-run guard + status.json
   # lock (not this concurrency key).
-  group: bkit-cloud-${{ inputs.issue || github.event.workflow_run.head_branch }}
+  group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions:
@@ -118,8 +118,8 @@ jobs:
 
       - name: Configure git user
         run: |
-          git config user.name 'bkit-cloud[bot]'
-          git config user.email 'bkit-cloud@users.noreply.github.com'
+          git config user.name 'bkit-auto[bot]'
+          git config user.email 'bkit-auto@users.noreply.github.com'
 
       - name: Resolve phase + brief context
         id: ctx
@@ -184,13 +184,13 @@ jobs:
             echo "arg=$ARG"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch /bkit-cloud on Claude Code runner
+      - name: Dispatch /bkit-auto on Claude Code runner
         if: steps.ctx.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
-          # Orchestrator contract: `/bkit-cloud <phase> <arg>` where <arg> is the open
+          # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
           # PR number (ship/debug) or the tracker issue number/id (design/plan/build).
-          prompt: "/bkit-cloud ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"
+          prompt: "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"
           # Lock the runner-side session to the same tool surface bkit grants the local
           # orchestrator. GitHub MCP surface is always available; this workflow is
           # GitHub-tracker only (cloud=claude requires tracker=github).

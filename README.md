@@ -18,8 +18,9 @@ Beyond the pipeline and its tracker integration, every `bkit install` wires in t
 - **Quality gates, local and CI in lockstep.** Typecheck, Prettier, a Vale prose linter, an LLM-slop scanner, actionlint, and a mirror/drift gate run in the seeded pre-commit / pre-push hooks **and** in CI — the same commands in both places, so a green local push is a green CI run.
 - **Dependency updates, pre-tuned.** Opt-in Renovate or Dependabot, shipped already configured: grouped auto-merge for non-major bumps, SHA-pinned GitHub Actions, lockfile maintenance, and CVE alerts that bypass the weekly schedule.
 - **Cloud agents.** Opt-in autonomous routing: when CI finishes, a Claude Code or Cursor cloud agent picks up automatically — `bkit-ship` on green, `bkit-debug` on red — with no local session running.
+- **Swap the model backend, keep the pipeline.** Because every subagent pins its own model, `bkit mode` repoints the whole pipeline's inference between the Anthropic cloud, a local **Ollama** install, and NVIDIA's free **NIM** endpoint — without touching the harness (subagents, gates, hooks, MCP all unchanged; only the backend and per-agent model headers change). Run on free or fully-local inference to dogfood, cut cost, or work offline. (Emerging — see `.bkit/providers.md` § Local / NVIDIA model swap.)
 
-For the full pipeline and subagent reference, and a mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see [`docs/bkit-comparison.md`](docs/bkit-comparison.md).
+For the full pipeline and subagent reference, and a mapping against Antonio Gulli's _Agentic Design Patterns_ (12 of 22 patterns fully implemented, several beyond the book), see [`.bkit/comparison.md`](.bkit/comparison.md).
 
 > [!IMPORTANT]
 > **`GH_BKIT_TOKEN` is required everywhere bkit installs.** Without it, `pnpm install` fails with an opaque 401 (or the silent-ignore-then-fall-back-to-npmjs footgun → 404). Set it in **all four** places before running `pnpm add -D @cbartens/bkit`:
@@ -169,11 +170,11 @@ After step 4, restart any open Claude Code / Cursor sessions in this repo so the
 
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
-bkit ships repo-side scaffolding for both cloud agents via the opt-in `bkit install --cloud` module — `.claude/hooks/cloud-bootstrap.sh` (per-session install), `.cursor/Dockerfile` + `.cursor/environment.json` (Cursor cloud image), and the phase-routed `.github/workflows/bkit-cloud.yml`. (`.cursor/hooks.json` — the Linear preflight wiring — ships with the default Cursor module, not `--cloud`.) A default `--full` install ships zero cloud footprint. The **online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) is configured once per machine / account.
+bkit ships repo-side scaffolding for both cloud agents via the opt-in `bkit install --cloud` module — `.claude/hooks/cloud-bootstrap.sh` (per-session install), `.cursor/Dockerfile` + `.cursor/environment.json` (Cursor cloud image), and the phase-routed `.github/workflows/bkit-auto.yml`. (`.cursor/hooks.json` — the Linear preflight wiring — ships with the default Cursor module, not `--cloud`.) A default `--full` install ships zero cloud footprint. The **online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) is configured once per machine / account.
 
-For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bkit also ships `.github/workflows/bkit-cloud.yml` (Claude half, via `claude-code-action`) and a `/bkit-cloud` slash command that both clouds invoke from a single source of truth (Cursor wires it up via a dashboard trigger; no GHA needed on the Cursor side).
+For **post-CI auto-routing** (the loop that decides ship-vs-debug after CI), bkit also ships `.github/workflows/bkit-auto.yml` (Claude half, via `claude-code-action`) and a `/bkit-auto` slash command that both clouds invoke from a single source of truth (Cursor wires it up via a dashboard trigger; no GHA needed on the Cursor side).
 
-Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.bkit/cloud.md`](.bkit/cloud.md). Host-delta matrix: [`.bkit/IDEs.md`](.bkit/IDEs.md) § Runtime environment.
+Full recipe + paste-in setup script + env-var inventory + Cursor dashboard config + consumer customisation patterns: [`.bkit/cloud.md`](.bkit/cloud.md). Host-delta matrix: [`.bkit/providers.md`](.bkit/providers.md) § Runtime environment.
 
 ## JSON ownership model — deep-containment
 
@@ -316,8 +317,8 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.githubProject` absent and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.githubProject: false`. |
 | `github-project-status-field-id-format` | `bkit.githubProject` is configured but `statusFieldId` holds a GraphQL node id (`PVTSSF_…`) or non-number — `projects_write` needs the numeric field id, so board sync silently no-ops. Re-derive via `gh api /orgs/<org>/projectsV2/<number>/fields`. |
 | `dep-updater-none` / `-renovate` / `-dependabot` | Optional post-install decision — which dependency updater is wired. `none` nudges `bkit install --renovate` or `--dependabot` (mutually exclusive). See [§ Optional post-install decisions](#optional-post-install-decisions). |
-| `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --cloud`; `cloud-router` is informational once `bkit-cloud.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
-| `actions-write-permissions-missing` | `bkit-cloud.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
+| `cloud-router-none` / `cloud-router` | Optional post-install decision — post-CI auto-routing (`bkit.cloudAgents`). `none` (undecided) nudges `bkit install --cloud`; `cloud-router` is informational once `bkit-auto.yml` is present. See [§ Optional post-install decisions](#optional-post-install-decisions). |
+| `actions-write-permissions-missing` | `bkit-auto.yml` present but repo Actions permissions are read-only / PR creation disabled — `actions/checkout` + `gh pr create` 403. Repo-level check; org policy can override. |
 | `vale-package-not-synced` | vale on PATH but `.vale/styles/write-good/` absent |
 | `devdeps-need-fetch` | bkit added devDeps in this run — `pnpm install` needed |
 
@@ -344,24 +345,24 @@ For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 
 Three capabilities are **opt-in** and deliberately excluded from `bkit install` / `--full`. A default install never wires them — instead, the post-install advisory banner nudges you to choose, once. Each is recorded in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`) so the nudge knows whether you've decided or deliberately opted out.
 
-| Decision               | Default                                          | Opt-in command                                                                                                                      | Advisory when unset  |
-| ---------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Issue tracker**      | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`)                                    | `tracker-setup-none` |
-| **Dependency updater** | none (no auto dep PRs)                           | `bkit install --renovate` (recommended) **or** `--dependabot` — mutually exclusive                                                  | `dep-updater-none`   |
-| **Cloud agents**       | none (zero cloud footprint)                      | `bkit install --cloud` — installs `bkit-cloud.yml` + cloud env scaffolding (cloud-bootstrap.sh, Cursor Dockerfile/environment.json) | `cloud-router-none`  |
+| Decision               | Default                                          | Opt-in command                                                                                                                     | Advisory when unset  |
+| ---------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| **Issue tracker**      | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`)                                   | `tracker-setup-none` |
+| **Dependency updater** | none (no auto dep PRs)                           | `bkit install --renovate` (recommended) **or** `--dependabot` — mutually exclusive                                                 | `dep-updater-none`   |
+| **Cloud agents**       | none (zero cloud footprint)                      | `bkit install --cloud` — installs `bkit-auto.yml` + cloud env scaffolding (cloud-bootstrap.sh, Cursor Dockerfile/environment.json) | `cloud-router-none`  |
 
 **Why opt-in, not part of `--full`:**
 
 - **Tracker** wires real credentials and MCP servers into workflows — a consumer must choose their provider; bkit can't guess.
 - **Dependency updater** requires a deliberate choice between two tools (and, for Renovate, a one-time GitHub App install that can't be scripted). Shipping one by default would force a tool the consumer may not want and, for Renovate, create a broken onboarding PR if the App is installed before the config reaches the default branch (see `docs/deployments.md` § GitHub Actions pinning).
-- **Cloud agents** install the phase-routed `bkit-cloud.yml` (auto-dispatches bkit-ship on CI pass, bkit-debug on CI fail; design/plan/build via `workflow_dispatch`) plus the cloud env scaffolding (`.claude/hooks/cloud-bootstrap.sh`, `.cursor/Dockerfile`, `.cursor/environment.json`). The workflow is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets, GitHub Actions write permissions, and (for the Cursor half) a dashboard trigger — and it depends on the issue tracker, which is itself opt-in. The env scaffolding is inert until a Claude/Cursor cloud env is wired in the dashboard. Shipping autonomous routing by default, wired to a tracker that may not be configured, is the wrong default — so a `--full` install ships zero cloud footprint.
+- **Cloud agents** install the phase-routed `bkit-auto.yml` (auto-dispatches bkit-ship on CI pass, bkit-debug on CI fail; design/plan/build via `workflow_dispatch`) plus the cloud env scaffolding (`.claude/hooks/cloud-bootstrap.sh`, `.cursor/Dockerfile`, `.cursor/environment.json`). The workflow is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` repo secrets, GitHub Actions write permissions, and (for the Cursor half) a dashboard trigger — and it depends on the issue tracker, which is itself opt-in. The env scaffolding is inert until a Claude/Cursor cloud env is wired in the dashboard. Shipping autonomous routing by default, wired to a tracker that may not be configured, is the wrong default — so a `--full` install ships zero cloud footprint.
 
 **How to decide:**
 
 1. Run `bkit install` (or `--full`) as normal. The post-install banner lists `tracker-setup-none`, `dep-updater-none` and `cloud-router-none` if undecided.
 2. Pick a tracker: `bkit install --tracker=github` (or `linear`). Persisted to `bkit.issueTracker`; future installs preserve it.
 3. Pick a dependency updater: `bkit install --renovate` (or `--dependabot`). Persisted to `bkit.depUpdater`. For Renovate, re-run after merging the config to your default branch to get the App-install URL (Phase B).
-4. Enable cloud agents: `bkit install --cloud`. Persisted to `bkit.cloudAgents`; the install prints the secrets + permissions + dashboard checklist (`bkit-cloud-setup`).
+4. Enable cloud agents: `bkit install --cloud`. Persisted to `bkit.cloudAgents`; the install prints the secrets + permissions + dashboard checklist (`bkit-auto-setup`).
 5. **To opt out and silence a nudge**, set the field to `"none"` in `package.json` (`bkit.issueTracker` / `bkit.depUpdater` / `bkit.cloudAgents`). The advisory then stays quiet.
 
 All three decisions are reversible — re-run the install with the relevant flag. Renovate ↔ Dependabot are mutually exclusive: bkit refuses to install one while the other's config is present, with a cleanup advisory.
@@ -400,7 +401,7 @@ pnpm exec bkit uninstall --dry-run
 
 # Uninstall specific modules (a single add-on flag removes only that one)
 pnpm exec bkit uninstall --ci --lint
-pnpm exec bkit uninstall --cloud        # removes only bkit-cloud.yml + the cloudAgents key
+pnpm exec bkit uninstall --cloud        # removes only bkit-auto.yml + the cloudAgents key
 
 # Also strip managed package.json scripts/devDeps
 pnpm exec bkit uninstall --package

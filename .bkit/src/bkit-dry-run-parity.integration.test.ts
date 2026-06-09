@@ -119,8 +119,8 @@ describe("check ≡ install writeset parity — cloud=claude (dry-run parity, T1
     const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
 
     expect(checkPaths).toEqual(installPaths);
-    // cloud=claude ships bkit-cloud.yml + cloud-bootstrap.sh (not .cursor/*)
-    expect(installPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(true);
+    // cloud=claude ships bkit-auto.yml + cloud-bootstrap.sh (not .cursor/*)
+    expect(installPaths.some((p) => p.includes("bkit-auto.yml"))).toBe(true);
     expect(installPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(true);
     expect(installPaths.some((p) => p.includes("Dockerfile"))).toBe(false);
   });
@@ -139,10 +139,10 @@ describe("check ≡ install writeset parity — cloud=cursor (dry-run parity, T1
     const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
 
     expect(checkPaths).toEqual(installPaths);
-    // cloud=cursor ships .cursor/Dockerfile + .cursor/environment.json (not bkit-cloud.yml)
+    // cloud=cursor ships .cursor/Dockerfile + .cursor/environment.json (not bkit-auto.yml)
     expect(installPaths.some((p) => p.includes("Dockerfile"))).toBe(true);
     expect(installPaths.some((p) => p.includes("environment.json"))).toBe(true);
-    expect(installPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(false);
+    expect(installPaths.some((p) => p.includes("bkit-auto.yml"))).toBe(false);
   });
 });
 

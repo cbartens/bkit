@@ -35,7 +35,7 @@ jobs:
         uses: anthropics/claude-code-action@fbda2eb1bdc90d319b8d853f5deb53bca199a7c1 # v1
         with:
           # Auth: claude_code_oauth_token (Claude-subscription OAuth, App-generated workflow).
-          # DECISION-A: this path MUST NOT use ANTHROPIC_API_KEY. bkit-cloud.yml uses ANTHROPIC_API_KEY+OIDC.
+          # DECISION-A: this path MUST NOT use ANTHROPIC_API_KEY. bkit-auto.yml uses ANTHROPIC_API_KEY+OIDC.
           # Both surfaces act as the Claude App at the identity level, but they do NOT share one token input.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 

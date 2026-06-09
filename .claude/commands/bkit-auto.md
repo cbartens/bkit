@@ -1,10 +1,10 @@
 ---
-description: "Cloud — Phase-routed dispatch of any bkit phase"
+description: "Auto — Phase-routed dispatch of any bkit phase"
 ---
 
-# Cloud
+# Auto
 
-**Role:** Orchestrator — phase-routed cloud dispatcher.
+**Role:** Orchestrator — phase-routed auto-dispatcher.
 **Scope:** Route an invocation to the matching bkit phase skill.
 
 > [!CAUTION]
@@ -24,7 +24,7 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 
@@ -85,7 +85,7 @@ description: "Cloud — Phase-routed dispatch of any bkit phase"
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links):
     ```comment
-    ## bkit Cloud
+    ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})

@@ -96,7 +96,7 @@ Output: a remediated commit pushed to the feature branch. Two modes — normal (
 <!-- prettier-ignore -->
 | Subagent | Lens / focus | What it does |
 | --- | --- | --- |
-| `bkit-debug-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration EITHER adds `[DEBUG-OBSERVE]` instrumentation OR applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
+| `bkit-debug-failure-soak` | Instrument-or-fix loop | One accumulating context against the failing boundary; each iteration EITHER adds `[DEBUG-OBSERVE]` instrumentation OR applies the smallest evidence-backed fix, stripping all scaffolding before declaring a fix. xhigh; bounded by `SOAK_ATTEMPT` (reset per soak entry). |
 
 **Escape hatch**
 
@@ -161,6 +161,7 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 - **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
 - **Explicit per-agent model pins.** Immune to session-default drift.
+- **Provider-portable execution.** Because the model pins are per-agent, `bkit mode` repoints the entire pipeline between the Anthropic cloud, a local **Ollama** install, and NVIDIA's free **NIM** endpoint without touching the harness — subagents, gates, hooks, and MCP unchanged; only the inference backend and the per-agent model headers move (OpenAI-format backends bridged via `claude-code-router`). The same five-phase, gated, parallel pipeline runs on free or fully-local inference — for dogfooding, cost control, or offline work. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). Emerging capability — see `.bkit/providers.md` § Local / NVIDIA model swap.
 
 ### Known gaps, scoped as opportunities
 

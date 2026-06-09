@@ -641,7 +641,7 @@ const RELOCATED_AGENTS_FILES = [
   "workflows.md",
   "cloud.md",
   "prompts.md",
-  "IDEs.md",
+  "providers.md",
 ] as const;
 
 // Files that moved from `.agents/` to a consumer-side `.bkit/` directory and
@@ -884,8 +884,8 @@ async function main() {
     }
 
     // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
-    // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
-    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
+    // renders bkit-auto.yml the same way install does (byte-identical, no drift fight).
+    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-auto.yml");
     let upgradeTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
     try {
       const pkg = JSON.parse(
@@ -913,7 +913,7 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
-            // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
+            // bkit-auto.yml is rendered tracker-conditional on install (#138) — the raw
             // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
             // so upgrade emits byte-identical output (install/upgrade can never disagree).
             const contentOverride =

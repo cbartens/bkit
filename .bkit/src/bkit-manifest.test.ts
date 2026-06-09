@@ -16,9 +16,9 @@ import {
 // Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
 // ---------------------------------------------------------------------------
 
-describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + cloud-bootstrap.sh", () => {
-  it("contains bkit-cloud.yml as byte-equal-text", () => {
-    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
+describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-auto.yml + cloud-bootstrap.sh", () => {
+  it("contains bkit-auto.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-auto.yml");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("byte-equal-text");
     expect(entry!.module).toBe("cloud");
@@ -38,7 +38,7 @@ describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + c
     ).toBeUndefined();
   });
 
-  it("contains exactly 2 entries (bkit-cloud.yml + cloud-bootstrap.sh)", () => {
+  it("contains exactly 2 entries (bkit-auto.yml + cloud-bootstrap.sh)", () => {
     expect(CLOUD_MANIFEST_CLAUDE.length).toBe(2);
   });
 });
@@ -59,9 +59,9 @@ describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile
     expect(entry!.module).toBe("cloud");
   });
 
-  it("does NOT contain bkit-cloud.yml or cloud-bootstrap.sh (claude variant only)", () => {
+  it("does NOT contain bkit-auto.yml or cloud-bootstrap.sh (claude variant only)", () => {
     expect(
-      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-cloud.yml"),
+      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-auto.yml"),
     ).toBeUndefined();
     expect(
       CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
@@ -144,7 +144,14 @@ describe("getInstallManifest", () => {
 
   it("core manifest includes the six canonical .bkit docs as byte-equal-text, non-seed (#218)", () => {
     const entries = getInstallManifest(["core"]);
-    const docs = ["cloud.md", "IDEs.md", "prompts.md", "trackers.md", "workflows.md", "README.md"];
+    const docs = [
+      "cloud.md",
+      "providers.md",
+      "prompts.md",
+      "trackers.md",
+      "workflows.md",
+      "README.md",
+    ];
     for (const doc of docs) {
       const entry = entries.find((e) => e.path === `.bkit/${doc}`);
       expect(entry, `core manifest must list .bkit/${doc}`).toBeDefined();
@@ -237,9 +244,9 @@ describe("getInstallManifest", () => {
     ).toBeUndefined();
   });
 
-  it("cloud manifest includes the phase-routed bkit-cloud.yml workflow (renamed from bkit-ci-router — #119)", () => {
+  it("cloud manifest includes the phase-routed bkit-auto.yml workflow (renamed from bkit-ci-router — #119)", () => {
     const entries = getInstallManifest(["cloud"]);
-    const wf = entries.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
+    const wf = entries.find((e) => e.path === ".github/workflows/bkit-auto.yml");
     expect(wf).toBeDefined();
     expect(wf!.format).toBe("byte-equal-text");
     expect(entries.find((e) => e.path === ".github/workflows/bkit-ci-router.yml")).toBeUndefined();

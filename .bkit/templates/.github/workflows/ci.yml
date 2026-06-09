@@ -451,7 +451,7 @@ jobs:
 #       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
 #       #   Then point protection here: bash scripts/ci/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
 #
-# COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
+# COMPOSES WITH bkit-auto.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
 # a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .agents/cloud.md.
 #
 # THE RULE (even with no CI): green != ran != validated. Confirm a FULL run of the touched tiers before

@@ -1,6 +1,10 @@
-# Cloud
+---
+description: "Auto — Phase-routed dispatch of any bkit phase"
+---
 
-**Role:** Orchestrator — phase-routed cloud dispatcher.
+# Auto
+
+**Role:** Orchestrator — phase-routed auto-dispatcher.
 **Scope:** Route an invocation to the matching bkit phase skill.
 
 > [!CAUTION]
@@ -18,11 +22,20 @@
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
+<!-- bkit:tracker github start -->
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
+<!-- bkit:tracker github end -->
+<!-- bkit:tracker linear start -->
+
+> - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. No edit-in-place.
+
+<!-- bkit:tracker linear end -->
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
 
@@ -30,7 +43,13 @@
 
 ## 🤖 Failure Path
 
-1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+1. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Workflow Failure
@@ -38,6 +57,7 @@
    Error: {error message / tool response}
    Stderr: {last 20 lines if shell}
    ```
+   <!-- bkit:tracker true end -->
 2. **STOP**, no further downstream steps.
 
 ---
@@ -69,7 +89,8 @@
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
-     
+     <!-- bkit:tracker github start -->
+
     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
@@ -77,16 +98,44 @@
     ```
 
     **If** marker missing or malformed → **Failure Path**.
+     <!-- bkit:tracker github end -->
+     <!-- bkit:tracker linear start -->
 
-11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+    Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
+
+    ```html
+    <!-- bkit:issue={ISSUE_ID} bkit:fid={FID} -->
+    ```
+
+    **If** marker missing or malformed → **Failure Path**.
+     <!-- bkit:tracker linear end -->
+     <!-- bkit:tracker false start -->
+
+    Parse `FID` from marker below:
+
+    ```html
+    <!-- bkit:fid={FID} -->
+    ```
+
+    **If** marker missing or malformed → **Failure Path**.
+     <!-- bkit:tracker false end -->
+
+11. <!-- bkit:tracker github start -->
+    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+    <!-- bkit:tracker github end -->
+    <!-- bkit:tracker linear start -->
+    `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+    <!-- bkit:tracker linear end -->
+    <!-- bkit:tracker true start -->
     `{BODY}` = fenced block below (`MODE` = BRIEF omits the branch/PR/run links):
     ```comment
-    ## bkit Cloud
+    ## bkit Auto
     ### Step 1 — Start Workflow - Phase: {PHASE}
     [{OWNER_REPO}/tree/{BRANCH}](https://github.com/{OWNER_REPO}/tree/{BRANCH})
     [{OWNER_REPO}/pull/{PR_NUMBER}]({PR_URL})
     [{OWNER_REPO}/actions/run/{RUN_ID}](https://github.com/{OWNER_REPO}/actions/runs/{RUN_ID})
     ```
+    <!-- bkit:tracker true end -->
 
 ### 🔒 Gate 1 — Start Workflow
 
@@ -94,18 +143,27 @@
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
 - [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
 - [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
+<!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 1` section)
+<!-- bkit:tracker true end -->
 
 ---
 
 ## 🤖 Step 2 — Dispatch
 
-1. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+1. <!-- bkit:tracker github start -->
+   `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker github end -->
+   <!-- bkit:tracker linear start -->
+   `mcp__linear__save_comment({ issueId: "{ISSUE_ID}", body: "{BODY}" })` — NEW comment, no edit.
+   <!-- bkit:tracker linear end -->
+   <!-- bkit:tracker true start -->
    `{BODY}` = fenced block below:
    ```comment
    ### Step 2 — Dispatch - Phase: {PHASE}
    ```
-2. Invoke matching phase skill via `Task` tool → exit. Route by `{PHASE}`:
+   <!-- bkit:tracker true end -->
+2. Invoke matching phase skill via `Skill` tool → exit. Route by `{PHASE}`:
    - `ship` → `/bkit-ship {FID}`
    - `debug` → `/bkit-debug {FID}`
    - `design` → `/bkit-design {ISSUE_ID}`
@@ -115,7 +173,9 @@
 
 ### 🔒 Gate 2 — Dispatch
 
+<!-- bkit:tracker true start -->
 
 - [ ] Issue comment attempted (`Step 2` section)
+<!-- bkit:tracker true end -->
 - [ ] The phase skill matching `{PHASE}` was invoked with the correct argument (`{FID}` for ship/debug, `{ISSUE_ID}` for design/plan/build)
 - [ ] Orchestrator exits and the dispatched skill owns the session

@@ -115,14 +115,14 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-cloud.yml`
+ * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-auto.yml`
  *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
  * - `cursor`  — `bkit install --cloud=cursor` installed `.cursor/Dockerfile`
  *               + `.cursor/environment.json`. Requires `tracker=linear`.
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
- * (`bkit-cloud.yml` for claude; `.cursor/Dockerfile` for cursor) is the authoritative
+ * (`bkit-auto.yml` for claude; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
  *
@@ -162,7 +162,7 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
   // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
-  { path: ".bkit/IDEs.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/prompts.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
@@ -218,7 +218,7 @@ const CI_MANIFEST: ManifestEntry[] = [
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
 //   cloud=claude (tracker=github):
-//   - bkit-cloud.yml         — phase-routed GitHub Action; requires ANTHROPIC_API_KEY +
+//   - bkit-auto.yml         — phase-routed GitHub Action; requires ANTHROPIC_API_KEY +
 //                              Claude GitHub App + Actions write perms.
 //   - cloud-bootstrap.sh     — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).
@@ -231,7 +231,7 @@ const CI_MANIFEST: ManifestEntry[] = [
 // a single manifest with conditional emission but unconditional uninstall listing would
 // orphan the unused variant's files. See issue #119 ("Managed Cloud Agents").
 export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [
-  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
+  { path: ".github/workflows/bkit-auto.yml", format: "byte-equal-text", module: "cloud" },
   { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
 ];
 

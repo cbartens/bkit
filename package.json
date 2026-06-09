@@ -77,7 +77,7 @@
   "bkit": {
     "issueTracker": "github",
     "depUpdater": "renovate",
-    "cloudAgents": "enabled",
+    "cloudAgents": "claude",
     "githubProject": false
   }
 }

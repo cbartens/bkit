@@ -28,7 +28,7 @@ const MODULE_FLAGS = new Set([
 // `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
 // this path explicitly opt out of bkit's Renovate recommendation; installing both
 // opens competing PRs against the same packages. Rationale (cloud): the
-// `bkit-cloud.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
+// `bkit-auto.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
 // secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
 // and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
 // a default. See issue #119 ("Managed Cloud Agents").
@@ -126,7 +126,15 @@ export function parseArgs(argv) {
     let force = false;
     for (const arg of args) {
         if (arg.startsWith("--")) {
-            const flag = arg.slice(2);
+            const rawFlag = arg.slice(2);
+            // `--auto[=claude|cursor]` is the current name for the cloud-agent lane (issues
+            // #243/#244 freed "cloud" for the local/cloud execution-target swap). `--cloud[=…]`
+            // is kept as a deprecated alias. Both normalise to the internal `cloud` module.
+            const flag = rawFlag === "auto"
+                ? "cloud"
+                : rawFlag.startsWith("auto=")
+                    ? `cloud=${rawFlag.slice("auto=".length)}`
+                    : rawFlag;
             // Value-bearing flag: --tracker=<github|linear|none>
             if (flag.startsWith("tracker=")) {
                 const value = flag.slice("tracker=".length);
@@ -144,7 +152,7 @@ export function parseArgs(argv) {
             // improvement: resolve variant from recorded bkit.cloudAgents for check/upgrade too.
             if (flag === "cloud") {
                 if (verb !== "uninstall") {
-                    console.error(`[bkit] --cloud requires an explicit variant: --cloud=claude or --cloud=cursor. Run \`bkit help\` for usage.`);
+                    console.error(`[bkit] --auto requires an explicit variant: --auto=claude or --auto=cursor. Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
                 // uninstall --cloud: add the module flag without setting a cloudVariant.
@@ -160,6 +168,18 @@ export function parseArgs(argv) {
                 }
                 cloudVariant = parsed;
                 moduleFlags.add("cloud");
+                continue;
+            }
+            // Value-bearing flag: --dependency=<renovate|dependabot>
+            // The unified form of the `--renovate` / `--dependabot` booleans (kept as
+            // deprecated aliases below). Mirrors --tracker= / --auto= grammar.
+            if (flag.startsWith("dependency=")) {
+                const value = flag.slice("dependency=".length);
+                if (value !== "renovate" && value !== "dependabot") {
+                    console.error(`[bkit] Unknown dependency updater: "${value}". Valid values: renovate, dependabot`);
+                    process.exit(1);
+                }
+                moduleFlags.add(value);
                 continue;
             }
             // Uninstall-specific flags (accepted for all verbs that use them)
@@ -253,23 +273,27 @@ Module flags (composable — same for install and uninstall):
                   substituted; seeded once, never overwritten).
   --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
   --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
-  --renovate      .github/renovate.json5 (opt-in, phase-gated — NOT in install --full;
+  --dependency=renovate
+                  .github/renovate.json5 (opt-in, phase-gated — NOT in install --full;
                   IS removed by uninstall --full).
                   Phase A: file not yet on origin/<default-branch> → writes file, prints
                   prompt to PR → main, then re-run. Phase B: file detected on default
                   branch → prints GitHub App install URL + activation checklist.
-                  Mutually exclusive with --dependabot.
-  --dependabot    .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
+  --dependency=dependabot
+                  .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
                   NOT in install --full; IS removed by uninstall --full). First-party
-                  GitHub feature; no App install or phase gate. Mutually exclusive with --renovate.
-  --cloud=claude  Install Claude cloud integration (opt-in — NOT in install --full;
-                  IS removed by uninstall --full). Requires tracker=github.
-                  Ships: .github/workflows/bkit-cloud.yml + .claude/hooks/cloud-bootstrap.sh.
+                  GitHub feature; no App install or phase gate.
+                  (renovate and dependabot are mutually exclusive. The bare --renovate /
+                  --dependabot flags remain as deprecated aliases.)
+  --auto=claude   Install Claude cloud-agent (auto-dispatch) integration (opt-in — NOT in
+                  install --full; IS removed by uninstall --full). Requires tracker=github.
+                  Ships: .github/workflows/bkit-auto.yml + .claude/hooks/cloud-bootstrap.sh.
                   Requires ANTHROPIC_API_KEY repo secret and the Claude GitHub App
                   (run /install-github-app once). Records bkit.cloudAgents=claude.
-  --cloud=cursor  Install Cursor cloud integration (opt-in). Requires tracker=linear.
+  --auto=cursor   Install Cursor cloud-agent integration (opt-in). Requires tracker=linear.
                   Ships: .cursor/Dockerfile + .cursor/environment.json.
                   Records bkit.cloudAgents=cursor.
+                  (--cloud=… is kept as a deprecated alias of --auto=….)
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.

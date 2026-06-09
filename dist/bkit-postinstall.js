@@ -121,7 +121,7 @@ export function detectMainBranchProtection() {
 }
 /**
  * Detect whether the repo's default GitHub Actions workflow permissions let the
- * bkit-cloud workflow push status commits and open/merge PRs. Reads
+ * bkit-auto workflow push status commits and open/merge PRs. Reads
  * `repos/{owner}/{repo}/actions/permissions/workflow`:
  *   - default_workflow_permissions: "read" | "write"
  *   - can_approve_pull_request_reviews: boolean
@@ -248,18 +248,18 @@ export function detectCiYmlMissingTokenEnv(cwd) {
     };
 }
 /**
- * Detect the always-true `if:` gate in `.github/workflows/bkit-cloud.yml`: a `|`
+ * Detect the always-true `if:` gate in `.github/workflows/bkit-auto.yml`: a `|`
  * block scalar wrapping ${{ }}. GitHub Actions sees extra characters around ${{ }}
  * (the block scalar's newlines) and evaluates the whole condition to a non-empty
  * string === always true — so the free-tier `bkit [auto route]` gate never fires and
  * the run job executes on every triggering event (unintended runner-minute spend).
  *
  * Fires only while the broken construct is present; the fixed form is a `>-` folded
- * expression with no ${{ }} wrapper. bkit-cloud.yml is not always rewritten on a
+ * expression with no ${{ }} wrapper. bkit-auto.yml is not always rewritten on a
  * re-install of older consumers, so the action inlines the manual fix.
  */
 export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
-    const cloudPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+    const cloudPath = path.join(cwd, ".github", "workflows", "bkit-auto.yml");
     if (!fs.existsSync(cloudPath))
         return null;
     const content = fs.readFileSync(cloudPath, "utf-8");
@@ -267,9 +267,9 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd) {
     if (!/^\s*if:\s*[|>][^\n]*\n\s*\$\{\{/m.test(content))
         return null;
     return {
-        id: "bkit-cloud-yml-always-true-gate",
+        id: "bkit-auto-yml-always-true-gate",
         severity: "advisory",
-        detect: ".github/workflows/bkit-cloud.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
+        detect: ".github/workflows/bkit-auto.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
         action: "Replace the `if: |` block under `# bkit:start auto-route-gate` with a `>-` folded expression that drops the ${{ }} wrapper (GitHub Actions evaluates `if:` expressions natively):\n\n" +
             "    if: >-\n" +
             "      github.event_name == 'workflow_dispatch'\n" +
@@ -1094,18 +1094,18 @@ function hasExplicitCloudAgentsField(cwd) {
 }
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
- * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
+ * advisories). Post-CI auto-routing (`bkit-auto.yml`) is opt-in via
  * `bkit install --cloud=claude`; it does NOT ship with `--full`. This nudges consumers
  * to make the choice post-install.
  *
  * Also performs the cloud=claude config-consistency assertion (T1.8): when
- * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
+ * `bkit.cloudAgents === "claude"` but the installed `bkit-auto.yml` lacks
  * `id-token: write`, it surfaces a consistency warning (exit-1 signal surfaced via
  * the `blocker` severity in bkit-preflight caller).
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * "deliberate opt-out" escape hatch):
- *   - `.github/workflows/bkit-cloud.yml` present → `cloud-router` (informational; active)
+ *   - `.github/workflows/bkit-auto.yml` present → `cloud-router` (informational; active)
  *   - `bkit.cloudAgents === "none"`                  → null (deliberate opt-out — stay quiet)
  *   - otherwise (undecided)                          → `cloud-router-none` (nudge to choose)
  *
@@ -1113,7 +1113,7 @@ function hasExplicitCloudAgentsField(cwd) {
  * completion event for the router to wake on, so nothing to route.
  */
 export function buildCloudSetupAdvisory(cwd) {
-    const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+    const routerPath = path.join(cwd, ".github", "workflows", "bkit-auto.yml");
     if (fs.existsSync(routerPath)) {
         // Config-consistency assertion (T1.8): cloud=claude requires id-token: write.
         // If the recorded variant is "claude" (or back-compat legacy "enabled" mapped to claude)
@@ -1125,7 +1125,7 @@ export function buildCloudSetupAdvisory(cwd) {
                 return {
                     id: "cloud-claude-missing-id-token",
                     severity: "blocker",
-                    detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
+                    detect: "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-auto.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
                     action: "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
                 };
             }
@@ -1133,8 +1133,8 @@ export function buildCloudSetupAdvisory(cwd) {
         return {
             id: "cloud-router",
             severity: "advisory",
-            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
+            detect: "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-auto.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
+            action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
         };
     }
     // No router present — distinguish deliberate opt-out from undecided.
@@ -1147,7 +1147,7 @@ export function buildCloudSetupAdvisory(cwd) {
     return {
         id: "cloud-router-none",
         severity: "advisory",
-        detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
+        detect: "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-auto.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
         action: "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --cloud=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --cloud=cursor --tracker=linear`.\n\n" +
             "Prerequisites for `cloud=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
             'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
@@ -1155,7 +1155,7 @@ export function buildCloudSetupAdvisory(cwd) {
 }
 /**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
- * the consumer's repo has the bkit-cloud workflow installed OR a
+ * the consumer's repo has the bkit-auto workflow installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
  * which means the same three secrets need to be set in three places (GitHub
  * Actions, Cursor Settings online, Claude app web).
@@ -1163,12 +1163,12 @@ export function buildCloudSetupAdvisory(cwd) {
  * Returns null when none of the three trigger paths exist.
  */
 export function buildCloudDashboardsAdvisory(cwd) {
-    const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"));
+    const hasRouter = fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-auto.yml"));
     const hasClaude = fs.existsSync(path.join(cwd, ".claude"));
     const hasCursor = fs.existsSync(path.join(cwd, ".cursor"));
     if (!hasRouter && !hasClaude && !hasCursor)
         return null;
-    // cloud=claude path (bkit-cloud.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
+    // cloud=claude path (bkit-auto.yml): GitHub-tracker only, ANTHROPIC_API_KEY only.
     // cloud=cursor path (.cursor/): LINEAR_API_KEY for Cursor dashboard.
     // Distinguish by recorded variant; fall back to presence-based detection.
     const recordedVariant = readConsumerCloudAgents(cwd);
@@ -1191,7 +1191,7 @@ export function buildCloudDashboardsAdvisory(cwd) {
         severity: "advisory",
         detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
         action: "Set each secret in the required locations:\n\n" +
-            "1. **GitHub Actions** (used by the bkit-cloud workflow and consumer workflows):\n" +
+            "1. **GitHub Actions** (used by the bkit-auto workflow and consumer workflows):\n" +
             ghSetLines +
             "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
             "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
@@ -1201,18 +1201,18 @@ export function buildCloudDashboardsAdvisory(cwd) {
     };
 }
 /**
- * Detect whether the GitHub Actions secrets the bkit-cloud workflow needs are set.
- * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
+ * Detect whether the GitHub Actions secrets the bkit-auto workflow needs are set.
+ * Only fires when `.github/workflows/bkit-auto.yml` exists. `ANTHROPIC_API_KEY` is
  * always required (claude-code-action) for the cloud=claude path. The workflow is
  * GitHub-tracker only — no `LINEAR_API_KEY` dependency. Returns one finding per
  * missing secret.
  */
 export function detectCiRouterSecrets(cwd) {
     const findings = [];
-    const routerPath = path.join(cwd, ".github", "workflows", "bkit-cloud.yml");
+    const routerPath = path.join(cwd, ".github", "workflows", "bkit-auto.yml");
     if (!fs.existsSync(routerPath))
         return findings;
-    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — ANTHROPIC_API_KEY only.
+    // bkit-auto.yml is cloud=claude / GitHub-tracker only — ANTHROPIC_API_KEY only.
     // No LINEAR_API_KEY dependency (that was the vestigial Linear render branch, now removed).
     const required = ["ANTHROPIC_API_KEY"];
     for (const name of required) {
@@ -1222,7 +1222,7 @@ export function detectCiRouterSecrets(cwd) {
                 id: `${name.toLowerCase().replace(/_/g, "-")}-secret-missing`,
                 severity: "advisory",
                 detect: `gh secret list confirms ${name} secret is NOT set on this GitHub repo.`,
-                action: `\`.github/workflows/bkit-cloud.yml\` requires ${name} to invoke its Claude Code action. Without it, the workflow exits no-op.\n\nSet the secret:\n\n` +
+                action: `\`.github/workflows/bkit-auto.yml\` requires ${name} to invoke its Claude Code action. Without it, the workflow exits no-op.\n\nSet the secret:\n\n` +
                     `    gh secret set ${name} --body='<paste-value-here>'\n\n` +
                     `Then verify: \`gh secret list | grep ${name}\`. The workflow itself does not need redeploying — secrets are read at run time.`,
             });
@@ -1586,7 +1586,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // Optional post-install decisions (opt-in add-ons, NOT shipped by --full):
     //   1. Issue tracker — branch on bkit.issueTracker.
     //   2. Dependency updater — branch on renovate/dependabot config presence.
-    //   3. Cloud agents — branch on bkit-cloud.yml presence (#119).
+    //   3. Cloud agents — branch on bkit-auto.yml presence (#119).
     // Each nudges the consumer to choose post-install; each silenceable via the
     // respective package.json field set to `none`.
     const trackerSetup = buildTrackerSetupAdvisory(cwd);
@@ -1608,18 +1608,18 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const cloudSetup = buildCloudSetupAdvisory(cwd);
     if (cloudSetup)
         phase3.push(cloudSetup);
-    // bkit-cloud workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
+    // bkit-auto workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
     for (const f of detectCiRouterSecrets(cwd))
         phase3.push(f);
-    // bkit-cloud workflow also needs repo Actions write permissions + PR-creation
+    // bkit-auto workflow also needs repo Actions write permissions + PR-creation
     // allowance, else `actions/checkout` and `gh pr create` 403. Detectable at the
     // repo level via the Actions API; org-level policy can still override.
-    if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"))) {
+    if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-auto.yml"))) {
         if (detectActionsWritePermissions() === "missing") {
             phase3.push({
                 id: "actions-write-permissions-missing",
                 severity: "advisory",
-                detect: "GitHub Actions default workflow permissions on this repo are read-only and/or PR creation by Actions is disabled. `.github/workflows/bkit-cloud.yml` cannot push status commits or open/merge PRs — `actions/checkout` and `gh pr create` will 403.",
+                detect: "GitHub Actions default workflow permissions on this repo are read-only and/or PR creation by Actions is disabled. `.github/workflows/bkit-auto.yml` cannot push status commits or open/merge PRs — `actions/checkout` and `gh pr create` will 403.",
                 action: "Grant Actions write access at BOTH org and repo level:\n\n    Settings -> Actions -> General -> Workflow permissions\n    - Read and write permissions\n    - Allow GitHub Actions to create and approve pull requests\n\nOr via CLI (repo level):\n\n    gh api -X PUT repos/{owner}/{repo}/actions/permissions/workflow -f default_workflow_permissions=write -F can_approve_pull_request_reviews=true\n\nThe org-level toggle is not readable with a repo-scoped token — if the repo setting looks correct but workflows still 403, check the organization Actions policy (it can override the repo).",
             });
         }
@@ -1641,7 +1641,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const gha = detectGhaFloatingTags(cwd);
     if (gha)
         phase3.push(gha);
-    // bkit-cloud.yml always-true auto-route gate (block scalar wrapping ${{ }}).
+    // bkit-auto.yml always-true auto-route gate (block scalar wrapping ${{ }}).
     const cloudGate = detectBkitCloudYmlAlwaysTrueGate(cwd);
     if (cloudGate)
         phase3.push(cloudGate);

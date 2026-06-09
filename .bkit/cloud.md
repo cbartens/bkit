@@ -11,7 +11,7 @@
 
 ## Scope
 
-> **Host-delta matrix:** `.bkit/IDEs.md` § Runtime environment (cloud agents). That table is the canonical "what differs" reference for Claude vs Cursor cloud agents. This file = paste-in setup recipe, alignment guarantees, sharing-across-repos pattern, and caveats.
+> **Host-delta matrix:** `.bkit/providers.md` § Runtime environment (cloud agents). That table is the canonical "what differs" reference for Claude vs Cursor cloud agents. This file = paste-in setup recipe, alignment guarantees, sharing-across-repos pattern, and caveats.
 
 ## Cloud-agent support matrix (read first)
 
@@ -20,14 +20,14 @@ The two cloud stacks are **not symmetric** — each agent pairs with one tracker
 <!-- prettier-ignore -->
 | Agent (the agent, not the editor) | Ways to launch a cloud agent | Tracker | NOT supported |
 | --- | --- | --- | --- |
-| **Claude Code** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-cloud.yml` (pick any phase + issue) · **C)** GitHub issue label / status change → webhook → `bkit-cloud` GH Action · **D)** GitHub CI pass/fail → `bkit-cloud` · **E)** `@claude` mention on a GitHub issue / PR (`/install-github-app` required — **base requirement** for `cloud=claude`) | **GitHub** | **Linear** |
+| **Claude Code** (terminal — any IDE host) | **A)** Claude iOS / desktop app → Claude-on-web env (`.claude/hooks/cloud-bootstrap.sh` + the env defined in `claude.ai/code`) · **B)** manual `workflow_dispatch` on `bkit-auto.yml` (pick any phase + issue) · **C)** GitHub issue label / status change → webhook → `bkit-auto` GH Action · **D)** GitHub CI pass/fail → `bkit-auto` · **E)** `@claude` mention on a GitHub issue / PR (`/install-github-app` required — **base requirement** for `cloud=claude`) | **GitHub** | **Linear** |
 | **Cursor** (native agent) | **A)** Cursor's built-in cloud-agent launch · **B)** Cursor's GitHub integration on PR events (CI pass/fail) · **C)** Linear → Cursor integration | **Linear** (+ GitHub PR events) | **GitHub Projects / Issues** |
 
-**Claude cloud ↔ GitHub; Cursor cloud ↔ Linear.** They overlap only on GitHub CI/PR events — everything _tracker_-driven is split: a GitHub-issue label triggers the Claude `bkit-cloud` workflow (never Cursor); a Linear issue triggers a Cursor agent (never the `bkit-cloud` GH Action). Choose the agent that matches your tracker. The `bkit-cloud` GH Action is the **Claude / GitHub** path only — it is not a Linear bridge.
+**Claude cloud ↔ GitHub; Cursor cloud ↔ Linear.** They overlap only on GitHub CI/PR events — everything _tracker_-driven is split: a GitHub-issue label triggers the Claude `bkit-auto` workflow (never Cursor); a Linear issue triggers a Cursor agent (never the `bkit-auto` GH Action). Choose the agent that matches your tracker. The `bkit-auto` GH Action is the **Claude / GitHub** path only — it is not a Linear bridge.
 
-**Manual dispatch (Claude, path B):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → pick `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. This is the on-demand / smoke-test entry point for `design` / `plan` / `build`; `ship` / `debug` normally fire from CI (path D). The dispatched `/bkit-cloud` orchestrator routes to the matching phase skill, which reads its brief from the GitHub issue (MCP).
+**Manual dispatch (Claude, path B):** GitHub → **Actions** → **bkit-auto** → **Run workflow** → pick `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. This is the on-demand / smoke-test entry point for `design` / `plan` / `build`; `ship` / `debug` normally fire from CI (path D). The dispatched `/bkit-auto` orchestrator routes to the matching phase skill, which reads its brief from the GitHub issue (MCP).
 
-**`@claude` mention launch (Claude, path E — base requirement for `cloud=claude`):** Run `/install-github-app` (Claude Code CLI) once to install the official Claude GitHub App on your repo. This is required: `bkit-cloud.yml` grants `id-token: write` and `claude-code-action@v1` authenticates as the App via OIDC — without the App installed the action fails at boot with an OIDC error. After installation, comment `@claude /bkit-plan` (or any phase) on a GitHub issue / PR to launch it from the tracker. This is **additive**: the App's generated `claude.yml` triggers on mention events while `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch`, so the two coexist without conflict. The App also gives the runner its GitHub identity for the `mcp__github__*` surface. Use `bkit install --cloud=claude` (not bare `--cloud`) to install the cloud integration; `cloud=claude` requires `tracker=github`.
+**`@claude` mention launch (Claude, path E — base requirement for `cloud=claude`):** Run `/install-github-app` (Claude Code CLI) once to install the official Claude GitHub App on your repo. This is required: `bkit-auto.yml` grants `id-token: write` and `claude-code-action@v1` authenticates as the App via OIDC — without the App installed the action fails at boot with an OIDC error. After installation, comment `@claude /bkit-plan` (or any phase) on a GitHub issue / PR to launch it from the tracker. This is **additive**: the App's generated `claude.yml` triggers on mention events while `bkit-auto.yml` triggers on CI completion + `workflow_dispatch`, so the two coexist without conflict. The App also gives the runner its GitHub identity for the `mcp__github__*` surface. Use `bkit install --cloud=claude` (not bare `--cloud`) to install the cloud integration; `cloud=claude` requires `tracker=github`.
 
 ## What lives where (orient first)
 
@@ -346,22 +346,22 @@ When bkit's reference Dockerfile changes (e.g. vale version bump):
 
 After `bkit-build` Step 18 close-workflow pushes its CI-trigger commit (`chore({FID}): close-workflow`, no skip tags) and exits, the post-CI router decides ship vs. debug and dispatches the matching skill in a fresh cloud session — no operator action between CI completion and the dispatched session starting.
 
-The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.bkit/workflows/bkit-cloud.md`, mirrored to `.claude/commands/bkit-cloud.md` + `.cursor/commands/bkit-cloud.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
+The routing **logic** lives in a single bkit-managed slash-command orchestrator (`.bkit/workflows/bkit-auto.md`, mirrored to `.claude/commands/bkit-auto.md` + `.cursor/commands/bkit-auto.md` on each `pnpm bkit install`). The routing **trigger** is wired separately per IDE because the two clouds use different event surfaces.
 
 ## What lives where (post-CI half)
 
 <!-- prettier-ignore -->
 |  | Lives in the repo (bkit-managed) | Lives in the online dashboard / GitHub (manual, one-time) |
 | --- | --- | --- |
-| **Claude** | `.github/workflows/bkit-cloud.yml` (thin plumbing — canonical, opt-in via `bkit install --cloud=claude`; GitHub-tracker only). On CI completion, two-tier gate fires: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action@v1` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `ANTHROPIC_API_KEY`. Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. No `LINEAR_API_KEY` — GitHub-tracker only. |
-| **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-cloud $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
+| **Claude** | `.github/workflows/bkit-auto.yml` (thin plumbing — canonical, opt-in via `bkit install --cloud=claude`; GitHub-tracker only). On CI completion, two-tier gate fires: (1) free tier — job `if: contains(head_commit.message, 'bkit [auto route]')` (zero runner minutes for non-opted-in commits); (2) cheap tier — in-job `gh issue view {ISSUE} --json labels` re-checks `bkit:auto` (live kill switch); then dispatches `claude-code-action@v1` as the Claude GitHub App (OIDC, `id-token: write`). | GitHub repo secret: `ANTHROPIC_API_KEY`. Claude GitHub App required (`/install-github-app`). The linked **GitHub issue** must carry `bkit:auto`. No `LINEAR_API_KEY` — GitHub-tracker only. |
+| **Cursor** | Nothing — Cursor cloud agents have native triggers. | Cursor → Cloud Agents dashboard → Triggers → + Add trigger. Event: CI workflow completion on `feat/**` branches. Prompt (paste **literally**, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`. Concurrency: latest-supersedes. |
 
-**Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch time. The pasted string is generic and timeless. When bkit's routing logic evolves (new edge cases, new gates), only the mirrored `.cursor/commands/bkit-cloud.md` changes — the dashboard config is untouched.
+**Why the dashboard prompt never needs re-pasting:** Cursor substitutes `$CI_STATUS` and `$PR_NUMBER` from the event payload at dispatch time. The pasted string is generic and timeless. When bkit's routing logic evolves (new edge cases, new gates), only the mirrored `.cursor/commands/bkit-auto.md` changes — the dashboard config is untouched.
 
 ## Cursor dashboard — exact paste
 
 ```
-/bkit-cloud $CI_STATUS $PR_NUMBER
+/bkit-auto $CI_STATUS $PR_NUMBER
 ```
 
 ## Claude — required GitHub Actions permissions
@@ -380,9 +380,9 @@ Flip **both** org and repo before the first router run, otherwise `actions/check
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
 
-`ANTHROPIC_API_KEY` is the only required secret. **No `LINEAR_API_KEY`** — the Claude `bkit-cloud` path is GitHub-tracker only. The workflow grants `id-token: write` so `claude-code-action@v1` can authenticate as the Claude GitHub App via OIDC — the App is a base requirement (`/install-github-app`). Repo git/gh access uses the auto-provided `github.token` scoped by the `permissions:` block.
+`ANTHROPIC_API_KEY` is the only required secret. **No `LINEAR_API_KEY`** — the Claude `bkit-auto` path is GitHub-tracker only. The workflow grants `id-token: write` so `claude-code-action@v1` can authenticate as the Claude GitHub App via OIDC — the App is a base requirement (`/install-github-app`). Repo git/gh access uses the auto-provided `github.token` scoped by the `permissions:` block.
 
-The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-cloud.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.jsonl push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
+The router does **not** need `GH_BKIT_TOKEN`. The slash command body is already in the checked-out repo (mirrored to `.claude/commands/bkit-auto.md` at dev time via `bkit install`), and the workflow has no `pnpm install` step that would pull `@cbartens/bkit`. Repo git/gh operations (checkout, `gh pr list`, status.jsonl push) use the auto-provided `github.token` scoped by the workflow's `permissions:` block (which in turn is capped by the org/repo Workflow permissions setting above).
 
 ## Routing decision (router orchestrator)
 
@@ -392,7 +392,7 @@ The slash command takes two args: `$CI_STATUS` ∈ `{success, failure, pass, fai
 2. Extracts `{FID}` from the head branch (`feat/{FID}` convention).
 3. Stale-run guard: compares the latest CI run's `headSha` against the PR's current `headRefOid`. Skips on mismatch (newer commit already in flight).
 4. Opt-in gate: refuses to dispatch unless the linked GitHub issue carries the `bkit:auto` label.
-5. Appends a `bkit-cloud → /bkit-{ship,debug}` line to the GitHub issue / PR comment thread.
+5. Appends a `bkit-auto → /bkit-{ship,debug}` line to the GitHub issue / PR comment thread.
 6. Invokes `/bkit-ship {FID}` (CI pass) or `/bkit-debug {FID} DEBUG_MODE=pr` (CI fail) via the `Skill` / `Task` tool. The dispatched skill owns its session lifecycle from there.
 
 Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real failures (missing args, GitHub API unreachable, malformed state) take the Failure Path.
