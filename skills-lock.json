@@ -19,6 +19,12 @@
       "skillPath": "plugins/javascript-typescript/skills/nodejs-backend-patterns/SKILL.md",
       "computedHash": "c6a99966c2565acc388e574039127abc770bb9a3338be761e421e16f023f702b"
     },
+    "opencode-qa": {
+      "source": "code-yeongyu/oh-my-opencode",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/opencode-qa/SKILL.md",
+      "computedHash": "72b4a22456a2b2a79ff39e89b3788b9a18470bb6615ff0766f7a47746b691647"
+    },
     "pnpm": {
       "source": "antfu/skills",
       "sourceType": "github",
