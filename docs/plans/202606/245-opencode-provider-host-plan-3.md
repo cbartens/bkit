@@ -1,6 +1,6 @@
 <!-- Note: Plans live at `docs/plans/{YYYYMM}/{FID}-plan.md` (canonical month bucket). Logs sit at `docs/plans/{YYYYMM}/logs/{FID}/` and are delete-eligible. -->
 
-# opencode Multi-Provider Execution Host (Approach B) — Sub-Plan C: GateGuard plugin port + `bkit mode` redesign
+# opencode Multi-Provider Execution Host (Approach B) — Sub-Plan C: GateGuard plugin port + install-flag host/provider selection (`bkit mode` removed)
 
 **Parent Plan:** [245-opencode-provider-host-plan.md](./245-opencode-provider-host-plan.md)
 
@@ -12,35 +12,37 @@
 > 3. Your source of truth is EXCLUSIVELY the literal `[x]` vs `[ ]` checkboxes in this physical document. If a box is `[ ]`, it is NOT DONE, regardless of what the conversation context implies.
 
 > [!IMPORTANT]
-> **This is sub-plan 3 of 4.** It owns Phase 3 (GateGuard plugin port: Task 3.1), 🔒 Gate 2 (code-implementation checkpoint for Phases 1–3), and Phase 4 (`bkit mode` host/provider redesign: Task 4.1 — additive redesign; Approach-A REMOVAL is deferred to plan-v4-4).
+> **This is sub-plan 3 of 5.** It owns Phase 3 (GateGuard plugin port: Task 3.1), 🔒 Gate 2 (code-implementation checkpoint for Phases 1–3), and Phase 4 (install-flag host/provider selection + read-only diagnostics: Task 4.1 — additive; the `bkit-mode.sh` DELETE + Approach-A removal are deferred to plan-v4-4).
+>
+> **Decision (2026-06): `bkit mode` is REMOVED, not redesigned; hosts are ADDITIVE.** Hosts coexist — `.claude/` + `.cursor/` render as today (always-on); `bkit install --opencode=<provider>` ADDITIVELY renders + configures the opencode host (re-render `.opencode/agent/*.md` model pins via `runOpencodeModule`) alongside them. **No host switch, no `--claude` selection flag** (claude is always present, direct Anthropic). Read-only diagnostics move to two thin verbs: `bkit doctor` / `bkit status` (per installed host). (Model-ID lookup is documentation in `.bkit/providers.md` § Models — no `bkit list` verb.) This sub-plan adds the `--opencode=<provider>` config flag + the verbs (additive); plan-v4-4 DELETEs `bkit-mode.sh` + its manifest entry. The earlier "additive redesign of `bkit-mode.sh`" framing is void.
 >
 > **HARD PREREQUISITES:**
 >
 > - [245-opencode-provider-host-plan-1.md](./245-opencode-provider-host-plan-1.md) Gate 1.5 green — specifically item (d), the captured real subagent-initiated `tool.execute.before` payload, which Task 3.1's no-mock subagent-exemption fixture binds against.
-> - [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md) complete — Task 4.1 rewrites `.opencode/agent/*.md` headers, which `runOpencodeModule` (plan-v4-2 Task 2.2) must have produced first.
+> - [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md) complete — Task 4.1's `bkit install --opencode=<provider>` path drives `runOpencodeModule` (plan-v4-2 Task 2.2) to (re)write `.opencode/agent/*.md` model pins, so the render module must exist first.
 
 ## Context & Goals
 
-opencode ports GateGuard MORE faithfully than Cursor: opencode's `tool.execute.before` plugin hook can block AND return model-visible text. This sub-plan authors that plugin (a parallel implementation of the Claude `gateguard.cjs`, NOT a rename) and redesigns `bkit mode` so it selects a _host_ (claude | opencode) then a provider — for opencode setting per-agent `model:` pins in `.opencode/agent/*.md`, with no `ANTHROPIC_BASE_URL` and no ccr.
+opencode ports GateGuard MORE faithfully than Cursor: opencode's `tool.execute.before` plugin hook can block AND return model-visible text. This sub-plan authors that plugin (a parallel implementation of the Claude `gateguard.cjs`, NOT a rename) and adds **additive install-flag host config** — `bkit install --opencode=<provider>` renders + configures the opencode host (re-render `.opencode/agent/*.md` model pins, no `ANTHROPIC_BASE_URL`, no ccr) alongside the always-on claude/cursor hosts (no `--claude` selection flag) — plus two thin read-only diagnostic verbs (`bkit doctor` / `bkit status`; model-ID lookup is documented in `.bkit/providers.md` § Models, no `bkit list`). `bkit mode` is removed (script DELETE in plan-v4-4).
 
 **Success Criteria (this sub-plan):**
 
 - `.opencode/plugin/gateguard.js` implements advisory / deny / off modes, subagent-exempt (keyed on the spike-recorded real subagent-identity field), fail-open, and per-(session,file) dedup in OS temp with 24h TTL — unit-tested against the real recorded payload shape, plus a live-opencode smoke step.
-- The redesigned `bkit-mode.sh` (+ template) parses `--claude` / `--opencode=<provider>` / `--status` / `--reset`, rewrites `.opencode/agent/*.md` headers (not the `.bkit/.env` route block) for opencode, exports no `ANTHROPIC_BASE_URL` in opencode mode, and starts no ccr.
+- `bkit install --opencode=<provider>` ADDITIVELY rewrites `.opencode/agent/*.md` model pins (via `runOpencodeModule`) for the chosen provider, leaving the always-on claude/cursor hosts intact (no `--claude` flag); it exports no `ANTHROPIC_BASE_URL` and starts no ccr. `bkit doctor` / `bkit status` resolve creds / per-installed-host state respectively, read-only, with no key material echoed. (Model-ID lookup is documented in `.bkit/providers.md` § Models — no `bkit list` verb.)
 - Gate 2 confirms Phases 1–3 against their `Done when:` lines.
 
 **Related Issues:** `#245` (this plan), `#243`/`#244` (Approach A superseded — removed in plan-v4-4), `DE-26` (decisions.md).
 
-> The full milestone-wide `👤 Acceptance Scenario` and `👤 Breaking Changes & Naming Review` live in [245-opencode-provider-host-plan-1.md](./245-opencode-provider-host-plan-1.md). Derived Test Matrix rows owned by THIS sub-plan: the opencode GateGuard plugin row, and the `bkit-mode.sh` redesign row (its Approach-A-removal half is owned by plan-v4-4).
+> The full milestone-wide `👤 Acceptance Scenario` and `👤 Breaking Changes & Naming Review` live in [245-opencode-provider-host-plan-1.md](./245-opencode-provider-host-plan-1.md). Derived Test Matrix rows owned by THIS sub-plan: the opencode GateGuard plugin row, and the install-flag selection + diagnostics row (the `bkit-mode.sh` DELETE half is owned by plan-v4-4).
 
 ## Merge Method
 
-**Merge method: always squash.** The GateGuard plugin and the mode redesign ship as squashed PRs per the master decomposition; the Approach-A removal PR (plan-v4-4) lands LAST so the additive mode redesign here precedes the destructive removal.
+**Merge method: always squash.** The GateGuard plugin and the install-flag selection + diagnostics ship as squashed PRs per the master decomposition; the `bkit-mode.sh` DELETE + Approach-A removal PR (plan-v4-4) lands LAST so the additive install-flag path here precedes the destructive removal (no capability gap: selection works via flags before the script is deleted).
 
 ## Security & Privacy
 
 - [ ] **Plugin temp-only writes** — the opencode plugin (Task 3.1) writes only to OS temp (mirror `gateguard.cjs` — never into the consumer repo). Dedup state is per-(session,file) in OS temp with 24h TTL.
-- [ ] **No plaintext keys** — the mode redesign (Task 4.1) for opencode sets per-agent `model:` pins only; it exports no `ANTHROPIC_BASE_URL` and writes no key material.
+- [ ] **No plaintext keys** — install-flag selection (Task 4.1) for opencode sets per-agent `model:` pins only (via `runOpencodeModule`); it exports no `ANTHROPIC_BASE_URL` and writes no key material. `bkit doctor` reads creds from env and never echoes them.
 
 _All other rows: None — bkit repo (CLI/installer), no database, no new app routes._
 
@@ -60,10 +62,13 @@ None — bkit is a CLI/installer with no database. No schema changes.
 
 ### Canonical sources & scripts (`.bkit/`)
 
-#### [MODIFY] `.bkit/scripts/bkit-mode.sh` + `.bkit/templates/.bkit/scripts/bkit-mode.sh`
+#### [MODIFY] `.bkit/src/bkit-cli.ts` + `.bkit/src/bkit-install.ts` (install-flag selection + diagnostic verbs)
 
-- **Existence Check:** Both exist. Redesign (additive half — removal in plan-v4-4): mode selects host (claude | opencode) then provider; for opencode set per-agent `model:` in `.opencode/agent/*.md` from the opencode map, no `ANTHROPIC_BASE_URL`, no ccr. Keep direct Anthropic (`--claude`/`--reset`). The DELETE of `_bkit_registry` router rows / `_bkit_agent_matrix` ollama-nvidia columns / `_bkit_router_*` / `_bkit_env_route` / `--cloud=`/`--local=` / ccr preflight is owned by **plan-v4-4 Task 6.1**.
-- **Upgrade-reach caveat (CRITICAL — drives a plan-v4-4 migration task):** `.bkit/scripts/bkit-mode.sh` is registered in `bkit-manifest.ts` as `format: "byte-equal-text", seedOrPrint: true` and installed via `writeTier3` — i.e. **Tier-3 seed-or-print**: on `bkit upgrade` an existing consumer copy is PRESERVED untouched. A #243/#244 consumer keeps the full router-bearing shim after upgrading. The Approach-A removal therefore does NOT reach existing consumers via the normal seed path; plan-v4-4 Task 6.3 adds the detect-and-advise migration.
+- **`bkit-mode.sh` is NOT modified here** — it is DELETED in plan-v4-4. Host/provider selection is now an install operation:
+  - Claude needs **no flag** — `.claude/` renders by default (always-on, direct Anthropic). There is no `--claude` selection flag (that came from the deleted `bkit mode`).
+  - `bkit install --opencode=<provider>` — ADDITIVELY adds the opencode host + provider; `runOpencodeModule` writes per-agent `model:` pins in `.opencode/agent/*.md` from the opencode map for `<provider>` (`ollama` | `nvidia` | `openrouter` | `gemini` | …), leaving `.claude/`/`.cursor/` intact. Idempotent re-render: switching provider = re-run with a different value. No `ANTHROPIC_BASE_URL`, no ccr.
+  - Read-only diagnostic verbs (NOT install — own `verb` branches in the CLI): `bkit doctor` (required tools/creds per host+provider) and `bkit status` (current host+provider, sampled from the rendered `.opencode/`/`.claude/` state). These write nothing. **No `bkit list` verb** — the retired `bkit mode --list` live-`/v1/models` recipe is documented per-provider in `.bkit/providers.md` § Models instead (plan-v4-4 doc task), since model-ID discovery is a "how-to" the consumer runs once, not a hot-path command.
+- **Upgrade-reach is SIMPLER under removal:** the old `bkit-mode.sh` Tier-3 seed-or-print upgrade-reach problem (an existing consumer copy is PRESERVED untouched on `bkit upgrade`, so removals don't reach them) no longer needs a reseed migration — because the whole script goes away. plan-v4-4 Task 6.3 instead detects ANY seeded `bkit-mode.sh` on upgrade and advises **deletion** + points the consumer at the install flags / `bkit doctor`. (Detect-and-advise, not detect-and-reseed.)
 
 ## Documentation Updates
 
@@ -75,7 +80,7 @@ None — bkit is a CLI/installer with no database. No schema changes.
 | Axis | Action | Notes |
 | --- | --- | --- |
 | **DB** | N/A | bkit repo — no database. |
-| **Code** | `git revert {COMMIT}` per PR | Plugin and mode-redesign each ship as their own squashed PR; both are additive (no router removed yet), so revert restores prior state without a capability gap. |
+| **Code** | `git revert {COMMIT}` per PR | Plugin and install-flag selection + diagnostics each ship as their own squashed PR; both are additive (no `bkit-mode.sh`/router removed yet — that's plan-v4-4), so revert restores prior state without a capability gap. |
 
 _Code-only — `git revert` sufficient._
 
@@ -100,10 +105,18 @@ _Code-only — `git revert` sufficient._
 
 - [ ] **Gate 2 - Verified:** Phases 1–3 tasks independently verified against their `Done when:` lines. (Phase 1 + Phase 2 live in [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md), Tasks 1.1/1.2/1.3/2.1/2.2/2.3 — confirm those are `[x]`; Phase 3 = Task 3.1 above.)
 
-### Phase 4 — `bkit mode` host/provider redesign
+### Phase 4 — install-flag host/provider selection + `bkit doctor`/`bkit status` verbs
 
-- [ ] **Task 4.1:** Redesign `bkit-mode.sh` (+ template) so `bkit mode` selects host (claude | opencode) then provider; for opencode set per-agent `model:` in `.opencode/agent/*.md` from the opencode map; `--status`/`--doctor`/`--list`/`--reset` reframed around opencode; no `ANTHROPIC_BASE_URL`, no ccr for opencode. **Requires:** plan-v4-2 render output (`runOpencodeModule` must have produced `.opencode/agent/*.md` for mode to rewrite its headers).
-  - **Done when:** `bkit-mode.test.ts` (new — `bkit-mode.sh` is bash, so the test EITHER spawns bash against the rendered script OR string-scans the rendered template; name which in the test and keep the deterministic string-scan as the load-bearing half) asserts the redesigned flag grammar parses (`--claude`, `--opencode=<provider>`, `--status`, `--reset`), that opencode mode rewrites `.opencode/agent/*.md` headers (not `.bkit/.env` route block), and that no `ANTHROPIC_BASE_URL` is exported in opencode mode. **Boundary test (no mock):** a doctor run against a live opencode + provider reports the real provider catalog/creds (ground-truth = provider `/models` response), not a router status line.
+> **Replaces the old "redesign `bkit-mode.sh`" task.** `bkit mode` is removed (decision 2026-06); selection collapses into install flags and `bkit-mode.sh` is DELETED in plan-v4-4. This phase is ADDITIVE: it adds the flags/verbs so selection + diagnostics work via the new surface BEFORE the script is deleted, leaving no capability gap.
+
+- [ ] **Task 4.1:** Wire host/provider selection into the install path + add the two read-only diagnostic verbs, all in `.bkit/src/bkit-cli.ts` (arg/verb parsing) + `.bkit/src/bkit-install.ts` (dispatch). **Do NOT touch `bkit-mode.sh`** (its DELETE is plan-v4-4 Task 6.1).
+  - **No `--claude` flag** — claude renders by default (always-on, direct Anthropic); additive hosts means there is nothing to "select".
+  - `--opencode=<provider>` (install flag): ADDITIVELY adds the opencode host + provider; drives `runOpencodeModule` (plan-v4-2 Task 2.2) to write per-agent `model:` pins in `.opencode/agent/*.md` from the opencode map for `<provider>`, leaving claude/cursor intact. Idempotent — switching provider = re-run with a different value.
+  - `bkit doctor` (new read-only verb): reports required tools/creds for the active host+provider; reads creds from env, never echoes them.
+  - `bkit status` (new read-only verb): reports current host+provider, sampled from the rendered `.opencode/`/`.claude/` state. Writes nothing.
+  - **No `bkit list` verb** — model-ID lookup is documented per-provider in `.bkit/providers.md` § Models (plan-v4-4 doc task).
+  - **Requires:** plan-v4-2 render output (`runOpencodeModule` must exist for `--opencode=<provider>` to (re)write `.opencode/agent/*.md`).
+  - **Done when:** a CLI test (`bkit-cli.test.ts` / `bkit-install.integration.test.ts`) asserts: `--opencode=<provider>` parses and ADDITIVELY renders the opencode host while `.claude/`/`.cursor/` remain present (no host removed); `bkit install --opencode=nvidia` rewrites `.opencode/agent/*.md` model pins to the nvidia map (and re-running with `--opencode=ollama` re-renders to the ollama map — idempotent provider switch); no `ANTHROPIC_BASE_URL` is exported and no ccr is started; no `--claude` selection flag exists; `bkit doctor` / `bkit status` exist as read-only verbs that write zero files (write-set assertion). **Boundary test (no mock):** `bkit doctor` against a live opencode + provider reports the real provider creds/reachability (ground-truth = the provider responds to an authenticated `/v1/models` request), not a router status line.
 
 ## Next Sub-Plan
 

@@ -70,7 +70,7 @@ None — bkit is a CLI/installer with no database. No schema changes.
 #### [MODIFY] `.bkit/src/bkit-cli.ts`
 
 - **Existence Check:** Exists (`ModuleFlag`, `MODULE_FLAGS`, `ALL_MODULES`/`OPTIN_MODULES`, `printUsage`).
-- Add `"opencode"` to `ModuleFlag` + `MODULE_FLAGS`. Decide `ALL_MODULES` (always-on, like cursor) vs `OPTIN_MODULES` per the default-install decision. Update `printUsage` with `--opencode` + the redesigned `bkit mode` grammar.
+- Add `"opencode"` to `ModuleFlag` + `MODULE_FLAGS`. **Hosts are additive** — claude/cursor are always-on (`ALL_MODULES`); opencode is opt-in via `--opencode=<provider>` (it needs a provider) but ADDITIVE when present (coexists, does not replace claude/cursor). Update `printUsage` with `--opencode=<provider>` (no `--claude` selection flag; `bkit mode` is REMOVED in plan-v4-4 — do NOT document a `bkit mode` grammar). The `bkit doctor` / `bkit status` verbs land in plan-v4-3 Task 4.1.
 
 ### Render-target templates (`.bkit/templates/.opencode/`)
 
@@ -133,4 +133,4 @@ _Code-only — `git revert` sufficient._
 
 ## Next Sub-Plan
 
-On completion of Phase 1 + Phase 2 → proceed to **[245-opencode-provider-host-plan-3.md](./245-opencode-provider-host-plan-3.md)** (GateGuard plugin port + `bkit mode` host/provider redesign). Note: plan-v4-3's Gate 2 verifies Phases 1–3 collectively, so plan-v4-3 re-checks this sub-plan's outputs as part of its Gate 2.
+On completion of Phase 1 + Phase 2 → proceed to **[245-opencode-provider-host-plan-3.md](./245-opencode-provider-host-plan-3.md)** (GateGuard plugin port + install-flag host/provider selection + `bkit doctor`/`bkit status`; `bkit mode` removed). Note: plan-v4-3's Gate 2 verifies Phases 1–3 collectively, so plan-v4-3 re-checks this sub-plan's outputs as part of its Gate 2.
