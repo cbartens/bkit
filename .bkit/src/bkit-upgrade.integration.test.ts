@@ -327,7 +327,9 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     // Opt-in files were never written (skipped at candidate collection).
     expect(fs.existsSync(path.join(tmpDir, ".github", "renovate.json5"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
     // Non-opt-in managed files DID get created — proving the walk ran (not a no-op).
     expect(fs.existsSync(path.join(tmpDir, ".gitignore"))).toBe(true);
     expect(result.status).toBe(0);

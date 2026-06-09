@@ -452,7 +452,7 @@ jobs:
 #       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome. Assert + exit 1 on mismatch:
 #       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
 #       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
-#       #   Then point protection here: bash scripts/ci/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
+#       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
 #
 # COMPOSES WITH bkit-auto.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
 # a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .agents/cloud.md.

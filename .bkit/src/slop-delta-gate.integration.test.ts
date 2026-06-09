@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-// Contract + behaviour test for the `slop:delta` gate (scripts/tooling/slop-delta.sh).
+// Contract + behaviour test for the `slop:delta` gate (.bkit/scripts/bkit-slop-delta.sh).
 //
 // The gate fails on NET worsening — `summary.netFindingCount` / `summary.netRepoScore` —
 // NOT on raw "added" occurrences. slop-scan 0.3.0's delta is position-keyed, so a pure
@@ -35,7 +35,7 @@ function deltaSummary(base: string, head: string): Record<string, number> {
   return JSON.parse(out).summary;
 }
 
-// Mirror of the gate decision in scripts/tooling/slop-delta.sh (the node snippet).
+// Mirror of the gate decision in .bkit/scripts/bkit-slop-delta.sh (the node snippet).
 function gateFails(s: Record<string, number>): boolean {
   return (s.netFindingCount || 0) > 0 || (s.netRepoScore || 0) > 0.001;
 }
@@ -43,7 +43,7 @@ function gateFails(s: Record<string, number>): boolean {
 const CLEAN = "export function load(p: string) {\n  return JSON.parse(p);\n}\n";
 const EMPTY_CATCH = "export function risky() {\n  try {\n    doThing();\n  } catch (e) {}\n}\n";
 
-describe("slop:delta gate — net-delta contract (scripts/tooling/slop-delta.sh)", () => {
+describe("slop:delta gate — net-delta contract (.bkit/scripts/bkit-slop-delta.sh)", () => {
   it("slop-scan delta --json exposes the summary fields the helper gates on", () => {
     const base = mkTmp();
     const head = mkTmp();

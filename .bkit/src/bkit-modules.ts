@@ -176,12 +176,16 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gi
 // Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
-const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example", "bkit-mode.sh"]);
-// Files that live under a core-owned template dir (e.g. `scripts/`) but are
-// actually owned by an OPT-IN module — skip in the core pass so they ship ONLY
-// when the consumer opts into that module, never on default `--full` install.
-// `bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
-const CORE_TEMPLATE_PATH_EXCLUDE = new Set([path.join("scripts", "ci", "bkit-set-dependabot.sh")]);
+const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
+// Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
+// NOT shipped by the plain core pass — skip them there so the right owner writes them:
+//   - `.bkit/scripts/bkit-mode.sh` is Tier-3 seed-or-print (writeTier3 in the claude
+//     module owns it; consumers tune `_bkit_agent_matrix`, so upgrade must not clobber).
+//   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
+const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
+  path.join(".bkit", "scripts", "bkit-mode.sh"),
+  path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
+]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
   ".github",
@@ -325,8 +329,8 @@ const COPY_EXCLUDE = new Set([
   // file already written by payload copy in live mode, skips its own write,
   // and dry-run vs install writesets diverge. Tier 3 owns this file.
   ".env.example",
-  // Same reason — .bkit/bkit-mode.sh is Tier-3 seed-or-print (writeTier3 in the claude
-  // module owns it); keep it out of the payload copy to avoid the double-write.
+  // Same reason — .bkit/scripts/bkit-mode.sh is Tier-3 seed-or-print (writeTier3 in the
+  // claude module owns it); keep it out of the payload copy to avoid the double-write.
   "bkit-mode.sh",
 ]);
 
@@ -789,11 +793,11 @@ export function runClaudeModule(ctx: ModuleContext): void {
     }
   }
 
-  // Byte-equal-text — .bkit/bkit-mode.sh — Tier 3 seed-or-print (bkit mode shim, #243/#244).
+  // Byte-equal-text — .bkit/scripts/bkit-mode.sh — Tier 3 seed-or-print (bkit mode shim, #243/#244).
   // Seeds the cloud/local/NVIDIA inference-swap shell shim; consumers edit its matrix.
   {
-    const modeSrc = path.join(getTemplatesRoot(), ".bkit", "bkit-mode.sh");
-    const modeDst = ".bkit/bkit-mode.sh";
+    const modeSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", "bkit-mode.sh");
+    const modeDst = ".bkit/scripts/bkit-mode.sh";
     if (fs.existsSync(modeSrc)) {
       const prevLen = ws.writes.length;
       const result = writeTier3(
@@ -817,9 +821,9 @@ export function runClaudeModule(ctx: ModuleContext): void {
         id: "mode-shim-not-sourced",
         severity: "advisory",
         detect:
-          ".bkit/bkit-mode.sh is in place, but `bkit mode` only works once the shim is sourced into your shell — bkit does not edit your ~/.zshrc.",
+          ".bkit/scripts/bkit-mode.sh is in place, but `bkit mode` only works once the shim is sourced into your shell — bkit does not edit your ~/.zshrc.",
         action:
-          "Add to ~/.zshrc (or ~/.bashrc): source <repo-abs-path>/.bkit/bkit-mode.sh — then `source ~/.zshrc`. Run `bkit mode --doctor` to check per-provider prerequisites (claude-code-router / Ollama / NVIDIA key + models). Use `bkit mode --cloud=nvidia` / `--local=ollama` / `--reset`.",
+          "Add to ~/.zshrc (or ~/.bashrc): source <repo-abs-path>/.bkit/scripts/bkit-mode.sh — then `source ~/.zshrc`. Run `bkit mode --doctor` to check per-provider prerequisites (claude-code-router / Ollama / NVIDIA key + models). Use `bkit mode --cloud=nvidia` / `--local=ollama` / `--reset`.",
       });
     }
   }
@@ -1277,17 +1281,17 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   --- end bkit reference .envrc ---
 `;
 
-const BKIT_MODE_MERGE_INSTRUCTIONS = `[bkit] .bkit/bkit-mode.sh exists — bkit will not overwrite (you may have edited _bkit_agent_matrix for your own models). Review the reference for fixes/new providers and merge by hand.
+const BKIT_MODE_MERGE_INSTRUCTIONS = `[bkit] .bkit/scripts/bkit-mode.sh exists — bkit will not overwrite (you may have edited _bkit_agent_matrix for your own models). Review the reference for fixes/new providers and merge by hand.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
-  Open .bkit/bkit-mode.sh. Compare against the bkit reference below. Preserve any
+  Open .bkit/scripts/bkit-mode.sh. Compare against the bkit reference below. Preserve any
   consumer edits inside \`_bkit_agent_matrix\` (per-machine model choices) and to the
   provider registry; adopt any new providers, checks, or bug-fixes from the reference.
 
-  --- begin bkit reference .bkit/bkit-mode.sh ---
+  --- begin bkit reference .bkit/scripts/bkit-mode.sh ---
 {{TEMPLATE_CONTENT}}
-  --- end bkit reference .bkit/bkit-mode.sh ---
+  --- end bkit reference .bkit/scripts/bkit-mode.sh ---
 `;
 
 const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
@@ -1615,8 +1619,8 @@ export function runLintModule(ctx: ModuleContext): void {
     }
   }
 
-  // Note: scripts/tooling/slop-delta.sh (the `slop:delta` gate helper) ships via the core
-  // templates pass (scripts/ is a core template dir), like scripts/ci/bkit-protect-main.sh —
+  // Note: .bkit/scripts/bkit-slop-delta.sh (the `slop:delta` gate helper) ships via the core
+  // templates pass (.bkit/ is a core template dir), like .bkit/scripts/bkit-protect-main.sh —
   // no per-module copy needed; the core pass preserves its +x bit.
 
   // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
@@ -1633,7 +1637,7 @@ export function runLintModule(ctx: ModuleContext): void {
         'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
       "lint:slop": "slop-scan scan .",
       // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
-      "slop:delta": "bash scripts/tooling/slop-delta.sh",
+      "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     },
     dryRun,
     ws,
@@ -1923,7 +1927,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
       action:
         "Choose one:\n\n" +
         "  A. Switch to Renovate (recommended):\n" +
-        "     1. `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
+        "     1. `git rm .github/dependabot.yml` (also `git rm .bkit/scripts/bkit-set-dependabot.sh` if present).\n" +
         "     2. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n" +
         "     3. Re-run `pnpm bkit install --renovate`.\n\n" +
         "  B. Keep Dependabot: skip `--renovate`; run `pnpm bkit install --dependabot` to keep using bkit's Dependabot module.",
@@ -2037,11 +2041,11 @@ export function runDependabotModule(ctx: ModuleContext): void {
 
   // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
   const ymlSrc = path.join(getTemplatesRoot(), ".github", "dependabot.yml");
-  const scriptSrc = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-set-dependabot.sh");
+  const scriptSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", "bkit-set-dependabot.sh");
   if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc)) return;
 
   const ymlDst = path.join(".github", "dependabot.yml");
-  const scriptDst = path.join("scripts", "ci", "bkit-set-dependabot.sh");
+  const scriptDst = path.join(".bkit", "scripts", "bkit-set-dependabot.sh");
   const prevLen = ws.writes.length;
   writeTier1(ymlSrc, ymlDst, tokens, dryRun, ws);
   if (ws.writes.length > prevLen) {
@@ -2068,10 +2072,10 @@ export function runDependabotModule(ctx: ModuleContext): void {
     id: "dependabot-setup-repo-state",
     severity: "advisory",
     detect:
-      "`.github/dependabot.yml` and `scripts/ci/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
+      "`.github/dependabot.yml` and `.bkit/scripts/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
     action:
       "One-shot repo-level setup (idempotent — safe to re-run):\n\n" +
-      "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+      "    bash .bkit/scripts/bkit-set-dependabot.sh\n\n" +
       "The script uses `gh api` to enable Dependabot security updates, vulnerability alerts, and the never-auto-merge-on-main policy. Re-run any time the policy needs sanity-checking; use `--dry-run` to preview, `--print` to inspect current state.\n\n" +
       "After commit + merge through to your default branch, Dependabot will start opening PRs on the next scheduled poll (per `schedule:` in dependabot.yml — default weekly).",
   });

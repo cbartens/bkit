@@ -145,7 +145,7 @@ Composition guidance:
 - Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
-- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `scripts/ci/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
+- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
 ## GitHub Actions pinning
 
@@ -227,11 +227,11 @@ Trade-offs to accept if you pick this path:
 - **No lockfile maintenance** — Renovate's weekly `lockFileMaintenance` job refreshes transitive deps; Dependabot has no equivalent.
 - **No `osvVulnerabilityAlerts: true` analogue in the config** — CVE-driven PRs come from GitHub's security advisory pipeline (enabled via the helper script's `automated-security-fixes` toggle, not the YAML).
 
-The bkit-shipped `scripts/ci/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
+The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
 
-    bash scripts/ci/bkit-set-dependabot.sh        # apply (idempotent)
-    bash scripts/ci/bkit-set-dependabot.sh --dry-run    # preview
-    bash scripts/ci/bkit-set-dependabot.sh --print      # inspect current state
+    bash .bkit/scripts/bkit-set-dependabot.sh        # apply (idempotent)
+    bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
+    bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
 
 The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependabot`. See issue #109 for the original design.
 

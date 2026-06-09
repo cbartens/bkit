@@ -264,9 +264,9 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 
 ## Local / NVIDIA model swap (`bkit mode`)
 
-> Tool: `.bkit/bkit-mode.sh` — seeded by `bkit install` (Tier-3 seed-or-print; consumers edit `_bkit_agent_matrix` for their own models, upgrade won't clobber). Install emits a `mode-shim-not-sourced` advisory with the `source …` line to add to your shell rc. Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
+> Tool: `.bkit/scripts/bkit-mode.sh` — seeded by `bkit install` (Tier-3 seed-or-print; consumers edit `_bkit_agent_matrix` for their own models, upgrade won't clobber). Install emits a `mode-shim-not-sourced` advisory with the `source …` line to add to your shell rc. Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
 
-Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
+Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/scripts/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
 
 <!-- prettier-ignore -->
 | command | backend |
@@ -283,6 +283,45 @@ Swaps **where Claude Code's inference runs** without touching the harness — su
 **Local hardware:** the `--local=ollama` model defaults (`qwen3.6:27b` / `gemma4:12b` / `deepseek-r1:14b` / `qwen2.5-coder:1.5b`) were sized for a **MacBook Air M5 with 32 GB unified memory** — the set fits that ceiling (one ~27B model resident at a time plus small background workers). On larger machines, bump the cells in `_bkit_agent_matrix` to bigger local models.
 
 **Keys:** `NVIDIA_API_KEY` (`nvapi-…`) in `.bkit/.env`; the swap comments out `ANTHROPIC_API_KEY` in router modes and restores it on `--reset` (+ `direnv allow`).
+
+**Per-repo, not per-shell.** The swap is persistent: alongside the agent headers (on disk) and the key toggle, router modes write a managed block (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN=bkit-router`) into `.bkit/.env`, which **direnv re-exports into every shell that enters the repo** — so you set the mode once, and new terminals inherit it automatically. `--cloud=claude`/`--reset` strips that block again. The activating shell also gets an immediate in-shell `export` so it works without re-`cd`. If a fresh shell still reports `DIRECT` under `--status`, run `direnv allow` (or re-enter the repo) to load the persisted route; with no direnv installed, re-run the `bkit mode` command in that shell. `ANTHROPIC_BASE_URL`/`AUTH_TOKEN` are not secrets (the token is a fixed dummy the router ignores).
+
+### Verifying the swap actually took effect — do NOT ask the model "what model are you?"
+
+> **The single most common doubt.** After `bkit mode --cloud=nvidia` you launch `claude`, ask _"what model are you?"_, and it replies _"I'm Claude Opus 4.8"_ — so you conclude the swap failed. **It did not.** This is a false negative, not a routing bug.
+
+**Why the question lies:** Claude Code injects its own model identity into the system prompt of **every** request (`You are powered by … Opus 4.8 …`). The router reroutes that request — system prompt and all — to NVIDIA/Ollama, so the backend model (e.g. Kimi) _reads that planted identity and parrots it back_. The model has no independent knowledge of which checkpoint is serving it; it only echoes what the system prompt says. Asking "what model are you?" can therefore **never** distinguish the backend — it is the one test guaranteed to mislead. Ignore what the model says about itself; verify at the transport layer instead.
+
+**The reliable check — ccr's request log.** It is **off by default** (`"LOG": false` in the generated router config), which is why there's nothing to inspect out of the box. Turn it on:
+
+1. Edit `~/.claude-code-router/config.json` → set `"LOG": true`.
+2. `ccr restart` (logging level is read at startup; a restart also rotates to a fresh log file).
+3. Find the **newest** log — ccr opens a new timestamped file on every start:
+   ```bash
+   tail -f "$(ls -t ~/.claude-code-router/logs/ccr-*.log | head -1)"
+   ```
+4. Run `claude` (or `bkit mode … nvidia` then a quick prompt) in another pane and watch the requests land.
+
+**What proves NVIDIA in the log** — each request is one `reqId`; the decisive line is `"msg":"final request"`, which shows the real upstream:
+
+```json
+"requestUrl":"https://integrate.api.nvidia.com/v1/chat/completions"
+"authorization":"Bearer nvapi-..."
+"model":"moonshotai/kimi-k2.6"
+```
+
+Plus `"nvidia provider registered"` at startup, and `"system_fingerprint":"vllm-..."` in the response — NVIDIA's vLLM serving stack, something Anthropic never returns. If you see `api.anthropic.com` there instead, _then_ the swap genuinely didn't take.
+
+**Faster check — no `claude` needed.** Hit the router directly with the exact Anthropic-format request `claude` sends; a `"model":"moonshotai/…"` response means the route is live:
+
+```bash
+curl -s http://127.0.0.1:3456/v1/messages \
+  -H "x-api-key: bkit-router" -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"moonshotai/kimi-k2.6","max_tokens":30,"messages":[{"role":"user","content":"hi"}]}'
+```
+
+> Note: `LOG: true` set by hand in `~/.claude-code-router/config.json` is reset to `false` the next time `bkit mode … nvidia`/`ollama` regenerates that file. Re-apply after a re-run, or change the default in `_bkit_router_config` (`.bkit/scripts/bkit-mode.sh`).
 
 ---
 

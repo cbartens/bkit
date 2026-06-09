@@ -117,10 +117,15 @@ const CLAUDE_MANIFEST = [
     { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
     { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
-    // bkit mode shell shim — seeded so consumers can `source .bkit/bkit-mode.sh` to swap
+    // bkit mode shell shim — seeded so consumers can `source .bkit/scripts/bkit-mode.sh` to swap
     // Claude Code's inference between cloud/local/NVIDIA (#243/#244). Tier-3 seed-or-print:
     // consumers edit `_bkit_agent_matrix` for their own models, so upgrade must not clobber.
-    { path: ".bkit/bkit-mode.sh", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+    {
+        path: ".bkit/scripts/bkit-mode.sh",
+        format: "byte-equal-text",
+        module: "claude",
+        seedOrPrint: true,
+    },
     // Mirrors from .agents/ — managed dynamically; not listed individually here
     // because the exact set depends on the bkit-prefix prompt/workflow files at
     // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -196,7 +201,7 @@ const RENOVATE_MANIFEST = [
 // per their monorepo shape; the helper script is Tier 1 (canonical).
 const DEPENDABOT_MANIFEST = [
     { path: ".github/dependabot.yml", format: "byte-equal-text", module: "dependabot" },
-    { path: "scripts/ci/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
+    { path: ".bkit/scripts/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
 ];
 const LINT_MANIFEST = [
     { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
@@ -213,7 +218,7 @@ const LINT_MANIFEST = [
                 "format:check": "prettier --check .",
                 "lint:prose": 'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
                 "lint:slop": "slop-scan scan .",
-                "slop:delta": "bash scripts/tooling/slop-delta.sh",
+                "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
             },
             devDependencies: {
                 prettier: "^3.5.3",

@@ -22,9 +22,9 @@
 #     Settings → Code security and analysis if the config still isn't recognised.
 #
 # Usage:
-#   bash scripts/ci/bkit-set-dependabot.sh             # apply (idempotent)
-#   bash scripts/ci/bkit-set-dependabot.sh --dry-run   # print every gh api call without executing
-#   bash scripts/ci/bkit-set-dependabot.sh --print     # print current Dependabot state and exit
+#   bash .bkit/scripts/bkit-set-dependabot.sh             # apply (idempotent)
+#   bash .bkit/scripts/bkit-set-dependabot.sh --dry-run   # print every gh api call without executing
+#   bash .bkit/scripts/bkit-set-dependabot.sh --print     # print current Dependabot state and exit
 #
 # Requires: gh (authenticated). Run from repo root.
 

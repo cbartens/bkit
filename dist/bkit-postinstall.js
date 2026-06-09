@@ -432,7 +432,7 @@ const BKIT_STUBS = [
     {
         id: "bkit-tests-check",
         file: ".github/workflows/ci.yml",
-        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `scripts/ci/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
+        description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -1026,7 +1026,7 @@ export function buildDepUpdaterSetupAdvisory(cwd) {
             id: "dep-updater-dependabot",
             severity: "advisory",
             detect: "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
-            action: "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
+            action: "If you have not yet enabled the repo-level Dependabot state, run `bash .bkit/scripts/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
         };
     }
     // No config present — distinguish deliberate opt-out from undecided.
@@ -1563,10 +1563,10 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     // pushes / mis-targeted PRs are rejected before the workflow runs), main
     // needs branch protection restricting merges to PRs from dev.
     const protectionStatus = detectMainBranchProtection();
-    const protectionScript = path.join(cwd, "scripts", "ci", "bkit-protect-main.sh");
+    const protectionScript = path.join(cwd, ".bkit", "scripts", "bkit-protect-main.sh");
     const hasProtectionScript = fs.existsSync(protectionScript);
     const scriptHint = hasProtectionScript
-        ? "\n\nQuick path: bkit ships `scripts/ci/bkit-protect-main.sh` — run `bash scripts/ci/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
+        ? "\n\nQuick path: bkit ships `.bkit/scripts/bkit-protect-main.sh` — run `bash .bkit/scripts/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
         : "";
     if (protectionStatus === "missing") {
         phase3.push({

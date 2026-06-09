@@ -357,7 +357,7 @@ jobs:
   # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not
   # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-decide
   # succeeded and, when run_level != none, bkit-tests succeeded. bkit's SOLE branch-protection
-  # required check (scripts/ci/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
+  # required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
   # "the planned suite ran and passed", not "nothing visibly failed".
   bkit-tests-check:
     name: bkit-tests-check

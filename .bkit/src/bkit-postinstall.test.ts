@@ -1111,7 +1111,7 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-dependabot");
-    expect(result!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+    expect(result!.action).toMatch(/bash .bkit\/scripts\/bkit-set-dependabot\.sh/);
   });
 
   it("nudges (dep-updater-none) when workflows exist but neither config is present", () => {

@@ -642,13 +642,13 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
 // ---------------------------------------------------------------------------
 
 describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () => {
-  it("writes .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh and emits setup advisory", () => {
+  it("writes .github/dependabot.yml + .bkit/scripts/bkit-set-dependabot.sh and emits setup advisory", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
     runDependabotModule(ctx);
 
     const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
-    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptPath = path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh");
     expect(fs.existsSync(ymlPath)).toBe(true);
     expect(fs.existsSync(scriptPath)).toBe(true);
     // Helper script must be executable.
@@ -657,7 +657,7 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
 
     const advisory = ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+    expect(advisory!.action).toMatch(/bash .bkit\/scripts\/bkit-set-dependabot\.sh/);
   });
 
   it("refuses to install when .github/renovate.json5 is present (mutually exclusive)", () => {
@@ -670,7 +670,7 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
 
     // No dependabot files should be written
     const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
-    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptPath = path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh");
     expect(fs.existsSync(ymlPath)).toBe(false);
     expect(fs.existsSync(scriptPath)).toBe(false);
 
@@ -686,7 +686,9 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
     runDependabotModule(ctx);
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
     expect(ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state")).toBeDefined();
   });
 
@@ -738,7 +740,9 @@ describe("runRenovateModule — depUpdater persistence", () => {
     dispatchModules(new Set(["core", "ci"]), ctx);
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
   });
 });
 

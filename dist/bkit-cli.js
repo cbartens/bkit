@@ -280,7 +280,7 @@ Module flags (composable — same for install and uninstall):
                   prompt to PR → main, then re-run. Phase B: file detected on default
                   branch → prints GitHub App install URL + activation checklist.
   --dependency=dependabot
-                  .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh (opt-in —
+                  .github/dependabot.yml + .bkit/scripts/bkit-set-dependabot.sh (opt-in —
                   NOT in install --full; IS removed by uninstall --full). First-party
                   GitHub feature; no App install or phase gate.
                   (renovate and dependabot are mutually exclusive. The bare --renovate /

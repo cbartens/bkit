@@ -9,7 +9,7 @@
 # pre-existing finding (you edited above it) shows up as resolved+added at net zero — that
 # must NOT fail the gate. The pre-existing baseline is never yours to fix on the way out.
 #
-# Usage:  slop-delta.sh [base-ref]
+# Usage:  bkit-slop-delta.sh [base-ref]
 #   base-ref defaults to: $SLOP_BASE_REF, else merge-base(HEAD, origin/dev|origin/main),
 #   else HEAD~1. If the base resolves to HEAD (nothing to diff) the gate is a no-op pass.
 #

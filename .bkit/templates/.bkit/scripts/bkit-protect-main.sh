@@ -24,9 +24,9 @@
 # produces would wedge every PR (the context stays "Expected" forever).
 #
 # Usage:
-#   bash scripts/ci/bkit-protect-main.sh             # apply main policy
-#   bash scripts/ci/bkit-protect-main.sh --dry-run   # print the gh api call without executing
-#   bash scripts/ci/bkit-protect-main.sh --print     # print current protection JSON for main and exit
+#   bash .bkit/scripts/bkit-protect-main.sh             # apply main policy
+#   bash .bkit/scripts/bkit-protect-main.sh --dry-run   # print the gh api call without executing
+#   bash .bkit/scripts/bkit-protect-main.sh --print     # print current protection JSON for main and exit
 #
 # Requires: gh, jq. Run from repo root. Override policy by editing the payload
 # below — the defaults match the bkit release flow's expectations.
