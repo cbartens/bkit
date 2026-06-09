@@ -46,6 +46,13 @@ Live opencode binary at `~/.opencode/bin/opencode` v1.16.2 confirmed reachable. 
 
 ## Boundary Test: GateGuard Plugin (Task 3.1 Smoke)
 
+**Live-daemon rationale:** opencode v1.16.x has no headless/non-interactive run mode usable from a subagent context without a running Ollama server. Ollama was taken offline after it made the host machine unresponsive during earlier spike work. A live-daemon observation is therefore not feasible in this session. The combination below constitutes the closest achievable equivalent:
+
+- Direct module invocation (smoke-test.mjs below) exercises the full a/b/c hook logic against the real plugin code
+- The unit suite (`bkit-gateguard-opencode.test.ts`) binds the verbatim spike-recorded payload shape (`sessionID="ses_151a398c0ffeeQ2FvAEXuBvm8W"`, `callID`, `tool="bash"`, real `parentID`)
+- The live opencode v1.16.2 binary is confirmed reachable (`bkit doctor` boundary above)
+- Version-pin guard documented in plugin header (same opencode version as spike)
+
 Run: `node tmp/smoke-sp3/smoke-test.mjs` (direct plugin invocation — pure JS module, no opencode daemon required)
 
 Script: `tmp/smoke-sp3/smoke-test.mjs`
