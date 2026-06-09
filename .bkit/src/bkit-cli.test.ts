@@ -570,6 +570,54 @@ describe("parseArgs — --opencode flag (Task 2.3)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseArgs — status verb (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — status verb (Task 4.1)", () => {
+  it("status verb is parsed correctly", () => {
+    const result = parseArgs(["status"]);
+    expect(result.verb).toBe("status");
+  });
+
+  it("status verb with no module flags is fine (read-only, no modules needed)", () => {
+    const result = parseArgs(["status"]);
+    expect(result.verb).toBe("status");
+    // status is read-only — module flags are resolved but irrelevant
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — status verb listed in help text (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("printUsage — status verb in help text (Task 4.1)", () => {
+  it("help text lists bkit status", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("status");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("help text describes status as read-only (writes nothing)", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      // status description should mention writes-nothing or read-only
+      expect(output).toMatch(
+        /status.*[Rr]ead-only|[Rr]ead-only.*status|Writes nothing.*status|status.*Writes nothing/s,
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // printUsage — --opencode listed in help text (Task 2.3)
 // ---------------------------------------------------------------------------
 

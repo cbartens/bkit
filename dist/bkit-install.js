@@ -819,6 +819,72 @@ function getInstallingVersion() {
     }
     return "0.0.0";
 }
+/**
+ * `bkit status` — read-only host/provider status.
+ * Reports current host+provider sampled from .opencode/opencode.json,
+ * .claude/, and .cursor/ presence. Writes nothing.
+ */
+function runStatus(cwd, logPrefix) {
+    console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
+    console.log(`${logPrefix} Working directory: ${cwd}`);
+    // --- claude host ---
+    const claudeDir = path.join(cwd, ".claude");
+    const claudePresent = fs.existsSync(claudeDir);
+    const claudeSettingsPath = path.join(claudeDir, "settings.json");
+    let claudeModel = "claude (default)";
+    if (claudePresent && fs.existsSync(claudeSettingsPath)) {
+        try {
+            const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf-8"));
+            if (settings.model)
+                claudeModel = settings.model;
+        }
+        catch {
+            // best-effort
+        }
+    }
+    console.log(`${logPrefix} claude:  ${claudePresent ? "INSTALLED" : "absent"}  (provider: anthropic / ${claudeModel})`);
+    // --- cursor host ---
+    const cursorDir = path.join(cwd, ".cursor");
+    const cursorPresent = fs.existsSync(cursorDir);
+    console.log(`${logPrefix} cursor:  ${cursorPresent ? "INSTALLED" : "absent"}`);
+    // --- opencode host ---
+    const opencodeDir = path.join(cwd, ".opencode");
+    const opencodePresent = fs.existsSync(opencodeDir);
+    let opencodeProvider = "unknown";
+    let opencodeModel = "unknown";
+    const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+    if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
+        try {
+            const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8"));
+            // opencode.json structure: provider block has the provider name/id
+            // Try to extract provider and model from the config
+            if (cfg.provider?.name)
+                opencodeProvider = cfg.provider.name;
+            if (cfg.model)
+                opencodeModel = cfg.model;
+            // Fallback: look for non-empty models map
+            if (opencodeModel === "unknown" && cfg.models) {
+                const modelKeys = Object.keys(cfg.models);
+                if (modelKeys.length > 0)
+                    opencodeModel = `${modelKeys.length} model(s) configured`;
+            }
+        }
+        catch {
+            opencodeModel = "parse-error";
+        }
+    }
+    const opencodeStatus = opencodePresent
+        ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+        : "absent (run: bkit install --opencode=<provider>)";
+    console.log(`${logPrefix} opencode: ${opencodeStatus}`);
+    // --- summary ---
+    const installedHosts = [
+        claudePresent ? "claude" : null,
+        cursorPresent ? "cursor" : null,
+        opencodePresent ? "opencode" : null,
+    ].filter(Boolean);
+    console.log(`${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`);
+}
 async function main() {
     const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, force, } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
@@ -844,6 +910,60 @@ async function main() {
             version: getInstallingVersion(),
             logPrefix: LOG_PREFIX,
         });
+        // opencode host diagnostics: report required tools and cred presence per provider.
+        // Never echoes key values — only reports present/absent.
+        const opencodeDir = path.join(process.cwd(), ".opencode");
+        const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+        if (fs.existsSync(opencodeDir) || modules.has("opencode")) {
+            console.log(`${LOG_PREFIX} --- opencode host diagnostics ---`);
+            // Check opencode binary
+            const { spawnSync: spawnSyncLocal } = await import("node:child_process");
+            const whichResult = spawnSyncLocal("which", ["opencode"], { encoding: "utf-8" });
+            const opencodeInstalled = whichResult.status === 0 && whichResult.stdout.trim().length > 0;
+            console.log(`${LOG_PREFIX} opencode binary: ${opencodeInstalled ? "FOUND (" + whichResult.stdout.trim() + ")" : "NOT FOUND (install opencode first)"}`);
+            // Read provider from opencode.json to check creds
+            let detectedProvider = null;
+            if (fs.existsSync(opencodeJsonPath)) {
+                try {
+                    const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8"));
+                    detectedProvider = cfg.provider?.id ?? cfg.provider?.name ?? null;
+                }
+                catch {
+                    // best-effort
+                }
+            }
+            if (opencodeProvider)
+                detectedProvider = opencodeProvider;
+            // Per-provider cred check (present/absent only — no value echoed)
+            const PROVIDER_KEYS = {
+                nvidia: ["NVIDIA_API_KEY"],
+                openrouter: ["OPENROUTER_API_KEY"],
+                gemini: ["GEMINI_API_KEY"],
+                openai: ["OPENAI_API_KEY"],
+                anthropic: ["ANTHROPIC_API_KEY"],
+                // ollama: local server, no key required
+            };
+            if (detectedProvider && detectedProvider !== "ollama") {
+                const keys = PROVIDER_KEYS[detectedProvider] ?? [
+                    `${detectedProvider.toUpperCase()}_API_KEY`,
+                ];
+                for (const key of keys) {
+                    const present = Boolean(process.env[key] && process.env[key].trim().length > 0);
+                    console.log(`${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`);
+                }
+            }
+            else if (detectedProvider === "ollama") {
+                console.log(`${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`);
+            }
+            else if (!detectedProvider) {
+                console.log(`${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`);
+            }
+        }
+        return;
+    }
+    if (verb === "status") {
+        LOG_PREFIX = "[bkit-status]";
+        runStatus(process.cwd(), LOG_PREFIX);
         return;
     }
     if (verb === "upgrade") {

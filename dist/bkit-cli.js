@@ -105,6 +105,7 @@ export function parseArgs(argv) {
     if (firstArg === "install" ||
         firstArg === "check" ||
         firstArg === "doctor" ||
+        firstArg === "status" ||
         firstArg === "uninstall" ||
         firstArg === "upgrade") {
         verb = firstArg;
@@ -295,6 +296,9 @@ Usage:
                                  Target one with its flag (e.g. uninstall --cloud).
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
+  bkit status                   Read-only host/provider status. Reports current host+provider
+                                 (sampled from .opencode/opencode.json, .claude/, .cursor/).
+                                 Writes nothing. Exits 0.
   bkit help                     Print this message.
 
 Module flags (composable — same for install and uninstall):

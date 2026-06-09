@@ -41,8 +41,8 @@ opencode ports GateGuard MORE faithfully than Cursor: opencode's `tool.execute.b
 
 ## Security & Privacy
 
-- [ ] **Plugin temp-only writes** — the opencode plugin (Task 3.1) writes only to OS temp (mirror `gateguard.cjs` — never into the consumer repo). Dedup state is per-(session,file) in OS temp with 24h TTL.
-- [ ] **No plaintext keys** — install-flag selection (Task 4.1) for opencode sets per-agent `model:` pins only (via `runOpencodeModule`); it exports no `ANTHROPIC_BASE_URL` and writes no key material. `bkit doctor` reads creds from env and never echoes them.
+- [x] **Plugin temp-only writes** — the opencode plugin (Task 3.1) writes only to OS temp (mirror `gateguard.cjs` — never into the consumer repo). Dedup state is per-(session,file) in OS temp with 24h TTL.
+- [x] **No plaintext keys** — install-flag selection (Task 4.1) for opencode sets per-agent `model:` pins only (via `runOpencodeModule`); it exports no `ANTHROPIC_BASE_URL` and writes no key material. `bkit doctor` reads creds from env and never echoes them.
 
 _All other rows: None — bkit repo (CLI/installer), no database, no new app routes._
 
@@ -96,20 +96,20 @@ _Code-only — `git revert` sufficient._
 
 ### Phase 3 — GateGuard plugin port (external boundary: opencode plugin runtime)
 
-- [ ] **Task 3.1:** Author `.bkit/templates/.opencode/plugin/gateguard.js` — `tool.execute.before` hook; advisory injects model-visible checklist/gate-config advisory; deny mode `throw`s; `off` mode no-op; subagent-exempt (keyed on the spike-recorded real subagent-identity field, plan-v4-1 Task 0.1 item (d)); fail-open; per-(session,file) dedup in OS temp w/ 24h TTL. **Requires:** plan-v4-1 Task 0.1's captured `tool.execute.before` payload. **Version-pin guard:** the smoke step MUST run on the SAME pinned opencode version as Task 0.1 (opencode is pre-1.0; the plugin API can churn) — if the implementation version differs, re-run the Task 0.1 payload capture against the new version before binding the fixture, else the recorded real shape is stale.
+- [x] **Task 3.1:** Author `.bkit/templates/.opencode/plugin/gateguard.js` — `tool.execute.before` hook; advisory injects model-visible checklist/gate-config advisory; deny mode `throw`s; `off` mode no-op; subagent-exempt (keyed on the spike-recorded real subagent-identity field, plan-v4-1 Task 0.1 item (d)); fail-open; per-(session,file) dedup in OS temp w/ 24h TTL. **Requires:** plan-v4-1 Task 0.1's captured `tool.execute.before` payload. **Version-pin guard:** the smoke step MUST run on the SAME pinned opencode version as Task 0.1 (opencode is pre-1.0; the plugin API can churn) — if the implementation version differs, re-run the Task 0.1 payload capture against the new version before binding the fixture, else the recorded real shape is stale.
   - **Done when:** `bkit-gateguard-opencode.test.ts` covers: advisory injects context on first edit, deny blocks first touch then allows retry, `off` mode no-op (no injection, no block, no dedup write), subagent payload exempt (the test's subagent fixture mirrors the spike-recorded real payload shape, NOT a hand-authored mock), gate-config path → config advisory, malformed stdin → fail-open (no throw). **Boundary test (no mock):** a smoke step loads the plugin in a real opencode session and observes (a) the advisory text appears in model context on a first edit, (b) deny mode actually blocks the edit, and (c) a subagent-initiated edit is exempt (no nag) — ground-truth signal = opencode's own tool-result surface, recorded in the verification log.
 
 ### 🔒 Gate 2: Code Implementation Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to Phase 4 below (and thereafter to [245-opencode-provider-host-plan-4.md](./245-opencode-provider-host-plan-4.md) for Testing & Documentation).
 
-- [ ] **Gate 2 - Verified:** Phases 1–3 tasks independently verified against their `Done when:` lines. (Phase 1 + Phase 2 live in [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md), Tasks 1.1/1.2/1.3/2.1/2.2/2.3 — confirm those are `[x]`; Phase 3 = Task 3.1 above.)
+- [x] **Gate 2 - Verified:** Phases 1–3 tasks independently verified against their `Done when:` lines. (Phase 1 + Phase 2 live in [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md), Tasks 1.1/1.2/1.3/2.1/2.2/2.3 — confirm those are `[x]`; Phase 3 = Task 3.1 above.)
 
 ### Phase 4 — install-flag host/provider selection + `bkit doctor`/`bkit status` verbs
 
 > **Replaces the old "redesign `bkit-mode.sh`" task.** `bkit mode` is removed (decision 2026-06); selection collapses into install flags and `bkit-mode.sh` is DELETED in plan-v4-4. This phase is ADDITIVE: it adds the flags/verbs so selection + diagnostics work via the new surface BEFORE the script is deleted, leaving no capability gap.
 
-- [ ] **Task 4.1:** Wire host/provider selection into the install path + add the two read-only diagnostic verbs, all in `.bkit/src/bkit-cli.ts` (arg/verb parsing) + `.bkit/src/bkit-install.ts` (dispatch). **Do NOT touch `bkit-mode.sh`** (its DELETE is plan-v4-4 Task 6.1).
+- [x] **Task 4.1:** Wire host/provider selection into the install path + add the two read-only diagnostic verbs, all in `.bkit/src/bkit-cli.ts` (arg/verb parsing) + `.bkit/src/bkit-install.ts` (dispatch). **Do NOT touch `bkit-mode.sh`** (its DELETE is plan-v4-4 Task 6.1).
   - **No `--claude` flag** — claude renders by default (always-on, direct Anthropic); additive hosts means there is nothing to "select".
   - `--opencode=<provider>` (install flag): ADDITIVELY adds the opencode host + provider; drives `runOpencodeModule` (plan-v4-2 Task 2.2) to write per-agent `model:` pins in `.opencode/agent/*.md` from the opencode map for `<provider>`, leaving claude/cursor intact. Idempotent — switching provider = re-run with a different value.
   - `bkit doctor` (new read-only verb): reports required tools/creds for the active host+provider; reads creds from env, never echoes them.

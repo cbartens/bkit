@@ -151,6 +151,88 @@ describe("bkit doctor — integration", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// bkit status — write-zero assertion (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("bkit status — integration", () => {
+  it("exits 0 and prints [bkit-status] prefix", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(
+      result.status,
+      `status crashed (exit ${result.status}):\n${result.stdout}\n${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("[bkit-status]");
+  });
+
+  it("writes zero files (purely read-only — write-set assertion)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const filesBefore = listFilesRecursive(tmpDir);
+
+    spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    const filesAfter = listFilesRecursive(tmpDir);
+    const newFiles = filesAfter.filter((f) => !filesBefore.includes(f));
+
+    // status must write ZERO files — strictly read-only.
+    expect(newFiles).toEqual([]);
+  });
+
+  it("reports installed hosts (at minimum claude and cursor on a fresh consumer)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Seed a consumer with .claude and .cursor directories
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("claude");
+    expect(result.stdout).toContain("cursor");
+  });
+
+  it("reports opencode as absent when .opencode/ does not exist", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("absent");
+  });
+});
+
 function listFilesRecursive(dir: string): string[] {
   const out: string[] = [];
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
