@@ -43,3 +43,40 @@ Live opencode binary at `~/.opencode/bin/opencode` v1.16.2 confirmed reachable. 
 [bkit-status] opencode: absent (run: bkit install --opencode=<provider>)
 [bkit-status] Installed hosts: claude, cursor
 ```
+
+## Boundary Test: GateGuard Plugin (Task 3.1 Smoke)
+
+Run: `node tmp/smoke-sp3/smoke-test.mjs` (direct plugin invocation — pure JS module, no opencode daemon required)
+
+Script: `tmp/smoke-sp3/smoke-test.mjs`
+
+Full output (stdout + stderr interleaved as captured via combined `2>&1`):
+
+```
+[a] advisory mode — first edit by orchestrator:
+
+[bkit GateGuard] First edit to `test.ts` this session — confirm each, and investigate any you cannot answer BEFORE editing:
+- You read this file and exact symbols/lines you are about to change.
+- The callers/importers this change affects (search for them, don't assume).
+- The precise field names, types, and signatures being changed.
+- The user instruction or plan task this edit serves (quote it).
+Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.
+
+[a] advisory: returned without throw (advisory written to stderr above) — PASS
+[b] deny mode:
+[b] deny first: BLOCKED as expected — message: [bkit GateGuard] First edit to `deny-test.ts` this session — confirm each, and i
+[b] deny retry: ALLOWED as expected (dedup) — PASS
+[c] subagent exempt:
+[c] subagent: EXEMPT (returned without advisory/block) — PASS
+
+Smoke results: { advisoryFired: true, denied: true, retryAllowed: true, exempt: true }
+SMOKE: PASS
+```
+
+Exit code: 0
+
+Results:
+
+- (a) advisory mode: advisory text written to stderr (model-visible in opencode tool context); hook returned without throw — PASS
+- (b) deny mode: first edit blocked with full checklist message; retry on same (session, file) allowed via dedup — PASS
+- (c) subagent exempt: `parentID = 'ses_parent123'` — hook returned without advisory or block — PASS
