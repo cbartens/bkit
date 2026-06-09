@@ -30,3 +30,4 @@
 {"type":"step-done","workflow":"build","step":"build-plan-gaps-remediate","status":"DONE","verdict":"PASS","attempt":1,"subPlan":2,"strategy":"STANDARD","at":"2026-06-09T22:35:45Z","parentSha":"abc11d738215404bff81fe07b23f230c1abf0849","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/build-plan-gaps-remediate-2-1-log.md"]}
 {"type":"step-done","workflow":"build","step":"build-plan-verify","at":"2026-06-09T22:40:08Z","parentSha":"e146c36c199f9cabb87736d92e6e452e393f0292","verdict":"PASS","failures":0,"attempt":2,"subPlan":2}
 {"type":"step-done","workflow":"build","step":"build-plan-execute","at":"2026-06-09T22:53:20Z","parentSha":"e271cf67a43ef9f2317a353cf606699589c9f040","verdict":"PASS","failures":0,"attempt":1,"subPlan":3}
+{"type":"step-done","workflow":"build","step":"build-plan-verify","at":"2026-06-09T22:56:56Z","parentSha":"e3ab2c49b066cb54469b176f3c42221436715bbe","verdict":"CONCERNS","failures":1,"attempt":1,"subPlan":3}
