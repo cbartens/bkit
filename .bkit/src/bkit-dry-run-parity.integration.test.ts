@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dispatchModules, type ModuleContext } from "./bkit-modules";
+import { parseModelLookup, parseOpencodeModelLookup } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag, CloudVariant } from "./bkit-cli";
 
@@ -153,3 +154,62 @@ describe("check ≡ install writeset parity — cloud=cursor (dry-run parity, T1
 it.todo(
   "MED-8: WriteSet records core/payload writes once copyAdditive+runPayload are merged — see docs/pending.md MED-8",
 );
+
+// ---------------------------------------------------------------------------
+// --opencode dry-run parity (Task 2.2 "Done when" — bkit-dry-run-parity)
+// ---------------------------------------------------------------------------
+
+describe("check ≡ install writeset parity — --opencode=ollama (Task 2.2)", () => {
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+
+  function makeOpencodeModuleCtx(dryRun: boolean, ws: WriteSet): ModuleContext {
+    return {
+      dryRun,
+      tokens: {
+        NODE_VERSION: "22",
+        DEFAULT_BRANCH: "main",
+        PROJECT_NAME: "test-project",
+        REPO_SLUG: "acme/test-project",
+      },
+      modelLookup: CATALOG_MODEL_LOOKUP,
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      opencodeProvider: "ollama",
+      advisories: [],
+      ws,
+      logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
+      postDispatch: [],
+      issueTracker: "none",
+    };
+  }
+
+  it("check --opencode writeset ≡ install --opencode writeset (tier-writer path-set equality)", () => {
+    const cwd = process.cwd();
+
+    // dry-run (check mode)
+    const wsCheck = { writes: [] } as WriteSet;
+    dispatchModules(new Set(["opencode"]), makeOpencodeModuleCtx(true, wsCheck));
+    const checkPaths = wsCheck.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+    // live-run (install mode) — same starting state since dry-run didn't write anything
+    const wsInstall = { writes: [] } as WriteSet;
+    dispatchModules(new Set(["opencode"]), makeOpencodeModuleCtx(false, wsInstall));
+    const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+    // Both modes must predict/write exactly the same set of tier-writer paths.
+    // Note: agent/*.md and command/*.md are written via installFile (not tier-writers)
+    // so they are NOT recorded in ws.writes — same pattern as claude/cursor modules.
+    expect(checkPaths).toEqual(installPaths);
+
+    // The tier-writer paths for opencode are opencode.json (Tier-2) and gateguard.js (Tier-1)
+    expect(installPaths.some((p) => p === path.join(".opencode", "opencode.json"))).toBe(true);
+    expect(installPaths.some((p) => p === path.join(".opencode", "plugin", "gateguard.js"))).toBe(
+      true,
+    );
+  });
+});

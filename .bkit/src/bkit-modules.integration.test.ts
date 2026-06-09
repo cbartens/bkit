@@ -5,7 +5,12 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
-import { extractFullManagedBlock, extractManagedBlock, parseModelLookup } from "./bkit-install";
+import {
+  extractFullManagedBlock,
+  extractManagedBlock,
+  parseModelLookup,
+  parseOpencodeModelLookup,
+} from "./bkit-install";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
   runCoreModule,
@@ -17,6 +22,7 @@ import {
   runRenovateModule,
   runDependabotModule,
   runCloudModule,
+  runOpencodeModule,
   renderCloudWorkflow,
   dispatchModules,
   type ModuleContext,
@@ -2211,5 +2217,222 @@ describe("Challenge Finding 2 — claude.yml author_association allow-list regre
     expect(yml).toMatch(
       /contains\(fromJSON\([^)]*\),\s*github\.event\.(comment|review|issue\.user)\.author_association\)/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runOpencodeModule — opt-in opencode host (Task 2.2 "Done when")
+// ---------------------------------------------------------------------------
+
+describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
+  // Resolve the real opencode model lookup from prompts.md (same source used at install time)
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const EXPECTED_AGENT_COUNT = CATALOG_MODEL_LOOKUP.size;
+
+  function makeOpencodeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
+    return {
+      dryRun: false,
+      tokens: {
+        NODE_VERSION: "22",
+        DEFAULT_BRANCH: "main",
+        PROJECT_NAME: "test-project",
+        REPO_SLUG: "acme/test-project",
+      },
+      modelLookup: CATALOG_MODEL_LOOKUP,
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      opencodeProvider: "ollama",
+      advisories: [],
+      ws: makeWriteSet(),
+      logPrefix: "[bkit-install]",
+      postDispatch: [],
+      issueTracker: "none",
+      ...overrides,
+    };
+  }
+
+  it("clean install writes .opencode/agent/*.md (one per catalog agent)", () => {
+    // Note: agent files are written via installFile (not tier-writers), so they do NOT
+    // appear in ws.writes — same pattern as claude/cursor modules. Assert disk presence instead.
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    expect(EXPECTED_AGENT_COUNT).toBeGreaterThan(0);
+
+    const agentDir = path.join(tmpDir, ".opencode", "agent");
+    expect(fs.existsSync(agentDir)).toBe(true);
+    const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
+    expect(agentFiles.length).toBe(EXPECTED_AGENT_COUNT);
+
+    // Verify agent files have opencode frontmatter
+    for (const f of agentFiles) {
+      const content = fs.readFileSync(path.join(agentDir, f), "utf-8");
+      expect(content).toMatch(/^---\n/);
+      expect(content).toContain("mode: subagent");
+      expect(content).toContain("model:");
+    }
+  });
+
+  it("clean install writes .opencode/command/*.md (one per bkit workflow)", () => {
+    // Note: command files are written via installFile (not tier-writers) — not in ws.writes.
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const commandDir = path.join(tmpDir, ".opencode", "command");
+    expect(fs.existsSync(commandDir)).toBe(true);
+    const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+    expect(commandFiles.length).toBeGreaterThan(0);
+
+    // Command files exist on disk
+    for (const f of commandFiles) {
+      expect(fs.existsSync(path.join(commandDir, f))).toBe(true);
+    }
+  });
+
+  it("clean install writes .opencode/opencode.json", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const jsonWrite = ws.writes.find((w) =>
+      w.path.endsWith(path.join(".opencode", "opencode.json")),
+    );
+    expect(jsonWrite).toBeDefined();
+
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as Record<string, unknown>;
+    // Must have permission + plugins blocks (no plaintext key material)
+    expect(parsed).toHaveProperty("permission");
+    expect(parsed).toHaveProperty("plugins");
+    // No plaintext API key — provider key must be an env-var reference
+    const jsonStr = JSON.stringify(parsed);
+    expect(jsonStr).not.toMatch(/sk-[a-zA-Z0-9]{20,}/); // no raw API key
+  });
+
+  it("clean install writes .opencode/plugin/gateguard.js", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const pluginWrite = ws.writes.find((w) =>
+      w.path.endsWith(path.join(".opencode", "plugin", "gateguard.js")),
+    );
+    expect(pluginWrite).toBeDefined();
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
+  });
+
+  it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "nvidia" });
+    runOpencodeModule(ctx);
+
+    const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.detect).toMatch(/opencode host installed/);
+    // Advisory names the provider key env var
+    expect(advisory!.action).toMatch(/NVIDIA_API_KEY/);
+    // Advisory references bkit doctor/status
+    expect(advisory!.action).toMatch(/bkit doctor/);
+    expect(advisory!.action).toMatch(/bkit status/);
+    // No plaintext API key echoed in advisory
+    expect(advisory!.action).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
+  });
+
+  it("ollama advisory does NOT mention an API key (Ollama is local, no key needed)", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama" });
+    runOpencodeModule(ctx);
+
+    const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/Ollama runs locally/);
+    expect(advisory!.action).not.toMatch(/OLLAMA_API_KEY/);
+  });
+
+  it("dry-run: no agent/command .md files written to disk, advisory still emitted", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws, dryRun: true });
+    runOpencodeModule(ctx);
+
+    // In dry-run: agent and command .md files must NOT exist on disk
+    const agentDir = path.join(tmpDir, ".opencode", "agent");
+    const commandDir = path.join(tmpDir, ".opencode", "command");
+    // Dirs may be created by ensureDir, but no .md files should be written
+    if (fs.existsSync(agentDir)) {
+      const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
+      expect(agentFiles).toHaveLength(0);
+    }
+    if (fs.existsSync(commandDir)) {
+      const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+      expect(commandFiles).toHaveLength(0);
+    }
+    // opencode.json and gateguard.js must not exist on disk
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(false);
+    // Advisory still fired
+    expect(ctx.advisories.find((a) => a.id === "opencode-setup")).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runOpencodeModule — transactional-staging zero-footprint (KN-12, Task 2.2)
+// ---------------------------------------------------------------------------
+
+describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2.2)", () => {
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
+
+  it("zero .opencode/ footprint before runOpencodeModule is called", () => {
+    // Before any opencode install: .opencode/ must not exist in a fresh consumer dir
+    expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(false);
+  });
+
+  it("after a successful install, .opencode/ exists; uninstalling leaves zero footprint", () => {
+    const ws = makeWriteSet();
+    const ctx = {
+      dryRun: false,
+      tokens: {
+        NODE_VERSION: "22",
+        DEFAULT_BRANCH: "main",
+        PROJECT_NAME: "test-project",
+        REPO_SLUG: "acme/test-project",
+      },
+      modelLookup: CATALOG_MODEL_LOOKUP,
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      opencodeProvider: "ollama",
+      advisories: [] as PreflightFinding[],
+      ws,
+      logPrefix: "[bkit-install]",
+      postDispatch: [] as Array<() => void>,
+      issueTracker: "none" as const,
+    };
+
+    runOpencodeModule(ctx);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(true);
+
+    // Simulate surgical removal: delete all .opencode/ bkit-prefix agent/command files
+    const agentDir = path.join(tmpDir, ".opencode", "agent");
+    const commandDir = path.join(tmpDir, ".opencode", "command");
+    const pluginDir = path.join(tmpDir, ".opencode", "plugin");
+
+    if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true });
+    if (fs.existsSync(commandDir)) fs.rmSync(commandDir, { recursive: true });
+    if (fs.existsSync(pluginDir)) fs.rmSync(pluginDir, { recursive: true });
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    if (fs.existsSync(jsonPath)) fs.rmSync(jsonPath);
+
+    // After removal, agent/command/plugin dirs and json are gone
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
   });
 });

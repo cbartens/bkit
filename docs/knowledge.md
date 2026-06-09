@@ -524,3 +524,13 @@
 - **Severity:** medium (spurious local pre-push FAIL for any consumer with build artifacts in the tree; the consumer-side ignore unblocks immediately; never ships bad code)
 - **Source:** consumer dogfood feedback
 - **Related:** #226, `scripts/tooling/slop-delta.sh`, `slop-scan.config.json`
+
+## KN-33: `installFile`-based agent/command writes are NOT recorded in `ws.writes` — parity tests must use disk presence, not writeset, for these paths (2026-06-10)
+
+- **Symptom:** A test asserting `ws.writes.filter(w => w.path.includes(".opencode/agent"))` returns zero entries even after a successful `runOpencodeModule` install. Same issue for `.claude/agents`, `.cursor/agents`, `.claude/commands`, `.cursor/commands`.
+- **Root cause:** `installFile()` in `bkit-modules.ts` does not push to `ctx.ws.writes` — it returns a boolean (written/skipped) and the caller logs to console. Only the tier-writer functions (`writeTier1`, `writeTier2JsonContained`, `writeTier3`) record to `ws.writes`. The WriteSet is for tier-managed, reconverged files (JSON configs, byte-equal scripts, markered-text blocks), not the dynamic agent/command mirror dirs.
+- **Fix or rule:** When testing agent/command file count or content after a module install: assert `fs.readdirSync(dir).filter(f => f.endsWith('.md'))` on the destination dir, NOT `ws.writes`. The dry-run parity test (`bkit-dry-run-parity.integration.test.ts`) correctly covers only tier-writer paths (opencode.json + gateguard.js for the opencode module). Agent/command dry-run correctness is exercised by checking no `.md` files exist on disk after dry-run dispatch.
+- **Type:** trap
+- **Confidence:** high (reproduced in test authoring for opencode module, consistent with claude/cursor module behaviour)
+- **Severity:** low (test authoring trap only — does not affect production behaviour)
+- **Source:** #245 sub-plan 2 gap-remediate

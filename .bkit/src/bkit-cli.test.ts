@@ -485,3 +485,116 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseArgs — --opencode flag (Task 2.3 "Done when")
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --opencode flag (Task 2.3)", () => {
+  it("--opencode=ollama alone → opencode + core only (opt-in, additive)", () => {
+    const result = parseArgs(["install", "--opencode=ollama"]);
+    expect([...result.modules].sort()).toEqual(["core", "opencode"]);
+    expect(result.opencodeProvider).toBe("ollama");
+  });
+
+  it("--opencode=nvidia → opencode + core, provider=nvidia", () => {
+    const result = parseArgs(["install", "--opencode=nvidia"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.opencodeProvider).toBe("nvidia");
+  });
+
+  it("--opencode=openrouter → opencode + core, provider=openrouter", () => {
+    const result = parseArgs(["install", "--opencode=openrouter"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("openrouter");
+  });
+
+  it("--opencode=gemini → opencode + core, provider=gemini", () => {
+    const result = parseArgs(["install", "--opencode=gemini"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("gemini");
+  });
+
+  it("bare --opencode (no value) on install is rejected — provider required", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/--opencode requires an explicit provider/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("--full --opencode=ollama → all modules + opencode (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--opencode=ollama"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("claude")).toBe(true);
+    expect(result.modules.has("cursor")).toBe(true);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("ollama");
+  });
+
+  it("--ci --opencode=ollama → ci + core + opencode (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--opencode=ollama"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "opencode"]);
+    expect(result.opencodeProvider).toBe("ollama");
+  });
+
+  it("--full without --opencode → opencode NOT included (additive opt-in, not default)", () => {
+    const result = parseArgs(["install", "--full"]);
+    expect(result.modules.has("opencode")).toBe(false);
+  });
+
+  it("install (no flags) → opencode NOT included (additive opt-in, not in ALL_MODULES)", () => {
+    const result = parseArgs(["install"]);
+    expect(result.modules.has("opencode")).toBe(false);
+  });
+
+  it("uninstall --opencode alone → core + opencode only (bare --opencode accepted for uninstall)", () => {
+    const result = parseArgs(["uninstall", "--opencode"]);
+    expect([...result.modules].sort()).toEqual(["core", "opencode"]);
+    expect(result.opencodeProvider).toBeNull();
+  });
+
+  it("uninstall (no flags) → opencode IS included (full uninstall reaches all opt-in modules)", () => {
+    const result = parseArgs(["uninstall"]);
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — --opencode listed in help text (Task 2.3)
+// ---------------------------------------------------------------------------
+
+describe("printUsage — --opencode in help text (Task 2.3)", () => {
+  it("help text lists --opencode=<provider>", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("--opencode");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("help text describes opencode as additive and opt-in", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toMatch(/opencode/i);
+      // additive / opt-in language
+      expect(output).toMatch(/additive|opt-in/i);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
