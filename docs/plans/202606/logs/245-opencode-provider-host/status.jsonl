@@ -17,3 +17,8 @@
 {"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-06-09T11:55:16Z","parentSha":"0aa1b9893c34841b89152b64fc92535ab50aee3e","artifacts":[]}
 {"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","attempt":1,"at":"2026-06-09T11:57:25Z","parentSha":"8ba4cd8032d5c3bd45a36a99ec110302988dcabd","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/build-install-skills.md"]}
 {"type":"workflow-failed","workflow":"build","at":"2026-06-09T21:11:39Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-06-09T21:30:01Z"}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-06-09T21:30:01Z","parentSha":"614b8e9e96f1eed425116ff17a046d5d75853d4f","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-06-09T21:30:01Z","parentSha":"614b8e9e96f1eed425116ff17a046d5d75853d4f","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/build-input.md"]}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-06-09T21:30:01Z","parentSha":"614b8e9e96f1eed425116ff17a046d5d75853d4f","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-install-skills","status":"DONE","attempt":1,"at":"2026-06-09T21:30:01Z","parentSha":"614b8e9e96f1eed425116ff17a046d5d75853d4f","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/build-install-skills.md"]}
