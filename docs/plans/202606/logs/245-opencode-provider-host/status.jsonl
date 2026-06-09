@@ -11,3 +11,6 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-09T10:27:48Z","parentSha":"5f8a3db83200b7a432100e0e937ca816957543f7","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-close-workflow","status":"DONE","at":"2026-06-09T10:29:40Z","parentSha":"96a7da954f1c001d9cfc87aada22f84d126bcbb5","artifacts":[]}
 {"type":"workflow-done","workflow":"plan","at":"2026-06-09T10:29:40Z"}
+{"type":"workflow-started","workflow":"build","at":"2026-06-09T11:54:54Z"}
+{"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-06-09T11:54:54Z","parentSha":"a999b00b1dacf772d131c8055d2134b30abe3ecd","artifacts":[]}
+{"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-06-09T11:54:54Z","parentSha":"a999b00b1dacf772d131c8055d2134b30abe3ecd","artifacts":["docs/plans/202606/logs/245-opencode-provider-host/build-input.md"]}
