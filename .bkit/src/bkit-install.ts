@@ -238,11 +238,66 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
 }
 
 /**
- * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel>.
- * Header-addressed: finds the "opencode model" column by header name.
+ * Like parseModelLookupForColumn but returns null instead of exiting when the
+ * column header is absent — used for optional per-provider opencode columns.
+ */
+function tryParseModelLookupForColumn(
+  subagentsMdPath: string,
+  columnHeader: string,
+): Map<string, string> | null {
+  const content = fs.readFileSync(subagentsMdPath, "utf-8");
+  const modelsIdx = content.indexOf("## Models");
+  if (modelsIdx === -1) return null;
+  const headerLine = content
+    .slice(modelsIdx)
+    .split("\n")
+    .find((l) => l.trim().startsWith("|") && l.includes("name"));
+  if (!headerLine) return null;
+  const headers = headerLine
+    .split("|")
+    .map((c) => c.trim().toLowerCase().replace(/`/g, ""))
+    .filter(Boolean);
+  if (!headers.includes(columnHeader.toLowerCase())) return null;
+  return parseModelLookupForColumn(subagentsMdPath, columnHeader);
+}
+
+// Single documented starting-point model for opencode providers WITHOUT a curated
+// per-prompt column in prompts.md. Consumers tune via providers.md § Models
+// (live /v1/models lookup). Prefix is added at build time.
+const OPENCODE_PROVIDER_FALLBACK_MODEL: Record<string, string> = {
+  openrouter: "qwen/qwen-2.5-coder-32b-instruct",
+  gemini: "gemini-2.0-flash",
+};
+
+/**
+ * Build the per-agent opencode model lookup for the selected provider.
+ * Source of truth = prompts.md § Models, which carries one curated column per
+ * provider (e.g. "ollama-local model", "nvidia model"). Providers without a
+ * column fall back to a single documented default (consumer tunes after install).
+ * Header-addressed: finds the "<provider> model" column by header name.
+ */
+export function buildOpencodeModelLookup(
+  subagentsMdPath: string,
+  provider: string,
+): Map<string, string> {
+  const curated = tryParseModelLookupForColumn(subagentsMdPath, `${provider} model`);
+  if (curated) return curated;
+  // Uncurated provider: prefix-correct single default for every agent.
+  const names =
+    tryParseModelLookupForColumn(subagentsMdPath, "ollama-local model") ??
+    parseModelLookupForColumn(subagentsMdPath, "Claude model");
+  const bare = OPENCODE_PROVIDER_FALLBACK_MODEL[provider] ?? "set-model-id";
+  const out = new Map<string, string>();
+  for (const name of names.keys()) out.set(name, `${provider}/${bare}`);
+  return out;
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel> for ollama-local.
+ * Back-compat shim — delegates to buildOpencodeModelLookup with the default provider.
  */
 export function parseOpencodeModelLookup(subagentsMdPath: string): Map<string, string> {
-  return parseModelLookupForColumn(subagentsMdPath, "opencode model");
+  return buildOpencodeModelLookup(subagentsMdPath, "ollama-local");
 }
 
 // Effort → reasoningEffort mapping for opencode frontmatter.
@@ -1384,7 +1439,10 @@ async function main() {
     }
     if (modules.has("opencode")) {
       try {
-        opencodeModelLookup = parseOpencodeModelLookup(promptsMdPath);
+        opencodeModelLookup = buildOpencodeModelLookup(
+          promptsMdPath,
+          opencodeProvider ?? "ollama-local",
+        );
       } catch {
         // Not fatal — opencode module will fail per-file if a model is missing
       }

@@ -118,63 +118,63 @@ Pinning `model:` ensures the agent runs on the same model regardless of which Cl
 
 ## Models
 
-Canonical per-agent metadata lookup. All three hosts pin per-agent — Cursor via the `Cursor model` column (cross-family diversity via real model selection), Claude via the `Claude model` column (locked to a specific Claude model ID, independent of session default), opencode via the `opencode model` column (provider-prefixed, e.g. `ollama-local/<id>` or `nvidia/<id>`; consumer tunes for their installed provider). Claude `effort:` is the thinking-budget knob layered on top of the pinned model; opencode uses `reasoningEffort:` (mapped from `effort:` at install time). `maxTurns` is the runaway-loop cap (Claude only); see § `maxTurns` calibration above for workload-class rationale.
+Canonical per-agent metadata lookup — **the single source of truth for which model each agent uses on every host/provider**. One column per host/provider: Cursor via `Cursor model` (cross-family diversity via real model selection), Claude via `Claude model` (locked to a specific Claude model ID, independent of session default), and opencode via **one column per provider** (`ollama-local model`, `nvidia model`, …). `bkit install --opencode=<provider>` reads the `<provider> model` column; providers without a column install a single documented fallback (see `providers.md` § Models). Claude `effort:` is the thinking-budget knob layered on top of the pinned model; opencode uses `reasoningEffort:` (mapped from `effort:` at install time). `maxTurns` is the runaway-loop cap (Claude only); see § `maxTurns` calibration above for workload-class rationale.
 
 > **Context-window note:** Claude Code's `model:` frontmatter accepts standard model IDs (e.g. `claude-opus-4-8`); bracket-suffix variants like `claude-opus-4-8[1m]` for the 1M-context build are NOT documented as supported in subagent frontmatter. xhigh-tier agents currently pin to `claude-opus-4-8` (200K context). If input-size truncation surfaces, options are: (a) verify whether `claude-opus-4-8[1m]` works empirically and switch, (b) split the agent's inputs, (c) escalate via env var `CLAUDE_CODE_SUBAGENT_MODEL`.
 >
-> **opencode model IDs:** Use provider-prefixed format `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/meta/llama-3.3-70b-instruct`). The defaults below use `ollama-local/` prefix as a sane starting point; tune per your installed provider after running `bkit doctor`. See `.bkit/providers.md` § Models for the per-provider live `/v1/models` lookup recipe.
+> **opencode model IDs:** Each opencode provider has its own column; cells are the full provider-prefixed ID (`<provider>/<model-id>`, e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/moonshotai/kimi-k2.6`). `bkit install --opencode=<provider>` installs the matching column verbatim. Providers without a column (`openrouter`, `gemini`, custom) install a single documented fallback — tune per agent after running `bkit doctor`. See `.bkit/providers.md` § Models for the per-provider live `/v1/models` lookup recipe.
 >
-> **Uniform default across opencode agents (per-row override preserved):** The `opencode model` column stays per-agent (one cell each) so any row can pin a different model later — same structure as the Cursor/Claude columns. For now every row defaults to the **same** model. Rationale: on a single local box (the common opencode case) `OLLAMA_MAX_LOADED_MODELS=1` is the memory-safe setting, and per-agent model variation would force Ollama to unload+reload between workflow steps (swap thrash on constrained hardware). Effort differentiation still happens via `reasoningEffort` (mapped from `effort:`), independent of model size. To run a bigger model on specific heavy agents (e.g. design/plan synthesis), change just those rows — but be aware each distinct model in active rotation needs to fit alongside the others under your `MAX_LOADED_MODELS` setting.
+> **`ollama-local` is uniform by design; cloud providers mirror the Claude tier.** The `ollama-local model` column pins **every** agent to one model: on a single local box `OLLAMA_MAX_LOADED_MODELS=1` is the memory-safe setting, and per-agent variation would force Ollama to unload+reload between workflow steps (swap thrash). Effort differentiation still happens via `reasoningEffort`. The `nvidia` (and other cloud) columns instead mirror the Claude tier (opus/sonnet/haiku → a per-tier model), with a chain-of-thought reasoner swapped in for the convergent-reasoning agents (risk/diagnosis lens) — no memory pressure, real parallelism. Each column is per-row, so any single cell can be re-pinned.
 
 <!-- prettier-ignore -->
-| name | Cursor model | Claude model | opencode model | Claude effort | maxTurns | role hint |
-| --- | --- | --- | --- | --- | --- | --- |
-| `bkit-design-brainstorm-ideate-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | parallel slot 1 (pragmatic lens) |
-| `bkit-design-brainstorm-ideate-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | parallel slot 2 (optimal-tradeoff lens; cross-family on Cursor; cross-tier on Claude) |
-| `bkit-design-brainstorm-ideate-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | parallel slot 3 (risk-premortem lens) |
-| `bkit-design-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
-| `bkit-design-review-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
-| `bkit-design-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
-| `bkit-design-organise` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
-| `bkit-design-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `low` | 25 | summary writer |
-| `bkit-design-generate` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
-| `bkit-plan-complexity-check` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | complexity check |
-| `bkit-plan-generate` | `gpt-5.5-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
-| `bkit-plan-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | review slot 1 (tightness + design-coverage) |
-| `bkit-plan-review-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
-| `bkit-plan-review-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | review slot 3 (regression-risk + design-coverage) |
-| `bkit-plan-scope-check-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
-| `bkit-plan-scope-check-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | scope audit slot 2 |
-| `bkit-plan-complexity-split` | `gpt-5.5-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | split large plan |
-| `bkit-plan-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `low` | 25 | summary writer |
-| `bkit-plan-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
-| `bkit-build-install-skills` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | skill identifier |
-| `bkit-build-challenge-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
-| `bkit-build-challenge-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
-| `bkit-build-challenge-reconcile` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
-| `bkit-build-challenge-tests` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | test generator (source modifier, no test loop) |
-| `bkit-build-plan-execute` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |
-| `bkit-build-challenge-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 100 | fix challenge findings (source modifier with test loop) |
-| `bkit-build-plan-gaps-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 100 | fix verification gaps (source modifier with test loop) |
-| `bkit-build-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `low` | 25 | summary writer |
-| `bkit-build-plan-verify` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | verify impl vs plan |
-| `bkit-debug-abort-handover` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | handover writer |
-| `bkit-debug-failure-diagnose` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 50 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
-| `bkit-debug-failure-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 100 | implement diagnosis fixes (source modifier with test loop) |
-| `bkit-debug-failure-soak` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `xhigh` | 100 | soak fix — one accumulating-context instrument-or-fix step per iteration against the live boundary (orchestrator re-runs tests + loops) |
-| `bkit-debug-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `low` | 25 | summary writer |
-| `bkit-ship-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `low` | 25 | summary writer |
-| `bkit-ship-update-docs` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | update completed.md (multi-doc writer) |
-| `bkit-ship-conflict-resolve` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 100 | mechanical rebase-conflict resolver (source modifier with test loop) |
-| `bkit-ship-deferred-sweep` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | pre-merge completeness gate — intended-vs-actual + declared-deferral resurface |
-| `bkit-utility-audit-codebase` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | codebase audit |
-| `bkit-utility-audit-security` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | security audit |
-| `bkit-utility-audit-tests` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `high` | 50 | test coverage audit |
-| `bkit-utility-compress-markdown` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | token-optimize markdown |
-| `bkit-utility-audit-logs` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | scan production logs |
-| `bkit-utility-update-documentation` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | doc sync (multi-doc writer) |
-| `bkit-utility-update-references` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 50 | fix broken refs |
-| `bkit-utility-audit-logs-ship` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `medium` | 25 | post-deploy verify |
+| name | Cursor model | Claude model | ollama-local model | nvidia model | Claude effort | maxTurns | role hint |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bkit-design-brainstorm-ideate-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | parallel slot 1 (pragmatic lens) |
+| `bkit-design-brainstorm-ideate-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 50 | parallel slot 2 (optimal-tradeoff lens; cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-brainstorm-ideate-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/deepseek-ai/deepseek-v4-pro` | `high` | 50 | parallel slot 3 (risk-premortem lens) |
+| `bkit-design-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | design review slot 1 (web search + feasibility analysis) |
+| `bkit-design-review-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 50 | design review slot 2 (cross-family on Cursor; cross-tier on Claude) |
+| `bkit-design-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `xhigh` | 50 | merge review critiques into design (whole-doc rewrite — needs depth) |
+| `bkit-design-organise` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | decompose reviewed design into dependency-annotated workstreams; coverage self-verify + DAG cycle detection |
+| `bkit-design-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `nvidia/openai/gpt-oss-20b` | `low` | 25 | summary writer |
+| `bkit-design-generate` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `xhigh` | 50 | generate design from brainstorms (top-of-pipeline synthesizer; whole-doc rewrite) |
+| `bkit-plan-complexity-check` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | complexity check |
+| `bkit-plan-generate` | `gpt-5.5-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `xhigh` | 50 | plan draft generator (top-of-pipeline synthesizer) |
+| `bkit-plan-review-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | review slot 1 (tightness + design-coverage) |
+| `bkit-plan-review-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `medium` | 50 | review slot 2 (dependency-correctness + design-coverage; depth-sensitive lens — both opus) |
+| `bkit-plan-review-3` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/deepseek-ai/deepseek-v4-pro` | `high` | 50 | review slot 3 (regression-risk + design-coverage) |
+| `bkit-plan-scope-check-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `medium` | 25 | scope audit slot 1 (mechanical audit — medium effort) |
+| `bkit-plan-scope-check-2` | `gpt-5.5-high` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | scope audit slot 2 |
+| `bkit-plan-complexity-split` | `gpt-5.5-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | split large plan |
+| `bkit-plan-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `nvidia/openai/gpt-oss-20b` | `low` | 25 | summary writer |
+| `bkit-plan-update` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `xhigh` | 50 | merge review + scope critiques into plan (whole-doc rewrite — needs depth) |
+| `bkit-build-install-skills` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | skill identifier |
+| `bkit-build-challenge-1` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | parallel slot 1 (bug-hunting lens) |
+| `bkit-build-challenge-2` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/deepseek-ai/deepseek-v4-pro` | `high` | 50 | parallel slot 2 (security lens; depth-sensitive — both opus) |
+| `bkit-build-challenge-reconcile` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `xhigh` | 30 | merge parallel challenge findings (whole-doc rewrite) |
+| `bkit-build-challenge-tests` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 50 | test generator (source modifier, no test loop) |
+| `bkit-build-plan-execute` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 100 | task executor (source modifier with test loop; ceiling — split if exceeded) |
+| `bkit-build-challenge-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 100 | fix challenge findings (source modifier with test loop) |
+| `bkit-build-plan-gaps-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 100 | fix verification gaps (source modifier with test loop) |
+| `bkit-build-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `nvidia/openai/gpt-oss-20b` | `low` | 25 | summary writer |
+| `bkit-build-plan-verify` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | verify impl vs plan |
+| `bkit-debug-abort-handover` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | handover writer |
+| `bkit-debug-failure-diagnose` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/deepseek-ai/deepseek-v4-pro` | `xhigh` | 50 | failure diagnosis (Final-strategy attempts especially benefit from depth before human handover) |
+| `bkit-debug-failure-remediate` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 100 | implement diagnosis fixes (source modifier with test loop) |
+| `bkit-debug-failure-soak` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/deepseek-ai/deepseek-v4-pro` | `xhigh` | 100 | soak fix — one accumulating-context instrument-or-fix step per iteration against the live boundary (orchestrator re-runs tests + loops) |
+| `bkit-debug-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `nvidia/openai/gpt-oss-20b` | `low` | 25 | summary writer |
+| `bkit-ship-summary` | `composer-2.5` | `claude-haiku-4-5-20251001` | `ollama-local/qwen2.5-coder:7b` | `nvidia/openai/gpt-oss-20b` | `low` | 25 | summary writer |
+| `bkit-ship-update-docs` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | update completed.md (multi-doc writer) |
+| `bkit-ship-conflict-resolve` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 100 | mechanical rebase-conflict resolver (source modifier with test loop) |
+| `bkit-ship-deferred-sweep` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | pre-merge completeness gate — intended-vs-actual + declared-deferral resurface |
+| `bkit-utility-audit-codebase` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | codebase audit |
+| `bkit-utility-audit-security` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | security audit |
+| `bkit-utility-audit-tests` | `claude-opus-4-8-thinking-high` | `claude-opus-4-8` | `ollama-local/qwen2.5-coder:7b` | `nvidia/moonshotai/kimi-k2.6` | `high` | 50 | test coverage audit |
+| `bkit-utility-compress-markdown` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | token-optimize markdown |
+| `bkit-utility-audit-logs` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | scan production logs |
+| `bkit-utility-update-documentation` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 50 | doc sync (multi-doc writer) |
+| `bkit-utility-update-references` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 50 | fix broken refs |
+| `bkit-utility-audit-logs-ship` | `composer-2.5` | `claude-sonnet-4-6` | `ollama-local/qwen2.5-coder:7b` | `nvidia/qwen/qwen3-coder-480b-a35b-instruct` | `medium` | 25 | post-deploy verify |
 
 **Effort vs maxTurns vs model — three independent knobs:**
 

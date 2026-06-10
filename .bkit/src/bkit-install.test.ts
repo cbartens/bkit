@@ -10,6 +10,7 @@ import {
   applyOpencodeCommand,
   parseModelLookup,
   parseOpencodeModelLookup,
+  buildOpencodeModelLookup,
   parseModelLookupForColumn,
   extractFullManagedBlock,
   extractManagedBlock,
@@ -1032,12 +1033,12 @@ describe("parseOpencodeModelLookup", () => {
     expect(opencodeLookup.size).toBe(cursorLookup.size);
   });
 
-  it("parses opencode model from inline table string", () => {
-    const content = `# S\n\n## Models\n\n| name | Cursor model | opencode model | Claude effort | role hint |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5:14b\` | \`medium\` | task exec |\n`;
+  it("parses the ollama-local model column from inline table string", () => {
+    const content = `# S\n\n## Models\n\n| name | Cursor model | ollama-local model | Claude effort | role hint |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5-coder:7b\` | \`medium\` | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-opencode-lookup.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseOpencodeModelLookup(tmp);
-    expect(lookup.get("test-agent")).toBe("ollama-local/qwen2.5:14b");
+    expect(lookup.get("test-agent")).toBe("ollama-local/qwen2.5-coder:7b");
     fs.rmSync(tmp);
   });
 
@@ -1046,6 +1047,48 @@ describe("parseOpencodeModelLookup", () => {
     for (const [, model] of lookup) {
       expect(model).not.toMatch(/`/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildOpencodeModelLookup — per-provider central table resolution
+// ---------------------------------------------------------------------------
+
+describe("buildOpencodeModelLookup — per-provider model resolution", () => {
+  it("ollama-local: every agent gets the single memory-safe model", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama-local");
+    expect(lookup.size).toBeGreaterThan(0);
+    for (const [, model] of lookup) {
+      expect(model).toBe("ollama-local/qwen2.5-coder:7b");
+    }
+  });
+
+  it("nvidia: tier-mapped models with the reasoning-agent override", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "nvidia");
+    // opus-tier general → kimi
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("nvidia/moonshotai/kimi-k2.6");
+    // sonnet-tier → qwen3-coder
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe(
+      "nvidia/qwen/qwen3-coder-480b-a35b-instruct",
+    );
+    // haiku-tier → gpt-oss
+    expect(lookup.get("bkit-design-summary")).toBe("nvidia/openai/gpt-oss-20b");
+    // reasoning lens (opus-tier but CoT override) → deepseek
+    expect(lookup.get("bkit-build-challenge-2")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
+  });
+
+  it("uncurated provider (openrouter/gemini): single documented fallback, provider-prefixed", () => {
+    const or = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    const ge = buildOpencodeModelLookup(".bkit/prompts.md", "gemini");
+    for (const [, model] of or) expect(model).toBe("openrouter/qwen/qwen-2.5-coder-32b-instruct");
+    for (const [, model] of ge) expect(model).toBe("gemini/gemini-2.0-flash");
+  });
+
+  it("unknown provider: prefix-correct sentinel for every agent (consumer tunes)", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "acme");
+    expect(lookup.size).toBeGreaterThan(0);
+    for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 });
 
