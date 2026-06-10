@@ -973,6 +973,19 @@ async function main() {
                     console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
                 }
                 console.log(`${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`);
+                // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+                // model, parallel requests give no speedup and split the KV cache (more memory).
+                // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+                const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+                if (!numParallel) {
+                    console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`);
+                }
+                else if (numParallel !== "1") {
+                    console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`);
+                }
+                else {
+                    console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+                }
             }
             else if (!detectedProvider) {
                 console.log(`${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`);

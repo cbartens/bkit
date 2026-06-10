@@ -309,8 +309,11 @@ opencode — whether the CLI or the desktop app — is only an HTTP client to Ol
 | Setting | Value | Effect |
 | --- | --- | --- |
 | `OLLAMA_MAX_LOADED_MODELS` | `1` | Never hold 2+ model weight-sets resident → avoids swap thrash on model switch. The high-impact one on constrained machines. |
+| `OLLAMA_NUM_PARALLEL` | `1` | Serialize concurrent requests against one model. bkit workflows dispatch subagents concurrently (spike-proven on opencode); with one local model that gives no speedup, and `>1` splits the KV cache across requests → more memory. `=1` makes the Ollama server run the fan-out one-at-a-time. |
 | `OLLAMA_KEEP_ALIVE` | `2m` | Evict an idle model sooner (default 5m), freeing RAM. |
 | `OLLAMA_CONTEXT_LENGTH` | `16384` | Caps `num_ctx`; KV cache scales linearly with it. (Or set `num_ctx` in a Modelfile.) |
+
+These are **Ollama-local only** — remote providers (`nvidia`, `openrouter`, `gemini`, …) are stateless cloud APIs with their own concurrency and ignore them; leave their concurrency to the workflow's default parallel fan-out.
 
 **Where to set them — depends only on how Ollama runs (not on opencode CLI vs app):**
 
@@ -356,8 +359,9 @@ opencode — whether the CLI or the desktop app — is only an HTTP client to Ol
 | --- | --- |
 | Claude Code | Synchronous `Agent` tool calls; parallel calls in single turn = parallel execution within main agent. No first-class async/background concept. |
 | Cursor | `is_background: true` on subagent → spawns Cursor Cloud Agent that runs detached; main agent continues. Async by design. |
+| opencode | Concurrent `Task` dispatch (spike-proven: 3 distinct subagents run concurrently, wall-clock < serial sum). Real parallelism only when the backend serves requests concurrently — true for remote providers (nvidia/openrouter/gemini). On **ollama-local** one model serves the fan-out; set `OLLAMA_NUM_PARALLEL=1` so the server serializes it (no speedup from one model anyway; `>1` splits the KV cache). The workflow text is unchanged — concurrency is bounded at the Ollama server, not in the command files. |
 
-**Implication:** workflow's parallel fan-outs (triplets `bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`; pairs `bkit-design-review-*`, `bkit-plan-scope-check-*`, `bkit-build-challenge-*`, `bkit-ship-update-docs`/`-summary`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true`. Default off in canonical files; Cursor host config can flip selected subagents on at install time.
+**Implication:** workflow's parallel fan-outs (triplets `bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`; pairs `bkit-design-review-*`, `bkit-plan-scope-check-*`, `bkit-build-challenge-*`, `bkit-ship-update-docs`/`-summary`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true` (default off in canonical files; Cursor host config can flip selected subagents on at install time); on opencode side via concurrent `Task` dispatch — real on remote providers, serialized at the server on ollama-local via `OLLAMA_NUM_PARALLEL=1`.
 
 ---
 

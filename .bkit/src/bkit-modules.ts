@@ -1275,11 +1275,11 @@ export function runOpencodeModule(ctx: ModuleContext): void {
             `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
             `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
             `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
-            `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\` and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
-            `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\` and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
-            `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\` and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
-            `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); KEEP_ALIVE=2m = unload sooner after idle.\n` +
-            `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / KEEP_ALIVE values.\n`
+            `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
+            `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
+            `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
+            `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia, openrouter, …) ignore them.\n` +
+            `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`
           );
         }
         return (

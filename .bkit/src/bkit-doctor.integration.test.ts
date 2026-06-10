@@ -502,4 +502,72 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
     expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 3/);
     expect(combined).toMatch(/swap thrash/);
   });
+
+  it("warns to set OLLAMA_NUM_PARALLEL=1 when unset (serializes subagent fan-out)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const { OLLAMA_NUM_PARALLEL: _drop, ...envNoParallel } = process.env;
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...envNoParallel, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: not set/);
+    expect(combined).toMatch(/serializes workflow subagent fan-out/);
+  });
+
+  it("reports serialized when OLLAMA_NUM_PARALLEL=1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_NUM_PARALLEL: "1" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: 1 \(subagent fan-out serialized\)/);
+  });
+
+  it("does NOT emit Ollama memory-safety checks for a remote provider (nvidia)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({
+        provider: {
+          nvidia: {
+            api: "openai",
+            options: {
+              apiKey: "${NVIDIA_API_KEY}",
+              baseURL: "https://integrate.api.nvidia.com/v1",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    // NUM_PARALLEL / MAX_LOADED_MODELS guidance is ollama-local only — must NOT appear for nvidia
+    expect(combined).not.toMatch(/OLLAMA_NUM_PARALLEL/);
+    expect(combined).not.toMatch(/OLLAMA_MAX_LOADED_MODELS/);
+  });
 });
