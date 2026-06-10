@@ -534,3 +534,42 @@
 - **Confidence:** high (reproduced in test authoring for opencode module, consistent with claude/cursor module behaviour)
 - **Severity:** low (test authoring trap only — does not affect production behaviour)
 - **Source:** #245 sub-plan 2 gap-remediate
+
+## KN-34: opencode spec churn — pin the probed version, not a naive next-digit bump (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading opencode or updating `opencode.json`, agents fail to launch or plugin API calls are rejected with schema errors.
+- **Root cause:** opencode's plugin spec, frontmatter fields (`reasoningEffort`, provider config shape), and command-file syntax change between releases without a stable semver contract. Naively bumping a version number or copying from release notes produces configs that may never have existed in the actual binary.
+- **Fix or rule:** Probe the installed opencode binary for its supported field names and plugin API shape before updating `opencode.json`. Read `.opencode/opencode.json` against the opencode docs for the version that `opencode --version` reports. When in doubt, copy from a fresh `opencode init` output with that version, not from examples in issues or READMEs that may lag the release.
+- **Type:** gotcha
+- **Confidence:** medium (observed during #245 spike; spec drift confirmed across minor releases)
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-modules.ts` (applyOpencodeAgent transform), spike-verdict.md
+
+## KN-35: GateGuard subagent-exemption mechanism differs between Claude and opencode (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** On Claude, GateGuard's subagent-exemption (skip advisory when `agent_id` is present) fires correctly. On opencode, the equivalent exemption may not fire — GateGuard runs against every file edit including sub-agent dispatches.
+- **Root cause:** Claude's PreToolUse hook payload includes `agent_id` when the hook fires inside a subagent context; `gateguard.cjs` reads this field to suppress the advisory. opencode's plugin API provides a different event payload shape — the field name (if any) that indicates subagent context is not the same as Claude's. The opencode plugin (`gateguard.js`) must use the opencode-specific mechanism, which may not be present in all plugin API versions.
+- **Fix or rule:** Validate the opencode plugin's subagent-detection against the installed opencode version's plugin API spec before relying on it. If the opencode API lacks a reliable subagent indicator, gate the advisory behind a more conservative heuristic (e.g. trust file count per session as a proxy). Do not assume parity with Claude's payload shape.
+- **Type:** gotcha
+- **Confidence:** medium (identified from spec review; not yet empirically verified post-spike)
+- **Severity:** low (advisory suppression failure = extra noise, not a functional regression)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.opencode/plugin/gateguard.js`, `.claude/hooks/gateguard.cjs`
+
+## KN-36: Tier-3 seed-or-print upgrade-reach gap — deleting `bkit-mode.sh` does NOT reach seeded consumer copies (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading bkit to a version that no longer ships `.bkit/scripts/bkit-mode.sh`, every prior consumer still has the file on disk. The upgrade silently leaves the orphan in place. Worse, the file's shell-function shim (`bkit()`) is still sourced from `~/.zshrc` / `~/.bashrc`, causing a broken `source` error in every new terminal after the file is eventually deleted.
+- **Root cause:** `.bkit/scripts/bkit-mode.sh` was Tier-3 seed-or-print. Tier-3 files are written once when absent; on upgrade, bkit checks if the template still exists and skips if the template is gone. There is no deletion step — the consumer copy is abandoned without notice (mirrors KN-17 for `bkit-mode.sh`).
+- **Fix or rule:** Any Tier-3 file that is retired must be paired with an upgrade-migration drift-detect advisory in `runClaudeModule` (or the owning module) that: (1) detects the orphan on disk, (2) emits an advisory telling the consumer to delete the file, (3) explicitly names the shell-rc source line to remove (if applicable), and (4) points at the replacement workflow. Implemented for `bkit-mode.sh` in `bkit-modules.ts` via the `bkit-mode-sh-deletion-required` advisory. Also: the `CORE_TEMPLATE_PATH_EXCLUDE` and `PAYLOAD_SKIP_BKIT_SCRIPTS` sets must remove the entry to avoid the `installFile` short-circuit guard from hiding the advisory path.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical (broken `source` call in every new shell = user-visible error)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, KN-17, `.bkit/src/bkit-modules.ts` (bkit-mode-sh-deletion-required advisory), DE-27

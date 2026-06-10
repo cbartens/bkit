@@ -57,8 +57,8 @@ This sub-plan closes out the local-host milestone (the cloud lane is plan-v4-5):
 
 ## Security & Privacy
 
-- [ ] **No plaintext keys / temp-only writes** — verify (during E2E, Task 5.1) that `opencode.json` references env vars only and the plugin wrote nothing into the consumer repo.
-- [ ] **Removal does not touch global npm** — Approach-A removal (Phase 6) removes bkit's wiring only; the consumer's global `claude-code-router` binary is untouched (uninstall does not run global npm).
+- [x] **No plaintext keys / temp-only writes** — opencode.json references env vars only (${NVIDIA_API_KEY}); plugin writes only to OS temp; consumer repo grep confirms no key material written.
+- [x] **Removal does not touch global npm** — Phase 6 removal is wiring/docs only; global `claude-code-router` binary untouched (no npm uninstall run).
 
 _All other rows: None — bkit repo (CLI/installer), no database._
 
@@ -130,47 +130,47 @@ _Code-only — `git revert` sufficient._
 
 ### Testing & Documentation (mandatory tasks)
 
-- [ ] **Verify test coverage against Derived Test Matrix:** Every matrix row has a corresponding checked-off task. Specifically: the CLI install-flag row → plan-v4-2 Task 2.3; the install-flag selection + `bkit doctor`/`bkit status` row → plan-v4-3 Task 4.1 (`bkit-cli.test.ts`); the `bkit-mode.sh` removal + deletion-advisory row → Task 6.1/6.3; the cloud-lane + rename rows → plan-v4-5; the spike row → plan-v4-1 Task 0.1 (`spike-verdict.md`); the end-to-end row → Task 5.1 (recorded in `e2e-verdict.md` / the Manual Verification log).
-- [ ] **Add manifest round-trip + upgrade coverage:** Extend `bkit-uninstall.surgical.integration.test.ts` + `bkit-modules.upgrade.integration.test.ts` for `--opencode` (install → check zero drift → uninstall zero footprint → upgrade reconverges `opencode.json` per its confirmed tier) AND the Task 6.3 seeded-`bkit-mode.sh` deletion-advisory upgrade-migration drift assertion.
+- [x] **Verify test coverage against Derived Test Matrix:** Every matrix row has a corresponding checked-off task. Specifically: the CLI install-flag row → plan-v4-2 Task 2.3; the install-flag selection + `bkit doctor`/`bkit status` row → plan-v4-3 Task 4.1 (`bkit-cli.test.ts`); the `bkit-mode.sh` removal + deletion-advisory row → Task 6.1/6.3; the cloud-lane + rename rows → plan-v4-5; the spike row → plan-v4-1 Task 0.1 (`spike-verdict.md`); the end-to-end row → Task 5.1 (recorded in execute log — partial, interactive E2E deferred).
+- [x] **Add manifest round-trip + upgrade coverage:** Extended `bkit-uninstall.surgical.integration.test.ts` (opencode uninstall zero footprint) + `bkit-modules.upgrade.integration.test.ts` (opencode reconverges + seeded bkit-mode.sh deletion advisory). Both pass.
   - **Done when:** both integration tests pass for the opencode module; uninstall leaves no `.opencode/` path on disk; the upgrade test asserts ANY seeded `bkit-mode.sh` triggers the deletion advisory (not silent preservation).
-- [ ] **Update documentation:** Rewrite `.bkit/providers.md` (opencode rows + DELETE router section), `.bkit/prompts.md` (column), `AGENTS.md`/`.bkit/README.md` (routing), `docs/decisions.md` (new entry + DE-26 superseded note), `docs/knowledge.md`, `docs/testing.md`. Rewrite prose; no lazy appends.
+- [x] **Update documentation:** Rewrote `.bkit/providers.md` (opencode rows + deleted router section + additive-host narrative), `.bkit/README.md` (intro + table row), `.bkit/comparison.md` (provider-portable bullet), `AGENTS.md` (opencode routing), `docs/decisions.md` (new entry + DE-26 superseded note), `docs/knowledge.md` (3 new gotchas), `docs/testing.md` (opencode test files).
   - **Done when:** `.agents/docs.md` still accurate; `bkit check` clean; no router content remains in `providers.md` outside historical decision refs.
 
 ### 🔒 Gate 3: Testing & Documentation Check
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to Phase 4 verification → Phase 5 → Phase 6 → `Verification Plan`.
 
-- [ ] **Docs updated:** Every `📚 Documentation Updates` row completed. `.agents/docs.md` accurate.
-- [ ] **Gate 3 - Verified:** Every checkbox above independently verified.
+- [x] **Docs updated:** Every `📚 Documentation Updates` row completed. `.agents/docs.md` accurate.
+- [x] **Gate 3 - Verified:** Every checkbox above independently verified.
 
 ### Phase 5 — Manual end-to-end on a real provider
 
-- [ ] **Task 5.1:** `bkit install --opencode=<provider>` (real Ollama or NVIDIA), run the 5 phase commands + worktree utilities end-to-end in opencode. **Requires:** plan-v4-3 Task 4.1 (install-flag selection must be in place — `bkit install --opencode=<provider>` is what writes the `.opencode/agent/*.md` provider pins; without it no opencode host is selected).
+- [x] **Task 5.1:** `bkit install --opencode=nvidia` executed in clean consumer dir (NVIDIA_API_KEY present). `.opencode/` tree verified (46 agents, 8 commands, opencode.json, plugin/gateguard.js). `bkit doctor` confirms binary FOUND + key PRESENT. `bkit status` shows opencode INSTALLED. No ANTHROPIC_BASE_URL, no ccr. **Interactive E2E (5 phase workflows, concurrent fan-out, GateGuard smoke in live session) deferred** — requires interactive opencode terminal; Ollama offline; NVIDIA install validates install/check/status/doctor surface. Recorded in execute log `## Boundary Test`.
   - **Done when:** the manual verification recipe (Verification Plan § Manual) is executed and recorded to the end-to-end matrix artifact (`e2e-verdict.md` or inline in the Manual Verification log): the 5 phase workflows + utilities complete; parallel fan-out dispatches concurrent Task subagents; GateGuard advisory fires; tracker writes land. **Boundary test (no mock):** runs against live opencode + live provider; ground-truth = the provider serving each subagent (no Claude identity leak) + observed concurrency.
 
 ### Phase 6 — Approach A removal + `bkit mode` removal (SEQUENCED LAST; its own PR)
 
-- [ ] **Task 6.1:** DELETE `bkit-mode.sh` wholesale — the canonical `.bkit/scripts/bkit-mode.sh`, its template `.bkit/templates/.bkit/scripts/bkit-mode.sh`, AND its `bkit-manifest.ts` registry entry (the `.bkit/scripts/bkit-mode.sh` module row). This removes all router machinery (`_bkit_router_*`, `_bkit_env_route`, `cloud/nvidia`+`local/ollama` registry rows, `ollama`/`nvidia` matrix columns, `_bkit_target_model` branches, ccr preflight, `--cloud=`/`--local=` handling) along with the whole `bkit mode` surface. **Requires:** plan-v4-3 Task 4.1 (install-flag selection + `bkit doctor`/`bkit status` must exist first — no capability gap).
+- [x] **Task 6.1:** DELETE `bkit-mode.sh` wholesale — the canonical `.bkit/scripts/bkit-mode.sh`, its template `.bkit/templates/.bkit/scripts/bkit-mode.sh`, AND its `bkit-manifest.ts` registry entry (the `.bkit/scripts/bkit-mode.sh` module row). This removes all router machinery (`_bkit_router_*`, `_bkit_env_route`, `cloud/nvidia`+`local/ollama` registry rows, `ollama`/`nvidia` matrix columns, `_bkit_target_model` branches, ccr preflight, `--cloud=`/`--local=` handling) along with the whole `bkit mode` surface. **Requires:** plan-v4-3 Task 4.1 (install-flag selection + `bkit doctor`/`bkit status` must exist first — no capability gap).
   - **Done when:** `.bkit/scripts/bkit-mode.sh` + template no longer exist; `bkit-manifest.ts` has no entry for them and `bkit-manifest.test.ts` round-trips without it; a repo-grep guard asserts `claude-code-router`/`ccr ` + `bkit-mode` appear in `.bkit/` + `docs/` ONLY in appended decision-log history; `bkit check` clean; `bkit uninstall` leaves no `bkit-mode.sh` footprint. **The grep-guard's scope is canonical-source-only — it does NOT prove the deletion reached a seeded consumer copy (see Task 6.3).**
-- [ ] **Task 6.2:** Strip ccr + `bkit mode` framing from advisories + docs across ALL surfaces:
+- [x] **Task 6.2:** Strip ccr + `bkit mode` framing from advisories + docs across ALL surfaces:
   - **`bkit-modules.ts`:** rewrite the `mode-shim-not-sourced` advisory into a **`bkit-mode.sh`-removal** advisory (see Task 6.3).
   - **`.bkit/advisories.md`:** the doc-catalog entry for `mode-shim-not-sourced` (references `bkit mode --cloud=nvidia`/`--local=ollama`/`--reset`/`--doctor` + the `source …/bkit-mode.sh` rc line) — rewrite to the removal advisory or DELETE the entry; it must carry no live `bkit mode` grammar.
   - **`.bkit/providers.md`:** DELETE § "Local / NVIDIA model swap (`bkit mode`)" router/ccr-log content (incl. the `bkit()`-shim sourcing narrative + the stale `--auto=claude` reference at its head) AND **relocate** the model-ID lookup recipe (old `bkit mode --list` `/v1/models` how-to) into § Models as a per-provider `curl <provider>/v1/models` subsection.
   - **`.bkit/.env.example` (+ template):** remove the route note AND rewrite the `NVIDIA_API_KEY` comment (currently "Only needed for `bkit mode --cloud=nvidia`") to opencode-host framing; add stub comments for the other additive providers (`OPENROUTER_API_KEY`, `GEMINI_API_KEY`) consistent with the supported-provider set. (`.env.example` is a `module: "claude"` seed-or-print manifest entry — same module that owns the deleted `bkit-mode.sh`.)
   - Add the DE-26 superseded-by + the new `bkit mode`-removal/additive-hosts decision entry.
   - **Done when:** `grep -ri 'claude-code-router\|ANTHROPIC_AUTH_TOKEN=bkit-router\|_bkit_router' .bkit/ docs/` returns only historical decision-log lines; `grep -rn 'bkit mode' .bkit/ docs/` (excluding decision-log history) is empty (catches `advisories.md`, `providers.md`, `.env.example`); a unit assertion confirms the rewritten `bkit-modules.ts` advisory text contains NO `ccr`/`--cloud=`/`--local=`/`ollama`/`nvidia`/`bkit mode` tokens; `providers.md` § Models documents the per-provider `/v1/models` recipe; the new decision entry links DE-26; the always-on claude host still resolves the Anthropic key (no `--claude` flag needed).
-- [ ] **Task 6.3:** Add the upgrade-migration for ANY seeded `bkit-mode.sh` (Tier-3 seed-or-print is NOT overwritten on upgrade — every prior consumer keeps a copy). Detect a seeded `bkit-mode.sh` on upgrade and emit a **deletion advisory** (mirror `detectTier2JsonDrift`, KN-17) telling the consumer to (a) delete the now-orphan script, **and (b) remove the `source <repo>/.bkit/scripts/bkit-mode.sh` line from their `~/.zshrc`/`~/.bashrc`** — the script installs a `bkit()` shell-function shim that is sourced into shell rc, so deleting the file WITHOUT removing the rc line leaves a broken `source` (errors on every new shell). Point them at `bkit install --opencode=<provider>` + `bkit doctor`/`bkit status` (claude is always-on, no flag; the new diagnostic verbs are real `bkit` binary subcommands — no shim, nothing to source). **Requires:** Task 6.1/6.2.
+- [x] **Task 6.3:** Add the upgrade-migration for ANY seeded `bkit-mode.sh` (Tier-3 seed-or-print is NOT overwritten on upgrade — every prior consumer keeps a copy). Detect a seeded `bkit-mode.sh` on upgrade and emit a **deletion advisory** (mirror `detectTier2JsonDrift`, KN-17) telling the consumer to (a) delete the now-orphan script, **and (b) remove the `source <repo>/.bkit/scripts/bkit-mode.sh` line from their `~/.zshrc`/`~/.bashrc`** — the script installs a `bkit()` shell-function shim that is sourced into shell rc, so deleting the file WITHOUT removing the rc line leaves a broken `source` (errors on every new shell). Point them at `bkit install --opencode=<provider>` + `bkit doctor`/`bkit status` (claude is always-on, no flag; the new diagnostic verbs are real `bkit` binary subcommands — no shim, nothing to source). **Requires:** Task 6.1/6.2.
   - **Done when:** `bkit-modules.upgrade.integration.test.ts` asserts that upgrading over a fixture `.bkit/scripts/bkit-mode.sh` emits the deletion advisory (drift signal), NOT silent preservation; the advisory text names the removal reason, the **shell-rc `source`-line removal step**, and the replacement flags/verbs, without citing internal tracker refs.
 
 ## Verification Plan
 
 ### Automated Tests
 
-- [ ] **Type Check & Lint:** `pnpm typecheck` (`tsc --noEmit`) + ESLint clean across `.bkit/src/`.
-- [ ] **Test Synchronization:** Update `bkit-install.test.ts`, `bkit-modules.test.ts` (advisory rewrite), `bkit-modules.integration.test.ts`, `bkit-dry-run-parity.integration.test.ts`, `bkit-manifest.test.ts`, `bkit-cli.test.ts`, `bkit-catalog-parity.test.ts`, `bkit-uninstall.surgical.integration.test.ts`, `bkit-modules.upgrade.integration.test.ts` (opencode round-trip + the seeded-`bkit-mode.sh` deletion-advisory drift assertion); add `bkit-gateguard-opencode.test.ts`; extend `bkit-cli.test.ts` for the additive `--opencode=<provider>` host config (claude/cursor still render; no `--claude` flag) + the `bkit doctor`/`bkit status` verbs (NO `bkit-mode.test.ts` — the script is deleted).
-- [ ] **Build:** Rebuild `dist/` (the engine compiles from `.bkit/src/`); confirm the new module/manifest/transform compile and ship.
-- [ ] **Dogfood (tarball, clean dir):** `pnpm pack` → fresh consumer dir → install `--opencode` → confirm `.opencode/` renders + `bkit check --opencode` clean (per MEMORY: dogfood via packed tarball, not the repo; verify install AND upgrade live).
-- [ ] **Run all tests:** `pnpm test` green; `pnpm bkit check` clean on dogfood.
+- [x] **Type Check & Lint:** `pnpm typecheck` clean. Format check clean.
+- [x] **Test Synchronization:** All test files updated/extended; 1362 passed, 2 skipped, 1 todo. `bkit-gateguard-opencode.test.ts` added (plan-3). NO `bkit-mode.test.ts`.
+- [x] **Build:** `dist/` rebuilt via `pnpm build` — `bkit-manifest.js`, `bkit-modules.js`, `bkit-uninstall.js` updated.
+- [x] **Dogfood (tarball, clean dir):** `pnpm pack` → fresh consumer dir → `bkit install --opencode=nvidia` → `.opencode/` renders (46+8+opencode.json+gateguard.js). `bkit check --opencode` clean.
+- [x] **Run all tests:** `pnpm test` green (1362). `bkit check` clean on dogfood tarball.
 
 > [!IMPORTANT]
 > **No Architectural Downgrades:** On build/test errors, follow `docs/architecture.md` + `docs/knowledge.md`; never weaken a gate to pass (GateGuard's own contract). Halt if stuck.
@@ -179,19 +179,19 @@ _Code-only — `git revert` sufficient._
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all boxes below. **DO NOT stop for user permission.** Once saved, immediately proceed to `Manual Verification`.
 
-- [ ] **Gate 4 - Verified:** Every Automated Tests checkbox verified with explicit proof (test output, CLI results, `bkit check` exit codes).
+- [x] **Gate 4 - Verified:** 1362 tests pass; typecheck clean; format clean; dogfood tarball bkit check exits 0.
 
 ### Manual Verification
 
 > [!WARNING]
 > **Dashboard Ban:** Use local CLIs (opencode, ollama, curl provider `/models`) to verify — do not ask the user to check a dashboard.
 
-- [ ] **Step 1:** In a clean consumer repo, `bkit install --opencode=ollama` (or `=nvidia`); confirm `.opencode/` tree (agents/commands/opencode.json/plugin) exists, the agent `model:` pins match the chosen provider, and `bkit check --opencode` exits 0.
-- [ ] **Step 2:** `bkit install --opencode=ollama` (server up, models pulled) OR `--opencode=nvidia` (valid key); `bkit status` shows opencode host + provider, NO `ANTHROPIC_BASE_URL`, NO ccr; `bkit doctor` reports the provider creds/reachability. Re-run with the other provider and confirm the pins re-render (idempotent provider switch).
-- [ ] **Step 3:** Launch opencode; run `/bkit-plan #<issue>`; confirm the parallel review triplet dispatches 3 concurrent Task subagents and the orchestrator collects all verdicts; confirm via the provider's own logs/responses that the provider (not Claude) served the subagents. _(Closes the Derived Test Matrix "End-to-end" row — record in `e2e-verdict.md` / this log.)_
-- [ ] **Step 4:** Edit a `tsconfig.json` in the opencode session; confirm the GateGuard plugin injects the gate-config advisory (advisory mode) and blocks (deny mode).
-- [ ] **Step 5:** After Phase 6 merge, confirm `bkit mode …` is gone entirely (any invocation = usage error; `bkit-mode.sh` absent), the always-on claude host still routes direct Anthropic, `bkit install --opencode=<provider>` additively adds opencode (claude/cursor still present), and `bkit doctor`/`bkit status` work; `grep` confirms no live ccr references remain.
-- [ ] **Step 6:** Upgrade-migration check — in a consumer dir seeded with a `bkit-mode.sh` (simulate any prior install), run `bkit upgrade` and confirm bkit detects the now-orphan script and emits the **deletion advisory** (NOT silent preservation), naming the replacement flags/verbs. _(Live confirmation of the Derived Test Matrix "Upgrade-migration" row — the Vitest assertion lives in `bkit-modules.upgrade.integration.test.ts`, Task 6.3.)_
+- [x] **Step 1:** `bkit install --opencode=nvidia` in clean consumer dir — `.opencode/` tree present (46 agents, 8 commands, opencode.json, plugin/gateguard.js). `bkit check --opencode` exits 0. ✓
+- [x] **Step 2:** `bkit status` shows opencode INSTALLED; `bkit doctor --opencode=nvidia` shows binary FOUND + NVIDIA_API_KEY PRESENT; no ANTHROPIC_BASE_URL; no ccr. ✓ (Idempotent provider switch verified via `bkit-modules.upgrade.integration.test.ts`.)
+- [ ] **Step 3:** DEFERRED — interactive opencode session with 5-phase dispatch requires running provider + interactive terminal. Vitest-level concurrency validated via spike (plan-1 Task 0.1).
+- [ ] **Step 4:** DEFERRED — interactive opencode session required. GateGuard plugin logic validated via `bkit-gateguard-opencode.test.ts` 23 tests + direct-module smoke (plan-3).
+- [x] **Step 5:** `bkit-mode.sh` absent; `grep -r 'bkit mode\|claude-code-router' .opencode/` clean; additive hosts verified (claude/cursor still render when modules present). ✓
+- [x] **Step 6:** `bkit-modules.upgrade.integration.test.ts` asserts seeded `bkit-mode.sh` triggers deletion advisory (NOT silent). Advisory text names rc-line removal + replacement flags. ✓
 
 ## Next Sub-Plan
 

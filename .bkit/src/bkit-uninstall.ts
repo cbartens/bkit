@@ -174,7 +174,7 @@ export function buildDecisionTable(
   const moduleList =
     modules instanceof Set
       ? ([...modules].filter((m) =>
-          ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m),
+          ["core", "claude", "cursor", "ci", "lint", "git-hooks", "opencode"].includes(m),
         ) as ModuleName[])
       : (modules as ModuleName[]);
 
@@ -355,7 +355,7 @@ export async function runUninstall(
   const moduleList =
     modules instanceof Set
       ? ([...modules].filter((m) =>
-          ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m),
+          ["core", "claude", "cursor", "ci", "lint", "git-hooks", "opencode"].includes(m),
         ) as ModuleName[])
       : (modules as ModuleName[]);
 
@@ -500,9 +500,16 @@ export async function runUninstall(
   }
 
   // Clean up .agents/ bkit-prefix mirror files
-  // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, etc.)
+  // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agent/bkit-*.md, etc.)
   if (!ctx.dryRun) {
-    const mirrorDirs = [".claude/commands", ".claude/agents", ".cursor/commands", ".cursor/agents"];
+    const mirrorDirs = [
+      ".claude/commands",
+      ".claude/agents",
+      ".cursor/commands",
+      ".cursor/agents",
+      // opencode mirrors (singular dir names per spike-verdict.md §(e))
+      ...(moduleList.includes("opencode") ? [".opencode/agent", ".opencode/command"] : []),
+    ];
     for (const dir of mirrorDirs) {
       const absDir = path.join(ctx.cwd, dir);
       if (!fs.existsSync(absDir)) continue;

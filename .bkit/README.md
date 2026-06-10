@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Because every subagent pins its own model, the whole pipeline's inference can be swapped between the Anthropic cloud, a local **Ollama** install, or NVIDIA's free **NIM** endpoint via `bkit mode` — the harness is unchanged, only the backend moves (see `.bkit/providers.md` § Local / NVIDIA model swap).
+**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds an opencode host for non-Anthropic backends (Ollama, NVIDIA NIM, OpenRouter, Gemini) — same harness, only the inference backend changes (see `.bkit/providers.md` § Hosts + Providers).
 
 This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/prompts.md`.
 
@@ -294,7 +294,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/providers.md` | Claude vs Cursor host differences, transform rules, and the local/NVIDIA model swap (`bkit mode`) |
+| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs |
 | `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks (repo-local, not seeded) |
 | `.bkit/friction.md` | Friction log — orchestrator-observed recovery moments |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
