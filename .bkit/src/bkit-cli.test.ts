@@ -491,10 +491,10 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --opencode flag (Task 2.3)", () => {
-  it("--opencode=ollama alone → opencode + core only (opt-in, additive)", () => {
-    const result = parseArgs(["install", "--opencode=ollama"]);
+  it("--opencode=ollama-local alone → opencode + core only (opt-in, additive)", () => {
+    const result = parseArgs(["install", "--opencode=ollama-local"]);
     expect([...result.modules].sort()).toEqual(["core", "opencode"]);
-    expect(result.opencodeProvider).toBe("ollama");
+    expect(result.opencodeProvider).toBe("ollama-local");
   });
 
   it("--opencode=nvidia → opencode + core, provider=nvidia", () => {
@@ -532,19 +532,19 @@ describe("parseArgs — --opencode flag (Task 2.3)", () => {
     }
   });
 
-  it("--full --opencode=ollama → all modules + opencode (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--opencode=ollama"]);
+  it("--full --opencode=ollama-local → all modules + opencode (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--opencode=ollama-local"]);
     expect(result.modules.has("core")).toBe(true);
     expect(result.modules.has("claude")).toBe(true);
     expect(result.modules.has("cursor")).toBe(true);
     expect(result.modules.has("opencode")).toBe(true);
-    expect(result.opencodeProvider).toBe("ollama");
+    expect(result.opencodeProvider).toBe("ollama-local");
   });
 
-  it("--ci --opencode=ollama → ci + core + opencode (compose without --full)", () => {
-    const result = parseArgs(["install", "--ci", "--opencode=ollama"]);
+  it("--ci --opencode=ollama-local → ci + core + opencode (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--opencode=ollama-local"]);
     expect([...result.modules].sort()).toEqual(["ci", "core", "opencode"]);
-    expect(result.opencodeProvider).toBe("ollama");
+    expect(result.opencodeProvider).toBe("ollama-local");
   });
 
   it("--full without --opencode → opencode NOT included (additive opt-in, not default)", () => {

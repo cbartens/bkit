@@ -179,7 +179,7 @@ it.todo(
 // --opencode dry-run parity (Task 2.2 "Done when" — bkit-dry-run-parity)
 // ---------------------------------------------------------------------------
 
-describe("check ≡ install writeset parity — --opencode=ollama (Task 2.2)", () => {
+describe("check ≡ install writeset parity — --opencode=ollama-local (Task 2.2)", () => {
   const PROMPTS_MD = path.resolve(
     import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
     "..",
@@ -199,7 +199,7 @@ describe("check ≡ install writeset parity — --opencode=ollama (Task 2.2)", (
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
-      opencodeProvider: "ollama",
+      opencodeProvider: "ollama-local",
       advisories: [],
       ws,
       logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",

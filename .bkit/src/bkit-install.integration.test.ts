@@ -1388,20 +1388,20 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
 
 // ---------------------------------------------------------------------------
 // Scenario P1-B — Ollama cloud warning: bkit install --cloud=opencode with
-// an existing .opencode/opencode.json that has provider.id === "ollama" must
-// emit a console.warn containing "ollama" and "local server".
+// an existing .opencode/opencode.json that has provider key "ollama-local" must
+// emit a console.warn containing "ollama-local" and "local server".
 //
 // This is a non-fatal warning — the install proceeds (exits 0) but surfaces a
 // diagnostic message to prevent a surprising runtime failure in the cloud job.
 // ---------------------------------------------------------------------------
 
-describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", () => {
+describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode install", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
   const getTsxBin = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
 
-  it("emits warning containing 'ollama' and 'local server' when .opencode/opencode.json has provider.id=ollama", () => {
+  it("emits warning containing 'ollama-local' and 'local server' when .opencode/opencode.json has provider key=ollama-local", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
 
@@ -1418,11 +1418,19 @@ describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", (
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    // Seed .opencode/opencode.json with provider.id = "ollama"
+    // Seed .opencode/opencode.json with provider key = "ollama-local" (npm-based format)
     fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({ provider: { id: "ollama", name: "Ollama" } }),
+      JSON.stringify({
+        provider: {
+          "ollama-local": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Ollama (Local)",
+            options: { baseURL: "http://localhost:11434/v1" },
+          },
+        },
+      }),
       "utf-8",
     );
 
@@ -1443,15 +1451,15 @@ describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", (
     // stdout + stderr (console.warn may go to either depending on Node/tsx)
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 
-    // The warning must mention "ollama" (the provider) and "local server" (the key phrase)
-    expect(combined).toMatch(/ollama/i);
+    // The warning must mention "ollama-local" (the provider) and "local server" (the key phrase)
+    expect(combined).toMatch(/ollama-local/i);
     expect(combined).toMatch(/local server/i);
 
     // Warning is non-fatal — install exits 0 (the tracker/cloud pair matches)
     expect(result.status, `Expected exit 0 (warning is non-fatal).\ncombined: ${combined}`).toBe(0);
   }, 90_000);
 
-  it("does NOT emit ollama warning when provider is not ollama (e.g. nvidia)", () => {
+  it("does NOT emit ollama-local warning when provider is not local (e.g. nvidia)", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
 
@@ -1467,11 +1475,21 @@ describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", (
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    // Seed .opencode/opencode.json with provider.id = "nvidia" (not ollama)
+    // Seed .opencode/opencode.json with provider key = "nvidia" (remote provider)
     fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".opencode", "opencode.json"),
-      JSON.stringify({ provider: { id: "nvidia", name: "NVIDIA" } }),
+      JSON.stringify({
+        provider: {
+          nvidia: {
+            api: "openai",
+            options: {
+              apiKey: "${NVIDIA_API_KEY}",
+              baseURL: "https://integrate.api.nvidia.com/v1",
+            },
+          },
+        },
+      }),
       "utf-8",
     );
 
@@ -1487,7 +1505,7 @@ describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", (
     );
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    // No ollama warning expected for a remote provider
+    // No local-server warning expected for a remote provider
     expect(combined).not.toMatch(/local server/i);
     expect(result.status, `Expected exit 0.\ncombined: ${combined}`).toBe(0);
   }, 90_000);

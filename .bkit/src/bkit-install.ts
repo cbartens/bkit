@@ -1073,9 +1073,12 @@ async function main() {
       if (fs.existsSync(opencodeJsonPath)) {
         try {
           const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
-            provider?: { name?: string; id?: string };
+            provider?: Record<string, unknown>;
           };
-          detectedProvider = cfg.provider?.id ?? cfg.provider?.name ?? null;
+          detectedProvider =
+            cfg.provider && typeof cfg.provider === "object"
+              ? (Object.keys(cfg.provider)[0] ?? null)
+              : null;
         } catch {
           // best-effort
         }
@@ -1089,9 +1092,11 @@ async function main() {
         gemini: ["GEMINI_API_KEY"],
         openai: ["OPENAI_API_KEY"],
         anthropic: ["ANTHROPIC_API_KEY"],
-        // ollama: local server, no key required
+        // ollama-local: local server, no API key required
       };
-      if (detectedProvider && detectedProvider !== "ollama") {
+      // Local-only providers that use no remote API key
+      const LOCAL_PROVIDERS = new Set(["ollama-local"]);
+      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
         const keys = PROVIDER_KEYS[detectedProvider] ?? [
           `${detectedProvider.toUpperCase()}_API_KEY`,
         ];
@@ -1101,7 +1106,7 @@ async function main() {
             `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
           );
         }
-      } else if (detectedProvider === "ollama") {
+      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
         console.log(
           `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
         );
@@ -1428,19 +1433,23 @@ async function main() {
       );
       process.exit(1);
     }
-    // Warn (non-fatal) when the detected provider is local-only (ollama) — the cloud runner
+    // Warn (non-fatal) when the detected provider is local-only (ollama-local) — the cloud runner
     // has no local model server, so the cloud job will fail at runtime.
     if (cloudVariant === "opencode") {
       const ocJsonPath = path.join(process.cwd(), ".opencode", "opencode.json");
       if (fs.existsSync(ocJsonPath)) {
         try {
           const cfg = JSON.parse(fs.readFileSync(ocJsonPath, "utf-8")) as {
-            provider?: { id?: string; name?: string };
+            provider?: Record<string, unknown>;
           };
-          const detectedId = cfg.provider?.id ?? cfg.provider?.name ?? null;
-          if (detectedId === "ollama") {
+          const detectedId =
+            cfg.provider && typeof cfg.provider === "object"
+              ? (Object.keys(cfg.provider)[0] ?? null)
+              : null;
+          const LOCAL_ONLY_PROVIDERS = new Set(["ollama-local"]);
+          if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
             console.warn(
-              `[bkit] warning: .opencode/opencode.json is configured for ollama (local server). ` +
+              `[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
                 `The cloud opencode job requires a remote provider with an API key — ` +
                 `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`,
             );

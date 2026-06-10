@@ -35,7 +35,7 @@ function makeSubagentsMd(
   const tableRows = rows
     .map(
       (r) =>
-        `| \`${r.name}\` | ${r.cursorModel} | ${r.opencodeModel ?? "ollama/test:7b"} | medium | — | test role |`,
+        `| \`${r.name}\` | ${r.cursorModel} | ${r.opencodeModel ?? "ollama-local/test:7b"} | medium | — | test role |`,
     )
     .join("\n");
   return `# Subagents\n\n## Models\n\n| name | Cursor model | opencode model | Claude effort | Cursor RO | role hint |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
@@ -901,8 +901,8 @@ describe("applyOpencodeCommand", () => {
 
 describe("applyOpencodeAgent", () => {
   const opencodeModelLookup = new Map([
-    ["build-plan", "ollama/qwen2.5:7b"],
-    ["design-synthesize", "ollama/qwen2.5:14b"],
+    ["build-plan", "ollama-local/qwen2.5:7b"],
+    ["design-synthesize", "ollama-local/qwen2.5:14b"],
   ]);
 
   it("emits mode: subagent, name, description, model", () => {
@@ -911,7 +911,7 @@ describe("applyOpencodeAgent", () => {
     expect(result).toContain("mode: subagent");
     expect(result).toContain("name: build-plan");
     expect(result).toContain("description: Execute plan tasks");
-    expect(result).toContain("model: ollama/qwen2.5:7b");
+    expect(result).toContain("model: ollama-local/qwen2.5:7b");
     expect(result).toContain("tools:");
   });
 
@@ -1033,11 +1033,11 @@ describe("parseOpencodeModelLookup", () => {
   });
 
   it("parses opencode model from inline table string", () => {
-    const content = `# S\n\n## Models\n\n| name | Cursor model | opencode model | Claude effort | role hint |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama/qwen2.5:14b\` | \`medium\` | task exec |\n`;
+    const content = `# S\n\n## Models\n\n| name | Cursor model | opencode model | Claude effort | role hint |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5:14b\` | \`medium\` | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-opencode-lookup.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseOpencodeModelLookup(tmp);
-    expect(lookup.get("test-agent")).toBe("ollama/qwen2.5:14b");
+    expect(lookup.get("test-agent")).toBe("ollama-local/qwen2.5:14b");
     fs.rmSync(tmp);
   });
 
@@ -1067,7 +1067,7 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
     // This guards against the column parser accidentally reading the same column for both hosts.
     const cursorLookup = parseModelLookup(".bkit/prompts.md");
     const opencodeLookup = parseOpencodeModelLookup(".bkit/prompts.md");
-    // At least some values must differ (opencode uses ollama/*, cursor uses various)
+    // At least some values must differ (opencode uses ollama-local/*, cursor uses various)
     let diffCount = 0;
     for (const [name] of cursorLookup) {
       if (cursorLookup.get(name) !== opencodeLookup.get(name)) diffCount++;

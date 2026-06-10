@@ -20,9 +20,11 @@
 | Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | always-on (`--full`) |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 
-**Additive host model:** claude and cursor are always-on (included in every `--full` install). opencode is opt-in and additive — it installs alongside claude/cursor, never replacing them. No `--claude` flag exists. Provider selection (`ollama`, `nvidia`, `openrouter`, `gemini`, etc.) is an install-time decision: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
+**Additive host model:** claude and cursor are always-on (included in every `--full` install). opencode is opt-in and additive — it installs alongside claude/cursor, never replacing them. No `--claude` flag exists. Provider selection (`ollama-local`, `nvidia`, `openrouter`, `gemini`, etc.) is an install-time decision: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
 
-**Single active provider:** bkit manages one provider block in `opencode.json` at a time. Running `bkit install --opencode=ollama` after `bkit install --opencode=nvidia` replaces the managed provider block (nvidia → ollama). If you need multiple providers simultaneously (e.g. ollama for local + nvidia for cloud), manually add the second provider block to `.opencode/opencode.json` — bkit's Tier-2 deep-merge reconverge preserves manually-added keys across upgrades.
+**Single active provider:** bkit manages one provider block in `opencode.json` at a time. Running `bkit install --opencode=ollama-local` after `bkit install --opencode=nvidia` replaces the managed provider block (nvidia → ollama-local). If you need multiple providers simultaneously (e.g. ollama-local for local + nvidia for cloud), manually add the second provider block to `.opencode/opencode.json` — bkit's Tier-2 deep-merge reconverge preserves manually-added keys across upgrades.
+
+**Local vs cloud Ollama:** `ollama-local` (`bkit install --opencode=ollama-local`) configures a local Ollama server via the npm `@ai-sdk/openai-compatible` driver — no API key required, points at `http://localhost:11434/v1`. Cloud-hosted Ollama (if/when supported) would be a separate provider key. Do not confuse the two: the opencode app's built-in "ollama" entry refers to the cloud service.
 
 Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` config.
 
@@ -65,7 +67,7 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 | `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | not supported | Identity mapping on Cursor (BAR-113, verified). Dropped on opencode side. |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
-| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `ollama/qwen2.5:14b`) | Pinned per-agent. On Claude, locks to a specific model. On Cursor, drives runner via T3. On opencode, provider-prefixed format: `<provider>/<model-id>` (see `prompts.md` § Models, `opencode model` column). |
+| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `ollama-local/qwen2.5:14b`) | Pinned per-agent. On Claude, locks to a specific model. On Cursor, drives runner via T3. On opencode, provider-prefixed format: `<provider>/<model-id>` (see `prompts.md` § Models, `opencode model` column). |
 | `readonly` | not supported (use `tools` allowlist) | optional boolean | not supported | Cursor: derive from `tools` (true if no `Edit`/`Write`/`Bash`). |
 | `is_background` | not supported | optional boolean (Cursor 2.4+) | not supported | Default false. Reserve for future opt-in on parallelisable subagents. |
 | `reasoningEffort` | not a frontmatter field (use `effort`) | not supported | `none` / `low` / `medium` / `high` / `max` | opencode-native field. Set by `applyOpencodeAgent` transform from `effort`. |
@@ -292,12 +294,12 @@ The installed provider's model catalog changes over time. Look up available mode
 <!-- prettier-ignore -->
 | Provider | Command | Notes |
 | --- | --- | --- |
-| ollama | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
+| ollama-local | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
 | NVIDIA NIM | `curl https://integrate.api.nvidia.com/v1/models -H "Authorization: Bearer $NVIDIA_API_KEY"` | Hosted; catalog changes; verify before pinning. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models -H "Authorization: Bearer $OPENROUTER_API_KEY"` | Aggregator; large catalog. |
 | Gemini | `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"` | Google; model IDs differ from OpenAI format. |
 
-**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama/qwen2.5:14b`, `nvidia/moonshotai/kimi-k2.6`). The defaults in `.opencode/agent/*.md` are seeded at install time; tune them by editing the `model:` field and running `bkit check`.
+**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5:14b`, `nvidia/moonshotai/kimi-k2.6`). The defaults in `.opencode/agents/*.md` are seeded at install time; tune them by editing the `model:` field and running `bkit check`.
 
 ---
 

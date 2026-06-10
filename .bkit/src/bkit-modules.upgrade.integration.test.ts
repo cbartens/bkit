@@ -357,9 +357,10 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const templatePath = path.join(tmpDir, "opencode-template.json");
     const template = {
       provider: {
-        ollama: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
-          apiKey: "ollama",
         },
       },
       plugins: [".opencode/plugin/gateguard.js"],
@@ -370,9 +371,10 @@ describe("opencode opencode.json reconverge on upgrade", () => {
     const consumerPath = path.join(tmpDir, "opencode.json");
     const consumerDoc = {
       provider: {
-        ollama: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
-          apiKey: "ollama",
         },
         // Consumer added their own provider
         openrouter: {
@@ -391,8 +393,8 @@ describe("opencode opencode.json reconverge on upgrade", () => {
 
     const afterDoc = JSON.parse(fs.readFileSync(consumerPath, "utf-8"));
 
-    // bkit ollama provider still present (reconverged)
-    expect(afterDoc.provider?.ollama?.options?.baseURL).toBe("http://localhost:11434/v1");
+    // bkit ollama-local provider still present (reconverged)
+    expect(afterDoc.provider?.["ollama-local"]?.options?.baseURL).toBe("http://localhost:11434/v1");
     // Consumer's openrouter provider preserved
     expect(afterDoc.provider?.openrouter?.apiKey).toBe("${OPENROUTER_API_KEY}");
     // Consumer's mcp config preserved
@@ -404,14 +406,26 @@ describe("opencode opencode.json reconverge on upgrade", () => {
   it("opencode.json reconverge is idempotent", () => {
     const templatePath = path.join(tmpDir, "opencode-template.json");
     const template = {
-      provider: { ollama: { options: { baseURL: "http://localhost:11434/v1" }, apiKey: "ollama" } },
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
       plugins: [".opencode/plugin/gateguard.js"],
     };
     fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
 
     const consumerPath = path.join(tmpDir, "opencode.json");
     const consumerDoc = {
-      provider: { ollama: { options: { baseURL: "http://localhost:11434/v1" }, apiKey: "ollama" } },
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
       plugins: [".opencode/plugin/gateguard.js"],
       customKey: "consumer-value",
     };

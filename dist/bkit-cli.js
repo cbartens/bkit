@@ -174,11 +174,11 @@ export function parseArgs(argv) {
                 continue;
             }
             // Value-bearing flag: --opencode=<provider>
-            // Additive opencode host opt-in. Provider examples: ollama, nvidia, openrouter, gemini.
+            // Additive opencode host opt-in. Provider examples: ollama-local, nvidia, openrouter, gemini.
             // A value is required (provider identifies which API key + base URL to configure).
             if (flag === "opencode") {
                 if (verb !== "uninstall") {
-                    console.error(`[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama). Run \`bkit help\` for usage.`);
+                    console.error(`[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
                 // uninstall --opencode: add the module flag without requiring a provider value.
@@ -188,7 +188,7 @@ export function parseArgs(argv) {
             if (flag.startsWith("opencode=")) {
                 const value = flag.slice("opencode=".length);
                 if (!value) {
-                    console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=ollama). Run \`bkit help\` for usage.`);
+                    console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
                 if (!/^[a-z][a-z0-9-]{0,30}$/.test(value)) {
@@ -329,7 +329,7 @@ Module flags (composable — same for install and uninstall):
   --opencode=<provider>
                   Install opencode host (additive — coexists with always-on claude/cursor;
                   opt-in via explicit --opencode=<provider>). Provider examples:
-                  ollama, nvidia, openrouter, gemini.
+                  ollama-local, nvidia, openrouter, gemini.
                   Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
                   .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
                   A provider value is REQUIRED — it names the API key env var and base URL

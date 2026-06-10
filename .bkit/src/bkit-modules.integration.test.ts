@@ -2273,7 +2273,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
-      opencodeProvider: "ollama",
+      opencodeProvider: "ollama-local",
       advisories: [],
       ws: makeWriteSet(),
       logPrefix: "[bkit-install]",
@@ -2372,8 +2372,8 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(advisory!.action).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
   });
 
-  it("ollama advisory does NOT mention an API key (Ollama is local, no key needed)", () => {
-    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama" });
+  it("ollama-local advisory does NOT mention an API key (Ollama is local, no key needed)", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama-local" });
     runOpencodeModule(ctx);
 
     const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
@@ -2437,7 +2437,7 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
       },
       modelLookup: CATALOG_MODEL_LOOKUP,
       opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
-      opencodeProvider: "ollama",
+      opencodeProvider: "ollama-local",
       advisories: [] as PreflightFinding[],
       ws,
       logPrefix: "[bkit-install]",

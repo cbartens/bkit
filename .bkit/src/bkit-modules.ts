@@ -835,7 +835,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
         action:
           "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
           "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
-          "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
+          "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama-local` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
           "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
       });
     }
@@ -1021,14 +1021,23 @@ export function runCursorModule(ctx: ModuleContext): void {
 
 // Per-provider provider key name + base URL + env var suggestions.
 // These are sane defaults; consumers tune after install.
+// npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
 const OPENCODE_PROVIDER_DEFAULTS: Record<
   string,
-  { envVar: string; baseURL: string; apiPlaceholder: string }
+  {
+    envVar: string;
+    baseURL: string;
+    apiPlaceholder: string;
+    npmPackage?: string;
+    displayName?: string;
+  }
 > = {
-  ollama: {
-    envVar: "OLLAMA_BASE_URL",
+  "ollama-local": {
+    envVar: "OLLAMA_HOST",
     baseURL: "http://localhost:11434/v1",
-    apiPlaceholder: "ollama",
+    apiPlaceholder: "",
+    npmPackage: "@ai-sdk/openai-compatible",
+    displayName: "Ollama (Local)",
   },
   nvidia: {
     envVar: "NVIDIA_API_KEY",
@@ -1082,11 +1091,6 @@ function renderOpencodeJson(templatePath: string, tracker: IssueTracker, provide
   rendered = rendered.replace(OPENCODE_PROVIDER_ENV_VAR_SENTINEL, providerDefaults.envVar);
   rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
 
-  // For ollama (local server, no key), apiKey is the literal string "ollama"
-  if (provider === "ollama") {
-    rendered = rendered.replace(`"\${${providerDefaults.envVar}}"`, `"ollama"`);
-  }
-
   // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
   try {
     const parsed = JSON.parse(rendered) as Record<string, unknown>;
@@ -1094,6 +1098,17 @@ function renderOpencodeJson(templatePath: string, tracker: IssueTracker, provide
     const mcp = parsed.mcp as Record<string, unknown> | undefined;
     if (mcp && Object.keys(mcp).length === 0) {
       delete parsed.mcp;
+    }
+    // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
+    // block with the npm-driver format: { npm, name, options: { baseURL } }
+    if (providerDefaults.npmPackage) {
+      (parsed.provider as Record<string, unknown>) = {
+        [provider]: {
+          npm: providerDefaults.npmPackage,
+          name: providerDefaults.displayName ?? provider,
+          options: { baseURL: providerDefaults.baseURL },
+        },
+      };
     }
     return JSON.stringify(parsed, null, 2) + "\n";
   } catch {
@@ -1124,7 +1139,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
   const tag = dryRun ? "[dry-run] " : "";
 
   const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-  const provider = ctx.opencodeProvider ?? "ollama";
+  const provider = ctx.opencodeProvider ?? "ollama-local";
 
   // --- Agents: applyOpencodeAgent ---
   {
@@ -1252,7 +1267,7 @@ export function runOpencodeModule(ctx: ModuleContext): void {
             `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`
           );
         }
-        if (provider === "ollama") {
+        if (pd.npmPackage) {
           return (
             `  1. Ollama runs locally — no API key needed.\n` +
             `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +

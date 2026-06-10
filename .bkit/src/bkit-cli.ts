@@ -43,7 +43,7 @@ export interface ParsedArgs {
   cloudVariant: CloudVariant | null;
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
-   * Examples: "ollama", "nvidia", "openrouter", "gemini".
+   * Examples: "ollama-local", "nvidia", "openrouter", "gemini".
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
@@ -258,12 +258,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
 
       // Value-bearing flag: --opencode=<provider>
-      // Additive opencode host opt-in. Provider examples: ollama, nvidia, openrouter, gemini.
+      // Additive opencode host opt-in. Provider examples: ollama-local, nvidia, openrouter, gemini.
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
           console.error(
-            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -275,7 +275,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
         const value = flag.slice("opencode=".length);
         if (!value) {
           console.error(
-            `[bkit] --opencode= requires a provider value (e.g. --opencode=ollama). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -431,7 +431,7 @@ Module flags (composable — same for install and uninstall):
   --opencode=<provider>
                   Install opencode host (additive — coexists with always-on claude/cursor;
                   opt-in via explicit --opencode=<provider>). Provider examples:
-                  ollama, nvidia, openrouter, gemini.
+                  ollama-local, nvidia, openrouter, gemini.
                   Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
                   .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
                   A provider value is REQUIRED — it names the API key env var and base URL
