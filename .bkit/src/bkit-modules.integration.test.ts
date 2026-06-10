@@ -2283,7 +2283,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     };
   }
 
-  it("clean install writes .opencode/agent/*.md (one per catalog agent)", () => {
+  it("clean install writes .opencode/agents/*.md (one per catalog agent)", () => {
     // Note: agent files are written via installFile (not tier-writers), so they do NOT
     // appear in ws.writes — same pattern as claude/cursor modules. Assert disk presence instead.
     const ws = makeWriteSet();
@@ -2292,7 +2292,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 
     expect(EXPECTED_AGENT_COUNT).toBeGreaterThan(0);
 
-    const agentDir = path.join(tmpDir, ".opencode", "agent");
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
     expect(fs.existsSync(agentDir)).toBe(true);
     const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
     expect(agentFiles.length).toBe(EXPECTED_AGENT_COUNT);
@@ -2306,13 +2306,13 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     }
   });
 
-  it("clean install writes .opencode/command/*.md (one per bkit workflow)", () => {
+  it("clean install writes .opencode/commands/*.md (one per bkit workflow)", () => {
     // Note: command files are written via installFile (not tier-writers) — not in ws.writes.
     const ws = makeWriteSet();
     const ctx = makeOpencodeCtx({ ws });
     runOpencodeModule(ctx);
 
-    const commandDir = path.join(tmpDir, ".opencode", "command");
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
     expect(fs.existsSync(commandDir)).toBe(true);
     const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
     expect(commandFiles.length).toBeGreaterThan(0);
@@ -2388,8 +2388,8 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     runOpencodeModule(ctx);
 
     // In dry-run: agent and command .md files must NOT exist on disk
-    const agentDir = path.join(tmpDir, ".opencode", "agent");
-    const commandDir = path.join(tmpDir, ".opencode", "command");
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
     // Dirs may be created by ensureDir, but no .md files should be written
     if (fs.existsSync(agentDir)) {
       const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
@@ -2449,8 +2449,8 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
     expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(true);
 
     // Simulate surgical removal: delete all .opencode/ bkit-prefix agent/command files
-    const agentDir = path.join(tmpDir, ".opencode", "agent");
-    const commandDir = path.join(tmpDir, ".opencode", "command");
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
     const pluginDir = path.join(tmpDir, ".opencode", "plugin");
 
     if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true });

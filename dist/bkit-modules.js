@@ -806,13 +806,12 @@ export function runCursorModule(ctx) {
 // ---------------------------------------------------------------------------
 // runOpencodeModule — opencode provider-agnostic host (opt-in via --opencode=<provider>)
 //
-// Additive alongside always-on claude/cursor: .opencode/agent/*.md (via applyOpencodeAgent),
-// .opencode/command/*.md (via applyOpencodeCommand + tracker substitution),
+// Additive alongside always-on claude/cursor: .opencode/agents/*.md (via applyOpencodeAgent),
+// .opencode/commands/*.md (via applyOpencodeCommand + tracker substitution),
 // .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/gateguard.js (Tier-1).
 //
-// Dir names confirmed by spike (plan-v4-1 item (e)):
-//   .opencode/agent/    (singular, not agents/)
-//   .opencode/command/  (singular, not commands/)
+// Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
+// Spike initially observed singular; official docs are plural — plural is correct.
 //   .opencode/plugin/   (singular, not plugins/)
 //
 // Provider config is seeded into opencode.json; consumers tune model IDs and provider
@@ -919,7 +918,7 @@ export function runOpencodeModule(ctx) {
     // --- Agents: applyOpencodeAgent ---
     {
         const src = getPromptsRoot();
-        const dest = ".opencode/agent";
+        const dest = ".opencode/agents";
         ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
@@ -929,7 +928,7 @@ export function runOpencodeModule(ctx) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
             }
         }
-        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agent
+        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
         // is a dynamic mirror dir like .claude/agents and .cursor/agents)
         if (!dryRun && fs.existsSync(dest)) {
             for (const f of fs.readdirSync(dest)) {
@@ -947,7 +946,7 @@ export function runOpencodeModule(ctx) {
     // --- Commands: tracker substitution + applyOpencodeCommand ---
     {
         const src = getWorkflowsRoot();
-        const dest = ".opencode/command";
+        const dest = ".opencode/commands";
         ensureDir(dest);
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);

@@ -330,7 +330,7 @@ Module flags (composable — same for install and uninstall):
                   Install opencode host (additive — coexists with always-on claude/cursor;
                   opt-in via explicit --opencode=<provider>). Provider examples:
                   ollama, nvidia, openrouter, gemini.
-                  Ships: .opencode/agent/*.md + .opencode/command/*.md (transforms),
+                  Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
                   .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
                   A provider value is REQUIRED — it names the API key env var and base URL
                   seeded into opencode.json. Configure your provider key + base URL after install;

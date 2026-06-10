@@ -151,8 +151,8 @@ const CURSOR_MANIFEST = [
 // gateguard.js is byte-equal-text (writeTier1 force-overwrite) — consumers configure
 // via env vars, not by editing; fully bkit-owned like .claude/hooks/gateguard.cjs.
 //
-// Dir names confirmed by spike: .opencode/agent/ (singular), .opencode/command/
-// (singular), .opencode/plugin/ (singular). See spike-verdict.md §(e).
+// Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
+// Spike initially observed singular; official docs are plural — plural is correct.
 export const OPENCODE_MANIFEST = [
     // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
     // writeTier2JsonContained throws on malformed destination (KN-19 guard).
@@ -161,7 +161,7 @@ export const OPENCODE_MANIFEST = [
     { path: ".opencode/plugin/gateguard.js", format: "byte-equal-text", module: "opencode" },
     // Agent and command mirrors are managed dynamically (not listed individually here —
     // the exact set depends on the bkit-prefix prompt/workflow files at install time).
-    // Uninstall uses the BKIT_PREFIX filter for .opencode/agent/ and .opencode/command/.
+    // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
 ];
 const CI_MANIFEST = [
     // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces

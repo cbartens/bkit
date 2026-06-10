@@ -285,10 +285,10 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     ).toBe(false);
   });
 
-  it("uninstall(opencode) removes .opencode/agent/ and .opencode/command/ bkit-prefix mirrors", async () => {
+  it("uninstall(opencode) removes .opencode/agents/ and .opencode/commands/ bkit-prefix mirrors", async () => {
     // Seed bkit-prefix agent and command mirrors
-    const agentDir = path.join(tmpDir, ".opencode", "agent");
-    const cmdDir = path.join(tmpDir, ".opencode", "command");
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const cmdDir = path.join(tmpDir, ".opencode", "commands");
     fs.mkdirSync(agentDir, { recursive: true });
     fs.mkdirSync(cmdDir, { recursive: true });
     const agentFile = path.join(agentDir, "bkit-build-plan-execute.md");
@@ -324,8 +324,8 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
   it("opencode round-trip: zero footprint — no bkit-prefix .opencode/ files remain after uninstall", async () => {
     // Simulate a full opencode install state: static files + bkit-prefix mirrors
     const opencodeDir = path.join(tmpDir, ".opencode");
-    fs.mkdirSync(path.join(opencodeDir, "agent"), { recursive: true });
-    fs.mkdirSync(path.join(opencodeDir, "command"), { recursive: true });
+    fs.mkdirSync(path.join(opencodeDir, "agents"), { recursive: true });
+    fs.mkdirSync(path.join(opencodeDir, "commands"), { recursive: true });
     fs.mkdirSync(path.join(opencodeDir, "plugin"), { recursive: true });
 
     // opencode.json (json format) — empty object → deleted after strip
@@ -342,8 +342,8 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     };
 
     // bkit-prefix dynamic mirrors
-    const agentFile = path.join(opencodeDir, "agent", "bkit-build-plan-execute.md");
-    const cmdFile = path.join(opencodeDir, "command", "bkit-build.md");
+    const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-execute.md");
+    const cmdFile = path.join(opencodeDir, "commands", "bkit-build.md");
     fs.writeFileSync(agentFile, "# agent", "utf-8");
     fs.writeFileSync(cmdFile, "# cmd", "utf-8");
 

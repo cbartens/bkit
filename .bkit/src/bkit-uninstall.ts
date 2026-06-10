@@ -500,15 +500,15 @@ export async function runUninstall(
   }
 
   // Clean up .agents/ bkit-prefix mirror files
-  // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agent/bkit-*.md, etc.)
+  // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
   if (!ctx.dryRun) {
     const mirrorDirs = [
       ".claude/commands",
       ".claude/agents",
       ".cursor/commands",
       ".cursor/agents",
-      // opencode mirrors (singular dir names per spike-verdict.md §(e))
-      ...(moduleList.includes("opencode") ? [".opencode/agent", ".opencode/command"] : []),
+      // opencode mirrors (plural dir names per opencode.ai/docs)
+      ...(moduleList.includes("opencode") ? [".opencode/agents", ".opencode/commands"] : []),
     ];
     for (const dir of mirrorDirs) {
       const absDir = path.join(ctx.cwd, dir);
