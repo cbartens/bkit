@@ -319,6 +319,11 @@ jobs:
             fi
             # bkit:end shared-deriv
           fi
+          # Guard: arg must be alphanumeric/dash/dot/slash (numeric PR/issue ids + FIDs like 245-opencode-provider-host).
+          if ! [[ "$ARG" =~ ^[0-9A-Za-z._/-]+$ ]]; then
+            echo "::error::Invalid arg value '${ARG}' — aborting." >&2
+            exit 1
+          fi
           {
             echo "skip=false"
             echo "phase=$PHASE"
@@ -341,6 +346,10 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           GEMINI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).
+          BKIT_PHASE: ${{ steps.ctx.outputs.phase }}
+          BKIT_ARG: ${{ steps.ctx.outputs.arg }}
         run: |
-          opencode run "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"
+          opencode run "/bkit-auto $BKIT_PHASE $BKIT_ARG"

@@ -573,3 +573,29 @@
 - **Scope:** consumer
 - **Source:** agent
 - **Related:** #245, KN-17, `.bkit/src/bkit-modules.ts` (bkit-mode-sh-deletion-required advisory), DE-27
+
+## KN-37: GHA workflow injection — never expand context outputs inside `run:` shell strings (2026-06-10)
+
+- **Category:** security
+- **Symptom:** `opencode run "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"` expands before the shell runs; a crafted issue number (e.g. `"; malicious-cmd"`) becomes a shell argument.
+- **Root cause:** GitHub Actions expressions (`${{ }}`) are string-interpolated into YAML by the runner before bash executes — they bypass shell quoting. Any step that accepts free-text inputs (workflow_dispatch `type: string`, PR titles, issue numbers) is a sink.
+- **Fix or rule:** Pass dynamic values via `env:` entries (e.g. `BKIT_PHASE`, `BKIT_ARG`) and reference via `$VAR` in the `run:` body. Combine with an allowlist regex guard on the env var before use. Implemented in `.bkit/templates/.github/workflows/bkit-cloud.yml` opencode job (#245 Fix 1 + Fix 2).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/templates/.github/workflows/bkit-cloud.yml`
+
+## KN-38: Orphan-cleanup must be gated on replacement presence (2026-06-10)
+
+- **Category:** infra
+- **Symptom:** `bkit install` (no `--cloud` flag) runs the upgrade-orphan block that deletes `bkit-auto.yml` without installing `bkit-cloud.yml`, leaving the consumer with no cloud workflow at all.
+- **Root cause:** The delete guard only checked `fs.existsSync(oldAutoWorkflow)`, not whether the replacement was arriving in the same run.
+- **Fix or rule:** Gate orphan deletion on `fs.existsSync(newCloudWorkflow) || candidates.some(c => c.relPath === "...bkit-cloud.yml")`. Implemented in `bkit-install.ts` (#245 Fix 4).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-install.ts`

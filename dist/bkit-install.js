@@ -1055,9 +1055,14 @@ async function main() {
             collectTemplates(tplRoot, "");
         }
         // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
-        // Consumers who have the old file get it removed so no orphan lingers.
+        // Only remove when bkit-cloud.yml is already present or being installed in this run —
+        // otherwise a plain `bkit install` (no --cloud flag) would silently delete the old
+        // cloud workflow without seeding the replacement.
         const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
-        if (fs.existsSync(oldAutoWorkflow)) {
+        const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
+        const cloudWillBeInstalled = candidates.some((c) => c.relPath === path.join(".github", "workflows", "bkit-cloud.yml"));
+        if (fs.existsSync(oldAutoWorkflow) &&
+            (fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled)) {
             const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
             console.log(`${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`);
             if (!upgradeFlags.dryRun) {
@@ -1225,6 +1230,25 @@ async function main() {
                 `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia, --opencode=openrouter)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
             process.exit(1);
+        }
+        // Warn (non-fatal) when the detected provider is local-only (ollama) — the cloud runner
+        // has no local model server, so the cloud job will fail at runtime.
+        if (cloudVariant === "opencode") {
+            const ocJsonPath = path.join(process.cwd(), ".opencode", "opencode.json");
+            if (fs.existsSync(ocJsonPath)) {
+                try {
+                    const cfg = JSON.parse(fs.readFileSync(ocJsonPath, "utf-8"));
+                    const detectedId = cfg.provider?.id ?? cfg.provider?.name ?? null;
+                    if (detectedId === "ollama") {
+                        console.warn(`[bkit] warning: .opencode/opencode.json is configured for ollama (local server). ` +
+                            `The cloud opencode job requires a remote provider with an API key — ` +
+                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`);
+                    }
+                }
+                catch {
+                    // best-effort
+                }
+            }
         }
     }
     // Persist tracker to consumer package.json AFTER all hard-error gates pass.

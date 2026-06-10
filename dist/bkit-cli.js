@@ -191,6 +191,10 @@ export function parseArgs(argv) {
                     console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=ollama). Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
+                if (!/^[a-z][a-z0-9-]{0,30}$/.test(value)) {
+                    console.error(`[bkit] --opencode= provider name must match /^[a-z][a-z0-9-]{0,30}$/ (got: ${JSON.stringify(value)}).`);
+                    process.exit(1);
+                }
                 opencodeProvider = value;
                 moduleFlags.add("opencode");
                 continue;
