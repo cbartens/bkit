@@ -1051,7 +1051,7 @@ export function runOpencodeModule(ctx) {
                         `  3. Pull the seeded model: \`ollama pull qwen2.5-coder:7b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
                         `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
                         `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
-                        `     These are Ollama SERVER env vars (govern the \`ollama serve\` daemon) — they do NOT go in opencode.json. Where to set them:\n` +
+                        `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
                         `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\` and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
                         `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\` and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
                         `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\` and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +

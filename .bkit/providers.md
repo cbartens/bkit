@@ -299,7 +299,26 @@ The installed provider's model catalog changes over time. Look up available mode
 | OpenRouter | `curl https://openrouter.ai/api/v1/models -H "Authorization: Bearer $OPENROUTER_API_KEY"` | Aggregator; large catalog. |
 | Gemini | `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"` | Google; model IDs differ from OpenAI format. |
 
-**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5:14b`, `nvidia/moonshotai/kimi-k2.6`). The defaults in `.opencode/agents/*.md` are seeded at install time; tune them by editing the `model:` field and running `bkit check`.
+**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/moonshotai/kimi-k2.6`). The defaults in `.opencode/agents/*.md` are seeded at install time; tune them by editing the `model:` field and running `bkit check`. All opencode agents seed to one model by default — see `prompts.md` § Models for the single-model rationale (avoids Ollama unload/reload churn under `OLLAMA_MAX_LOADED_MODELS=1`).
+
+### Local Ollama memory-safety (server-side, not opencode.json)
+
+opencode — whether the CLI or the desktop app — is only an HTTP client to Ollama at `localhost:11434`. It never launches or configures the Ollama server, so the memory-residency knobs live on the **Ollama server daemon**, INDEPENDENT of which opencode surface you use. They are **not** expressible in `opencode.json` (no field exists; opencode's per-model `limit.context` is informational client-side budgeting, not Ollama's `num_ctx`).
+
+<!-- prettier-ignore -->
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `OLLAMA_MAX_LOADED_MODELS` | `1` | Never hold 2+ model weight-sets resident → avoids swap thrash on model switch. The high-impact one on constrained machines. |
+| `OLLAMA_KEEP_ALIVE` | `2m` | Evict an idle model sooner (default 5m), freeing RAM. |
+| `OLLAMA_CONTEXT_LENGTH` | `16384` | Caps `num_ctx`; KV cache scales linearly with it. (Or set `num_ctx` in a Modelfile.) |
+
+**Where to set them — depends only on how Ollama runs (not on opencode CLI vs app):**
+
+- **macOS Ollama.app (menu-bar):** the app IS the server. `launchctl setenv OLLAMA_MAX_LOADED_MODELS 1` (and `OLLAMA_KEEP_ALIVE 2m`), then quit + reopen the app. Bare `launchctl setenv` is **not** persistent across reboot — re-run after restart, or add a `~/Library/LaunchAgents` plist that runs it at login.
+- **`ollama serve` from a terminal (Homebrew/manual):** `export OLLAMA_MAX_LOADED_MODELS=1` / `export OLLAMA_KEEP_ALIVE=2m` in `~/.zshrc`, then launch the server from that shell. Persistent.
+- **Linux (systemd):** `systemctl edit ollama.service` → under `[Service]` add `Environment="OLLAMA_MAX_LOADED_MODELS=1"` and `Environment="OLLAMA_KEEP_ALIVE=2m"` → `systemctl daemon-reload && systemctl restart ollama`. Persistent (canonical).
+
+`bkit doctor` reads back `OLLAMA_MAX_LOADED_MODELS` / `OLLAMA_KEEP_ALIVE` and warns when unset or `>1` — read-only, it never mutates the server env.
 
 ---
 
