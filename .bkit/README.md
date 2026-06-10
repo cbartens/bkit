@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Because every subagent pins its own model, the whole pipeline's inference can be swapped between the Anthropic cloud, a local **Ollama** install, or NVIDIA's free **NIM** endpoint via `bkit mode` — the harness is unchanged, only the backend moves (see `.bkit/providers.md` § Local / NVIDIA model swap).
+**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds an opencode host for non-Anthropic backends (Ollama, NVIDIA NIM, OpenRouter, Gemini) — same harness, only the inference backend changes (see `.bkit/providers.md` § Hosts + Providers).
 
 This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/prompts.md`.
 
@@ -202,7 +202,7 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 
 ### Optional post-install decisions (tracker + dependency updater + cloud agents)
 
-Three capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`), the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive), and **cloud agents** (`--cloud`, ships the phase-routed `bkit-auto.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — so `--full` ships zero cloud footprint). A default install wires none; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); setting any to `"none"` silences its nudge. The cloud router is split out because it is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` secrets + GHA write permissions + (Cursor half) a dashboard trigger, and it depends on the opt-in tracker (see issue #119). Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
+Three capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`), the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive), and **cloud agents** (`--cloud`, ships the phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — so `--full` ships zero cloud footprint). A default install wires none; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); setting any to `"none"` silences its nudge. The cloud router is split out because it is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` secrets + GHA write permissions + (Cursor half) a dashboard trigger, and it depends on the opt-in tracker (see issue #119). Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
@@ -212,7 +212,7 @@ bkit dogfoods its own templates: `.bkit/templates/.github/workflows/*.yml` (cano
 2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .bkit/src/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
 3. Push the template-side change to the updater PR's branch (or land both in a single follow-up commit on `dev` if the branch is read-only).
 
-This only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so updater bumps survive every install. `bkit-auto.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`. The shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-auto.yml"]` + `enabled: false`; the shipped `dependabot.yml` covers the `github-actions` ecosystem at `/` (consumers tune ignore patterns for bkit-managed files if needed).
+This only applies to the bkit repo itself — consumers don't have the templates; their `.github/workflows/ci.yml` is Tier 3 (seed-or-print), so updater bumps survive every install. `bkit-cloud.yml` is Tier 1 (auto-overwrite); consumers receive new SHA pins automatically on each `bkit install`. The shipped `renovate.json5` includes a packageRule with `matchFileNames: [".github/workflows/bkit-cloud.yml"]` + `enabled: false`; the shipped `dependabot.yml` covers the `github-actions` ecosystem at `/` (consumers tune ignore patterns for bkit-managed files if needed).
 
 ---
 
@@ -294,7 +294,7 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/providers.md` | Claude vs Cursor host differences, transform rules, and the local/NVIDIA model swap (`bkit mode`) |
+| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs |
 | `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks (repo-local, not seeded) |
 | `.bkit/friction.md` | Friction log — orchestrator-observed recovery moments |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |

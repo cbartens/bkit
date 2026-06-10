@@ -1,0 +1,65 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "rules": [
+      {
+        "description": "Allow reading any file",
+        "tools": ["Read"],
+        "mode": "allow"
+      },
+      {
+        "description": "Allow writing files (agents write output artifacts)",
+        "tools": ["Write", "Edit"],
+        "mode": "allow"
+      },
+      {
+        "description": "Allow grep and glob for code navigation",
+        "tools": ["Grep", "Glob"],
+        "mode": "allow"
+      },
+      {
+        "description": "Allow bash execution (gated by gateguard plugin)",
+        "tools": ["Bash"],
+        "mode": "allow"
+      },
+      {
+        "description": "Allow task dispatch (orchestrator spawns subagents)",
+        "tools": ["Task"],
+        "mode": "allow"
+      },
+      {
+        "description": "Ask before sudo commands",
+        "tools": ["Bash(sudo:*)"],
+        "mode": "ask"
+      },
+      {
+        "description": "Ask before curl/wget network ops",
+        "tools": ["Bash(curl:*)", "Bash(wget:*)"],
+        "mode": "ask"
+      },
+      {
+        "description": "Deny destructive git force-push",
+        "tools": ["Bash(git push --force:*)", "Bash(git push -f:*)"],
+        "mode": "deny"
+      },
+      {
+        "description": "Deny rm -rf on root or home",
+        "tools": ["Bash(rm -rf /*)", "Bash(rm -rf ~/*)", "Bash(rm -rf $HOME/*)"],
+        "mode": "deny"
+      }
+    ]
+  },
+  "mcp": {
+    "@@OPENCODE_TRACKER_MCP@@": {}
+  },
+  "plugins": [".opencode/plugin/gateguard.js"],
+  "provider": {
+    "@@OPENCODE_PROVIDER_KEY@@": {
+      "api": "openai",
+      "options": {
+        "apiKey": "${@@OPENCODE_PROVIDER_ENV_VAR@@}",
+        "baseURL": "@@OPENCODE_PROVIDER_BASE_URL@@"
+      }
+    }
+  }
+}

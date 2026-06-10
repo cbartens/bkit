@@ -2,7 +2,7 @@
 // Exported and consumed by bkit-install.ts main().
 import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
 /** Cloud-agent variant chosen via `--cloud=<variant>`. */
-export const CLOUD_VARIANTS = ["claude", "cursor"];
+export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value) {
     return typeof value === "string" && CLOUD_VARIANTS.includes(value)
@@ -13,6 +13,7 @@ const MODULE_FLAGS = new Set([
     "core",
     "claude",
     "cursor",
+    "opencode",
     "ci",
     "lint",
     "git-hooks",
@@ -28,13 +29,13 @@ const MODULE_FLAGS = new Set([
 // `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
 // this path explicitly opt out of bkit's Renovate recommendation; installing both
 // opens competing PRs against the same packages. Rationale (cloud): the
-// `bkit-auto.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
+// `bkit-cloud.yml` workflow is inert without ANTHROPIC_API_KEY / OPENCODE_PROVIDER_KEY
 // secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
 // and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
 // a default. See issue #119 ("Managed Cloud Agents").
 const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
 /** Opt-in modules: not included in `--full` or default install; require explicit flag. */
-export const OPTIN_MODULES = new Set(["renovate", "dependabot", "cloud"]);
+export const OPTIN_MODULES = new Set(["renovate", "dependabot", "cloud", "opencode"]);
 // Uninstall-specific flags (not module flags)
 const UNINSTALL_ONLY_FLAGS = new Set([
     "dry-run",
@@ -104,6 +105,7 @@ export function parseArgs(argv) {
     if (firstArg === "install" ||
         firstArg === "check" ||
         firstArg === "doctor" ||
+        firstArg === "status" ||
         firstArg === "uninstall" ||
         firstArg === "upgrade") {
         verb = firstArg;
@@ -123,6 +125,7 @@ export function parseArgs(argv) {
     const upgradeFlags = defaultUpgradeFlags();
     let tracker = null;
     let cloudVariant = null;
+    let opencodeProvider = null;
     let force = false;
     for (const arg of args) {
         if (arg.startsWith("--")) {
@@ -168,6 +171,32 @@ export function parseArgs(argv) {
                 }
                 cloudVariant = parsed;
                 moduleFlags.add("cloud");
+                continue;
+            }
+            // Value-bearing flag: --opencode=<provider>
+            // Additive opencode host opt-in. Provider examples: ollama-local, nvidia, openrouter, gemini.
+            // A value is required (provider identifies which API key + base URL to configure).
+            if (flag === "opencode") {
+                if (verb !== "uninstall") {
+                    console.error(`[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                // uninstall --opencode: add the module flag without requiring a provider value.
+                moduleFlags.add("opencode");
+                continue;
+            }
+            if (flag.startsWith("opencode=")) {
+                const value = flag.slice("opencode=".length);
+                if (!value) {
+                    console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`);
+                    process.exit(1);
+                }
+                if (!/^[a-z][a-z0-9-]{0,30}$/.test(value)) {
+                    console.error(`[bkit] --opencode= provider name must match /^[a-z][a-z0-9-]{0,30}$/ (got: ${JSON.stringify(value)}).`);
+                    process.exit(1);
+                }
+                opencodeProvider = value;
+                moduleFlags.add("opencode");
                 continue;
             }
             // Value-bearing flag: --dependency=<renovate|dependabot>
@@ -244,7 +273,16 @@ export function parseArgs(argv) {
     }
     // Full uninstall removes opt-in add-ons too (leave zero footprint); full install does not.
     const modules = resolveModules(moduleFlags, { optInModulesInFull: verb === "uninstall" });
-    return { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force };
+    return {
+        verb,
+        modules,
+        uninstallFlags,
+        upgradeFlags,
+        tracker,
+        cloudVariant,
+        opencodeProvider,
+        force,
+    };
 }
 export function printUsage() {
     console.log(`bkit — agent-stack consolidation CLI
@@ -262,6 +300,9 @@ Usage:
                                  Target one with its flag (e.g. uninstall --cloud).
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
+  bkit status                   Read-only host/provider status. Reports current host+provider
+                                 (sampled from .opencode/opencode.json, .claude/, .cursor/).
+                                 Writes nothing. Exits 0.
   bkit help                     Print this message.
 
 Module flags (composable — same for install and uninstall):
@@ -285,9 +326,19 @@ Module flags (composable — same for install and uninstall):
                   GitHub feature; no App install or phase gate.
                   (renovate and dependabot are mutually exclusive. The bare --renovate /
                   --dependabot flags remain as deprecated aliases.)
+  --opencode=<provider>
+                  Install opencode host (additive — coexists with always-on claude/cursor;
+                  opt-in via explicit --opencode=<provider>). Provider examples:
+                  ollama-local, nvidia, openrouter, gemini.
+                  Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
+                  .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
+                  A provider value is REQUIRED — it names the API key env var and base URL
+                  seeded into opencode.json. Configure your provider key + base URL after install;
+                  run \`bkit doctor\` and \`bkit status\` to verify. NOT in install --full.
+                  IS removed by uninstall --full.
   --auto=claude   Install Claude cloud-agent (auto-dispatch) integration (opt-in — NOT in
                   install --full; IS removed by uninstall --full). Requires tracker=github.
-                  Ships: .github/workflows/bkit-auto.yml + .claude/hooks/cloud-bootstrap.sh.
+                  Ships: .github/workflows/bkit-cloud.yml + .claude/hooks/cloud-bootstrap.sh.
                   Requires ANTHROPIC_API_KEY repo secret and the Claude GitHub App
                   (run /install-github-app once). Records bkit.cloudAgents=claude.
   --auto=cursor   Install Cursor cloud-agent integration (opt-in). Requires tracker=linear.

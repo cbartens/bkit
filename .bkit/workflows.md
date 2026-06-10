@@ -529,7 +529,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 
 ### `bkit [auto route]` Marker Propagation
 
-`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-auto.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**) — ONLY when the issue carried `bkit:auto` at close time. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
+`bkit [auto route]` is a CI commit-message marker that enables the free-tier `bkit-cloud.yml` CI auto-route gate. It is placed on the **close-workflow commit** (and the debug **re-trigger commit**) — ONLY when the issue carried `bkit:auto` at close time. It is NOT a CI-suppressing token (the HEAD-Subject Assertion treats it as legitimate — deny-list, so it passes automatically).
 
 **Placement logic (mode-dependent):**
 

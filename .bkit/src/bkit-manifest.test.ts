@@ -1,11 +1,16 @@
 // bkit-manifest.test.ts — P2.T1 — snapshot + contract tests.
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getInstallManifest,
   getModuleManifest,
   getManagedPackageJsonKeys,
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
+  CLOUD_MANIFEST_OPENCODE,
+  OPENCODE_MANIFEST,
   parseCloudAgents,
   type ManifestEntry,
   type ModuleName,
@@ -16,9 +21,9 @@ import {
 // Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
 // ---------------------------------------------------------------------------
 
-describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-auto.yml + cloud-bootstrap.sh", () => {
-  it("contains bkit-auto.yml as byte-equal-text", () => {
-    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-auto.yml");
+describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + cloud-bootstrap.sh", () => {
+  it("contains bkit-cloud.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("byte-equal-text");
     expect(entry!.module).toBe("cloud");
@@ -38,7 +43,7 @@ describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-auto.yml + cl
     ).toBeUndefined();
   });
 
-  it("contains exactly 2 entries (bkit-auto.yml + cloud-bootstrap.sh)", () => {
+  it("contains exactly 2 entries (bkit-cloud.yml + cloud-bootstrap.sh)", () => {
     expect(CLOUD_MANIFEST_CLAUDE.length).toBe(2);
   });
 });
@@ -59,9 +64,9 @@ describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile
     expect(entry!.module).toBe("cloud");
   });
 
-  it("does NOT contain bkit-auto.yml or cloud-bootstrap.sh (claude variant only)", () => {
+  it("does NOT contain bkit-cloud.yml or cloud-bootstrap.sh (claude/opencode variant only)", () => {
     expect(
-      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-auto.yml"),
+      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-cloud.yml"),
     ).toBeUndefined();
     expect(
       CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
@@ -70,6 +75,28 @@ describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile
 
   it("contains exactly 2 entries (Dockerfile + environment.json)", () => {
     expect(CLOUD_MANIFEST_CURSOR.length).toBe(2);
+  });
+});
+
+describe("CLOUD_MANIFEST_OPENCODE — cloud=opencode variant owns bkit-cloud.yml (same file as claude)", () => {
+  it("contains bkit-cloud.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_OPENCODE.find(
+      (e) => e.path === ".github/workflows/bkit-cloud.yml",
+    );
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("does NOT contain cloud-bootstrap.sh (claude only) or cursor files", () => {
+    expect(
+      CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
+    ).toBeUndefined();
+    expect(CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".cursor/Dockerfile")).toBeUndefined();
+  });
+
+  it("contains exactly 1 entry (bkit-cloud.yml only)", () => {
+    expect(CLOUD_MANIFEST_OPENCODE.length).toBe(1);
   });
 });
 
@@ -84,6 +111,10 @@ describe("parseCloudAgents — value space and back-compat", () => {
 
   it("parses 'cursor' → 'cursor'", () => {
     expect(parseCloudAgents("cursor")).toBe("cursor");
+  });
+
+  it("parses 'opencode' → 'opencode'", () => {
+    expect(parseCloudAgents("opencode")).toBe("opencode");
   });
 
   it("parses 'none' → 'none'", () => {
@@ -244,11 +275,12 @@ describe("getInstallManifest", () => {
     ).toBeUndefined();
   });
 
-  it("cloud manifest includes the phase-routed bkit-auto.yml workflow (renamed from bkit-ci-router — #119)", () => {
+  it("cloud manifest includes the phase-routed bkit-cloud.yml workflow (renamed from bkit-auto.yml — #245)", () => {
     const entries = getInstallManifest(["cloud"]);
-    const wf = entries.find((e) => e.path === ".github/workflows/bkit-auto.yml");
+    const wf = entries.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
     expect(wf).toBeDefined();
     expect(wf!.format).toBe("byte-equal-text");
+    expect(entries.find((e) => e.path === ".github/workflows/bkit-auto.yml")).toBeUndefined();
     expect(entries.find((e) => e.path === ".github/workflows/bkit-ci-router.yml")).toBeUndefined();
   });
 });
@@ -289,6 +321,124 @@ describe("getModuleManifest", () => {
 // ---------------------------------------------------------------------------
 // getManagedPackageJsonKeys — aggregate scripts + devDependencies
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// OPENCODE_MANIFEST — round-trip + format contracts (Task 2.1 "Done when")
+// ---------------------------------------------------------------------------
+
+describe("OPENCODE_MANIFEST — round-trip and format contracts", () => {
+  it("contains .opencode/opencode.json as json (Tier-2 deep-contained)", () => {
+    const entry = OPENCODE_MANIFEST.find((e) => e.path === ".opencode/opencode.json");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("json");
+    expect(entry!.module).toBe("opencode");
+    // opencode.json is ownership-mixed — must NOT be seed-or-print (KN-17: reconverged on upgrade)
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+  });
+
+  it("contains .opencode/plugin/gateguard.js as byte-equal-text (Tier-1 bkit-owned)", () => {
+    const entry = OPENCODE_MANIFEST.find((e) => e.path === ".opencode/plugin/gateguard.js");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.module).toBe("opencode");
+    // gateguard.js is fully bkit-owned — must NOT be seed-or-print
+    expect(entry!.seedOrPrint ?? false).toBe(false);
+  });
+
+  it("all OPENCODE_MANIFEST entries have module=opencode", () => {
+    for (const entry of OPENCODE_MANIFEST) {
+      expect(entry.module).toBe("opencode");
+    }
+  });
+
+  it("all OPENCODE_MANIFEST format values are valid ManifestEntry formats", () => {
+    const VALID_FORMATS = ["json", "markered-text", "byte-equal-text"];
+    for (const entry of OPENCODE_MANIFEST) {
+      expect(VALID_FORMATS).toContain(entry.format);
+    }
+  });
+
+  it("getInstallManifest(['opencode']) returns OPENCODE_MANIFEST entries", () => {
+    const entries = getInstallManifest(["opencode"]);
+    const opencodeJsonEntry = entries.find((e) => e.path === ".opencode/opencode.json");
+    const gateguardEntry = entries.find((e) => e.path === ".opencode/plugin/gateguard.js");
+    expect(opencodeJsonEntry).toBeDefined();
+    expect(gateguardEntry).toBeDefined();
+  });
+
+  it("getModuleManifest('opencode') returns at least 2 entries", () => {
+    const entries = getModuleManifest("opencode");
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+    for (const e of entries) {
+      expect(e.module).toBe("opencode");
+    }
+  });
+
+  it("opencode manifest is NOT included in getInstallManifest(['cursor']) (additive opt-in)", () => {
+    const cursorEntries = getInstallManifest(["cursor"]);
+    const opencodeEntry = cursorEntries.find((e) => e.path.startsWith(".opencode/"));
+    expect(opencodeEntry).toBeUndefined();
+  });
+
+  it("opencode manifest is NOT included in getInstallManifest(['claude']) (additive opt-in)", () => {
+    const claudeEntries = getInstallManifest(["claude"]);
+    const opencodeEntry = claudeEntries.find((e) => e.path.startsWith(".opencode/"));
+    expect(opencodeEntry).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// KN-19-for-opencode — writeTier2JsonContained throws on malformed destination
+// Tests the shared helper's throw-on-malformed-destination contract as it
+// applies to .opencode/opencode.json (Tier-2 json, committed default per plan).
+// ---------------------------------------------------------------------------
+
+describe("KN-19-for-opencode — writeTier2JsonContained throws on malformed .opencode/opencode.json", () => {
+  let tmpDir: string;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    originalCwd = process.cwd();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-manifest-kn19-"));
+    process.chdir(tmpDir);
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("writeTier2JsonContained throws on malformed destination JSON (KN-19)", async () => {
+    // Dynamic import to keep bkit-tiers fs side-effects out of module scope
+    const { writeTier2JsonContained } = await import("./bkit-tiers");
+
+    // Prepare a valid template (srcPath)
+    const srcPath = path.join(tmpDir, "template.json");
+    fs.writeFileSync(srcPath, JSON.stringify({ key: "value" }), "utf-8");
+
+    // Prepare a malformed destination (dstPath) — simulates consumer-corrupted file
+    const dstPath = path.join(tmpDir, "opencode.json");
+    fs.writeFileSync(dstPath, "this is not valid { json", "utf-8");
+
+    const ws: import("./bkit-tiers").WriteSet = { writes: [] };
+
+    // Must throw — refusing to overwrite malformed consumer JSON (KN-19)
+    expect(() => writeTier2JsonContained(srcPath, dstPath, false, ws)).toThrow(/malformed JSON/);
+  });
+
+  it("writeTier2JsonContained does NOT throw on valid destination JSON (normal path)", async () => {
+    const { writeTier2JsonContained } = await import("./bkit-tiers");
+
+    const srcPath = path.join(tmpDir, "template.json");
+    fs.writeFileSync(srcPath, JSON.stringify({ key: "value" }), "utf-8");
+
+    const dstPath = path.join(tmpDir, "opencode.json");
+    fs.writeFileSync(dstPath, JSON.stringify({ existingKey: "preserved" }), "utf-8");
+
+    const ws: import("./bkit-tiers").WriteSet = { writes: [] };
+    expect(() => writeTier2JsonContained(srcPath, dstPath, false, ws)).not.toThrow();
+  });
+});
 
 describe("getManagedPackageJsonKeys", () => {
   it("aggregates scripts from lint module: format:check, lint:prose, lint:slop", () => {

@@ -1027,7 +1027,7 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
@@ -1035,7 +1035,7 @@ describe("detectGhaFloatingTags", () => {
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
-        canonicalHashes: { ".github/workflows/bkit-auto.yml": "deadbeef" },
+        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
     expect(detectGhaFloatingTags(tmpDir)).toBeNull();
@@ -1045,14 +1045,14 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", "version"),
       JSON.stringify({
         pinnedVersion: "2.3.1",
-        tier3Hashes: { ".github/workflows/bkit-auto.yml": "deadbeef" },
+        tier3Hashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
         canonicalHashes: {},
       }),
     );
@@ -1063,7 +1063,7 @@ describe("detectGhaFloatingTags", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "      - uses: actions/checkout@v4\n",
     );
     fs.writeFileSync(
@@ -1075,13 +1075,13 @@ describe("detectGhaFloatingTags", () => {
       JSON.stringify({
         pinnedVersion: "2.3.1",
         tier3Hashes: {},
-        canonicalHashes: { ".github/workflows/bkit-auto.yml": "deadbeef" },
+        canonicalHashes: { ".github/workflows/bkit-cloud.yml": "deadbeef" },
       }),
     );
     const result = detectGhaFloatingTags(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.detect).toContain("ci.yml");
-    expect(result!.detect).not.toContain("bkit-auto.yml");
+    expect(result!.detect).not.toContain("bkit-cloud.yml");
   });
 });
 
@@ -1165,10 +1165,10 @@ describe("buildDepUpdaterSetupAdvisory", () => {
 // ---------------------------------------------------------------------------
 
 describe("buildCloudSetupAdvisory", () => {
-  it("bkit-auto.yml present → cloud-router (informational, active)", () => {
+  it("bkit-cloud.yml present → cloud-router (informational, active)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     const result = buildCloudSetupAdvisory(tmpDir);
@@ -1208,7 +1208,7 @@ describe("buildCloudSetupAdvisory", () => {
   it("router presence wins over a stale bkit.cloudAgents=none field", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     fs.writeFileSync(
@@ -1343,8 +1343,8 @@ describe("detectCiRouterSecrets", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
-  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-auto.yml is GitHub-only, no LINEAR dependency)", () => {
-    // bkit-auto.yml is cloud=claude / GitHub-tracker only — no LINEAR_API_KEY.
+  it("any tracker: emits ONLY ANTHROPIC_API_KEY (bkit-cloud.yml is GitHub-only, no LINEAR dependency)", () => {
+    // bkit-cloud.yml is cloud=claude / GitHub-tracker only — no LINEAR_API_KEY.
     // This supersedes the old "Linear tracker: emits ANTHROPIC + LINEAR" behavior.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1352,7 +1352,7 @@ describe("detectCiRouterSecrets", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
@@ -1367,7 +1367,7 @@ describe("detectCiRouterSecrets", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
@@ -1382,7 +1382,7 @@ describe("detectCiRouterSecrets", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     execSync.mockReturnValue("ANTHROPIC_API_KEY\nLINEAR_API_KEY\n");
@@ -1402,7 +1402,7 @@ describe("buildCloudDashboardsAdvisory", () => {
   it("fires when bkit-auto workflow exists", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
@@ -1430,7 +1430,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     );
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
       "name: bkit-auto\n",
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
@@ -1453,7 +1453,7 @@ describe("buildCloudDashboardsAdvisory", () => {
 
   it("cloud=cursor variant: LINEAR_API_KEY appears in the checklist (cursor path)", () => {
     // LINEAR_API_KEY belongs to cloud=cursor (Linear tracker), not cloud=claude.
-    // Simulate: no bkit-auto.yml, but .cursor/ exists + cloudAgents=cursor recorded.
+    // Simulate: no bkit-cloud.yml, but .cursor/ exists + cloudAgents=cursor recorded.
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -1828,7 +1828,7 @@ describe("dedupeById", () => {
 describe("detectBkitCloudYmlAlwaysTrueGate", () => {
   function writeCloud(content: string) {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"), content);
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"), content);
   }
   const BROKEN =
     "jobs:\n" +
@@ -1845,7 +1845,7 @@ describe("detectBkitCloudYmlAlwaysTrueGate", () => {
     "      github.event_name == 'workflow_dispatch'\n" +
     "    runs-on: ubuntu-latest\n";
 
-  it("returns null when bkit-auto.yml is absent", () => {
+  it("returns null when bkit-cloud.yml is absent", () => {
     expect(detectBkitCloudYmlAlwaysTrueGate(tmpDir)).toBeNull();
   });
   it("fires on the always-true block-scalar `if:` gate", () => {

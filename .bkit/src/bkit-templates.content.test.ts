@@ -114,15 +114,15 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
-    // Bkit owns bkit-auto.yml — consumer Renovate must not touch it.
-    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-auto\.yml[\s\S]*enabled:\s*false/);
+    // Bkit owns bkit-cloud.yml — consumer Renovate must not touch it.
+    expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
   });
 
-  it("ignores bkit-auto.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
+  it("ignores bkit-cloud.yml so the tag->SHA Pin-deps PR can't recreate forever", () => {
     // `enabled: false` only suppresses version updates; the github-actions manager
     // still scans the file and applies pinDigests, recreating a "Pin dependencies"
     // PR on every scan. ignorePaths stops the scan outright (primary fence).
-    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/bkit-auto\.yml"/);
+    expect(content).toMatch(/ignorePaths:[\s\S]*"\.github\/workflows\/bkit-cloud\.yml"/);
   });
 
   it("ignores the bkit-owned mirror trees so Renovate doesn't scan them (#132)", () => {

@@ -112,13 +112,40 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 | --- | --- | --- |
 | `bkit-doctor.integration.test.ts` | Integration | `bkit doctor` exit 0 + Phase 1 + Phase 3 advisory replay. |
 | `bkit-uninstall.test.ts` | Unit | `runUninstall` orchestrator — format-aware decision matrix (fully-managed / markered-text / byte-equal-text), dry-run, idempotency, `--nuke`. |
-| `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`. |
+| `bkit-uninstall.surgical.integration.test.ts` | Integration | Round-trip byte-identity vs `tests/fixtures/heavy-customised-consumer/`; opencode uninstall zero-footprint (P4.T7). |
 | `bkit-bkitignore.test.ts` + `bkit-bkitignore.integration.test.ts` | Unit + Integration | `.bkitignore` parser, picomatch matcher, per-key opt-in via env. |
 | `bkit-manifest.test.ts` | Unit | Per-module install-write manifest assertions. |
 | `bkit-package-json.test.ts` | Unit | `stripManagedKeys` manifest-driven cleanup. |
-| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival). |
+| `bkit-modules.upgrade.integration.test.ts` | Integration | Two-version fully-managed → json-format migration (consumer key survival); opencode reconverge + seeded `bkit-mode.sh` deletion advisory. |
 | `bkit-upgrade.test.ts` + `bkit-upgrade.integration.test.ts` | Unit + Integration | Diff engine, drift detection, `--non-interactive` semantics. |
 | `bkit-version.test.ts` (extended) | Unit | `tier3Hashes` (v0.7.0+) + `canonicalHashes` (v0.9.0+) backward-compat reads. |
+| `bkit-gateguard-opencode.test.ts` | Unit | opencode GateGuard plugin: subagent-exemption, advisory/deny modes, dedup. |
+
+## opencode host test coverage (sub-plan 4)
+
+<!-- prettier-ignore -->
+| Matrix row | Test location | Signal |
+| --- | --- | --- |
+| install-flag CLI selection | `bkit-cli.test.ts` (plan-v4-2 Task 2.3) | `--opencode=<provider>` sets provider correctly |
+| install-flag selection + `bkit doctor`/`bkit status` | `bkit-cli.test.ts` (plan-v4-3 Task 4.1) | additive install; doctor/status verbs |
+| `bkit-mode.sh` removal + deletion advisory | `bkit-modules.upgrade.integration.test.ts` | seeded copy → `bkit-mode-sh-deletion-required` advisory, NOT silent preservation |
+| opencode manifest round-trip | `bkit-uninstall.surgical.integration.test.ts` | install → zero drift → uninstall → zero `.opencode/` footprint |
+| opencode reconverge on upgrade | `bkit-modules.upgrade.integration.test.ts` | consumer keys in `opencode.json` survive; bkit keys reconverged |
+| GateGuard opencode plugin | `bkit-gateguard-opencode.test.ts` | advisory fires, subagent-exempt, dedup |
+| end-to-end (manual) | `e2e-verdict.md` (Task 5.1) | deferred — provider offline during session |
+
+## Manual recipe — opencode E2E (Task 5.1)
+
+Run once a live provider (Ollama or NVIDIA) is available:
+
+1. `bkit install --opencode=ollama` (or `--opencode=nvidia`) in a clean consumer repo.
+2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`.
+3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host + provider.
+4. Launch opencode; run `/bkit-plan #<issue>`; confirm 3 concurrent subagents dispatch + verdicts collected.
+5. Confirm provider served the subagents (opencode logs/provider dashboard — not model identity self-report).
+6. Edit a `tsconfig.json` in the opencode session; confirm GateGuard plugin injects advisory.
+7. Run `bkit upgrade` over a consumer dir seeded with `.bkit/scripts/bkit-mode.sh`; confirm deletion advisory fires (NOT silent preservation).
+8. Record outcome in `docs/plans/202606/logs/245-opencode-provider-host/e2e-verdict.md`.
 
 The smoke test (#2) is the load-bearing one — catches `Missing model lookup for {agent}`-class regressions before tag-and-publish. Add a Scenario for every new consumer-side input shape (per-prompt frontmatter field, new template file, new module). The principle: **if a consumer can hit it, CI must hit it first.**
 

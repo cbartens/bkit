@@ -85,20 +85,20 @@
 ## KN-CORE-5: Renovate's tag→SHA pinning ignores `enabled: false` — fence bkit-owned workflows via `ignorePaths` (2026-05-25)
 
 - **Category:** integrations
-- **Symptom:** Renovate repeatedly opens a `chore(deps): Pin dependencies` PR whose only change pins the `uses:` action tags in `.github/workflows/bkit-auto.yml` to SHAs. Closing it — even with the branch deleted — brings it back on the next scan, recreating across multiple PRs in a single repo.
-- **Root cause:** The bkit-auto.yml fence was a packageRule `matchFileNames` + `enabled: false`. `enabled: false` suppresses _version updates_, but the `github-actions` manager still SCANS the file and Renovate's tag→SHA `pinDigests` (enabled globally for github-actions) is applied anyway — so the Pin PR keeps getting created, contradicting the file's own tag-only-pin header. Regression from the 2.6.0 `bkit-ci-router.yml → bkit-auto.yml` rename: the packageRule was renamed but the file was never added to `ignorePaths`.
-- **Fix or rule:** Add bkit-owned, tag-pinned workflow files to `ignorePaths` — Renovate then doesn't scan them at all, which is the only thing that stops the pinning. `enabled: false` is NOT sufficient. bkit ships `.github/workflows/bkit-auto.yml` in `ignorePaths`; the `matchFileNames` packageRule is kept only as a secondary guard.
+- **Symptom:** Renovate repeatedly opens a `chore(deps): Pin dependencies` PR whose only change pins the `uses:` action tags in `.github/workflows/bkit-cloud.yml` to SHAs. Closing it — even with the branch deleted — brings it back on the next scan, recreating across multiple PRs in a single repo.
+- **Root cause:** The bkit-cloud.yml fence was a packageRule `matchFileNames` + `enabled: false`. `enabled: false` suppresses _version updates_, but the `github-actions` manager still SCANS the file and Renovate's tag→SHA `pinDigests` (enabled globally for github-actions) is applied anyway — so the Pin PR keeps getting created, contradicting the file's own tag-only-pin header. Regression from the 2.6.0 `bkit-ci-router.yml → bkit-cloud.yml` rename: the packageRule was renamed but the file was never added to `ignorePaths`.
+- **Fix or rule:** Add bkit-owned, tag-pinned workflow files to `ignorePaths` — Renovate then doesn't scan them at all, which is the only thing that stops the pinning. `enabled: false` is NOT sufficient. bkit ships `.github/workflows/bkit-cloud.yml` in `ignorePaths`; the `matchFileNames` packageRule is kept only as a secondary guard.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
 - **Source:** human
-- **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/workflows/bkit-auto.yml`
+- **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/workflows/bkit-cloud.yml`
 
 ## KN-CORE-6: Renovate's hosted lockfile regen ignores `pnpm.overrides` — fence overridden packages in the consumer-owned `renovate-local.json5` (2026-05-25)
 
 - **Category:** integrations
 - **Symptom:** A package pinned in root `pnpm.overrides` (e.g. `react = 19.2.4` to stop cross-package skew) gets its locked version rewritten by Renovate on an "eligible" bump (e.g. patch `19.2.4 → 19.2.6`) while the `19.2.4` override stays in `package.json`. The resulting `pnpm-lock.yaml` is inconsistent → CI fails `pnpm install --frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`, `automerge` never fires, and Renovate keeps recreating/rebasing the branch, clobbering any manually-corrected lockfile pushed to it.
-- **Root cause:** Renovate's hosted lockfile regeneration does NOT reconcile the bumped version against `pnpm.overrides` (local `pnpm` does). Same shape as the `bkit-auto.yml` SHA-pin case — a Renovate config fighting an intentional pin. The class is general: any `pnpm.overrides`-pinned package can hit it; react was just the instance. A bare react fence in the canonical `renovate.json5` is the wrong layer — bkit has no react, so it would push a consumer-specific pin to every consumer and re-appear on the next override (whack-a-mole).
+- **Root cause:** Renovate's hosted lockfile regeneration does NOT reconcile the bumped version against `pnpm.overrides` (local `pnpm` does). Same shape as the `bkit-cloud.yml` SHA-pin case — a Renovate config fighting an intentional pin. The class is general: any `pnpm.overrides`-pinned package can hit it; react was just the instance. A bare react fence in the canonical `renovate.json5` is the wrong layer — bkit has no react, so it would push a consumer-specific pin to every consumer and re-appear on the next override (whack-a-mole).
 - **Fix or rule:** Fence the overridden package in `.github/renovate-local.json5` (consumer-owned, bkit-seeded once, survives `install`/`upgrade`; pulled into `renovate.json5` via `extends: ["local>cbartens/bkit//.github/renovate-local.json5"]` — the explicit `.json5` extension is load-bearing; an extensionless local preset resolves to `.json`, 404s, and Renovate disables the whole config): `{ matchPackageNames: ["<pkg>"], enabled: false }`. Precedence caveat: extended-preset rules are evaluated BEFORE bkit's inline rules, so the fence works only because it sets `enabled: false` and bkit never sets `enabled: true` on a matching rule — `renovate-local` canNOT override keys bkit sets explicitly (e.g. `automerge`). Renovate resolves the preset from the default branch; commit `renovate-local.json5` alongside `renovate.json5` and land both there (the `extends` target must exist or Renovate raises a config error). See bkit issue #179.
 - **Type:** gotcha
 - **Confidence:** high
@@ -524,3 +524,78 @@
 - **Severity:** medium (spurious local pre-push FAIL for any consumer with build artifacts in the tree; the consumer-side ignore unblocks immediately; never ships bad code)
 - **Source:** consumer dogfood feedback
 - **Related:** #226, `scripts/tooling/slop-delta.sh`, `slop-scan.config.json`
+
+## KN-33: `installFile`-based agent/command writes are NOT recorded in `ws.writes` — parity tests must use disk presence, not writeset, for these paths (2026-06-10)
+
+- **Symptom:** A test asserting `ws.writes.filter(w => w.path.includes(".opencode/agent"))` returns zero entries even after a successful `runOpencodeModule` install. Same issue for `.claude/agents`, `.cursor/agents`, `.claude/commands`, `.cursor/commands`.
+- **Root cause:** `installFile()` in `bkit-modules.ts` does not push to `ctx.ws.writes` — it returns a boolean (written/skipped) and the caller logs to console. Only the tier-writer functions (`writeTier1`, `writeTier2JsonContained`, `writeTier3`) record to `ws.writes`. The WriteSet is for tier-managed, reconverged files (JSON configs, byte-equal scripts, markered-text blocks), not the dynamic agent/command mirror dirs.
+- **Fix or rule:** When testing agent/command file count or content after a module install: assert `fs.readdirSync(dir).filter(f => f.endsWith('.md'))` on the destination dir, NOT `ws.writes`. The dry-run parity test (`bkit-dry-run-parity.integration.test.ts`) correctly covers only tier-writer paths (opencode.json + gateguard.js for the opencode module). Agent/command dry-run correctness is exercised by checking no `.md` files exist on disk after dry-run dispatch.
+- **Type:** trap
+- **Confidence:** high (reproduced in test authoring for opencode module, consistent with claude/cursor module behaviour)
+- **Severity:** low (test authoring trap only — does not affect production behaviour)
+- **Source:** #245 sub-plan 2 gap-remediate
+
+## KN-34: opencode spec churn — pin the probed version, not a naive next-digit bump (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading opencode or updating `opencode.json`, agents fail to launch or plugin API calls are rejected with schema errors.
+- **Root cause:** opencode's plugin spec, frontmatter fields (`reasoningEffort`, provider config shape), and command-file syntax change between releases without a stable semver contract. Naively bumping a version number or copying from release notes produces configs that may never have existed in the actual binary.
+- **Fix or rule:** Probe the installed opencode binary for its supported field names and plugin API shape before updating `opencode.json`. Read `.opencode/opencode.json` against the opencode docs for the version that `opencode --version` reports. When in doubt, copy from a fresh `opencode init` output with that version, not from examples in issues or READMEs that may lag the release.
+- **Type:** gotcha
+- **Confidence:** medium (observed during #245 spike; spec drift confirmed across minor releases)
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-modules.ts` (applyOpencodeAgent transform), spike-verdict.md
+
+## KN-35: GateGuard subagent-exemption mechanism differs between Claude and opencode (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** On Claude, GateGuard's subagent-exemption (skip advisory when `agent_id` is present) fires correctly. On opencode, the equivalent exemption may not fire — GateGuard runs against every file edit including sub-agent dispatches.
+- **Root cause:** Claude's PreToolUse hook payload includes `agent_id` when the hook fires inside a subagent context; `gateguard.cjs` reads this field to suppress the advisory. opencode's plugin API provides a different event payload shape — the field name (if any) that indicates subagent context is not the same as Claude's. The opencode plugin (`gateguard.js`) must use the opencode-specific mechanism, which may not be present in all plugin API versions.
+- **Fix or rule:** Validate the opencode plugin's subagent-detection against the installed opencode version's plugin API spec before relying on it. If the opencode API lacks a reliable subagent indicator, gate the advisory behind a more conservative heuristic (e.g. trust file count per session as a proxy). Do not assume parity with Claude's payload shape.
+- **Type:** gotcha
+- **Confidence:** medium (identified from spec review; not yet empirically verified post-spike)
+- **Severity:** low (advisory suppression failure = extra noise, not a functional regression)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.opencode/plugin/gateguard.js`, `.claude/hooks/gateguard.cjs`
+
+## KN-36: Tier-3 seed-or-print upgrade-reach gap — deleting `bkit-mode.sh` does NOT reach seeded consumer copies (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading bkit to a version that no longer ships `.bkit/scripts/bkit-mode.sh`, every prior consumer still has the file on disk. The upgrade silently leaves the orphan in place. Worse, the file's shell-function shim (`bkit()`) is still sourced from `~/.zshrc` / `~/.bashrc`, causing a broken `source` error in every new terminal after the file is eventually deleted.
+- **Root cause:** `.bkit/scripts/bkit-mode.sh` was Tier-3 seed-or-print. Tier-3 files are written once when absent; on upgrade, bkit checks if the template still exists and skips if the template is gone. There is no deletion step — the consumer copy is abandoned without notice (mirrors KN-17 for `bkit-mode.sh`).
+- **Fix or rule:** Any Tier-3 file that is retired must be paired with an upgrade-migration drift-detect advisory in `runClaudeModule` (or the owning module) that: (1) detects the orphan on disk, (2) emits an advisory telling the consumer to delete the file, (3) explicitly names the shell-rc source line to remove (if applicable), and (4) points at the replacement workflow. Implemented for `bkit-mode.sh` in `bkit-modules.ts` via the `bkit-mode-sh-deletion-required` advisory. Also: the `CORE_TEMPLATE_PATH_EXCLUDE` and `PAYLOAD_SKIP_BKIT_SCRIPTS` sets must remove the entry to avoid the `installFile` short-circuit guard from hiding the advisory path.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical (broken `source` call in every new shell = user-visible error)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, KN-17, `.bkit/src/bkit-modules.ts` (bkit-mode-sh-deletion-required advisory), DE-27
+
+## KN-37: GHA workflow injection — never expand context outputs inside `run:` shell strings (2026-06-10)
+
+- **Category:** security
+- **Symptom:** `opencode run "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"` expands before the shell runs; a crafted issue number (e.g. `"; malicious-cmd"`) becomes a shell argument.
+- **Root cause:** GitHub Actions expressions (`${{ }}`) are string-interpolated into YAML by the runner before bash executes — they bypass shell quoting. Any step that accepts free-text inputs (workflow_dispatch `type: string`, PR titles, issue numbers) is a sink.
+- **Fix or rule:** Pass dynamic values via `env:` entries (e.g. `BKIT_PHASE`, `BKIT_ARG`) and reference via `$VAR` in the `run:` body. Combine with an allowlist regex guard on the env var before use. Implemented in `.bkit/templates/.github/workflows/bkit-cloud.yml` opencode job (#245 Fix 1 + Fix 2).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/templates/.github/workflows/bkit-cloud.yml`
+
+## KN-38: Orphan-cleanup must be gated on replacement presence (2026-06-10)
+
+- **Category:** infra
+- **Symptom:** `bkit install` (no `--cloud` flag) runs the upgrade-orphan block that deletes `bkit-auto.yml` without installing `bkit-cloud.yml`, leaving the consumer with no cloud workflow at all.
+- **Root cause:** The delete guard only checked `fs.existsSync(oldAutoWorkflow)`, not whether the replacement was arriving in the same run.
+- **Fix or rule:** Gate orphan deletion on `fs.existsSync(newCloudWorkflow) || candidates.some(c => c.relPath === "...bkit-cloud.yml")`. Implemented in `bkit-install.ts` (#245 Fix 4).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-install.ts`

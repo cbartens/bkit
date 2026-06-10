@@ -100,7 +100,7 @@ function _stripScope(consumer, template) {
  */
 export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
-        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m))
+        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks", "opencode"].includes(m))
         : modules;
     const entries = getInstallManifest(moduleList);
     // Read tier3Hashes from .bkit-version
@@ -256,7 +256,7 @@ export async function runUninstall(modules, ctx) {
         dryRun: ctx.dryRun,
     };
     const moduleList = modules instanceof Set
-        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m))
+        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks", "opencode"].includes(m))
         : modules;
     // Nuke confirmation
     if (ctx.nuke && !ctx.yes && !ctx.dryRun) {
@@ -384,9 +384,16 @@ export async function runUninstall(modules, ctx) {
         }
     }
     // Clean up .agents/ bkit-prefix mirror files
-    // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, etc.)
+    // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
     if (!ctx.dryRun) {
-        const mirrorDirs = [".claude/commands", ".claude/agents", ".cursor/commands", ".cursor/agents"];
+        const mirrorDirs = [
+            ".claude/commands",
+            ".claude/agents",
+            ".cursor/commands",
+            ".cursor/agents",
+            // opencode mirrors (plural dir names per opencode.ai/docs)
+            ...(moduleList.includes("opencode") ? [".opencode/agents", ".opencode/commands"] : []),
+        ];
         for (const dir of mirrorDirs) {
             const absDir = path.join(ctx.cwd, dir);
             if (!fs.existsSync(absDir))

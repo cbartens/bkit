@@ -122,7 +122,7 @@ A bkit consumer who wants to run the full bkit workflow on a non-Anthropic model
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
+- [x] **Acceptance Scenario confirmed:** I have reviewed the Narrative, Success Criteria, Concrete Example, Edge Cases, and Derived Test Matrix above. They correctly describe what "done" looks like.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -158,7 +158,7 @@ A bkit consumer who wants to run the full bkit workflow on a non-Anthropic model
 
 ### 👤 ✅ Human Confirmation
 
-- [ ] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
+- [x] **Breaking Changes confirmed:** I have reviewed all breaking changes and naming decisions above.
 
 > [!CAUTION]
 > **Agent:** Do NOT pass Gate 1 until this checkbox is `[x]`. Summary must issue `REVISE` if unchecked.
@@ -218,9 +218,9 @@ _All other rows: None — no new routes, DB writes, app secrets, or user input._
 
 **CRITICAL AI AGENT INSTRUCTION:** 🛑 CHECKPOINT. Verify and check `[x]` all applicable boxes above. **DO NOT stop for user permission.** Once saved, immediately proceed to the Agent Execution Runbook below.
 
-- [ ] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
-- [ ] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
-- [ ] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
+- [x] **Acceptance Scenario confirmed:** Human confirmed `👤 Acceptance Scenario` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [x] **Breaking Changes confirmed:** Human confirmed `⚠️ Breaking Changes & Naming Review` section (checkbox is `[x]`). _(Unchecked → Summary must issue `REVISE`.)_
+- [x] **Gate 1 - Verified:** All Core items checked. All applicable Conditional items checked.
 
 ## Data Schema Integration
 
@@ -238,15 +238,15 @@ None — bkit is a CLI/installer with no database. No `docs/data-schema.md` tabl
 
 ### Phase 0 — Spike (THE GATE; no bkit code)
 
-- [ ] **Task 0.1:** Pin the opencode CLI version; author one opencode command whose body dispatches 3 _distinct specialised_ subagents (3 different trivial agent files, not 3 copies of `general`) via the Task tool, each with a distinct `model:` pin, wired to a real NVIDIA or Ollama model. Capture wall-clock, per-subagent collected results, and which model served each. Additionally capture the raw `tool.execute.before` payload for a subagent-initiated edit (the GateGuard exemption signal) so plan-v4-3's plugin can assert against a real shape, not a mock.
+- [x] **Task 0.1:** Pin the opencode CLI version; author one opencode command whose body dispatches 3 _distinct specialised_ subagents (3 different trivial agent files, not 3 copies of `general`) via the Task tool, each with a distinct `model:` pin, wired to a real NVIDIA or Ollama model. Capture wall-clock, per-subagent collected results, and which model served each. Additionally capture the raw `tool.execute.before` payload for a subagent-initiated edit (the GateGuard exemption signal) so plan-v4-3's plugin can assert against a real shape, not a mock.
   - **Done when:** `docs/plans/202606/logs/245-opencode-provider-host/spike-verdict.md` exists recording: (a) the 3 ran concurrently (observed wall-clock < sum of individual durations), (b) each result was collected deterministically by the orchestrator, (c) each per-agent `model:` pin was honoured, (d) the verbatim `tool.execute.before` payload from a subagent-initiated edit, showing whether an `agent_id`-equivalent subagent-identity field exists (and naming it), (e) the actual opencode dir names (`agent` vs `agents`, `command` vs `commands`) confirmed against the probed CLI version (these drive the plan-v4-2 manifest paths) — with the opencode version, provider, and raw timing/log evidence. **Boundary test (no mock):** the spike runs against a live opencode CLI + live provider endpoint; ground-truth signal = the provider's own response/log identity per subagent (not a Claude-injected identity), measured concurrency, and the captured real plugin payload.
 
 ### 🔒 Gate 1.5: Spike Verdict (HARD GATE — milestone proceed/park)
 
 **CRITICAL:** 🛑 If the spike verdict is NOT green (serial-only, or non-deterministic collection), STOP. Park the milestone, retain Approach A, update issue #245. Sub-plans plan-v4-2/3/4 do NOT start. If green, proceed to [245-opencode-provider-host-plan-2.md](./245-opencode-provider-host-plan-2.md).
 
-- [ ] **Gate 1.5 - Verified:** `spike-verdict.md` records a green result (concurrent distinct subagents + deterministic collection + honoured model pins). Human acknowledged proceed.
-- [ ] **Gate 1.5 - Artifact capture sub-check:** `spike-verdict.md` ALSO records item (d) — the verbatim subagent-initiated `tool.execute.before` payload + the named subagent-identity field — and item (e) — the confirmed opencode dir names. If (d) or (e) is missing, plan-v4-3's no-mock GateGuard-exemption contract and the plan-v4-2 manifest paths have no ground truth: re-run the spike capture before proceeding. (Concurrency green alone does NOT satisfy this gate.)
+- [x] **Gate 1.5 - Verified:** `spike-verdict.md` records a green result (concurrent distinct subagents + deterministic collection + honoured model pins). Human acknowledged proceed.
+- [x] **Gate 1.5 - Artifact capture sub-check:** `spike-verdict.md` ALSO records item (d) — the verbatim subagent-initiated `tool.execute.before` payload + the named subagent-identity field — and item (e) — the confirmed opencode dir names. If (d) or (e) is missing, plan-v4-3's no-mock GateGuard-exemption contract and the plan-v4-2 manifest paths have no ground truth: re-run the spike capture before proceeding. (Concurrency green alone does NOT satisfy this gate.)
 
 ## Next Sub-Plan
 

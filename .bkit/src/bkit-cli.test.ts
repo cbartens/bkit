@@ -485,3 +485,289 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
     expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseArgs — --opencode flag (Task 2.3 "Done when")
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --opencode flag (Task 2.3)", () => {
+  it("--opencode=ollama-local alone → opencode + core only (opt-in, additive)", () => {
+    const result = parseArgs(["install", "--opencode=ollama-local"]);
+    expect([...result.modules].sort()).toEqual(["core", "opencode"]);
+    expect(result.opencodeProvider).toBe("ollama-local");
+  });
+
+  it("--opencode=nvidia → opencode + core, provider=nvidia", () => {
+    const result = parseArgs(["install", "--opencode=nvidia"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.opencodeProvider).toBe("nvidia");
+  });
+
+  it("--opencode=openrouter → opencode + core, provider=openrouter", () => {
+    const result = parseArgs(["install", "--opencode=openrouter"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("openrouter");
+  });
+
+  it("--opencode=gemini → opencode + core, provider=gemini", () => {
+    const result = parseArgs(["install", "--opencode=gemini"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("gemini");
+  });
+
+  it("bare --opencode (no value) on install is rejected — provider required", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/--opencode requires an explicit provider/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("--full --opencode=ollama-local → all modules + opencode (opt-in alongside full stack)", () => {
+    const result = parseArgs(["install", "--full", "--opencode=ollama-local"]);
+    expect(result.modules.has("core")).toBe(true);
+    expect(result.modules.has("claude")).toBe(true);
+    expect(result.modules.has("cursor")).toBe(true);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("ollama-local");
+  });
+
+  it("--ci --opencode=ollama-local → ci + core + opencode (compose without --full)", () => {
+    const result = parseArgs(["install", "--ci", "--opencode=ollama-local"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "opencode"]);
+    expect(result.opencodeProvider).toBe("ollama-local");
+  });
+
+  it("--full without --opencode → opencode NOT included (additive opt-in, not default)", () => {
+    const result = parseArgs(["install", "--full"]);
+    expect(result.modules.has("opencode")).toBe(false);
+  });
+
+  it("install (no flags) → opencode NOT included (additive opt-in, not in ALL_MODULES)", () => {
+    const result = parseArgs(["install"]);
+    expect(result.modules.has("opencode")).toBe(false);
+  });
+
+  it("uninstall --opencode alone → core + opencode only (bare --opencode accepted for uninstall)", () => {
+    const result = parseArgs(["uninstall", "--opencode"]);
+    expect([...result.modules].sort()).toEqual(["core", "opencode"]);
+    expect(result.opencodeProvider).toBeNull();
+  });
+
+  it("uninstall (no flags) → opencode IS included (full uninstall reaches all opt-in modules)", () => {
+    const result = parseArgs(["uninstall"]);
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — --opencode provider name validation (P1 fix: /^[a-z][a-z0-9-]{0,30}$/)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --opencode provider name validation (P1 regression)", () => {
+  // Valid providers: must pass without error
+  it("--opencode=gemini-pro is a valid provider name (hyphenated)", () => {
+    const result = parseArgs(["install", "--opencode=gemini-pro"]);
+    expect(result.opencodeProvider).toBe("gemini-pro");
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  it("--opencode=my-provider is a valid provider name (hyphenated user slug)", () => {
+    const result = parseArgs(["install", "--opencode=my-provider"]);
+    expect(result.opencodeProvider).toBe("my-provider");
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  // Invalid: empty string after `=`
+  it("--opencode= (empty value after equals) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode="])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: uppercase characters
+  it("--opencode=MY_PROVIDER (uppercase) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=MY_PROVIDER"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/provider name must match/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: spaces in provider name
+  it("--opencode='provider with spaces' calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=provider with spaces"])).toThrow(
+        "process.exit called",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: special character ($)
+  it("--opencode=x$y (special character) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=x$y"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: 32-character string (exceeds 31-char max of /^[a-z][a-z0-9-]{0,30}$/)
+  it("--opencode=<32-char string> calls process.exit(1) (exceeds max length)", () => {
+    // regex: first char + 0..30 more = max 31 chars total. 32 chars exceeds that.
+    const tooLong = "a" + "b".repeat(31); // 32 chars
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", `--opencode=${tooLong}`])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/provider name must match/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Boundary: exactly 31 characters is valid (max: 1 + 30 = 31)
+  it("--opencode=<31-char string> is valid (boundary: exactly at max length)", () => {
+    const maxLen = "a" + "b".repeat(30); // 31 chars
+    const result = parseArgs(["install", `--opencode=${maxLen}`]);
+    expect(result.opencodeProvider).toBe(maxLen);
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  // Invalid: starts with digit (regex requires first char [a-z])
+  it("--opencode=1nvidia (starts with digit) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=1nvidia"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — status verb (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — status verb (Task 4.1)", () => {
+  it("status verb is parsed correctly", () => {
+    const result = parseArgs(["status"]);
+    expect(result.verb).toBe("status");
+  });
+
+  it("status verb with no module flags is fine (read-only, no modules needed)", () => {
+    const result = parseArgs(["status"]);
+    expect(result.verb).toBe("status");
+    // status is read-only — module flags are resolved but irrelevant
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — status verb listed in help text (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("printUsage — status verb in help text (Task 4.1)", () => {
+  it("help text lists bkit status", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("status");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("help text describes status as read-only (writes nothing)", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      // status description should mention writes-nothing or read-only
+      expect(output).toMatch(
+        /status.*[Rr]ead-only|[Rr]ead-only.*status|Writes nothing.*status|status.*Writes nothing/s,
+      );
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — --opencode listed in help text (Task 2.3)
+// ---------------------------------------------------------------------------
+
+describe("printUsage — --opencode in help text (Task 2.3)", () => {
+  it("help text lists --opencode=<provider>", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toContain("--opencode");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("help text describes opencode as additive and opt-in", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      const output = logSpy.mock.calls[0]?.[0] as string;
+      expect(output).toMatch(/opencode/i);
+      // additive / opt-in language
+      expect(output).toMatch(/additive|opt-in/i);
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+});

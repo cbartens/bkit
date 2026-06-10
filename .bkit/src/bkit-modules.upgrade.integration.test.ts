@@ -286,6 +286,9 @@ describe("cursor-v1-schema sanity", () => {
 // ---------------------------------------------------------------------------
 
 import { detectTier2TextDrift } from "./bkit-preflight";
+import { runClaudeModule } from "./bkit-modules";
+import type { ModuleContext } from "./bkit-modules";
+import type { PreflightFinding } from "./bkit-preflight";
 
 const HEAVY_CI_FIXTURE = path.resolve(
   "tests/fixtures/heavy-customised-ci/.github/workflows/ci.yml",
@@ -339,5 +342,198 @@ describe("Task 23a — heavy-customised ci.yml survival", () => {
     // Document this boundary — if future work adds indented-marker support, this
     // test should be updated to expect a non-null tier2-text-drift result.
     expect(result === null || result?.id === "tier2-text-drift").toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// opencode reconverge on upgrade (sub-plan 4)
+// Tests that consumer keys in opencode.json survive writeTier2JsonContained
+// while bkit-managed keys are reconverged.
+// ---------------------------------------------------------------------------
+
+describe("opencode opencode.json reconverge on upgrade", () => {
+  it("consumer-added provider key survives writeTier2JsonContained; bkit plugins key reconverged", () => {
+    // Template = bkit's managed opencode.json shape
+    const templatePath = path.join(tmpDir, "opencode-template.json");
+    const template = {
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
+      plugins: [".opencode/plugin/gateguard.js"],
+    };
+    fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
+
+    // Consumer's existing opencode.json — has bkit-managed keys PLUS consumer additions
+    const consumerPath = path.join(tmpDir, "opencode.json");
+    const consumerDoc = {
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+        // Consumer added their own provider
+        openrouter: {
+          options: { baseURL: "https://openrouter.ai/api/v1" },
+          apiKey: "${OPENROUTER_API_KEY}",
+        },
+      },
+      // Consumer added their own mcp config
+      mcp: { myServer: { command: "npx", args: ["-y", "my-mcp-server"] } },
+      plugins: [".opencode/plugin/gateguard.js"],
+    };
+    fs.writeFileSync(consumerPath, JSON.stringify(consumerDoc, null, 2) + "\n", "utf-8");
+
+    const ws: WriteSet = { writes: [] };
+    writeTier2JsonContained(templatePath, consumerPath, false, ws);
+
+    const afterDoc = JSON.parse(fs.readFileSync(consumerPath, "utf-8"));
+
+    // bkit ollama-local provider still present (reconverged)
+    expect(afterDoc.provider?.["ollama-local"]?.options?.baseURL).toBe("http://localhost:11434/v1");
+    // Consumer's openrouter provider preserved
+    expect(afterDoc.provider?.openrouter?.apiKey).toBe("${OPENROUTER_API_KEY}");
+    // Consumer's mcp config preserved
+    expect(afterDoc.mcp?.myServer?.command).toBe("npx");
+    // Plugin still wired
+    expect(afterDoc.plugins).toContain(".opencode/plugin/gateguard.js");
+  });
+
+  it("opencode.json reconverge is idempotent", () => {
+    const templatePath = path.join(tmpDir, "opencode-template.json");
+    const template = {
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
+      plugins: [".opencode/plugin/gateguard.js"],
+    };
+    fs.writeFileSync(templatePath, JSON.stringify(template, null, 2) + "\n", "utf-8");
+
+    const consumerPath = path.join(tmpDir, "opencode.json");
+    const consumerDoc = {
+      provider: {
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
+      plugins: [".opencode/plugin/gateguard.js"],
+      customKey: "consumer-value",
+    };
+    fs.writeFileSync(consumerPath, JSON.stringify(consumerDoc, null, 2) + "\n", "utf-8");
+
+    const ws1: WriteSet = { writes: [] };
+    writeTier2JsonContained(templatePath, consumerPath, false, ws1);
+    expect(ws1.writes).toHaveLength(0); // already contained — no-op
+
+    const ws2: WriteSet = { writes: [] };
+    writeTier2JsonContained(templatePath, consumerPath, false, ws2);
+    expect(ws2.writes).toHaveLength(0); // still no-op
+  });
+});
+
+// ---------------------------------------------------------------------------
+// seeded bkit-mode.sh deletion advisory (sub-plan 4 Task 6.3)
+// Any seeded .bkit/scripts/bkit-mode.sh on disk triggers the deletion advisory,
+// NOT silent preservation — the ccr router lane is retired.
+// ---------------------------------------------------------------------------
+
+function makeModuleCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
+  const advisories: PreflightFinding[] = [];
+  const ws: WriteSet = { writes: [] };
+  return {
+    dryRun: false,
+    tokens: {
+      NODE_VERSION: "22",
+      DEFAULT_BRANCH: "main",
+      PROJECT_NAME: "test-project",
+      REPO_SLUG: "owner/test-project",
+    },
+    modelLookup: new Map(),
+    opencodeModelLookup: new Map(),
+    opencodeProvider: null,
+    advisories,
+    ws,
+    logPrefix: "[test]",
+    postDispatch: [],
+    issueTracker: "none",
+    cloudVariant: null,
+    ...overrides,
+  };
+}
+
+describe("bkit-mode.sh deletion advisory (Task 6.3 upgrade-migration)", () => {
+  it("ANY seeded .bkit/scripts/bkit-mode.sh triggers deletion advisory, NOT silent preservation", () => {
+    // Seed the consumer-side .bkit/scripts/bkit-mode.sh to simulate a prior install
+    const modeShDir = path.join(tmpDir, ".bkit", "scripts");
+    fs.mkdirSync(modeShDir, { recursive: true });
+    const modeShPath = path.join(modeShDir, "bkit-mode.sh");
+    fs.writeFileSync(modeShPath, "# seeded bkit-mode.sh from prior install", "utf-8");
+
+    const advisories: PreflightFinding[] = [];
+    const ctx = makeModuleCtx({ advisories, dryRun: true });
+
+    // Change to tmpDir so fs.existsSync(".bkit/scripts/bkit-mode.sh") finds the file
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      runClaudeModule(ctx);
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    // The deletion advisory MUST be present
+    const deletionAdvisory = advisories.find((a) => a.id === "bkit-mode-sh-deletion-required");
+    expect(
+      deletionAdvisory,
+      "expected bkit-mode-sh-deletion-required advisory to be emitted for seeded bkit-mode.sh",
+    ).toBeDefined();
+
+    // Advisory MUST NOT contain ccr/bkit mode/ollama/nvidia router framing
+    const actionText = deletionAdvisory!.action ?? "";
+    expect(actionText, "advisory must not reference ccr").not.toContain("ccr");
+    expect(actionText, "advisory must not reference bkit mode command").not.toContain(
+      "bkit mode --",
+    );
+    expect(actionText, "advisory must not reference ollama router framing").not.toMatch(
+      /--local=ollama/,
+    );
+    expect(actionText, "advisory must not reference nvidia router framing").not.toMatch(
+      /--cloud=nvidia/,
+    );
+
+    // Advisory MUST name the shell-rc source line removal step
+    expect(actionText, "advisory must mention shell rc removal").toMatch(/zshrc|bashrc|shell rc/i);
+
+    // Advisory MUST point at the replacement
+    expect(actionText, "advisory must mention bkit install --opencode").toContain(
+      "bkit install --opencode",
+    );
+  });
+
+  it("no deletion advisory when .bkit/scripts/bkit-mode.sh is absent", () => {
+    // Do NOT create the file in tmpDir
+    const advisories: PreflightFinding[] = [];
+    const ctx = makeModuleCtx({ advisories, dryRun: true });
+
+    const originalCwd = process.cwd();
+    process.chdir(tmpDir);
+    try {
+      runClaudeModule(ctx);
+    } finally {
+      process.chdir(originalCwd);
+    }
+
+    const deletionAdvisory = advisories.find((a) => a.id === "bkit-mode-sh-deletion-required");
+    expect(deletionAdvisory, "no advisory expected when file is absent").toBeUndefined();
   });
 });

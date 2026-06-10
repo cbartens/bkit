@@ -153,10 +153,18 @@ const BKIT_PREFIX = "bkit-";
 // so log scanners can tell which verb actually ran.
 let LOG_PREFIX = "[bkit-install]";
 
-export type Host = "claude" | "cursor";
+export type Host = "claude" | "cursor" | "opencode";
 
-// Parse .bkit/prompts.md § Models table → Map<name, cursorModel>
-export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, columnValue>.
+ * columnHeader is the column header label to extract (e.g. "Cursor model", "opencode model").
+ * The function is header-addressed: it finds the column by name, never by position.
+ * Hard-fails (process.exit(1)) if the section or column header is not found.
+ */
+export function parseModelLookupForColumn(
+  subagentsMdPath: string,
+  columnHeader: string,
+): Map<string, string> {
   const content = fs.readFileSync(subagentsMdPath, "utf-8");
   const map = new Map<string, string>();
 
@@ -168,6 +176,7 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
 
   const lines = content.slice(modelsIdx).split("\n");
   let inTable = false;
+  let columnIndex = -1;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -176,23 +185,153 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
       continue;
     }
     inTable = true;
-    if (trimmed.includes("---") || trimmed.toLowerCase().includes("cursor model")) continue;
 
     const cols = trimmed
       .split("|")
       .map((c) => c.trim())
       .filter(Boolean);
-    if (cols.length < 2) continue;
+
+    // Header row: find the column index for our target header
+    if (columnIndex === -1) {
+      // Check if this is the header row by looking for the target column
+      const lowerCols = cols.map((c) => c.toLowerCase().replace(/`/g, ""));
+      const targetLower = columnHeader.toLowerCase().replace(/`/g, "");
+      const idx = lowerCols.findIndex((c) => c === targetLower);
+      if (idx !== -1) {
+        columnIndex = idx;
+      }
+      // Also skip separator rows (all --- cells)
+      if (trimmed.includes("---")) continue;
+      continue;
+    }
+
+    // Separator row
+    if (trimmed.includes("---")) continue;
+
+    if (cols.length <= columnIndex) continue;
 
     const nameMatch = cols[0].match(/^`([^`]+)`$/);
     if (!nameMatch) continue;
     // Strip optional backtick wrapping from model value (table cells may use `model-name`)
-    const modelRaw = cols[1];
+    const modelRaw = cols[columnIndex];
     const modelClean = modelRaw.replace(/^`|`$/g, "");
     map.set(nameMatch[1], modelClean);
   }
 
+  if (columnIndex === -1) {
+    console.error(
+      `${LOG_PREFIX} Could not find column "${columnHeader}" in ## Models table in ${subagentsMdPath}`,
+    );
+    process.exit(1);
+  }
+
   return map;
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, cursorModel>.
+ * Header-addressed: finds the "Cursor model" column by header name.
+ * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
+ */
+export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, "Cursor model");
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel>.
+ * Header-addressed: finds the "opencode model" column by header name.
+ */
+export function parseOpencodeModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, "opencode model");
+}
+
+// Effort → reasoningEffort mapping for opencode frontmatter.
+// Claude's effort knob (low/medium/high/xhigh/max) maps to opencode's reasoningEffort.
+const EFFORT_TO_REASONING_EFFORT: Record<string, string> = {
+  low: "none",
+  medium: "low",
+  high: "medium",
+  xhigh: "high",
+  max: "max",
+};
+
+// Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
+const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
+
+/**
+ * OC1: opencode agent frontmatter rewrite.
+ * Emits: mode, name, description, model, tools (passthrough), reasoningEffort (from effort).
+ * Drops: Claude-only fields (permissionMode, maxTurns, is_background, readonly) and the
+ * original effort field (replaced by reasoningEffort).
+ * Hard-fails with non-zero exit if model lookup missing for name.
+ */
+export function applyOpencodeAgent(
+  content: string,
+  opencodeModelLookup: Map<string, string>,
+): string {
+  const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+  if (!fmMatch) return content;
+
+  const fmBlock = fmMatch[2];
+  const afterFm = content.slice(fmMatch[0].length);
+  const parsed = parseFrontmatter(fmBlock);
+
+  const name = parsed.get("name") ?? "";
+  if (!name) {
+    console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
+    process.exit(1);
+  }
+
+  const opencodeModel = opencodeModelLookup.get(name);
+  if (!opencodeModel) {
+    console.error(`${LOG_PREFIX} Missing opencode model lookup for ${name}`);
+    process.exit(1);
+  }
+
+  const description = parsed.get("description") ?? "";
+  const effort = parsed.get("effort");
+  const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+
+  let newFm = "---\n";
+  newFm += `mode: subagent\n`;
+  newFm += `name: ${name}\n`;
+  if (description.includes("\n")) {
+    const indented = description.split("\n").join("\n  ");
+    newFm += `description: |\n  ${indented}\n`;
+  } else {
+    newFm += `description: ${description}\n`;
+  }
+  newFm += `model: ${opencodeModel}\n`;
+  if (toolsBlock) newFm += `${toolsBlock}\n`;
+  if (effort) {
+    const reasoningEffort = EFFORT_TO_REASONING_EFFORT[effort];
+    if (reasoningEffort) {
+      newFm += `reasoningEffort: ${reasoningEffort}\n`;
+    }
+  }
+  newFm += "---\n";
+
+  return newFm + afterFm;
+}
+
+/**
+ * OC2: opencode command rewrite.
+ * - Strips leading YAML frontmatter block (same as T1).
+ * - Rewrites invocation spelling for opencode:
+ *   - `Agent` tool → `Task` tool (subagent invocations)
+ *   - `Skill` tool → `Task` tool (slash-command invocations)
+ *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ */
+export function applyOpencodeCommand(content: string): string {
+  // Step 1: strip frontmatter (same as T1)
+  const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
+  // Step 2: rewrite invocations (same as T2)
+  let result = stripped.replace(/`Agent` tool/g, "`Task` tool");
+  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  return result;
 }
 
 // T1: Strip leading YAML frontmatter block from command files for Cursor
@@ -799,10 +938,92 @@ function getInstallingVersion(): string {
   return "0.0.0";
 }
 
-async function main() {
-  const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force } = parseArgs(
-    process.argv.slice(2),
+/**
+ * `bkit status` — read-only host/provider status.
+ * Reports current host+provider sampled from .opencode/opencode.json,
+ * .claude/, and .cursor/ presence. Writes nothing.
+ */
+function runStatus(cwd: string, logPrefix: string): void {
+  console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
+  console.log(`${logPrefix} Working directory: ${cwd}`);
+
+  // --- claude host ---
+  const claudeDir = path.join(cwd, ".claude");
+  const claudePresent = fs.existsSync(claudeDir);
+  const claudeSettingsPath = path.join(claudeDir, "settings.json");
+  let claudeModel = "claude (default)";
+  if (claudePresent && fs.existsSync(claudeSettingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf-8")) as {
+        model?: string;
+      };
+      if (settings.model) claudeModel = settings.model;
+    } catch {
+      // best-effort
+    }
+  }
+  console.log(
+    `${logPrefix} claude:  ${claudePresent ? "INSTALLED" : "absent"}  (provider: anthropic / ${claudeModel})`,
   );
+
+  // --- cursor host ---
+  const cursorDir = path.join(cwd, ".cursor");
+  const cursorPresent = fs.existsSync(cursorDir);
+  console.log(`${logPrefix} cursor:  ${cursorPresent ? "INSTALLED" : "absent"}`);
+
+  // --- opencode host ---
+  const opencodeDir = path.join(cwd, ".opencode");
+  const opencodePresent = fs.existsSync(opencodeDir);
+  let opencodeProvider = "unknown";
+  let opencodeModel = "unknown";
+  const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+  if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
+        provider?: { name?: string };
+        model?: string;
+        models?: Record<string, unknown>;
+      };
+      // opencode.json structure: provider block has the provider name/id
+      // Try to extract provider and model from the config
+      if (cfg.provider?.name) opencodeProvider = cfg.provider.name;
+      if (cfg.model) opencodeModel = cfg.model;
+      // Fallback: look for non-empty models map
+      if (opencodeModel === "unknown" && cfg.models) {
+        const modelKeys = Object.keys(cfg.models);
+        if (modelKeys.length > 0) opencodeModel = `${modelKeys.length} model(s) configured`;
+      }
+    } catch {
+      opencodeModel = "parse-error";
+    }
+  }
+  const opencodeStatus = opencodePresent
+    ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+    : "absent (run: bkit install --opencode=<provider>)";
+  console.log(`${logPrefix} opencode: ${opencodeStatus}`);
+
+  // --- summary ---
+  const installedHosts = [
+    claudePresent ? "claude" : null,
+    cursorPresent ? "cursor" : null,
+    opencodePresent ? "opencode" : null,
+  ].filter(Boolean);
+  console.log(
+    `${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`,
+  );
+}
+
+async function main() {
+  const {
+    verb,
+    modules,
+    uninstallFlags,
+    upgradeFlags,
+    tracker,
+    cloudVariant,
+    opencodeProvider,
+    force,
+  } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
@@ -832,6 +1053,109 @@ async function main() {
       version: getInstallingVersion(),
       logPrefix: LOG_PREFIX,
     });
+
+    // opencode host diagnostics: report required tools and cred presence per provider.
+    // Never echoes key values — only reports present/absent.
+    const opencodeDir = path.join(process.cwd(), ".opencode");
+    const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+    if (fs.existsSync(opencodeDir) || modules.has("opencode")) {
+      console.log(`${LOG_PREFIX} --- opencode host diagnostics ---`);
+      // Check opencode binary
+      const { spawnSync: spawnSyncLocal } = await import("node:child_process");
+      const whichResult = spawnSyncLocal("which", ["opencode"], { encoding: "utf-8" });
+      const opencodeInstalled = whichResult.status === 0 && whichResult.stdout.trim().length > 0;
+      console.log(
+        `${LOG_PREFIX} opencode binary: ${opencodeInstalled ? "FOUND (" + whichResult.stdout.trim() + ")" : "NOT FOUND (install opencode first)"}`,
+      );
+
+      // Read provider from opencode.json to check creds
+      let detectedProvider: string | null = null;
+      if (fs.existsSync(opencodeJsonPath)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
+            provider?: Record<string, unknown>;
+          };
+          detectedProvider =
+            cfg.provider && typeof cfg.provider === "object"
+              ? (Object.keys(cfg.provider)[0] ?? null)
+              : null;
+        } catch {
+          // best-effort
+        }
+      }
+      if (opencodeProvider) detectedProvider = opencodeProvider;
+
+      // Per-provider cred check (present/absent only — no value echoed)
+      const PROVIDER_KEYS: Record<string, string[]> = {
+        nvidia: ["NVIDIA_API_KEY"],
+        openrouter: ["OPENROUTER_API_KEY"],
+        gemini: ["GEMINI_API_KEY"],
+        openai: ["OPENAI_API_KEY"],
+        anthropic: ["ANTHROPIC_API_KEY"],
+        // ollama-local: local server, no API key required
+      };
+      // Local-only providers that use no remote API key
+      const LOCAL_PROVIDERS = new Set(["ollama-local"]);
+      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
+        const keys = PROVIDER_KEYS[detectedProvider] ?? [
+          `${detectedProvider.toUpperCase()}_API_KEY`,
+        ];
+        for (const key of keys) {
+          const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
+          console.log(
+            `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
+          );
+        }
+      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
+        console.log(
+          `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
+        );
+        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+        if (!maxLoaded) {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
+          );
+        } else if (maxLoaded !== "1") {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
+          );
+        } else {
+          console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+        }
+        console.log(
+          `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
+        );
+        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+        // model, parallel requests give no speedup and split the KV cache (more memory).
+        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+        if (!numParallel) {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
+          );
+        } else if (numParallel !== "1") {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
+          );
+        } else {
+          console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+        }
+      } else if (!detectedProvider) {
+        console.log(
+          `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
+        );
+      }
+    }
+
+    return;
+  }
+
+  if (verb === "status") {
+    LOG_PREFIX = "[bkit-status]";
+    runStatus(process.cwd(), LOG_PREFIX);
     return;
   }
 
@@ -884,8 +1208,8 @@ async function main() {
     }
 
     // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
-    // renders bkit-auto.yml the same way install does (byte-identical, no drift fight).
-    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-auto.yml");
+    // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
+    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
     let upgradeTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
     try {
       const pkg = JSON.parse(
@@ -913,7 +1237,7 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
-            // bkit-auto.yml is rendered tracker-conditional on install (#138) — the raw
+            // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
             // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
             // so upgrade emits byte-identical output (install/upgrade can never disagree).
             const contentOverride =
@@ -931,6 +1255,28 @@ async function main() {
         }
       };
       collectTemplates(tplRoot, "");
+    }
+
+    // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
+    // Only remove when bkit-cloud.yml is already present or being installed in this run —
+    // otherwise a plain `bkit install` (no --cloud flag) would silently delete the old
+    // cloud workflow without seeding the replacement.
+    const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
+    const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
+    const cloudWillBeInstalled = candidates.some(
+      (c) => c.relPath === path.join(".github", "workflows", "bkit-cloud.yml"),
+    );
+    if (
+      fs.existsSync(oldAutoWorkflow) &&
+      (fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled)
+    ) {
+      const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
+      console.log(
+        `${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`,
+      );
+      if (!upgradeFlags.dryRun) {
+        fs.rmSync(oldAutoWorkflow, { force: true });
+      }
     }
 
     // Markered-text templates managed on upgrade are token-free, but resolve real
@@ -1028,12 +1374,20 @@ async function main() {
   // prompt files about to be installed and avoids a mid-install hard-fail in
   // applyT3 ("Missing model lookup for <name>").
   let modelLookup: Map<string, string> = new Map();
+  let opencodeModelLookup: Map<string, string> = new Map();
   const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
   if (fs.existsSync(promptsMdPath)) {
     try {
       modelLookup = parseModelLookup(promptsMdPath);
     } catch {
       // Not fatal — cursor module will fail per-file if a model is missing
+    }
+    if (modules.has("opencode")) {
+      try {
+        opencodeModelLookup = parseOpencodeModelLookup(promptsMdPath);
+      } catch {
+        // Not fatal — opencode module will fail per-file if a model is missing
+      }
     }
   }
 
@@ -1086,11 +1440,12 @@ async function main() {
   }
 
   // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
-  // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
+  // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
+  // cloud=cursor requires tracker=linear.
   // Mismatch is a hard error — checked BEFORE any package.json write so no state
   // is recorded on mismatch ("no files written on hard error" invariant).
   if (cloudVariant !== null && modules.has("cloud")) {
-    const requiredTracker: IssueTracker = cloudVariant === "claude" ? "github" : "linear";
+    const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
     if (issueTracker !== requiredTracker) {
       console.error(
         `[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
@@ -1100,6 +1455,42 @@ async function main() {
             : `Use the matching cloud variant or reconfigure the tracker with --force.`),
       );
       process.exit(1);
+    }
+    // cloud=opencode additionally requires the local opencode host to be installed first
+    // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
+    if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+      console.error(
+        `[bkit] --cloud=opencode requires the local opencode host to be installed first.\n` +
+          `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia, --opencode=openrouter)\n` +
+          `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
+      );
+      process.exit(1);
+    }
+    // Warn (non-fatal) when the detected provider is local-only (ollama-local) — the cloud runner
+    // has no local model server, so the cloud job will fail at runtime.
+    if (cloudVariant === "opencode") {
+      const ocJsonPath = path.join(process.cwd(), ".opencode", "opencode.json");
+      if (fs.existsSync(ocJsonPath)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(ocJsonPath, "utf-8")) as {
+            provider?: Record<string, unknown>;
+          };
+          const detectedId =
+            cfg.provider && typeof cfg.provider === "object"
+              ? (Object.keys(cfg.provider)[0] ?? null)
+              : null;
+          const LOCAL_ONLY_PROVIDERS = new Set(["ollama-local"]);
+          if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
+            console.warn(
+              `[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
+                `The cloud opencode job requires a remote provider with an API key — ` +
+                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`,
+            );
+          }
+        } catch {
+          // best-effort
+        }
+      }
     }
   }
 
@@ -1133,6 +1524,8 @@ async function main() {
     dryRun,
     tokens,
     modelLookup,
+    opencodeModelLookup,
+    opencodeProvider,
     advisories,
     ws,
     logPrefix: LOG_PREFIX,

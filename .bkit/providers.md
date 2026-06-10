@@ -14,10 +14,17 @@
 ## Supported hosts
 
 <!-- prettier-ignore -->
-| Host | Tier | Subagent dir | Command dir | Settings | Hooks |
-| --- | --- | --- | --- | --- | --- |
-| Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) |
-| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) |
+| Host | Tier | Subagent dir | Command dir | Settings | Hooks | Install |
+| --- | --- | --- | --- | --- | --- | --- |
+| Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | always-on (`--full`) |
+| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | always-on (`--full`) |
+| opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
+
+**Additive host model:** claude and cursor are always-on (included in every `--full` install). opencode is opt-in and additive — it installs alongside claude/cursor, never replacing them. No `--claude` flag exists. Provider selection (`ollama-local`, `nvidia`, `openrouter`, `gemini`, etc.) is an install-time decision: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
+
+**Single active provider:** bkit manages one provider block in `opencode.json` at a time. Running `bkit install --opencode=ollama-local` after `bkit install --opencode=nvidia` replaces the managed provider block (nvidia → ollama-local). If you need multiple providers simultaneously (e.g. ollama-local for local + nvidia for cloud), manually add the second provider block to `.opencode/opencode.json` — bkit's Tier-2 deep-merge reconverge preserves manually-added keys across upgrades.
+
+**Local vs cloud Ollama:** `ollama-local` (`bkit install --opencode=ollama-local`) configures a local Ollama server via the npm `@ai-sdk/openai-compatible` driver — no API key required, points at `http://localhost:11434/v1`. Cloud-hosted Ollama (if/when supported) would be a separate provider key. Do not confuse the two: the opencode app's built-in "ollama" entry refers to the cloud service.
 
 Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` config.
 
@@ -30,6 +37,7 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 | --- | --- | --- | --- |
 | Claude | `Agent` | `@` | `@bkit-build-plan-execute` invoked via `Agent` tool |
 | Cursor | `Task` | `/` | `/bkit-build-plan-execute` invoked via `Task` tool |
+| opencode | `/` (slash command) | `/` | `/bkit-build-plan-execute` invoked via opencode slash command |
 
 **Transform (Claude → Cursor, command bodies):**
 
@@ -51,13 +59,18 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 | --- | --- | --- | --- |
 | `name` | required | required | kebab-case, must match filename. Identical. |
 | `description` | required | required | Identical. |
-| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | Drop on Cursor side. Used to derive `model`. |
-| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | **Identity mapping (BAR-113, verified)** — Cursor 2.4+ accepts the same names as Claude: `Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch`. T3 transform passes `tools:` through verbatim. Verified via Cursor 2.4 docs + main-agent probe (Cursor's main agent exposes both `WebFetch` and `WebSearch` natively, and per the docs subagent allowlists accept the same name set). If a runtime rejection ever surfaces for `WebFetch`/`WebSearch` in a Cursor subagent, only `bkit-design-review-1` and `bkit-design-review-2` are affected. |
-| `permissionMode` | required (`acceptEdits` standard) | not supported | Drop on Cursor side. |
-| `maxTurns` | required | not supported | Drop on Cursor side. |
-| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | Pinned per-agent on both sides. On Claude, locks the agent to a specific model independent of session default. On Cursor, drives runner selection via T3 transform. |
-| `readonly` | not supported (use `tools` allowlist) | optional boolean | Derive on Cursor side from `tools` (true if no `Edit`/`Write`/`Bash`). Semantics: blocks file writes; whether also blocks bash/terminal is **TBD** (Cursor docs unclear; verify). |
-| `is_background` | not supported | optional boolean (Cursor 2.4+) | Default false. Reserve for future opt-in on parallelisable subagents (e.g. `bkit-design-brainstorm-ideate-1` / `-2` / `-3`, `bkit-plan-review-1` / `-2` / `-3`). |
+| Field | Claude | Cursor | opencode | Notes |
+| --- | --- | --- | --- | --- |
+| `name` | required | required | required | kebab-case, must match filename. Identical. |
+| `description` | required | required | required | Identical. |
+| `effort` | required (`low` / `medium` / `high` / `xhigh` / `max` — last two model-gated, Opus-only on current models) | not supported | mapped to `reasoningEffort` | Drop on Cursor. Maps to opencode `reasoningEffort` via `applyOpencodeAgent` transform: `low`→`none`, `medium`→`low`, `high`→`medium`, `xhigh`→`high`, `max`→`max`. |
+| `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | not supported | Identity mapping on Cursor (BAR-113, verified). Dropped on opencode side. |
+| `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
+| `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
+| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `ollama-local/qwen2.5:14b`) | Pinned per-agent. On Claude, locks to a specific model. On Cursor, drives runner via T3. On opencode, provider-prefixed format: `<provider>/<model-id>` (see `prompts.md` § Models, `opencode model` column). |
+| `readonly` | not supported (use `tools` allowlist) | optional boolean | not supported | Cursor: derive from `tools` (true if no `Edit`/`Write`/`Bash`). |
+| `is_background` | not supported | optional boolean (Cursor 2.4+) | not supported | Default false. Reserve for future opt-in on parallelisable subagents. |
+| `reasoningEffort` | not a frontmatter field (use `effort`) | not supported | `none` / `low` / `medium` / `high` / `max` | opencode-native field. Set by `applyOpencodeAgent` transform from `effort`. |
 
 ### Body
 
@@ -199,12 +212,22 @@ Both hosts use `/<filename-without-ext>` to trigger commands (`/bkit-build`, `/b
 
 **Install behaviour:** hook scripts are **template drops** (per-host, NOT generated from `.agents/`). Semantic differences above (blocking vs non-blocking, stdin shape, output JSON shape) make a single canonical script impossible. Maintain two parallel implementations under `bkit/templates/<host>/hooks/`. Keep them functionally equivalent.
 
-### GateGuard (PreToolUse — Claude only)
+### GateGuard
 
-`gateguard.cjs` is an advisory `PreToolUse` hook on `Edit|Write|MultiEdit` (registered in `.claude/settings.json` → `hooks.PreToolUse`). On the first touch of a file per session it injects an investigation checklist via `additionalContext`; gate-config paths (tsconfig / eslint / prettier / vitest / vale / slop / lint-staged) get a "fix the code, don't weaken the gate" advisory instead. It is **fail-open** (never exits non-zero), **subagent-exempt** (skips when `agent_id` is present in the payload), and dedup'd per `(session, file)` via OS-temp state with a 24h TTL.
+GateGuard is a pre-edit advisory hook. On the first touch of a file per session it injects an investigation checklist; gate-config paths (tsconfig / eslint / prettier / vitest / vale / slop / lint-staged) get a "fix the code, don't weaken the gate" advisory instead. It is **fail-open**, **subagent-exempt** (skips when `agent_id` is present in the payload), and dedup'd per `(session, file)` via OS-temp state with a 24h TTL.
 
-- **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny the first touch per file (checklist as the reason), then allow the retry. The deny flip is dogfood-gated — flip via env, no code change. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses the gate-config advisory.
-- **Cursor divergence:** Cursor's hook model has SessionStart/Stop-class events plus `afterFileEdit` (post-hoc), but **no pre-edit event that injects model-visible context before the edit runs** — so GateGuard has no faithful Cursor port and is **Claude-only** by design. Note: unlike SessionStart, a Claude `PreToolUse` hook CAN block (exit 2 / `permissionDecision: deny`) — `deny` mode uses that; the "Cannot block" row above is specific to SessionStart.
+<!-- prettier-ignore -->
+| Host | Implementation | File | Registration |
+| --- | --- | --- | --- |
+| Claude Code | `gateguard.cjs` (CJS) | `.claude/hooks/gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
+| opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugins` array (opencode plugin spec) |
+| Cursor | **not supported** | n/a | Cursor has SessionStart/Stop + post-hoc `afterFileEdit` but no pre-edit event that injects model-visible context — faithful port impossible |
+
+**Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny the first touch per file (checklist as the reason), then allow the retry. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses the gate-config advisory.
+
+**Subagent exemption difference:** Claude's `gateguard.cjs` checks `agent_id` in the PreToolUse payload to detect subagents. opencode's `gateguard.js` uses a different subagent-detection mechanism (opencode plugin API); the exemption condition may differ — validate in the plugin spec if subagent suppression is required.
+
+**Deny mode:** Claude `PreToolUse` can block via exit 2 / `permissionDecision: deny`. opencode plugin deny semantics may differ — check the opencode plugin spec for the return shape that blocks a tool call.
 
 ---
 
@@ -262,66 +285,43 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 
 ---
 
-## Local / NVIDIA model swap (`bkit mode`)
+## Models
 
-> Tool: `.bkit/scripts/bkit-mode.sh` — seeded by `bkit install` (Tier-3 seed-or-print; consumers edit `_bkit_agent_matrix` for their own models, upgrade won't clobber). Install emits a `mode-shim-not-sourced` advisory with the `source …` line to add to your shell rc. Decision + rationale: `docs/decisions.md` DE-26. Distinct from the cloud-agent **auto** lane (`bkit install --auto=claude`).
+### Per-provider live model lookup
 
-Swaps **where Claude Code's inference runs** without touching the harness — subagents, commands, hooks, MCP all unchanged; only the inference backend + the per-agent `model:` headers change. `source .bkit/scripts/bkit-mode.sh` once (in `~/.zshrc`) installs a `bkit()` shell-function shim — it must mutate the current shell's env, which a subshell binary can't (nvm/pyenv pattern); all non-`mode` verbs forward to the real `bkit`.
+The installed provider's model catalog changes over time. Look up available model IDs before pinning them in `.opencode/opencode.json`:
 
 <!-- prettier-ignore -->
-| command | backend |
-| --- | --- |
-| `bkit mode --cloud=claude` | Anthropic API, direct (default) |
-| `bkit mode --cloud=nvidia` | NVIDIA NIM, via claude-code-router |
-| `bkit mode --local=ollama` | Ollama, via claude-code-router |
-| `bkit mode --status` / `--doctor` / `--list=<p>` / `--reset` | inspect / per-provider preflight / live `/v1/models` / restore default cloud |
+| Provider | Command | Notes |
+| --- | --- | --- |
+| ollama-local | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
+| NVIDIA NIM | `curl https://integrate.api.nvidia.com/v1/models -H "Authorization: Bearer $NVIDIA_API_KEY"` | Hosted; catalog changes; verify before pinning. |
+| OpenRouter | `curl https://openrouter.ai/api/v1/models -H "Authorization: Bearer $OPENROUTER_API_KEY"` | Aggregator; large catalog. |
+| Gemini | `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"` | Google; model IDs differ from OpenAI format. |
 
-**Why a router:** Claude Code speaks the Anthropic Messages API; Ollama and NVIDIA NIM are OpenAI-format. `claude-code-router` (`ccr`, `npm i -g @musistudio/claude-code-router`) bridges them and routes each request to a provider by matching the model name — so per-agent `model:` headers keep selecting per-subagent models. `--cloud=claude` is direct, no router.
+**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/moonshotai/kimi-k2.6`). The defaults in `.opencode/agents/*.md` are seeded at install time; tune them by editing the `model:` field and running `bkit check`. All opencode agents seed to one model by default — see `prompts.md` § Models for the single-model rationale (avoids Ollama unload/reload churn under `OLLAMA_MAX_LOADED_MODELS=1`).
 
-**Model table:** `_bkit_agent_matrix` in the script is the single source of truth across all providers — one row per agent, `file|claude|ollama|nvidia`; `bkit mode` just picks the column. The ollama/nvidia columns **mirror the Claude tier** (one model per opus/sonnet/haiku); intra-tier diversity between parallel fan-out slots comes from the prompt **lens** (identical across providers), exactly as on Claude — not from picking different models per slot. NVIDIA ids are verified live (`bkit mode --list=nvidia`) and all support OpenAI function-calling (required — subagents are tool-heavy). Per-agent capability overrides are a planned config (see the override issue).
+### Local Ollama memory-safety (server-side, not opencode.json)
 
-**Local hardware:** the `--local=ollama` model defaults (`qwen3.6:27b` / `gemma4:12b` / `deepseek-r1:14b` / `qwen2.5-coder:1.5b`) were sized for a **MacBook Air M5 with 32 GB unified memory** — the set fits that ceiling (one ~27B model resident at a time plus small background workers). On larger machines, bump the cells in `_bkit_agent_matrix` to bigger local models.
+opencode — whether the CLI or the desktop app — is only an HTTP client to Ollama at `localhost:11434`. It never launches or configures the Ollama server, so the memory-residency knobs live on the **Ollama server daemon**, INDEPENDENT of which opencode surface you use. They are **not** expressible in `opencode.json` (no field exists; opencode's per-model `limit.context` is informational client-side budgeting, not Ollama's `num_ctx`).
 
-**Keys:** `NVIDIA_API_KEY` (`nvapi-…`) in `.bkit/.env`; the swap comments out `ANTHROPIC_API_KEY` in router modes and restores it on `--reset` (+ `direnv allow`).
+<!-- prettier-ignore -->
+| Setting | Value | Effect |
+| --- | --- | --- |
+| `OLLAMA_MAX_LOADED_MODELS` | `1` | Never hold 2+ model weight-sets resident → avoids swap thrash on model switch. The high-impact one on constrained machines. |
+| `OLLAMA_NUM_PARALLEL` | `1` | Serialize concurrent requests against one model. bkit workflows dispatch subagents concurrently (spike-proven on opencode); with one local model that gives no speedup, and `>1` splits the KV cache across requests → more memory. `=1` makes the Ollama server run the fan-out one-at-a-time. |
+| `OLLAMA_KEEP_ALIVE` | `2m` | Evict an idle model sooner (default 5m), freeing RAM. |
+| `OLLAMA_CONTEXT_LENGTH` | `16384` | Caps `num_ctx`; KV cache scales linearly with it. (Or set `num_ctx` in a Modelfile.) |
 
-**Per-repo, not per-shell.** The swap is persistent: alongside the agent headers (on disk) and the key toggle, router modes write a managed block (`ANTHROPIC_BASE_URL` + `ANTHROPIC_AUTH_TOKEN=bkit-router`) into `.bkit/.env`, which **direnv re-exports into every shell that enters the repo** — so you set the mode once, and new terminals inherit it automatically. `--cloud=claude`/`--reset` strips that block again. The activating shell also gets an immediate in-shell `export` so it works without re-`cd`. If a fresh shell still reports `DIRECT` under `--status`, run `direnv allow` (or re-enter the repo) to load the persisted route; with no direnv installed, re-run the `bkit mode` command in that shell. `ANTHROPIC_BASE_URL`/`AUTH_TOKEN` are not secrets (the token is a fixed dummy the router ignores).
+These are **Ollama-local only** — remote providers (`nvidia`, `openrouter`, `gemini`, …) are stateless cloud APIs with their own concurrency and ignore them; leave their concurrency to the workflow's default parallel fan-out.
 
-### Verifying the swap actually took effect — do NOT ask the model "what model are you?"
+**Where to set them — depends only on how Ollama runs (not on opencode CLI vs app):**
 
-> **The single most common doubt.** After `bkit mode --cloud=nvidia` you launch `claude`, ask _"what model are you?"_, and it replies _"I'm Claude Opus 4.8"_ — so you conclude the swap failed. **It did not.** This is a false negative, not a routing bug.
+- **macOS Ollama.app (menu-bar):** the app IS the server. `launchctl setenv OLLAMA_MAX_LOADED_MODELS 1` (and `OLLAMA_KEEP_ALIVE 2m`), then quit + reopen the app. Bare `launchctl setenv` is **not** persistent across reboot — re-run after restart, or add a `~/Library/LaunchAgents` plist that runs it at login.
+- **`ollama serve` from a terminal (Homebrew/manual):** `export OLLAMA_MAX_LOADED_MODELS=1` / `export OLLAMA_KEEP_ALIVE=2m` in `~/.zshrc`, then launch the server from that shell. Persistent.
+- **Linux (systemd):** `systemctl edit ollama.service` → under `[Service]` add `Environment="OLLAMA_MAX_LOADED_MODELS=1"` and `Environment="OLLAMA_KEEP_ALIVE=2m"` → `systemctl daemon-reload && systemctl restart ollama`. Persistent (canonical).
 
-**Why the question lies:** Claude Code injects its own model identity into the system prompt of **every** request (`You are powered by … Opus 4.8 …`). The router reroutes that request — system prompt and all — to NVIDIA/Ollama, so the backend model (e.g. Kimi) _reads that planted identity and parrots it back_. The model has no independent knowledge of which checkpoint is serving it; it only echoes what the system prompt says. Asking "what model are you?" can therefore **never** distinguish the backend — it is the one test guaranteed to mislead. Ignore what the model says about itself; verify at the transport layer instead.
-
-**The reliable check — ccr's request log.** It is **off by default** (`"LOG": false` in the generated router config), which is why there's nothing to inspect out of the box. Turn it on:
-
-1. Edit `~/.claude-code-router/config.json` → set `"LOG": true`.
-2. `ccr restart` (logging level is read at startup; a restart also rotates to a fresh log file).
-3. Find the **newest** log — ccr opens a new timestamped file on every start:
-   ```bash
-   tail -f "$(ls -t ~/.claude-code-router/logs/ccr-*.log | head -1)"
-   ```
-4. Run `claude` (or `bkit mode … nvidia` then a quick prompt) in another pane and watch the requests land.
-
-**What proves NVIDIA in the log** — each request is one `reqId`; the decisive line is `"msg":"final request"`, which shows the real upstream:
-
-```json
-"requestUrl":"https://integrate.api.nvidia.com/v1/chat/completions"
-"authorization":"Bearer nvapi-..."
-"model":"moonshotai/kimi-k2.6"
-```
-
-Plus `"nvidia provider registered"` at startup, and `"system_fingerprint":"vllm-..."` in the response — NVIDIA's vLLM serving stack, something Anthropic never returns. If you see `api.anthropic.com` there instead, _then_ the swap genuinely didn't take.
-
-**Faster check — no `claude` needed.** Hit the router directly with the exact Anthropic-format request `claude` sends; a `"model":"moonshotai/…"` response means the route is live:
-
-```bash
-curl -s http://127.0.0.1:3456/v1/messages \
-  -H "x-api-key: bkit-router" -H "anthropic-version: 2023-06-01" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"moonshotai/kimi-k2.6","max_tokens":30,"messages":[{"role":"user","content":"hi"}]}'
-```
-
-> Note: `LOG: true` set by hand in `~/.claude-code-router/config.json` is reset to `false` the next time `bkit mode … nvidia`/`ollama` regenerates that file. Re-apply after a re-run, or change the default in `_bkit_router_config` (`.bkit/scripts/bkit-mode.sh`).
+`bkit doctor` reads back `OLLAMA_MAX_LOADED_MODELS` / `OLLAMA_KEEP_ALIVE` and warns when unset or `>1` — read-only, it never mutates the server env.
 
 ---
 
@@ -359,8 +359,9 @@ curl -s http://127.0.0.1:3456/v1/messages \
 | --- | --- |
 | Claude Code | Synchronous `Agent` tool calls; parallel calls in single turn = parallel execution within main agent. No first-class async/background concept. |
 | Cursor | `is_background: true` on subagent → spawns Cursor Cloud Agent that runs detached; main agent continues. Async by design. |
+| opencode | Concurrent `Task` dispatch (spike-proven: 3 distinct subagents run concurrently, wall-clock < serial sum). Real parallelism only when the backend serves requests concurrently — true for remote providers (nvidia/openrouter/gemini). On **ollama-local** one model serves the fan-out; set `OLLAMA_NUM_PARALLEL=1` so the server serializes it (no speedup from one model anyway; `>1` splits the KV cache). The workflow text is unchanged — concurrency is bounded at the Ollama server, not in the command files. |
 
-**Implication:** workflow's parallel fan-outs (triplets `bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`; pairs `bkit-design-review-*`, `bkit-plan-scope-check-*`, `bkit-build-challenge-*`, `bkit-ship-update-docs`/`-summary`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true`. Default off in canonical files; Cursor host config can flip selected subagents on at install time.
+**Implication:** workflow's parallel fan-outs (triplets `bkit-design-brainstorm-ideate-1`/`-2`/`-3`, `bkit-plan-review-1`/`-2`/`-3`; pairs `bkit-design-review-*`, `bkit-plan-scope-check-*`, `bkit-build-challenge-*`, `bkit-ship-update-docs`/`-summary`) get parallelism on Claude side via concurrent `Agent` tool calls in one turn; on Cursor side, opt-in via `is_background: true` (default off in canonical files; Cursor host config can flip selected subagents on at install time); on opencode side via concurrent `Task` dispatch — real on remote providers, serialized at the server on ollama-local via `OLLAMA_NUM_PARALLEL=1`.
 
 ---
 

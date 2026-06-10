@@ -66,7 +66,7 @@
   // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
   // by consumer Renovate — scanning them only produces onboarding noise (and an
   // unauthable `@cbartens/bkit` lookup). See issue #132.
-  // `bkit-auto.yml` is bkit-owned too and tag-pinned by design (new SHAs arrive
+  // `bkit-cloud.yml` is bkit-owned too and tag-pinned by design (new SHAs arrive
   // via `bkit install`). It MUST be ignored here, not merely fenced by the
   // packageRule below: `enabled: false` suppresses version bumps but the
   // github-actions manager still SCANS the file and applies its tag->SHA
@@ -78,7 +78,7 @@
     "**/build/**",
     ".bkit/templates/**",
     ".agents/skills/**",
-    ".github/workflows/bkit-auto.yml",
+    ".github/workflows/bkit-cloud.yml",
   ],
 
   // ─────────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@
     // ─────────────────────────────────────────────────────────────────────
     {
       matchFileNames: [
-        ".github/workflows/bkit-auto.yml",
+        ".github/workflows/bkit-cloud.yml",
       ],
       enabled: false,
     },

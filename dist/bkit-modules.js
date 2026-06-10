@@ -10,7 +10,7 @@ import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
 import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
-import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
+import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
@@ -118,11 +118,9 @@ const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gi
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
 // NOT shipped by the plain core pass — skip them there so the right owner writes them:
-//   - `.bkit/scripts/bkit-mode.sh` is Tier-3 seed-or-print (writeTier3 in the claude
-//     module owns it; consumers tune `_bkit_agent_matrix`, so upgrade must not clobber).
 //   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
+// Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
-    path.join(".bkit", "scripts", "bkit-mode.sh"),
     path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
 ]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
@@ -134,6 +132,7 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
     ".prettierignore",
     ".cursor",
     ".claude",
+    ".opencode",
 ]);
 // ---------------------------------------------------------------------------
 // guardTemplatesRoot — fail-loud guard for the resolved templates root.
@@ -250,8 +249,8 @@ const COPY_EXCLUDE = new Set([
     // file already written by payload copy in live mode, skips its own write,
     // and dry-run vs install writesets diverge. Tier 3 owns this file.
     ".env.example",
-    // Same reason — .bkit/scripts/bkit-mode.sh is Tier-3 seed-or-print (writeTier3 in the
-    // claude module owns it); keep it out of the payload copy to avoid the double-write.
+    // bkit-mode.sh was removed in #245 (opencode replaces the ccr router lane); this
+    // entry is kept as a guard to prevent any future accidental re-addition.
     "bkit-mode.sh",
 ]);
 // Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
@@ -636,27 +635,28 @@ export function runClaudeModule(ctx) {
             }
         }
     }
-    // Byte-equal-text — .bkit/scripts/bkit-mode.sh — Tier 3 seed-or-print (bkit mode shim, #243/#244).
-    // Seeds the cloud/local/NVIDIA inference-swap shell shim; consumers edit its matrix.
+    // Task 6.3 — bkit-mode.sh deletion advisory (upgrade-migration drift detection).
+    // .bkit/scripts/bkit-mode.sh was a Tier-3 seed-or-print file (consumers edit it;
+    // upgrade never overwrites). Every prior consumer keeps a copy on disk even after
+    // upgrading to a bkit version that no longer ships the template. Detect the orphan
+    // and advise deletion — the opencode host (additive, via `bkit install --opencode=<provider>`)
+    // is the replacement; the `bkit mode` surface and ccr router are retired.
+    //
+    // The advisory explicitly names the shell-rc source line removal step because
+    // bkit-mode.sh installed a bkit() shell-function shim via `source .../bkit-mode.sh`
+    // in ~/.zshrc/~/.bashrc. Deleting the file without removing the source line leaves
+    // a broken source call that errors on every new shell.
     {
-        const modeSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", "bkit-mode.sh");
         const modeDst = ".bkit/scripts/bkit-mode.sh";
-        if (fs.existsSync(modeSrc)) {
-            const prevLen = ws.writes.length;
-            const result = writeTier3(modeSrc, modeDst, dryRun, advisories, ws, BKIT_MODE_MERGE_INSTRUCTIONS);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}claude: ${modeDst}`);
-            }
-            else if (result.suggested) {
-                console.log(`${logPrefix} ${tag}claude: ${modeDst} (exists; AI merge instructions printed)`);
-            }
-            // The shim only takes effect once SOURCED — bkit cannot edit the user's shell rc,
-            // so remind on every install/upgrade (same philosophy as the GH_BKIT_TOKEN setup).
+        if (fs.existsSync(modeDst)) {
             advisories.push({
-                id: "mode-shim-not-sourced",
+                id: "bkit-mode-sh-deletion-required",
                 severity: "advisory",
-                detect: ".bkit/scripts/bkit-mode.sh is in place, but `bkit mode` only works once the shim is sourced into your shell — bkit does not edit your ~/.zshrc.",
-                action: "Add to ~/.zshrc (or ~/.bashrc): source <repo-abs-path>/.bkit/scripts/bkit-mode.sh — then `source ~/.zshrc`. Run `bkit mode --doctor` to check per-provider prerequisites (claude-code-router / Ollama / NVIDIA key + models). Use `bkit mode --cloud=nvidia` / `--local=ollama` / `--reset`.",
+                detect: ".bkit/scripts/bkit-mode.sh is present but is no longer managed by bkit. The `bkit mode` surface and the ccr router it depended on have been retired. Keeping this file creates a broken shell-rc source call on every new terminal.",
+                action: "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
+                    "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
+                    "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama-local` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
+                    "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
             });
         }
     }
@@ -804,6 +804,270 @@ export function runCursorModule(ctx) {
 }
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
 // ---------------------------------------------------------------------------
+// runOpencodeModule — opencode provider-agnostic host (opt-in via --opencode=<provider>)
+//
+// Additive alongside always-on claude/cursor: .opencode/agents/*.md (via applyOpencodeAgent),
+// .opencode/commands/*.md (via applyOpencodeCommand + tracker substitution),
+// .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/gateguard.js (Tier-1).
+//
+// Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
+// Spike initially observed singular; official docs are plural — plural is correct.
+//   .opencode/plugin/   (singular, not plugins/)
+//
+// Provider config is seeded into opencode.json; consumers tune model IDs and provider
+// keys after install. opencode.json is Tier-2 deep-contained (ownership-mixed) so bkit
+// reconverges its keys on upgrade without clobbering consumer additions (KN-17).
+// ---------------------------------------------------------------------------
+// Per-provider provider key name + base URL + env var suggestions.
+// These are sane defaults; consumers tune after install.
+// npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
+const OPENCODE_PROVIDER_DEFAULTS = {
+    "ollama-local": {
+        envVar: "OLLAMA_HOST",
+        baseURL: "http://localhost:11434/v1",
+        apiPlaceholder: "",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Ollama (Local)",
+    },
+    nvidia: {
+        envVar: "NVIDIA_API_KEY",
+        baseURL: "https://integrate.api.nvidia.com/v1",
+        apiPlaceholder: "${NVIDIA_API_KEY}",
+    },
+    openrouter: {
+        envVar: "OPENROUTER_API_KEY",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiPlaceholder: "${OPENROUTER_API_KEY}",
+    },
+    gemini: {
+        envVar: "GEMINI_API_KEY",
+        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
+        apiPlaceholder: "${GEMINI_API_KEY}",
+    },
+};
+// Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
+const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
+const OPENCODE_PROVIDER_KEY_SENTINEL = "@@OPENCODE_PROVIDER_KEY@@";
+const OPENCODE_PROVIDER_ENV_VAR_SENTINEL = "@@OPENCODE_PROVIDER_ENV_VAR@@";
+const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
+/**
+ * Render the opencode.json template with tracker-filtered mcp + provider config.
+ * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
+ * and fills in provider-specific fields.
+ */
+function renderOpencodeJson(templatePath, tracker, provider) {
+    const raw = fs.readFileSync(templatePath, "utf-8");
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? {
+        envVar: `${provider.toUpperCase()}_API_KEY`,
+        baseURL: `https://${provider}.example.com/v1`,
+        apiPlaceholder: `\${${provider.toUpperCase()}_API_KEY}`,
+    };
+    // Resolve tracker MCP entry
+    let mcpEntry;
+    if (tracker === "github") {
+        mcpEntry =
+            '"github": { "type": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer ${GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+    }
+    else if (tracker === "linear") {
+        mcpEntry = '"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }';
+    }
+    else {
+        mcpEntry = "";
+    }
+    let rendered = raw.replace(OPENCODE_TRACKER_MCP_SENTINEL, mcpEntry);
+    rendered = rendered.replace(OPENCODE_PROVIDER_KEY_SENTINEL, provider);
+    rendered = rendered.replace(OPENCODE_PROVIDER_ENV_VAR_SENTINEL, providerDefaults.envVar);
+    rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
+    // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
+    try {
+        const parsed = JSON.parse(rendered);
+        // Clean up empty mcp object when tracker=none
+        const mcp = parsed.mcp;
+        if (mcp && Object.keys(mcp).length === 0) {
+            delete parsed.mcp;
+        }
+        // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
+        // block with the npm-driver format: { npm, name, options: { baseURL } }
+        if (providerDefaults.npmPackage) {
+            parsed.provider = {
+                [provider]: {
+                    npm: providerDefaults.npmPackage,
+                    name: providerDefaults.displayName ?? provider,
+                    options: { baseURL: providerDefaults.baseURL },
+                },
+            };
+        }
+        return JSON.stringify(parsed, null, 2) + "\n";
+    }
+    catch {
+        return rendered;
+    }
+}
+const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .opencode/opencode.json. Compare against the bkit reference below.
+  bkit owns: the \`permission.rules\` block, the \`plugins\` array, and the \`mcp\` entries
+  it seeded. You own: any additional \`provider\` entries, model lists, and custom mcp servers.
+
+  Required merge actions:
+  1. Ensure the \`permission.rules\` array contains the bkit reference entries.
+  2. Ensure the \`plugins\` array includes ".opencode/plugin/gateguard.js".
+  3. Preserve your provider configuration and any custom mcp servers.
+
+  --- begin bkit reference .opencode/opencode.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .opencode/opencode.json ---
+`;
+export function runOpencodeModule(ctx) {
+    const { dryRun, opencodeModelLookup, advisories, ws, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const provider = ctx.opencodeProvider ?? "ollama-local";
+    // --- Agents: applyOpencodeAgent ---
+    {
+        const src = getPromptsRoot();
+        const dest = ".opencode/agents";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyOpencodeAgent(c, opencodeModelLookup);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+            }
+        }
+        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
+        // is a dynamic mirror dir like .claude/agents and .cursor/agents)
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    // --- Commands: tracker substitution + applyOpencodeCommand ---
+    {
+        const src = getWorkflowsRoot();
+        const dest = ".opencode/commands";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyOpencodeCommand(substituteWorkflow(c, issueTracker).output);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+            }
+        }
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    // --- opencode.json — Tier-2 deep-contained (reconverged on upgrade) ---
+    {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        const jsonDst = ".opencode/opencode.json";
+        if (fs.existsSync(jsonSrc)) {
+            // Render the template with tracker-filtered mcp + provider config
+            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
+            // Write a rendered temp file for writeTier2JsonContained to compare against
+            const tmpSrc = path.join(process.cwd(), ".bkit-staging", "opencode-json-rendered.json");
+            ensureDir(path.dirname(tmpSrc));
+            if (!dryRun) {
+                fs.writeFileSync(tmpSrc, rendered, "utf-8");
+            }
+            const prevLen = ws.writes.length;
+            if (dryRun) {
+                // In dry-run, just check if the current destination differs from rendered
+                if (!fs.existsSync(jsonDst) || fs.readFileSync(jsonDst, "utf-8") !== rendered) {
+                    ws.writes.push({ path: jsonDst, action: "write" });
+                }
+            }
+            else {
+                writeTier2JsonContained(tmpSrc, jsonDst, dryRun, ws);
+                // Clean up temp
+                try {
+                    fs.rmSync(tmpSrc, { force: true });
+                    const stagingDir = path.dirname(tmpSrc);
+                    if (fs.existsSync(stagingDir) && fs.readdirSync(stagingDir).length === 0) {
+                        fs.rmdirSync(stagingDir);
+                    }
+                }
+                catch {
+                    // non-fatal cleanup
+                }
+            }
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
+            }
+        }
+    }
+    // --- gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite) ---
+    {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
+        const pluginDst = ".opencode/plugin/gateguard.js";
+        if (fs.existsSync(pluginSrc)) {
+            ensureDir(path.dirname(pluginDst));
+            const prevLen = ws.writes.length;
+            writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
+            }
+        }
+    }
+    // opencode post-install advisory — provider key + launch + model-ID lookup pointer.
+    advisories.push({
+        id: "opencode-setup",
+        severity: "advisory",
+        detect: `opencode host installed (provider: ${provider}). The opencode CLI and your provider credentials are required before running agents.`,
+        action: `opencode setup for provider "${provider}":\n\n` +
+            (() => {
+                const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+                if (!pd) {
+                    return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
+                        `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
+                }
+                if (pd.npmPackage) {
+                    return (`  1. Ollama runs locally — no API key needed.\n` +
+                        `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
+                        `  3. Pull the seeded model: \`ollama pull qwen2.5-coder:7b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
+                        `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
+                        `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
+                        `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
+                        `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
+                        `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
+                        `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
+                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia, openrouter, …) ignore them.\n` +
+                        `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`);
+                }
+                return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
+                    `     ${pd.envVar}=<your-api-key>\n` +
+                    `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
+            })() +
+            `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
+            `  4. Model IDs: see .bkit/providers.md § Models for the per-provider live /v1/models lookup recipe.\n` +
+            `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
+    });
+}
+// ---------------------------------------------------------------------------
 // AI-actionable Tier 3 merge instructions
 //
 // Each constant is a self-contained instruction block: any AI agent
@@ -887,7 +1151,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   After merging, push to a feature branch and verify the workflow runs to
   green before merging to your default branch.
 `;
-// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-auto.yml`
+// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-cloud.yml`
 // is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
 // logic lives in the mirrored slash-command orchestrator. No consumer-side
 // customisation surface, so no merge instructions are needed.
@@ -1079,18 +1343,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .envrc ---
 `;
-const BKIT_MODE_MERGE_INSTRUCTIONS = `[bkit] .bkit/scripts/bkit-mode.sh exists — bkit will not overwrite (you may have edited _bkit_agent_matrix for your own models). Review the reference for fixes/new providers and merge by hand.
-
-INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
-
-  Open .bkit/scripts/bkit-mode.sh. Compare against the bkit reference below. Preserve any
-  consumer edits inside \`_bkit_agent_matrix\` (per-machine model choices) and to the
-  provider registry; adopt any new providers, checks, or bug-fixes from the reference.
-
-  --- begin bkit reference .bkit/scripts/bkit-mode.sh ---
-{{TEMPLATE_CONTENT}}
-  --- end bkit reference .bkit/scripts/bkit-mode.sh ---
-`;
+// Note: BKIT_MODE_MERGE_INSTRUCTIONS was removed — .bkit/scripts/bkit-mode.sh is no
+// longer shipped by bkit (retired with the ccr router and `bkit mode` surface in #245).
 const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -1220,7 +1474,7 @@ export function runCiModule(ctx) {
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
     }
-    // bkit-auto.yml is no longer shipped by `--ci`. Post-CI auto-routing is
+    // bkit-cloud.yml is no longer shipped by `--ci`. Post-CI auto-routing is
     // now opt-in via `bkit install --cloud` (see `runCloudModule` below). The
     // router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
     // Actions write permissions, and (Cursor half) a dashboard trigger — and it
@@ -1762,7 +2016,7 @@ export function runDependabotModule(ctx) {
 // so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
 //   cloud=claude (tracker=github):
-//   - `.github/workflows/bkit-auto.yml`   — phase-routed GitHub Action; requires
+//   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action; requires
 //        ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
 //   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
 //        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
@@ -1774,11 +2028,11 @@ export function runDependabotModule(ctx) {
 //
 // Variant constraints are enforced in bkit-install.ts before dispatch (tracker mismatch
 // = hard error). The context's cloudVariant carries the chosen variant.
-// Render the bkit-auto.yml template. The template is GitHub-only (cloud=claude
-// requires tracker=github; the Linear cloud path is Cursor-native via cloud=cursor).
-// The tracker parameter is accepted for interface stability but not branched on —
-// any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty (should be none
-// after T1.1, but this guard prevents accidental sentinel leakage).
+// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude and
+// cloud=opencode both require tracker=github; the Linear cloud path is Cursor-native
+// via cloud=cursor). The tracker parameter is accepted for interface stability but not
+// branched on — any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty
+// (should be none after T1.1, but this guard prevents accidental sentinel leakage).
 export function renderCloudWorkflow(raw, _tracker) {
     return raw
         .replace(/@@CLOUD_TRACKER_MCP@@/g, () => "mcp__github__*")
@@ -1794,12 +2048,12 @@ export function runCloudModule(ctx) {
     const variant = ctx.cloudVariant ?? "claude";
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
-        // 1. Phase-routed workflow — `.github/workflows/bkit-auto.yml` (Tier 1 canonical).
-        // GitHub-only; id-token: write grants the OIDC token for Claude GitHub App auth.
-        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-auto.yml");
+        // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical).
+        // Carries both claude + opencode jobs; claude job requires id-token: write for OIDC App auth.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
         if (!fs.existsSync(workflowSrc))
             return;
-        const workflowDst = path.join(".github", "workflows", "bkit-auto.yml");
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
         {
             const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
             const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
@@ -1831,9 +2085,9 @@ export function runCloudModule(ctx) {
         setConsumerBkitField("cloudAgents", "claude", dryRun);
         // Advisory — cloud=claude setup checklist (App required; id-token: write).
         advisories.push({
-            id: "bkit-auto-setup",
+            id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.github/workflows/bkit-auto.yml` is in place (Claude cloud half of the phase-routed cloud workflow). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
@@ -1841,7 +2095,7 @@ export function runCloudModule(ctx) {
                 "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
                 "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
-                "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-auto.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
+                "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
                 "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).",
         });
         // Advisory — cloud env scaffolding (Claude half).
@@ -1860,9 +2114,46 @@ export function runCloudModule(ctx) {
                 "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
         });
     }
+    else if (variant === "opencode") {
+        // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml, no OIDC) ---
+        // 3. Phase-routed workflow — same bkit-cloud.yml as cloud=claude.
+        // The opencode job is already in the file; no separate template needed.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
+        if (!fs.existsSync(workflowSrc))
+            return;
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
+        {
+            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
+            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
+            if (current !== rendered) {
+                ws.writes.push({ path: workflowDst, action: "write" });
+                if (!dryRun) {
+                    ensureDir(path.dirname(workflowDst));
+                    fs.writeFileSync(workflowDst, rendered, "utf-8");
+                }
+                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
+            }
+        }
+        // Record the variant.
+        setConsumerBkitField("cloudAgents", "opencode", dryRun);
+        // Advisory — cloud=opencode setup checklist.
+        advisories.push({
+            id: "bkit-cloud-setup",
+            severity: "advisory",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
+            action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
+                "REQUIRED ONE-TIME SETUP:\n" +
+                "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your provider API key (e.g. NVIDIA NIM key, OpenRouter key, Gemini key). The workflow maps this one secret to all known provider env var names (`NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`) so the `.opencode/opencode.json` `${VAR}` reference resolves correctly.\n" +
+                "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
+                "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
+                "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
+                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.",
+        });
+    }
     else {
         // --- cloud=cursor: Linear-tracker path ---
-        // 3. Cursor Background Agent Dockerfile — Tier 2 markered.
+        // 4. Cursor Background Agent Dockerfile — Tier 2 markered.
         {
             const src = path.join(templates, ".cursor", "Dockerfile");
             const dst = ".cursor/Dockerfile";
@@ -1874,7 +2165,7 @@ export function runCloudModule(ctx) {
                 }
             }
         }
-        // 4. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
+        // 5. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
         {
             const src = path.join(templates, ".cursor", "environment.json");
             const dst = ".cursor/environment.json";
@@ -1893,7 +2184,7 @@ export function runCloudModule(ctx) {
         setConsumerBkitField("cloudAgents", "cursor", dryRun);
         // Advisory — cloud=cursor setup checklist.
         advisories.push({
-            id: "bkit-auto-setup",
+            id: "bkit-cloud-setup",
             severity: "advisory",
             detect: "`.cursor/Dockerfile` and `.cursor/environment.json` are in place (Cursor cloud scaffolding). The Cursor Background Agent trigger is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
@@ -1928,6 +2219,7 @@ export const MODULE_REGISTRY = {
     core: runCoreModule,
     claude: runClaudeModule,
     cursor: runCursorModule,
+    opencode: runOpencodeModule,
     ci: runCiModule,
     lint: runLintModule,
     "git-hooks": runGitHooksModule,
@@ -1941,6 +2233,7 @@ export const MODULE_DISPATCH_ORDER = [
     "core",
     "claude",
     "cursor",
+    "opencode",
     "ci",
     "lint",
     "git-hooks",
