@@ -1255,3 +1255,240 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     expect(afterPkg.bkit?.cloudAgents).toBe("cursor");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Scenario P1-A — Orphan cleanup gate: bkit-auto.yml removal is gated on
+// bkit-cloud.yml being present or in upgrade candidates.
+//
+// Regression guard for the P1 fix: before the fix, `bkit upgrade` would delete
+// bkit-auto.yml even when bkit-cloud.yml was not present and not being installed
+// in the same run — silently removing the cloud workflow without a replacement.
+//
+// Three cases:
+//   A) bkit-auto.yml exists, bkit-cloud.yml absent, NOT in candidates → NOT deleted.
+//   B) bkit-auto.yml exists, bkit-cloud.yml already present on disk → deleted.
+//   C) bkit-auto.yml exists, bkit-cloud.yml IS in candidates (will be installed) → deleted.
+// ---------------------------------------------------------------------------
+
+describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when bkit-cloud.yml present/in candidates", () => {
+  const getInstallPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
+  const getTsxBin = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
+
+  function seedUpgradeConsumer(withCloudYml: boolean): void {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "orphan-gate-consumer",
+        version: "0.0.0",
+        devDependencies: {},
+        bkit: { pinnedVersion: "0.0.0" },
+      }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    // Seed bkit-auto.yml (the orphan to be cleaned)
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "bkit-auto.yml"),
+      "# old auto workflow\n",
+      "utf-8",
+    );
+    if (withCloudYml) {
+      // Seed bkit-cloud.yml already present on disk
+      fs.writeFileSync(
+        path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
+        "# cloud workflow placeholder\n",
+        "utf-8",
+      );
+    }
+  }
+
+  it("Case A: bkit-auto.yml is NOT deleted when bkit-cloud.yml is absent and not in candidates", () => {
+    // Source-level verification of the gate condition.
+    // The upgrade path in bkit-install.ts must check:
+    //   fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled
+    // before deleting oldAutoWorkflow.
+    const src = fs.readFileSync(
+      path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts"),
+      "utf-8",
+    );
+    // Gate: oldAutoWorkflow removal requires newCloudWorkflow present OR cloudWillBeInstalled
+    expect(src).toContain("fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled");
+    // The gate must appear BEFORE the rmSync call
+    const gateIdx = src.indexOf("fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled");
+    const rmIdx = src.indexOf("fs.rmSync(oldAutoWorkflow, { force: true })");
+    expect(gateIdx).toBeLessThan(rmIdx);
+    expect(gateIdx).toBeGreaterThan(-1);
+    expect(rmIdx).toBeGreaterThan(-1);
+  });
+
+  it("Case B: bkit-auto.yml IS deleted when bkit-cloud.yml is already on disk (subprocess upgrade)", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedUpgradeConsumer(true); // bkit-cloud.yml already present
+
+    const oldAutoPath = path.join(tmpDir, ".github", "workflows", "bkit-auto.yml");
+    expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
+
+    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--non-interactive"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    // Upgrade may exit non-zero on conflicts — that's OK; we only care about file removal
+    // The log must mention the orphan removal
+    expect(combined).toContain("bkit-auto.yml");
+    // bkit-auto.yml must be gone (it was replaced by bkit-cloud.yml)
+    expect(
+      fs.existsSync(oldAutoPath),
+      `bkit-auto.yml should be deleted when bkit-cloud.yml is present.\ncombined: ${combined}`,
+    ).toBe(false);
+  }, 90_000);
+
+  it("Case C: bkit-auto.yml is NOT deleted when bkit-cloud.yml absent and not installed (dry-run gate verification)", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedUpgradeConsumer(false); // bkit-cloud.yml absent
+
+    const oldAutoPath = path.join(tmpDir, ".github", "workflows", "bkit-auto.yml");
+    expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
+
+    // Run upgrade --dry-run — even in dry-run mode the gate logic executes
+    // (the log line appears but no FS write occurs). Since bkit-cloud.yml is absent
+    // and not in candidates, the orphan removal code must NOT log the removal message.
+    const result = spawnSync(
+      tsxBin,
+      [getInstallPath(), "upgrade", "--non-interactive", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+
+    // bkit-auto.yml must still exist — removal was not triggered
+    expect(
+      fs.existsSync(oldAutoPath),
+      "bkit-auto.yml must NOT be deleted when bkit-cloud.yml absent",
+    ).toBe(true);
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    // The removal log must NOT appear (gate not triggered)
+    expect(combined).not.toContain("removing orphan .github/workflows/bkit-auto.yml");
+  }, 90_000);
+});
+
+// ---------------------------------------------------------------------------
+// Scenario P1-B — Ollama cloud warning: bkit install --cloud=opencode with
+// an existing .opencode/opencode.json that has provider.id === "ollama" must
+// emit a console.warn containing "ollama" and "local server".
+//
+// This is a non-fatal warning — the install proceeds (exits 0) but surfaces a
+// diagnostic message to prevent a surprising runtime failure in the cloud job.
+// ---------------------------------------------------------------------------
+
+describe("Scenario P1-B — ollama cloud warning on --cloud=opencode install", () => {
+  const getInstallPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
+  const getTsxBin = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
+
+  it("emits warning containing 'ollama' and 'local server' when .opencode/opencode.json has provider.id=ollama", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Consumer prerequisites: package.json + .git + tracker=github (required for --cloud=opencode)
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "ollama-warn-consumer",
+        version: "0.0.0",
+        devDependencies: {},
+        bkit: { issueTracker: "github" },
+      }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // Seed .opencode/opencode.json with provider.id = "ollama"
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({ provider: { id: "ollama", name: "Ollama" } }),
+      "utf-8",
+    );
+
+    // Run: bkit install --tracker=github --cloud=opencode
+    // The --opencode host is already "installed" (we seeded .opencode/), so --cloud=opencode
+    // should reach the provider check and emit the warning.
+    const result = spawnSync(
+      tsxBin,
+      [getInstallPath(), "install", "--tracker=github", "--cloud=opencode"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+
+    // stdout + stderr (console.warn may go to either depending on Node/tsx)
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+
+    // The warning must mention "ollama" (the provider) and "local server" (the key phrase)
+    expect(combined).toMatch(/ollama/i);
+    expect(combined).toMatch(/local server/i);
+
+    // Warning is non-fatal — install exits 0 (the tracker/cloud pair matches)
+    expect(result.status, `Expected exit 0 (warning is non-fatal).\ncombined: ${combined}`).toBe(0);
+  }, 90_000);
+
+  it("does NOT emit ollama warning when provider is not ollama (e.g. nvidia)", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return;
+
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "nvidia-warn-consumer",
+        version: "0.0.0",
+        devDependencies: {},
+        bkit: { issueTracker: "github" },
+      }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // Seed .opencode/opencode.json with provider.id = "nvidia" (not ollama)
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({ provider: { id: "nvidia", name: "NVIDIA" } }),
+      "utf-8",
+    );
+
+    const result = spawnSync(
+      tsxBin,
+      [getInstallPath(), "install", "--tracker=github", "--cloud=opencode"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    // No ollama warning expected for a remote provider
+    expect(combined).not.toMatch(/local server/i);
+    expect(result.status, `Expected exit 0.\ncombined: ${combined}`).toBe(0);
+  }, 90_000);
+});

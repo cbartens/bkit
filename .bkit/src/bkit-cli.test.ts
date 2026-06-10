@@ -570,6 +570,131 @@ describe("parseArgs — --opencode flag (Task 2.3)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseArgs — --opencode provider name validation (P1 fix: /^[a-z][a-z0-9-]{0,30}$/)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --opencode provider name validation (P1 regression)", () => {
+  // Valid providers: must pass without error
+  it("--opencode=gemini-pro is a valid provider name (hyphenated)", () => {
+    const result = parseArgs(["install", "--opencode=gemini-pro"]);
+    expect(result.opencodeProvider).toBe("gemini-pro");
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  it("--opencode=my-provider is a valid provider name (hyphenated user slug)", () => {
+    const result = parseArgs(["install", "--opencode=my-provider"]);
+    expect(result.opencodeProvider).toBe("my-provider");
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  // Invalid: empty string after `=`
+  it("--opencode= (empty value after equals) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode="])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: uppercase characters
+  it("--opencode=MY_PROVIDER (uppercase) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=MY_PROVIDER"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/provider name must match/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: spaces in provider name
+  it("--opencode='provider with spaces' calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=provider with spaces"])).toThrow(
+        "process.exit called",
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: special character ($)
+  it("--opencode=x$y (special character) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=x$y"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Invalid: 32-character string (exceeds 31-char max of /^[a-z][a-z0-9-]{0,30}$/)
+  it("--opencode=<32-char string> calls process.exit(1) (exceeds max length)", () => {
+    // regex: first char + 0..30 more = max 31 chars total. 32 chars exceeds that.
+    const tooLong = "a" + "b".repeat(31); // 32 chars
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", `--opencode=${tooLong}`])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/provider name must match/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+
+  // Boundary: exactly 31 characters is valid (max: 1 + 30 = 31)
+  it("--opencode=<31-char string> is valid (boundary: exactly at max length)", () => {
+    const maxLen = "a" + "b".repeat(30); // 31 chars
+    const result = parseArgs(["install", `--opencode=${maxLen}`]);
+    expect(result.opencodeProvider).toBe(maxLen);
+    expect(result.modules.has("opencode")).toBe(true);
+  });
+
+  // Invalid: starts with digit (regex requires first char [a-z])
+  it("--opencode=1nvidia (starts with digit) calls process.exit(1)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=1nvidia"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // parseArgs — status verb (Task 4.1)
 // ---------------------------------------------------------------------------
 
