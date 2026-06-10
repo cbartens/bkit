@@ -433,7 +433,7 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 - One file = one Renovate `ignorePaths` entry, one audit surface, one template write.
 - Runtime-gated jobs are idempotent — adding the second job to an existing claude install is a no-op until the consumer adds the secret.
 - The opencode job dispatches via `opencode run "/bkit-auto $PHASE $ARG"` (headless; no comment event). Provider model and config live in `.opencode/opencode.json` (committed, from `bkit install --opencode=<provider>`). The single `OPENCODE_PROVIDER_KEY` secret is fanned out to all known provider env var names so the config's `${VAR}` reference resolves regardless of provider.
-- `bkit-auto.yml` → `bkit-cloud.yml` rename is the only consumer-visible breaking change; the upgrade path removes the old file automatically.
+- The cloud workflow file rename (previous name → `bkit-cloud.yml`) is the only consumer-visible breaking change; the upgrade path removes the old file automatically.
 
 # Sources
 
