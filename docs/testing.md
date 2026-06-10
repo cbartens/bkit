@@ -138,10 +138,10 @@ When adding new bkit-managed file types or new managed-scope keys, extend the fi
 
 Run once a live provider (Ollama or NVIDIA) is available:
 
-1. `bkit install --opencode=ollama` (or `--opencode=nvidia`) in a clean consumer repo.
-2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`.
-3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host + provider.
-4. Launch opencode; run `/bkit-plan #<issue>`; confirm 3 concurrent subagents dispatch + verdicts collected.
+1. `bkit install --opencode=ollama-local` (or `--opencode=nvidia`) in a clean consumer repo. (Provider key is `ollama-local`, not bare `ollama` — npm custom-provider format.)
+2. Confirm `.opencode/` tree: agents, commands, `opencode.json`, `plugin/gateguard.js`. Seeded agents share a single local model pin (`qwen2.5-coder:7b`); consumer tunes per-agent.
+3. Confirm `bkit check --opencode` exits 0 and `bkit status` shows opencode host + provider. For `ollama-local`, `bkit doctor` surfaces the server-side memory-safety check (`OLLAMA_MAX_LOADED_MODELS=1` / `OLLAMA_NUM_PARALLEL=1` / `OLLAMA_KEEP_ALIVE=2m`).
+4. Launch opencode; run `/bkit-plan #<issue>`; confirm subagents dispatch + verdicts collected (on `ollama-local` with `OLLAMA_NUM_PARALLEL=1` the fan-out serializes — one model, no parallel speedup).
 5. Confirm provider served the subagents (opencode logs/provider dashboard — not model identity self-report).
 6. Edit a `tsconfig.json` in the opencode session; confirm GateGuard plugin injects advisory.
 7. Run `bkit upgrade` over a consumer dir seeded with `.bkit/scripts/bkit-mode.sh`; confirm deletion advisory fires (NOT silent preservation).

@@ -368,6 +368,23 @@ bkit's installer runs in three phases:
 
 `pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
 
+### `bkit-cloud.yml` — dual-job cloud-agent lane (#245)
+
+`bkit install --cloud=…` ships a single `.github/workflows/bkit-cloud.yml` (renamed from `bkit-auto.yml`, #245) carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
+
+<!-- prettier-ignore -->
+| Job | Dispatch | Gated on | LLM secret |
+| --- | --- | --- | --- |
+| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App, #141) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
+| `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
+
+**Rules:**
+
+- **Secret-gated, never branch-gated.** Each job no-ops (does not fail) when its key is absent — set only the secret(s) for the cloud agent(s) you want active. Both keys present = both jobs act on the same event; serialise via the shared `concurrency.group` (still keyed `bkit-auto-${{ inputs.issue || …head_branch }}`).
+- **`--cloud=opencode` requires `tracker=github` AND a remote provider.** The install precondition hard-errors when the configured `.opencode/` provider is `ollama-local` (or any local/keyless provider): the GitHub runner has no local Ollama server, so the opencode job could never reach the model. Use a remote provider (nvidia/openrouter/gemini) for the cloud lane.
+- **Single fanned-out provider key.** `OPENCODE_PROVIDER_KEY` is exported under the env-var name the committed `opencode.json` references (the configured provider's `envVar`) so the job resolves regardless of which remote provider is installed; ANTHROPIC_API_KEY is absent in the opencode job (no Claude identity leak). GHA-injection hardened — `PHASE`/`ARG` pass via `env:` + shell-var refs, `ARG` validated against `^[0-9A-Za-z.*/-]+$` (KN-37).
+- **Renovate exemption** (`bkit-cloud.yml` in `ignorePaths`) and the **`bkit [auto route]` free-tier gate** are unchanged by the rename — see § GitHub Actions pinning and the commit-tag taxonomy above.
+
 ### Consumer CI auth — env-var pattern (canonical)
 
 Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env var on the `pnpm install` step. The consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) picks it up at registry-resolution time. No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape (BAR-164).
