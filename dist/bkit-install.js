@@ -959,6 +959,20 @@ async function main() {
             }
             else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
                 console.log(`${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`);
+                // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+                // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+                // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+                const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+                if (!maxLoaded) {
+                    console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`);
+                }
+                else if (maxLoaded !== "1") {
+                    console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`);
+                }
+                else {
+                    console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+                }
+                console.log(`${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`);
             }
             else if (!detectedProvider) {
                 console.log(`${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`);

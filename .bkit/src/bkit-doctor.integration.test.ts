@@ -427,3 +427,79 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(combined).toContain("mcp-env-missing-dotenv");
   });
 });
+
+// ---------------------------------------------------------------------------
+// bkit doctor — Ollama memory-safety check (read-only; never mutates server env)
+// These vars govern the Ollama SERVER daemon, not opencode.json — doctor only inspects.
+// ---------------------------------------------------------------------------
+
+describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
+  function seedOpencodeLocal(dir: string): void {
+    seedMinimalConsumer(dir);
+    fs.mkdirSync(path.join(dir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".opencode", "opencode.json"),
+      JSON.stringify({
+        provider: {
+          "ollama-local": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Ollama (Local)",
+            options: { baseURL: "http://localhost:11434/v1" },
+          },
+        },
+      }),
+      "utf-8",
+    );
+  }
+
+  it("warns to set =1 when OLLAMA_MAX_LOADED_MODELS is unset", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const { OLLAMA_MAX_LOADED_MODELS: _drop, ...envNoMax } = process.env;
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...envNoMax, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: not set/);
+    expect(combined).toMatch(/recommend =1/);
+  });
+
+  it("reports memory-safe when OLLAMA_MAX_LOADED_MODELS=1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "1" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 1 \(memory-safe\)/);
+  });
+
+  it("warns when OLLAMA_MAX_LOADED_MODELS > 1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "3" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 3/);
+    expect(combined).toMatch(/swap thrash/);
+  });
+});
