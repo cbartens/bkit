@@ -1,3 +1,5 @@
+<!-- bkit:start -->
+
 # Agent Prompts Index
 
 > [!CAUTION]
@@ -298,3 +300,19 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 | **`acceptEdits` HARD requirement** | All in-pipeline agents | `Bash(*)`/`Edit(*)`/`Write(*)` blanket-allow lives in `.claude/settings.json`; `acceptEdits` skips per-call prompts. Stricter modes break end-to-end runs. |
 | **Plan checkbox ticking owned by verify** | `bkit-build-plan-execute` (does NOT tick), `bkit-build-plan-verify` (ticks `[ ]`→`[x]` only on verified codebase artifact) | Originated from BAR-137: 3/3 plan-execute runs in BAR-130 timed out during the per-task `Edit`-tick phase, after implementation already done. Splitting responsibilities (executor → flat append-only log; verify → checkbox ticks based on verified diff/files) removes ~30 Edit calls from the budget-pressured agent and preserves resume-safety: durable progress record = artifact's `DONE —` lines, plan checkboxes = verify's derived view. NEVER tick checkboxes in `bkit-build-plan-execute`. |
 | **Flat append-only log for L-tier source modifiers** | `bkit-build-plan-execute`, `bkit-build-plan-gaps-remediate`, `bkit-build-challenge-remediate`, `bkit-debug-failure-remediate` | Output format collapses to a single H1 + flat log body (no separate `Brief` / `Strategy` body sections — `Strategy` lives in machine-parseable header alongside `Verdict`; reasoning is implicit in `DONE —` / `BLOCKED —` lines). Stub state: `Verdict: PENDING` header + H1 + empty body. After every discrete unit of work (task / gap / finding / fix step): `Bash echo "DONE — {Unit} {N}: {name} — {outcome} ({path or commit ref})" >> {artifact}`. On failure: `BLOCKED — {Unit} {N}: {name} — {reason}`. Step 4 standing directive: `Update **Create** output — append DONE/BLOCKED log entries at EOF as content becomes available.` (vs canonical `replace each PENDING via Edit` for multi-section verdict-bearing agents). Verdict flips `PENDING` → `PASS` / `CONCERNS` / `FAIL` at the end via `Edit` on the header line. **Two wins:** (1) timeout resilience — partial progress is on disk after every appended line, so a budget-exhausted agent leaves a usable record (vs original BAR-130 antipattern: ~30 ticks clustered at end → all lost on timeout); (2) `Bash echo >>` is cheaper than `Edit` (no file-read for `old_string` match). **Skip-done logic** (read prior attempts via Read glob, skip units already in `DONE —`) added only where workflow already attempt-numbers and globs the artifact: `bkit-build-plan-gaps-remediate` (via `VERIFY_ATTEMPT`, glob already in Step 7 Read). `bkit-build-plan-execute` is single-attempt; on `PENDING` (subagent timeout) the verify→remediate loop bounded by `MAX_VERIFY_ATTEMPT` = 3 absorbs recovery via `bkit-build-plan-gaps-remediate`. `bkit-build-challenge-remediate` writes a single fixed-name artifact today (no glob) — gets stub+log only. `bkit-debug-failure-remediate` is diagnosis-driven (each attempt fresh-strategy via `bkit-debug-failure-diagnose`) — skip-done would be wrong shape; gets stub+log only, but flat log still feeds `bkit-debug-failure-diagnose`'s loop-context glob with finer evidence. |
+
+<!-- bkit:end -->
+
+## Model Overrides
+
+> [!NOTE]
+> **Consumer-owned — preserved across `bkit upgrade`.** Everything above the `bkit:end` marker is
+> bkit-managed and refreshed on upgrade; this section is yours. To override the model a specific
+> agent uses on a specific host/provider, add a row below — list ONLY the agents you want to change.
+> `Provider` is the host/install key: `cursor`, `nvidia`, `ollama-local`, `openrouter`, `gemini`, ….
+> (Claude agents read their model from frontmatter and are not overridable here yet.)
+> Example row: `| bkit-build-summary | nvidia | nvidia/moonshotai/kimi-k2.6 |`
+
+<!-- prettier-ignore -->
+| Prompt | Provider | Model |
+| --- | --- | --- |

@@ -173,22 +173,21 @@ describe("getInstallManifest", () => {
     expect(versionEntry!.format).toBe("byte-equal-text");
   });
 
-  it("core manifest includes the six canonical .bkit docs as byte-equal-text, non-seed (#218)", () => {
+  it("core manifest includes the canonical .bkit docs, non-seed (#218; prompts.md markered #245)", () => {
     const entries = getInstallManifest(["core"]);
-    const docs = [
-      "cloud.md",
-      "providers.md",
-      "prompts.md",
-      "trackers.md",
-      "workflows.md",
-      "README.md",
-    ];
-    for (const doc of docs) {
+    // prompts.md is markered-text (carries the consumer-owned `## Model Overrides`
+    // section below `bkit:end`); the rest are whole-file byte-equal.
+    const byteEqualDocs = ["cloud.md", "providers.md", "trackers.md", "workflows.md", "README.md"];
+    for (const doc of byteEqualDocs) {
       const entry = entries.find((e) => e.path === `.bkit/${doc}`);
       expect(entry, `core manifest must list .bkit/${doc}`).toBeDefined();
       expect(entry!.format).toBe("byte-equal-text");
       expect(entry!.seedOrPrint ?? false).toBe(false);
     }
+    const promptsEntry = entries.find((e) => e.path === ".bkit/prompts.md");
+    expect(promptsEntry, "core manifest must list .bkit/prompts.md").toBeDefined();
+    expect(promptsEntry!.format).toBe("markered-text");
+    expect(promptsEntry!.seedOrPrint ?? false).toBe(false);
   });
 
   it("ci manifest includes ci.yml as byte-equal-text", () => {

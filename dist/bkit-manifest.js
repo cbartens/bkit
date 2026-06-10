@@ -101,7 +101,7 @@ const CORE_MANIFEST = [
     // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
     { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
-    { path: ".bkit/prompts.md", format: "byte-equal-text", module: "core" },
+    { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
     { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
     { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },

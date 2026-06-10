@@ -259,6 +259,60 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     return out;
 }
 /**
+ * Parse the consumer-owned `## Model Overrides` table (below the `bkit:end` marker)
+ * from an installed prompts.md. Rows are `| Prompt | Provider | Model |`. Best-effort:
+ * returns [] when the file, the marker, the section, or the rows are absent.
+ * Only the region after `bkit:end` is read — the bkit-managed block is never an override.
+ */
+export function parseModelOverrides(promptsMdPath) {
+    if (!fs.existsSync(promptsMdPath))
+        return [];
+    const content = fs.readFileSync(promptsMdPath, "utf-8");
+    const endIdx = content.indexOf("<!-- bkit:end -->");
+    const region = endIdx === -1 ? "" : content.slice(endIdx);
+    const ovIdx = region.indexOf("## Model Overrides");
+    if (ovIdx === -1)
+        return [];
+    const out = [];
+    let inTable = false;
+    for (const line of region.slice(ovIdx).split("\n")) {
+        const t = line.trim();
+        if (!t.startsWith("|")) {
+            if (inTable)
+                break;
+            continue;
+        }
+        inTable = true;
+        const cells = t
+            .replace(/^\||\|$/g, "")
+            .split("|")
+            .map((s) => s.trim().replace(/^`|`$/g, ""));
+        if (cells.length < 3)
+            continue;
+        const [prompt, provider, model] = cells;
+        if (!prompt || !provider || !model)
+            continue;
+        if (prompt.toLowerCase() === "prompt")
+            continue; // header row
+        if (/^-+$/.test(prompt))
+            continue; // separator row
+        out.push({ prompt, provider, model });
+    }
+    return out;
+}
+/**
+ * Merge consumer overrides (from `overridesPath`, an installed prompts.md) into a
+ * per-agent model `lookup` for one host/provider key. Mutates `lookup` in place;
+ * only rows whose Provider matches `providerKey` and whose Prompt is a known agent win.
+ */
+export function applyModelOverrides(lookup, providerKey, overridesPath) {
+    for (const o of parseModelOverrides(overridesPath)) {
+        if (o.provider.toLowerCase() === providerKey.toLowerCase() && lookup.has(o.prompt)) {
+            lookup.set(o.prompt, o.model);
+        }
+    }
+}
+/**
  * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel> for ollama-local.
  * Back-compat shim — delegates to buildOpencodeModelLookup with the default provider.
  */
@@ -1243,14 +1297,14 @@ async function main() {
         process.exit(1);
     });
     // Parse model lookup (needed for cursor transforms).
-    // Source: PACKAGE's .bkit/prompts.md (bkit-authoring data, package-only).
-    // prompts.md is no longer copied into consumers, so the package copy is the
-    // sole source. Reading from the package guarantees the lookup matches the
-    // prompt files about to be installed and avoids a mid-install hard-fail in
-    // applyT3 ("Missing model lookup for <name>").
+    // DEFAULTS come from the PACKAGE's .bkit/prompts.md § Models (authoritative, matches the
+    // prompt files about to be installed — avoids a mid-install hard-fail in applyT3).
+    // OVERRIDES come from the CONSUMER's installed .bkit/prompts.md `## Model Overrides`
+    // section (below `bkit:end`) — per-agent, per-provider, preserved across upgrades.
     let modelLookup = new Map();
     let opencodeModelLookup = new Map();
     const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
+    const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
     if (fs.existsSync(promptsMdPath)) {
         try {
             modelLookup = parseModelLookup(promptsMdPath);
@@ -1258,13 +1312,18 @@ async function main() {
         catch {
             // Not fatal — cursor module will fail per-file if a model is missing
         }
+        // Consumer overrides merge after the base parse — parseModelOverrides is internally
+        // guarded (returns [] when the file/section is absent), so it needs no catch here.
+        applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
         if (modules.has("opencode")) {
+            const provider = opencodeProvider ?? "ollama-local";
             try {
-                opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, opencodeProvider ?? "ollama-local");
+                opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
             }
             catch {
                 // Not fatal — opencode module will fail per-file if a model is missing
             }
+            applyModelOverrides(opencodeModelLookup, provider, consumerPromptsMdPath);
         }
     }
     // Seed preflight advisories into ctx so modules can accumulate into the same list.

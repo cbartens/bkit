@@ -287,6 +287,10 @@ export const BKIT_CANONICAL_DOCS = [
 export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     const tag = dryRun ? "[dry-run] " : "";
     const docsRoot = getBkitDocsRoot();
+    // Per-doc write strategy from the manifest: markered-text docs (e.g. prompts.md,
+    // which carries the consumer-owned `## Model Overrides` section below `bkit:end`)
+    // are block-merged so consumer content survives; the rest are force-overwritten.
+    const formatByPath = new Map(getInstallManifest().map((e) => [e.path, e.format]));
     for (const name of BKIT_CANONICAL_DOCS) {
         const srcPath = path.join(docsRoot, name);
         // Defensive: a partial/corrupt package may be missing a doc — skip rather than
@@ -295,7 +299,12 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
             continue;
         const dstPath = path.join(".bkit", name);
         const prevLen = ws.writes.length;
-        writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+        if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
+            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+        }
+        else {
+            writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+        }
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);
         }

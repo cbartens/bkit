@@ -301,6 +301,16 @@ The installed provider's model catalog changes over time. Look up available mode
 
 **Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/moonshotai/kimi-k2.6`). The per-agent pins are the single source of truth in `prompts.md` § Models — **one column per provider** (`Nvidia`, `Ollama (Local)`, …). `bkit install --opencode=<provider>` seeds `.opencode/agents/*.md` from the matching column; providers without a column install a single documented fallback. `ollama-local` is uniform (one model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`); `nvidia` mirrors the Claude tier (opus→`moonshotai/kimi-k2.6`, sonnet→`qwen/qwen3-coder-480b-a35b-instruct`, haiku→`openai/gpt-oss-20b`) with `deepseek-ai/deepseek-v4-pro` swapped in for the convergent-reasoning agents. Tune any agent by editing its `model:` field (or the `prompts.md` column) and running `bkit check`.
 
+**Consumer model overrides (upgrade-safe):** `.bkit/prompts.md` installs as a marker-managed file (like `rules.md`) — bkit refreshes everything inside `bkit:start`/`bkit:end` on `bkit upgrade`; the `## Model Overrides` section **below** `bkit:end` is consumer-owned and preserved. To pin a different model for a specific agent on a specific host/provider, add a row there — list ONLY the agents you want to change:
+
+```
+| Prompt | Provider | Model |
+| --- | --- | --- |
+| bkit-build-summary | nvidia | nvidia/moonshotai/kimi-k2.6 |
+```
+
+`Provider` is the host/install key (`cursor`, `nvidia`, `ollama-local`, …). At install, overrides merge over the defaults per agent×provider (override wins). Claude agents read their model from frontmatter and are not overridable via this table yet.
+
 ### Local Ollama memory-safety (server-side, not opencode.json)
 
 opencode — whether the CLI or the desktop app — is only an HTTP client to Ollama at `localhost:11434`. It never launches or configures the Ollama server, so the memory-residency knobs live on the **Ollama server daemon**, INDEPENDENT of which opencode surface you use. They are **not** expressible in `opencode.json` (no field exists; opencode's per-model `limit.context` is informational client-side budgeting, not Ollama's `num_ctx`).

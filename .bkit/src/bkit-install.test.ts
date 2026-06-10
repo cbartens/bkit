@@ -11,6 +11,8 @@ import {
   parseModelLookup,
   parseOpencodeModelLookup,
   buildOpencodeModelLookup,
+  parseModelOverrides,
+  applyModelOverrides,
   parseModelLookupForColumn,
   extractFullManagedBlock,
   extractManagedBlock,
@@ -1089,6 +1091,71 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "acme");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseModelOverrides / applyModelOverrides — consumer overrides below bkit:end
+// ---------------------------------------------------------------------------
+
+describe("model overrides (consumer-owned, below bkit:end)", () => {
+  function writeOverrides(rows: string): string {
+    const tmp = path.join(os.tmpdir(), `ov-${Math.random().toString(36).slice(2)}.md`);
+    fs.writeFileSync(
+      tmp,
+      `<!-- bkit:start -->\n# managed\n\n## Models\n\n| Prompt | Nvidia |\n| --- | --- |\n| a | nvidia/managed |\n\n<!-- bkit:end -->\n\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n${rows}`,
+    );
+    return tmp;
+  }
+
+  it("parses override rows; ignores header + separator", () => {
+    const f = writeOverrides(
+      "| bkit-design-summary | nvidia | nvidia/x |\n| bkit-build-summary | ollama-local | ollama-local/y |\n",
+    );
+    const rows = parseModelOverrides(f);
+    expect(rows).toEqual([
+      { prompt: "bkit-design-summary", provider: "nvidia", model: "nvidia/x" },
+      { prompt: "bkit-build-summary", provider: "ollama-local", model: "ollama-local/y" },
+    ]);
+    fs.rmSync(f);
+  });
+
+  it("ignores override rows inside the managed block (only below bkit:end counts)", () => {
+    const tmp = path.join(os.tmpdir(), `ovm-${Math.random().toString(36).slice(2)}.md`);
+    // A `## Model Overrides` table ABOVE bkit:end must be ignored.
+    fs.writeFileSync(
+      tmp,
+      `<!-- bkit:start -->\n## Model Overrides\n\n| Prompt | Provider | Model |\n| --- | --- | --- |\n| evil | nvidia | nvidia/inject |\n\n<!-- bkit:end -->\n`,
+    );
+    expect(parseModelOverrides(tmp)).toEqual([]);
+    fs.rmSync(tmp);
+  });
+
+  it("returns [] when file/section absent", () => {
+    expect(parseModelOverrides("/no/such/file.md")).toEqual([]);
+  });
+
+  it("applies only matching-provider rows to known agents (in place)", () => {
+    const f = writeOverrides(
+      "| keep-me | nvidia | nvidia/override |\n| keep-me | ollama-local | ollama-local/other |\n| unknown-agent | nvidia | nvidia/z |\n",
+    );
+    const lookup = new Map([
+      ["keep-me", "nvidia/base"],
+      ["leave-me", "nvidia/base2"],
+    ]);
+    applyModelOverrides(lookup, "nvidia", f);
+    expect(lookup.get("keep-me")).toBe("nvidia/override"); // provider match → overridden
+    expect(lookup.get("leave-me")).toBe("nvidia/base2"); // not in override table → unchanged
+    expect(lookup.has("unknown-agent")).toBe(false); // not a known agent → not added
+    fs.rmSync(f);
+  });
+
+  it("provider key is matched case-insensitively and does not cross providers", () => {
+    const f = writeOverrides("| a | ollama-local | ollama-local/q |\n");
+    const lookup = new Map([["a", "nvidia/managed"]]);
+    applyModelOverrides(lookup, "nvidia", f); // ollama-local row must NOT touch nvidia lookup
+    expect(lookup.get("a")).toBe("nvidia/managed");
+    fs.rmSync(f);
   });
 });
 
