@@ -214,6 +214,10 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 
 **Rule:** Opus where the orchestrator itself resolves ambiguity; Sonnet where it executes a defined sequence. **If** a Sonnet orchestrator starts skipping Failure Path branches or mis-routing verify gaps → escalate to Opus.
 
+**Reasoning depth — default `medium`** for every orchestrator (Sonnet or Opus). Orchestration is procedural — verdict extraction, worst-of-N verdict computation, gate verification, failure-path branching — not deep reasoning. Higher Sonnet thinking _worsens_ inlining drift (deeper reflection surfaces the "I could just do this myself" temptation): correct escalation on observed drift is `sonnet/medium → opus/medium`, NEVER `sonnet/medium → sonnet/high`. Reserve `high` only for one-off debugging of a step that consistently mis-extracts verdicts or malforms `status.jsonl`.
+
+**Inlining-drift risk.** Sonnet is slightly more prone than Opus to doing a subagent's work itself when the task looks tractable (especially review / scope-check steps); `rules.md` § Orchestrators + the per-command CAUTION block mitigate. If observed, bump that command to Opus (NOT to higher Sonnet reasoning). Cursor Cloud automation sessions run `composer-2.5` for metadata/API plumbing; the agent they LAUNCH runs the orchestrator's model from the table above.
+
 ## Design Phase
 
 <!-- prettier-ignore -->
