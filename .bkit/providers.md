@@ -67,7 +67,7 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 | `tools` | required (e.g. `[Read, Grep, Glob, Write, Edit, Bash, WebFetch, WebSearch]`) | supported (allowlist) + `disallowedTools` denylist | not supported | Identity mapping on Cursor (BAR-113, verified). Dropped on opencode side. |
 | `permissionMode` | required (`acceptEdits` standard) | not supported | not supported | Drop on Cursor and opencode. |
 | `maxTurns` | required | not supported | not supported | Drop on Cursor and opencode. |
-| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `ollama-local/qwen2.5-coder:7b`) | Pinned per-agent. On Claude, locks to a specific model. On Cursor, drives runner via T3. On opencode, provider-prefixed format: `<provider>/<model-id>` (see `prompts.md` § Models, per-provider columns `Nvidia` / `Ollama (Local)` / …). |
+| `model` | required (explicit Claude model ID — see `prompts.md` § Frontmatter Conventions effort→model mapping) | required | required (provider-prefixed, e.g. `ollama-local/qwen3-coder:30b`) | Pinned per-agent. On Claude, locks to a specific model. On Cursor, drives runner via T3. On opencode, provider-prefixed format: `<provider>/<model-id>` (see `prompts.md` § Models, per-provider columns `Nvidia` / `Ollama (Local)` / …). |
 | `readonly` | not supported (use `tools` allowlist) | optional boolean | not supported | Cursor: derive from `tools` (true if no `Edit`/`Write`/`Bash`). |
 | `is_background` | not supported | optional boolean (Cursor 2.4+) | not supported | Default false. Reserve for future opt-in on parallelisable subagents. |
 | `reasoningEffort` | not a frontmatter field (use `effort`) | not supported | `none` / `low` / `medium` / `high` / `max` | opencode-native field. Set by `applyOpencodeAgent` transform from `effort`. |
@@ -95,7 +95,8 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 | `claude-opus-4-7-thinking-high` | $$$ | Previous-gen Opus — fallback / availability hedge |
 | `claude-opus-4-7-thinking-high-fast` | $$$ | Faster 4.7 variant |
 | `claude-4.6-opus-high-thinking` | $$$ | Legacy Opus (older ID word-order) — deep fallback |
-| `claude-4.6-sonnet-thinking` | $$ | Mid-tier reasoning; orchestrator-launch default for build/ship (set via workflow config — not returned by `/v0/models`) |
+| `claude-fable-5-thinking-high` | $$$$ | Fable 5 — tier above Opus. **Available, not adopted** (see `prompts.md` § Effort → Claude model mapping, #205). |
+| `claude-fable-5-thinking-xhigh` | $$$$ | Fable 5, max-thinking variant. Available, not adopted. |
 | `gpt-5.5-high` | $$ | Current GPT — cross-family diversity (plan generation, parallel-pair slot-2) |
 | `gpt-5.5-high-fast` | $$ | Faster 5.5 variant |
 | `gpt-5.4-high` | $$ | Previous-gen GPT — fallback |
@@ -103,7 +104,7 @@ Cursor model assignment per subagent: see § Models below — per-agent lookup, 
 | `gpt-5.3-codex-high` | $$ | Codex-tuned GPT |
 | `gpt-5.3-codex-high-fast` | $$ | Faster codex variant |
 
-Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.** Opus/GPT IDs above verified against the live `/v0/models` response on 2026-06-02 (issue [#205](https://github.com/cbartens/bkit/issues/205)).
+Cloud Agents API catalog: `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` (use agent-specific API key — general account keys can return HTTP 500 on `POST /v0/agents`). **Verify before install — Cursor's available models churn.** Opus/GPT IDs above re-verified against the live `/v0/models` response on **2026-06-10** (issue [#205](https://github.com/cbartens/bkit/issues/205)). The API currently offers **no Sonnet model** — the former `claude-4.6-sonnet-thinking` pin is gone, so build/ship orchestrators use `composer-2.5`; Fable 5 (`claude-fable-5-thinking-high`/`-xhigh`) is now offered but not adopted.
 
 > [!NOTE]
 > **Subagent model IDs — corrected to the live API format (issue [#205](https://github.com/cbartens/bkit/issues/205)).** The prior pin `claude-4.7-opus-high-thinking` used a word-order the Cursor `/v0/models` API never listed (the API uses `claude-opus-4-N-thinking-high`; only the legacy 4.6 model kept the old order). That format mismatch is the likely root of the earlier "may not be in the subagent-allowed set" signal. The `Cursor model` column in `prompts.md` now pins `claude-opus-4-8-thinking-high` / `gpt-5.5-high`, both **confirmed present in the live `/v0/models` response on 2026-06-02**. Residual caveat: the IDE **subagent-runner** surface is technically distinct from the Cloud Agents API, and per-subagent dispatch of these IDs has not yet been empirically smoke-tested via the Cursor `Task` tool — confirm one dispatch per model ID lands before treating the Cursor side as fully validated.
@@ -294,12 +295,14 @@ The installed provider's model catalog changes over time. Look up available mode
 <!-- prettier-ignore -->
 | Provider | Command | Notes |
 | --- | --- | --- |
+| Claude (Anthropic) | `curl https://api.anthropic.com/v1/models -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01"` | Canonical `Claude` column source. No key in-shell → cross-check via the OpenRouter `anthropic/*` mirror. |
+| Cursor | `curl https://api.cursor.com/v0/models -u "$CURSOR_API_KEY:"` | `Cursor` column source. Catalog churns — currently NO Sonnet (Fable 5 + Opus 4.7/4.8 + GPT-5.x + composer-2.5 only). |
 | ollama-local | `curl http://localhost:11434/v1/models` | Local server; models vary by what you have pulled. |
 | NVIDIA NIM | `curl https://integrate.api.nvidia.com/v1/models -H "Authorization: Bearer $NVIDIA_API_KEY"` | Hosted; catalog changes; verify before pinning. |
 | OpenRouter | `curl https://openrouter.ai/api/v1/models -H "Authorization: Bearer $OPENROUTER_API_KEY"` | Aggregator; large catalog. |
 | Gemini | `curl "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"` | Google; model IDs differ from OpenAI format. |
 
-**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen2.5-coder:7b`, `nvidia/moonshotai/kimi-k2.6`). The per-agent pins are the single source of truth in `prompts.md` § Models — **one column per provider** (`Nvidia`, `Ollama (Local)`, …). `bkit install --opencode=<provider>` seeds `.opencode/agents/*.md` from the matching column; providers without a column install a single documented fallback. `ollama-local` is uniform (one model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`); `nvidia` mirrors the Claude tier (opus→`moonshotai/kimi-k2.6`, sonnet→`qwen/qwen3-coder-480b-a35b-instruct`, haiku→`openai/gpt-oss-20b`) with `deepseek-ai/deepseek-v4-pro` swapped in for the convergent-reasoning agents. Tune any agent by editing its `model:` field (or the `prompts.md` column) and running `bkit check`.
+**Model ID format:** opencode uses provider-prefixed IDs in agent frontmatter: `<provider>/<model-id>` (e.g. `ollama-local/qwen3-coder:30b`, `nvidia/moonshotai/kimi-k2.6`). The per-agent pins are the single source of truth in `prompts.md` § Models — **one column per provider** (`Nvidia`, `Ollama (Local)`, …). `bkit install --opencode=<provider>` seeds `.opencode/agents/*.md` from the matching column; providers without a column install a single documented fallback. `ollama-local` is uniform (one model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`); `nvidia` mirrors the Claude tier (opus→`moonshotai/kimi-k2.6`, sonnet→`qwen/qwen3-coder-480b-a35b-instruct`, haiku→`openai/gpt-oss-20b`) with `deepseek-ai/deepseek-v4-pro` swapped in for the convergent-reasoning agents. Tune any agent by editing its `model:` field (or the `prompts.md` column) and running `bkit check`.
 
 **Consumer model overrides (upgrade-safe):** `.bkit/prompts.md` installs as a marker-managed file (like `rules.md`) — bkit refreshes everything inside `bkit:start`/`bkit:end` on `bkit upgrade`; the `## Model Overrides` section **below** `bkit:end` is consumer-owned and preserved. To pin a different model for a specific agent on a specific host/provider, add a row there — list ONLY the agents you want to change:
 

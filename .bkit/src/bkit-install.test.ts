@@ -1036,11 +1036,11 @@ describe("parseOpencodeModelLookup", () => {
   });
 
   it("parses the ollama-local model column from inline table string", () => {
-    const content = `# S\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Role |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5-coder:7b\` | \`medium\` | task exec |\n`;
+    const content = `# S\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Role |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen3-coder:30b\` | \`medium\` | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-opencode-lookup.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseOpencodeModelLookup(tmp);
-    expect(lookup.get("test-agent")).toBe("ollama-local/qwen2.5-coder:7b");
+    expect(lookup.get("test-agent")).toBe("ollama-local/qwen3-coder:30b");
     fs.rmSync(tmp);
   });
 
@@ -1061,7 +1061,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama-local");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
-      expect(model).toBe("ollama-local/qwen2.5-coder:7b");
+      expect(model).toBe("ollama-local/qwen3-coder:30b");
     }
   });
 
