@@ -40,3 +40,5 @@
 {"type":"step-done","workflow":"build","step":5,"name":"Execute Sub-Plan 5","parentSha":"9b3bf2047c3119ab79191c1e35c599fb48c42e65","verdict":"PASS","failures":0,"at":"2026-06-10T01:49:28Z","strategy":"STANDARD"}
 {"type":"step-done","workflow":"build","step":"5-verify","name":"Plan Verify Sub-Plan 5","verdict":"PASS","failures":0,"attempt":1,"subPlan":5,"strategy":"STANDARD","parentSha":"82b5800b4ac433e8a55f3ee63d95b34ec9cac9b0","at":"2026-06-10T02:10:18Z"}
 {"type":"step-done","workflow":"build","step":6,"name":"Holistic Plan Verify","verdict":"PASS","failures":0,"attempt":1,"strategy":"STANDARD","parentSha":"201fd70d9f4ae652cb13125275ce6893b5d43755","at":"2026-06-10T02:12:44Z"}
+{"type":"step-done","workflow":"build","step":7,"name":"Build Challenge","verdict":"CONCERNS","failures":0,"attempt":1,"strategy":"STANDARD","parentSha":"d3a744c8b342058beea423d875d937b6f016e59e","at":"2026-06-10T02:23:09Z"}
+{"type":"step-done","workflow":"build","step":8,"name":"Reconcile","verdict":"CONCERNS","failures":0,"attempt":1,"strategy":"STANDARD","parentSha":"d3a744c8b342058beea423d875d937b6f016e59e","at":"2026-06-10T02:23:09Z"}
