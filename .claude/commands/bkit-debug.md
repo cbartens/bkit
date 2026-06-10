@@ -26,7 +26,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
-> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
+> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev`/`main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}`/`fix/{FID}` branch ONLY (the Step 2 `git rebase origin/dev` rewrites SHAs, so a plain push is non-fast-forward; mirrors `rules.md` § Force push). Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
 
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
@@ -73,7 +73,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip build] bkit [skip ci]"`.
-10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on the tracker.
+10. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — if push fails, do not claim success on the tracker.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
@@ -640,7 +640,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      esac
    fi
    ```
-3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+3. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
 4. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
@@ -676,7 +676,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
-5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+5. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
 6. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:
    ```comment
@@ -743,7 +743,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   git push origin "$(git branch --show-current)"
+   B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
 4. Capture branch state:
    ```bash
@@ -791,7 +791,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
      echo "HEAD-Subject Assertion FAILED: create-pr HEAD message contains a CI-suppressing token." >&2; exit 1
    fi
-   git push origin "$(git branch --show-current)"
+   B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
 10. 
     No issue-state change.
