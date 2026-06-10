@@ -1271,7 +1271,12 @@ export function runOpencodeModule(ctx: ModuleContext): void {
           return (
             `  1. Ollama runs locally — no API key needed.\n` +
             `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
-            `  3. Pull models you want to use: \`ollama pull qwen2.5:14b\`.\n`
+            `  3. Pull the seeded model: \`ollama pull qwen2.5-coder:7b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
+            `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
+            `  5. Memory-safe server config (esp. laptops / fanless machines): keep ONE model resident and cap the KV cache:\n` +
+            `       launchctl setenv OLLAMA_MAX_LOADED_MODELS 1   # never hold 2+ models (avoids swap thrash)\n` +
+            `       launchctl setenv OLLAMA_KEEP_ALIVE 2m         # unload sooner after idle\n` +
+            `     Restart the Ollama app after setting these. Also cap context per agent (num_ctx 8192-16384) — KV cache scales linearly with it.\n`
           );
         }
         return (
