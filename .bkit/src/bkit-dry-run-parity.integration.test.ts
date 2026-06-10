@@ -87,7 +87,7 @@ runParityCheck(new Set(["core"]), "core");
 function makeCloudModuleCtx(
   dryRun: boolean,
   ws: WriteSet,
-  cloudVariant: "claude" | "cursor",
+  cloudVariant: CloudVariant,
 ): ModuleContext {
   return {
     dryRun,
@@ -102,7 +102,7 @@ function makeCloudModuleCtx(
     ws,
     logPrefix: dryRun ? "[bkit-check]" : "[bkit-install]",
     postDispatch: [],
-    issueTracker: cloudVariant === "claude" ? "github" : "linear",
+    issueTracker: cloudVariant === "cursor" ? "linear" : "github",
     cloudVariant,
   };
 }
@@ -120,8 +120,8 @@ describe("check ≡ install writeset parity — cloud=claude (dry-run parity, T1
     const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
 
     expect(checkPaths).toEqual(installPaths);
-    // cloud=claude ships bkit-auto.yml + cloud-bootstrap.sh (not .cursor/*)
-    expect(installPaths.some((p) => p.includes("bkit-auto.yml"))).toBe(true);
+    // cloud=claude ships bkit-cloud.yml + cloud-bootstrap.sh (not .cursor/*)
+    expect(installPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(true);
     expect(installPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(true);
     expect(installPaths.some((p) => p.includes("Dockerfile"))).toBe(false);
   });
@@ -140,10 +140,30 @@ describe("check ≡ install writeset parity — cloud=cursor (dry-run parity, T1
     const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
 
     expect(checkPaths).toEqual(installPaths);
-    // cloud=cursor ships .cursor/Dockerfile + .cursor/environment.json (not bkit-auto.yml)
+    // cloud=cursor ships .cursor/Dockerfile + .cursor/environment.json (not bkit-cloud.yml)
     expect(installPaths.some((p) => p.includes("Dockerfile"))).toBe(true);
     expect(installPaths.some((p) => p.includes("environment.json"))).toBe(true);
-    expect(installPaths.some((p) => p.includes("bkit-auto.yml"))).toBe(false);
+    expect(installPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(false);
+  });
+});
+
+describe("check ≡ install writeset parity — cloud=opencode (dry-run parity, #245)", () => {
+  it("check --cloud=opencode writeset ≡ install --cloud=opencode writeset", () => {
+    const cwd = process.cwd();
+
+    const wsCheck = { writes: [] } as WriteSet;
+    dispatchModules(new Set(["core", "cloud"]), makeCloudModuleCtx(true, wsCheck, "opencode"));
+    const checkPaths = wsCheck.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+    const wsInstall = { writes: [] } as WriteSet;
+    dispatchModules(new Set(["core", "cloud"]), makeCloudModuleCtx(false, wsInstall, "opencode"));
+    const installPaths = wsInstall.writes.map((e) => path.relative(cwd, e.path)).sort();
+
+    expect(checkPaths).toEqual(installPaths);
+    // cloud=opencode ships bkit-cloud.yml only (no bootstrap.sh, no cursor files)
+    expect(installPaths.some((p) => p.includes("bkit-cloud.yml"))).toBe(true);
+    expect(installPaths.some((p) => p.includes("cloud-bootstrap.sh"))).toBe(false);
+    expect(installPaths.some((p) => p.includes("Dockerfile"))).toBe(false);
   });
 });
 

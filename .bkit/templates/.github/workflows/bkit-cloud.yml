@@ -1,7 +1,15 @@
-name: bkit-auto
+name: bkit-cloud
 
-# Phase-routed cloud-agent workflow (issue #119). A single workflow runs ANY bkit
-# phase inside a fresh Claude Code session on the runner via claude-code-action.
+# Phase-routed cloud-agent workflow (issue #119 + #245). A single workflow carries
+# TWO dispatch jobs — `claude` (via claude-code-action@v1) and `opencode` (via the
+# opencode CLI `run` subcommand). Both run the same `/bkit-auto <phase> <arg>`
+# orchestrator against the committed `.claude/` / `.opencode/` config respectively.
+#
+# RUNTIME GATING — secret-presence auto-detect:
+#   - ANTHROPIC_API_KEY set  → claude job runs.
+#   - OPENCODE_PROVIDER_KEY set → opencode job runs.
+#   Both can run on one event (additive); a missing secret makes that job a no-op
+#   (near-instant exit, zero billable runner minutes).
 #
 # Phase 1 wires two trigger surfaces:
 #   - workflow_run (CI completion on feat/**): success -> ship, failure -> debug
@@ -10,18 +18,10 @@ name: bkit-auto
 #     design/plan/build are smoke-test entry points here until phase 2 wires tracker
 #     webhooks (Linear bridge + native GitHub `issues: labeled`).
 #
-# The job body is phase-agnostic: it resolves PHASE + a brief-context arg (PR for the
-# CI-driven ship/debug path, issue number for dispatched runs), then invokes the
-# mirrored `/bkit-auto` orchestrator. The orchestrator ingests the brief from the
-# tracker (issue description + comments, MCP-only, most-recent-wins) and routes to the
-# matching phase skill. Cursor consumers configure the equivalent trigger in the Cursor
-# cloud agents dashboard — this YAML is the Claude half only.
-#
-# Required secrets: ANTHROPIC_API_KEY (always). The Claude GitHub App is required —
-# run `/install-github-app` (Claude Code CLI) once to install the App on your repo;
-# `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`).
-# GH_BKIT_TOKEN is package-install scoped and has no access to consumer repos, so
-# this workflow does not use it.
+# Required secrets (claude job):  ANTHROPIC_API_KEY + Claude GitHub App (one-time
+#   `/install-github-app` — grants `id-token: write` OIDC for claude-code-action@v1).
+# Required secrets (opencode job): OPENCODE_PROVIDER_KEY (any provider key the
+#   committed .opencode/opencode.json references; fan-out maps it to known env var names).
 # Required tracker label on the issue: `bkit:auto` (opt-in) for the CI-driven path.
 # Docs: bkit's cloud.md § Post-CI auto-routing.
 
@@ -73,20 +73,15 @@ concurrency:
   group: bkit-auto-${{ inputs.issue || github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
-permissions:
-  # contents: write — the dispatched phase commits + pushes its single per-run
-  # status.json update to `dev` with `[skip ci]` (BAR-187 canonical pattern).
-  contents: write
-  pull-requests: write
-  issues: write
-  actions: read
-  # id-token: write — required for claude-code-action@v1 to authenticate as the
-  # Claude GitHub App via OIDC (getOidcToken). Without this the action fails at
-  # boot: "Could not fetch an OIDC token … add id-token: write".
-  id-token: write
-
 jobs:
+  # ---------------------------------------------------------------------------
+  # claude job — dispatch via claude-code-action@v1 (ANTHROPIC_API_KEY required).
+  # Runs only when ANTHROPIC_API_KEY is set (first step gates via output).
+  # OIDC auth via Claude GitHub App (id-token: write); requires one-time
+  # `/install-github-app` in the consumer repo.
+  # ---------------------------------------------------------------------------
   run:
+    name: claude (${{ github.event_name }})
     # CI-driven runs fire only on terminal CI conclusions (skip cancelled / skipped).
     # Free-tier gate: CI-driven runs additionally require 'bkit [auto route]' in the
     # head commit message — zero runner minutes if the marker is absent (no opted-in
@@ -100,10 +95,32 @@ jobs:
       )
     # bkit:end auto-route-gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      # id-token: write — required for claude-code-action@v1 to authenticate as the
+      # Claude GitHub App via OIDC (getOidcToken). Without this the action fails at
+      # boot: "Could not fetch an OIDC token … add id-token: write".
+      id-token: write
     steps:
+      - name: Check ANTHROPIC_API_KEY
+        id: gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::ANTHROPIC_API_KEY not set — claude job no-op."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Tag-only pin (no SHA) — the bkit-shipped `renovate.json5` fences this file off
       # from consumer-side Renovate; new SHAs arrive via `bkit install`. See issue #124.
       - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
         with:
           # Check out `dev` at the workspace root: the cloud orchestrator writes its own
           # `cloud` run to dev's `status.jsonl`, and the dispatched phase skill creates its
@@ -117,12 +134,14 @@ jobs:
           token: ${{ github.token }}
 
       - name: Configure git user
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           git config user.name 'bkit-auto[bot]'
           git config user.email 'bkit-auto@users.noreply.github.com'
 
       - name: Resolve phase + brief context
         id: ctx
+        if: steps.gate.outputs.enabled == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
@@ -185,7 +204,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Dispatch /bkit-auto on Claude Code runner
-        if: steps.ctx.outputs.skip != 'true'
+        if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
         uses: anthropics/claude-code-action@v1
         with:
           # Orchestrator contract: `/bkit-auto <phase> <arg>` where <arg> is the open
@@ -198,3 +217,130 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GH_TOKEN: ${{ github.token }}
+
+  # ---------------------------------------------------------------------------
+  # opencode job — dispatch via `opencode run` CLI (OPENCODE_PROVIDER_KEY required).
+  # Runs only when OPENCODE_PROVIDER_KEY is set (first step gates via output).
+  # The committed .opencode/opencode.json provides provider config + model pins —
+  # no model is hard-coded in this YAML. No OIDC / Claude identity.
+  # OPENCODE_PROVIDER_KEY is fanned out to all known provider env var names so the
+  # opencode.json ${VAR} reference resolves regardless of which provider is installed.
+  # ---------------------------------------------------------------------------
+  opencode:
+    name: opencode (${{ github.event_name }})
+    # bkit:start auto-route-gate
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (
+      (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure')
+      && contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')
+      )
+    # bkit:end auto-route-gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    steps:
+      - name: Check OPENCODE_PROVIDER_KEY
+        id: gate
+        env:
+          OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+        run: |
+          if [ -n "$OPENCODE_PROVIDER_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::OPENCODE_PROVIDER_KEY not set — opencode job no-op."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Configure git user
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          git config user.name 'bkit-auto[bot]'
+          git config user.email 'bkit-auto@users.noreply.github.com'
+
+      - name: Resolve phase + brief context
+        id: ctx
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          IN_PHASE: ${{ inputs.phase }}
+          IN_ISSUE: ${{ inputs.issue }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            PHASE="$IN_PHASE"
+            ARG="$IN_ISSUE"
+            FID="$IN_ISSUE"
+          else
+            case "$CONCLUSION" in
+              success) PHASE=ship ;;
+              failure) PHASE=debug ;;
+              *) echo "::notice::Non-terminal CI conclusion '$CONCLUSION' — no-op exit."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+            esac
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --base dev --state open --json number --jq '.[0].number // empty')
+            if [ -z "$PR_NUMBER" ]; then
+              echo "::notice::No open PR for branch $BRANCH — no-op exit."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ARG="$PR_NUMBER"
+
+            # bkit:start shared-deriv
+            PR_BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body 2>/dev/null || echo "")
+            ISSUE=$(echo "$PR_BODY" | grep -oE 'bkit:issue=#[0-9]+' | sed 's/bkit:issue=#//' | head -1 || true)
+            FID=$(echo "$PR_BODY" | grep -oE 'bkit:fid=[^[:space:]>]+' | sed 's/bkit:fid=//' | head -1 || true)
+            if [ -z "$ISSUE" ] || [ -z "$FID" ]; then
+              FID=$(echo "$BRANCH" | sed 's|^feat/||' | grep -oE '^[0-9]+|^[a-z]+-[0-9]+' | head -1)
+              ISSUE="$FID"
+            fi
+            if [ -z "$FID" ] || [ -z "$ISSUE" ]; then
+              echo "::notice::Cannot derive FID/ISSUE for branch $BRANCH — no-op exit (fail-safe)."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            ISSUE_LABELS=$(gh issue view "$ISSUE" --json labels --jq '[.labels[].name] | join(",")' 2>/dev/null || echo "")
+            if ! echo "$ISSUE_LABELS" | grep -q 'bkit:auto'; then
+              echo "::notice::Issue #$ISSUE no longer carries bkit:auto — no-op exit (kill switch)."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # bkit:end shared-deriv
+          fi
+          {
+            echo "skip=false"
+            echo "phase=$PHASE"
+            echo "arg=$ARG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install opencode
+        if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+
+      - name: Dispatch /bkit-auto on opencode runner
+        if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Fan out the generic OPENCODE_PROVIDER_KEY to all known provider env var names.
+          # The committed .opencode/opencode.json references one of these (e.g. ${NVIDIA_API_KEY});
+          # whichever it references will be set. No Claude identity leak — ANTHROPIC_API_KEY is absent.
+          NVIDIA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          GEMINI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+        run: |
+          opencode run "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"

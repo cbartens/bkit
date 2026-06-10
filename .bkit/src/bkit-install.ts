@@ -1170,8 +1170,8 @@ async function main() {
     }
 
     // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
-    // renders bkit-auto.yml the same way install does (byte-identical, no drift fight).
-    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-auto.yml");
+    // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
+    const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
     let upgradeTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
     try {
       const pkg = JSON.parse(
@@ -1199,7 +1199,7 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
-            // bkit-auto.yml is rendered tracker-conditional on install (#138) — the raw
+            // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
             // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
             // so upgrade emits byte-identical output (install/upgrade can never disagree).
             const contentOverride =
@@ -1217,6 +1217,19 @@ async function main() {
         }
       };
       collectTemplates(tplRoot, "");
+    }
+
+    // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
+    // Consumers who have the old file get it removed so no orphan lingers.
+    const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
+    if (fs.existsSync(oldAutoWorkflow)) {
+      const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
+      console.log(
+        `${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`,
+      );
+      if (!upgradeFlags.dryRun) {
+        fs.rmSync(oldAutoWorkflow, { force: true });
+      }
     }
 
     // Markered-text templates managed on upgrade are token-free, but resolve real
@@ -1380,11 +1393,12 @@ async function main() {
   }
 
   // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
-  // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
+  // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
+  // cloud=cursor requires tracker=linear.
   // Mismatch is a hard error — checked BEFORE any package.json write so no state
   // is recorded on mismatch ("no files written on hard error" invariant).
   if (cloudVariant !== null && modules.has("cloud")) {
-    const requiredTracker: IssueTracker = cloudVariant === "claude" ? "github" : "linear";
+    const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
     if (issueTracker !== requiredTracker) {
       console.error(
         `[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
@@ -1392,6 +1406,16 @@ async function main() {
           (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
             ? `Set the tracker first: bkit install --tracker=${requiredTracker} --cloud=${cloudVariant}`
             : `Use the matching cloud variant or reconfigure the tracker with --force.`),
+      );
+      process.exit(1);
+    }
+    // cloud=opencode additionally requires the local opencode host to be installed first
+    // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
+    if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+      console.error(
+        `[bkit] --cloud=opencode requires the local opencode host to be installed first.\n` +
+          `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia, --opencode=openrouter)\n` +
+          `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
       );
       process.exit(1);
     }

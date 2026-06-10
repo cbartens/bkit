@@ -18,7 +18,7 @@ export type ModuleFlag =
 export type { IssueTracker };
 
 /** Cloud-agent variant chosen via `--cloud=<variant>`. */
-export const CLOUD_VARIANTS = ["claude", "cursor"] as const;
+export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"] as const;
 export type CloudVariant = (typeof CLOUD_VARIANTS)[number];
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
@@ -91,7 +91,7 @@ const MODULE_FLAGS = new Set<ModuleFlag>([
 // `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
 // this path explicitly opt out of bkit's Renovate recommendation; installing both
 // opens competing PRs against the same packages. Rationale (cloud): the
-// `bkit-auto.yml` workflow is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY
+// `bkit-cloud.yml` workflow is inert without ANTHROPIC_API_KEY / OPENCODE_PROVIDER_KEY
 // secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
 // and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
 // a default. See issue #119 ("Managed Cloud Agents").
@@ -434,7 +434,7 @@ Module flags (composable — same for install and uninstall):
                   IS removed by uninstall --full.
   --auto=claude   Install Claude cloud-agent (auto-dispatch) integration (opt-in — NOT in
                   install --full; IS removed by uninstall --full). Requires tracker=github.
-                  Ships: .github/workflows/bkit-auto.yml + .claude/hooks/cloud-bootstrap.sh.
+                  Ships: .github/workflows/bkit-cloud.yml + .claude/hooks/cloud-bootstrap.sh.
                   Requires ANTHROPIC_API_KEY repo secret and the Claude GitHub App
                   (run /install-github-app once). Records bkit.cloudAgents=claude.
   --auto=cursor   Install Cursor cloud-agent integration (opt-in). Requires tracker=linear.

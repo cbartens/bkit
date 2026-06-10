@@ -1134,7 +1134,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   After merging, push to a feature branch and verify the workflow runs to
   green before merging to your default branch.
 `;
-// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-auto.yml`
+// CI_ROUTER_YML_MERGE_INSTRUCTIONS removed — `.github/workflows/bkit-cloud.yml`
 // is now Tier 1 canonical-overwrite. The YAML is pure plumbing; all routing
 // logic lives in the mirrored slash-command orchestrator. No consumer-side
 // customisation surface, so no merge instructions are needed.
@@ -1457,7 +1457,7 @@ export function runCiModule(ctx) {
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
     }
-    // bkit-auto.yml is no longer shipped by `--ci`. Post-CI auto-routing is
+    // bkit-cloud.yml is no longer shipped by `--ci`. Post-CI auto-routing is
     // now opt-in via `bkit install --cloud` (see `runCloudModule` below). The
     // router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
     // Actions write permissions, and (Cursor half) a dashboard trigger — and it
@@ -1999,7 +1999,7 @@ export function runDependabotModule(ctx) {
 // so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
 //   cloud=claude (tracker=github):
-//   - `.github/workflows/bkit-auto.yml`   — phase-routed GitHub Action; requires
+//   - `.github/workflows/bkit-cloud.yml`   — phase-routed GitHub Action; requires
 //        ANTHROPIC_API_KEY + Claude GitHub App (id-token: write for OIDC auth).
 //   - `.claude/hooks/cloud-bootstrap.sh`   — Claude Code on the web SessionStart install
 //        hook (Tier 2 markered; no-op unless CLAUDE_CODE_REMOTE=true).
@@ -2011,11 +2011,11 @@ export function runDependabotModule(ctx) {
 //
 // Variant constraints are enforced in bkit-install.ts before dispatch (tracker mismatch
 // = hard error). The context's cloudVariant carries the chosen variant.
-// Render the bkit-auto.yml template. The template is GitHub-only (cloud=claude
-// requires tracker=github; the Linear cloud path is Cursor-native via cloud=cursor).
-// The tracker parameter is accepted for interface stability but not branched on —
-// any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty (should be none
-// after T1.1, but this guard prevents accidental sentinel leakage).
+// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude and
+// cloud=opencode both require tracker=github; the Linear cloud path is Cursor-native
+// via cloud=cursor). The tracker parameter is accepted for interface stability but not
+// branched on — any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty
+// (should be none after T1.1, but this guard prevents accidental sentinel leakage).
 export function renderCloudWorkflow(raw, _tracker) {
     return raw
         .replace(/@@CLOUD_TRACKER_MCP@@/g, () => "mcp__github__*")
@@ -2031,12 +2031,12 @@ export function runCloudModule(ctx) {
     const variant = ctx.cloudVariant ?? "claude";
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
-        // 1. Phase-routed workflow — `.github/workflows/bkit-auto.yml` (Tier 1 canonical).
-        // GitHub-only; id-token: write grants the OIDC token for Claude GitHub App auth.
-        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-auto.yml");
+        // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical).
+        // Carries both claude + opencode jobs; claude job requires id-token: write for OIDC App auth.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
         if (!fs.existsSync(workflowSrc))
             return;
-        const workflowDst = path.join(".github", "workflows", "bkit-auto.yml");
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
         {
             const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
             const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
@@ -2068,9 +2068,9 @@ export function runCloudModule(ctx) {
         setConsumerBkitField("cloudAgents", "claude", dryRun);
         // Advisory — cloud=claude setup checklist (App required; id-token: write).
         advisories.push({
-            id: "bkit-auto-setup",
+            id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.github/workflows/bkit-auto.yml` is in place (Claude cloud half of the phase-routed cloud workflow). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
@@ -2078,7 +2078,7 @@ export function runCloudModule(ctx) {
                 "  - Add `ANTHROPIC_API_KEY` to repo secrets (Settings → Secrets and variables → Actions). Used by `claude-code-action@v1`.\n" +
                 "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
-                "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-auto.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
+                "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
                 "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).",
         });
         // Advisory — cloud env scaffolding (Claude half).
@@ -2097,9 +2097,46 @@ export function runCloudModule(ctx) {
                 "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
         });
     }
+    else if (variant === "opencode") {
+        // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml, no OIDC) ---
+        // 3. Phase-routed workflow — same bkit-cloud.yml as cloud=claude.
+        // The opencode job is already in the file; no separate template needed.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
+        if (!fs.existsSync(workflowSrc))
+            return;
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
+        {
+            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
+            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
+            if (current !== rendered) {
+                ws.writes.push({ path: workflowDst, action: "write" });
+                if (!dryRun) {
+                    ensureDir(path.dirname(workflowDst));
+                    fs.writeFileSync(workflowDst, rendered, "utf-8");
+                }
+                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
+            }
+        }
+        // Record the variant.
+        setConsumerBkitField("cloudAgents", "opencode", dryRun);
+        // Advisory — cloud=opencode setup checklist.
+        advisories.push({
+            id: "bkit-cloud-setup",
+            severity: "advisory",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
+            action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
+                "REQUIRED ONE-TIME SETUP:\n" +
+                "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your provider API key (e.g. NVIDIA NIM key, OpenRouter key, Gemini key). The workflow maps this one secret to all known provider env var names (`NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`) so the `.opencode/opencode.json` `${VAR}` reference resolves correctly.\n" +
+                "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
+                "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
+                "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
+                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.",
+        });
+    }
     else {
         // --- cloud=cursor: Linear-tracker path ---
-        // 3. Cursor Background Agent Dockerfile — Tier 2 markered.
+        // 4. Cursor Background Agent Dockerfile — Tier 2 markered.
         {
             const src = path.join(templates, ".cursor", "Dockerfile");
             const dst = ".cursor/Dockerfile";
@@ -2111,7 +2148,7 @@ export function runCloudModule(ctx) {
                 }
             }
         }
-        // 4. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
+        // 5. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
         {
             const src = path.join(templates, ".cursor", "environment.json");
             const dst = ".cursor/environment.json";
@@ -2130,7 +2167,7 @@ export function runCloudModule(ctx) {
         setConsumerBkitField("cloudAgents", "cursor", dryRun);
         // Advisory — cloud=cursor setup checklist.
         advisories.push({
-            id: "bkit-auto-setup",
+            id: "bkit-cloud-setup",
             severity: "advisory",
             detect: "`.cursor/Dockerfile` and `.cursor/environment.json` are in place (Cursor cloud scaffolding). The Cursor Background Agent trigger is configured in the Cursor cloud agents dashboard — bkit cannot automate that step.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +

@@ -102,7 +102,7 @@ export function runUpgrade(candidates, options) {
             continue;
         }
         const absolutePath = path.join(cwd, relPath);
-        // `contentOverride` (e.g. the tracker-rendered bkit-auto.yml, #138) wins over the
+        // `contentOverride` (e.g. the tracker-rendered bkit-cloud.yml, #138) wins over the
         // raw template so upgrade emits the same bytes install would.
         const templateContent = contentOverride ?? fs.readFileSync(templatePath, "utf-8");
         // Resolve the write strategy the SAME way `bkit install` would — so install and

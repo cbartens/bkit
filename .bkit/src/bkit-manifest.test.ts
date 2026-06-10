@@ -9,6 +9,7 @@ import {
   getManagedPackageJsonKeys,
   CLOUD_MANIFEST_CLAUDE,
   CLOUD_MANIFEST_CURSOR,
+  CLOUD_MANIFEST_OPENCODE,
   OPENCODE_MANIFEST,
   parseCloudAgents,
   type ManifestEntry,
@@ -20,9 +21,9 @@ import {
 // Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
 // ---------------------------------------------------------------------------
 
-describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-auto.yml + cloud-bootstrap.sh", () => {
-  it("contains bkit-auto.yml as byte-equal-text", () => {
-    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-auto.yml");
+describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-cloud.yml + cloud-bootstrap.sh", () => {
+  it("contains bkit-cloud.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_CLAUDE.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
     expect(entry).toBeDefined();
     expect(entry!.format).toBe("byte-equal-text");
     expect(entry!.module).toBe("cloud");
@@ -42,7 +43,7 @@ describe("CLOUD_MANIFEST_CLAUDE — cloud=claude variant owns bkit-auto.yml + cl
     ).toBeUndefined();
   });
 
-  it("contains exactly 2 entries (bkit-auto.yml + cloud-bootstrap.sh)", () => {
+  it("contains exactly 2 entries (bkit-cloud.yml + cloud-bootstrap.sh)", () => {
     expect(CLOUD_MANIFEST_CLAUDE.length).toBe(2);
   });
 });
@@ -63,9 +64,9 @@ describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile
     expect(entry!.module).toBe("cloud");
   });
 
-  it("does NOT contain bkit-auto.yml or cloud-bootstrap.sh (claude variant only)", () => {
+  it("does NOT contain bkit-cloud.yml or cloud-bootstrap.sh (claude/opencode variant only)", () => {
     expect(
-      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-auto.yml"),
+      CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".github/workflows/bkit-cloud.yml"),
     ).toBeUndefined();
     expect(
       CLOUD_MANIFEST_CURSOR.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
@@ -74,6 +75,28 @@ describe("CLOUD_MANIFEST_CURSOR — cloud=cursor variant owns .cursor/Dockerfile
 
   it("contains exactly 2 entries (Dockerfile + environment.json)", () => {
     expect(CLOUD_MANIFEST_CURSOR.length).toBe(2);
+  });
+});
+
+describe("CLOUD_MANIFEST_OPENCODE — cloud=opencode variant owns bkit-cloud.yml (same file as claude)", () => {
+  it("contains bkit-cloud.yml as byte-equal-text", () => {
+    const entry = CLOUD_MANIFEST_OPENCODE.find(
+      (e) => e.path === ".github/workflows/bkit-cloud.yml",
+    );
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.module).toBe("cloud");
+  });
+
+  it("does NOT contain cloud-bootstrap.sh (claude only) or cursor files", () => {
+    expect(
+      CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".claude/hooks/cloud-bootstrap.sh"),
+    ).toBeUndefined();
+    expect(CLOUD_MANIFEST_OPENCODE.find((e) => e.path === ".cursor/Dockerfile")).toBeUndefined();
+  });
+
+  it("contains exactly 1 entry (bkit-cloud.yml only)", () => {
+    expect(CLOUD_MANIFEST_OPENCODE.length).toBe(1);
   });
 });
 
@@ -88,6 +111,10 @@ describe("parseCloudAgents — value space and back-compat", () => {
 
   it("parses 'cursor' → 'cursor'", () => {
     expect(parseCloudAgents("cursor")).toBe("cursor");
+  });
+
+  it("parses 'opencode' → 'opencode'", () => {
+    expect(parseCloudAgents("opencode")).toBe("opencode");
   });
 
   it("parses 'none' → 'none'", () => {
@@ -248,11 +275,12 @@ describe("getInstallManifest", () => {
     ).toBeUndefined();
   });
 
-  it("cloud manifest includes the phase-routed bkit-auto.yml workflow (renamed from bkit-ci-router — #119)", () => {
+  it("cloud manifest includes the phase-routed bkit-cloud.yml workflow (renamed from bkit-auto.yml — #245)", () => {
     const entries = getInstallManifest(["cloud"]);
-    const wf = entries.find((e) => e.path === ".github/workflows/bkit-auto.yml");
+    const wf = entries.find((e) => e.path === ".github/workflows/bkit-cloud.yml");
     expect(wf).toBeDefined();
     expect(wf!.format).toBe("byte-equal-text");
+    expect(entries.find((e) => e.path === ".github/workflows/bkit-auto.yml")).toBeUndefined();
     expect(entries.find((e) => e.path === ".github/workflows/bkit-ci-router.yml")).toBeUndefined();
   });
 });

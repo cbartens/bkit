@@ -116,21 +116,24 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-auto.yml`
+ * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-cloud.yml`
  *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
  * - `cursor`  — `bkit install --cloud=cursor` installed `.cursor/Dockerfile`
  *               + `.cursor/environment.json`. Requires `tracker=linear`.
+ * - `opencode` — `bkit install --cloud=opencode` installed `.github/workflows/bkit-cloud.yml`
+ *               (same file as claude; both jobs coexist, runtime-gated by secret presence).
+ *               Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
- * (`bkit-auto.yml` for claude; `.cursor/Dockerfile` for cursor) is the authoritative
+ * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
  *
  * DECISION-C (AMENDED 2026-05-27): single self-describing field (mirrors `bkit.issueTracker`).
  * Back-compat: legacy `"enabled"` is mapped to `"claude"` by `parseCloudAgents`.
  */
-export const CLOUD_MODES = ["claude", "cursor", "none"] as const;
+export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"] as const;
 export type CloudAgents = (typeof CLOUD_MODES)[number];
 
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
@@ -248,10 +251,16 @@ const CI_MANIFEST: ManifestEntry[] = [
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
 //   cloud=claude (tracker=github):
-//   - bkit-auto.yml         — phase-routed GitHub Action; requires ANTHROPIC_API_KEY +
-//                              Claude GitHub App + Actions write perms.
-//   - cloud-bootstrap.sh     — Claude Code on the web SessionStart install hook
+//   - bkit-cloud.yml        — phase-routed GitHub Action; carries BOTH claude + opencode jobs,
+//                              runtime-gated by secret presence. Requires ANTHROPIC_API_KEY +
+//                              Claude GitHub App + Actions write perms (for claude job).
+//   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).
+//
+//   cloud=opencode (tracker=github):
+//   - bkit-cloud.yml        — same file as cloud=claude; the opencode job runs when
+//                              OPENCODE_PROVIDER_KEY is set. Requires local opencode host
+//                              (`bkit install --opencode=<provider>`). No OIDC.
 //
 //   cloud=cursor (tracker=linear):
 //   - .cursor/Dockerfile     — Cursor Background Agent container toolchain.
@@ -261,8 +270,13 @@ const CI_MANIFEST: ManifestEntry[] = [
 // a single manifest with conditional emission but unconditional uninstall listing would
 // orphan the unused variant's files. See issue #119 ("Managed Cloud Agents").
 export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [
-  { path: ".github/workflows/bkit-auto.yml", format: "byte-equal-text", module: "cloud" },
+  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
   { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
+];
+
+// opencode cloud variant ships the same bkit-cloud.yml (both jobs coexist, runtime-gated).
+export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [
+  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
 ];
 
 export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
@@ -280,7 +294,13 @@ export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
 // physically absent on an install of the other variant, so removing absent files is a no-op.
 // DECISION-D states the split exists for install EMISSION (variant-correct write), not for
 // variant-correct uninstall listing — union removal is the correct uninstall behaviour.
-const CLOUD_MANIFEST: ManifestEntry[] = [...CLOUD_MANIFEST_CLAUDE, ...CLOUD_MANIFEST_CURSOR];
+// bkit-cloud.yml appears in both CLOUD_MANIFEST_CLAUDE and CLOUD_MANIFEST_OPENCODE; the
+// duplicate is deduplicated here so uninstall only attempts one removal.
+const CLOUD_MANIFEST: ManifestEntry[] = [
+  ...CLOUD_MANIFEST_CLAUDE,
+  // CLOUD_MANIFEST_OPENCODE shares bkit-cloud.yml with claude; skip duplicate workflow entry.
+  ...CLOUD_MANIFEST_CURSOR,
+];
 
 // Renovate is opt-in via `bkit install --renovate` — phase-gated against the
 // default branch. NOT included in --full. See issue #123 follow-up.
