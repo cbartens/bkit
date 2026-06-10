@@ -43,6 +43,11 @@
         "mode": "deny"
       },
       {
+        "description": "Allow --force-with-lease (Step 2 rebase companion on personal feat/fix branches). Placed AFTER the force deny so last-match-wins permits it even if the glob matcher treats --force as a prefix; bare --force / -f stay denied above.",
+        "tools": ["Bash(git push --force-with-lease:*)"],
+        "mode": "allow"
+      },
+      {
         "description": "Deny rm -rf on root or home",
         "tools": ["Bash(rm -rf /*)", "Bash(rm -rf ~/*)", "Bash(rm -rf $HOME/*)"],
         "mode": "deny"
