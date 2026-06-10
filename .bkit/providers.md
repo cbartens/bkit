@@ -18,9 +18,11 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | always-on (`--full`) |
 | Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | always-on (`--full`) |
-| opencode | additive (opt-in) | `.opencode/agent/` | `.opencode/command/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
+| opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 
 **Additive host model:** claude and cursor are always-on (included in every `--full` install). opencode is opt-in and additive — it installs alongside claude/cursor, never replacing them. No `--claude` flag exists. Provider selection (`ollama`, `nvidia`, `openrouter`, `gemini`, etc.) is an install-time decision: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
+
+**Single active provider:** bkit manages one provider block in `opencode.json` at a time. Running `bkit install --opencode=ollama` after `bkit install --opencode=nvidia` replaces the managed provider block (nvidia → ollama). If you need multiple providers simultaneously (e.g. ollama for local + nvidia for cloud), manually add the second provider block to `.opencode/opencode.json` — bkit's Tier-2 deep-merge reconverge preserves manually-added keys across upgrades.
 
 Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` config.
 
