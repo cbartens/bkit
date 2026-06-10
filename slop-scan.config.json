@@ -39,6 +39,25 @@
       "rules": {
         "structure.directory-fanout-hotspot": { "enabled": false }
       }
+    },
+    {
+      "files": [".bkit/templates/.opencode/plugin/gateguard.js", ".opencode/plugin/gateguard.js"],
+      "rules": {
+        "defensive.empty-catch": { "enabled": false },
+        "structure.duplicate-function-signatures": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/templates/.claude/hooks/gateguard.cjs", ".claude/hooks/gateguard.cjs"],
+      "rules": {
+        "structure.duplicate-function-signatures": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-gateguard-opencode.test.ts"],
+      "rules": {
+        "defensive.empty-catch": { "enabled": false }
+      }
     }
   ]
 }
