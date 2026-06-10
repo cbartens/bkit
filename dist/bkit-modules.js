@@ -310,6 +310,186 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
         }
     }
 }
+// ---------------------------------------------------------------------------
+// Source-rendered host outputs — agents (.agents/prompts source) and commands
+// (.bkit/workflows source). Extracted from the host module functions so BOTH
+// `bkit install` (via the modules) AND `bkit upgrade` (via renderManagedOutputs)
+// render them identically — a single source of truth that can never diverge.
+//
+// These are bkit-OWNED output files: force-overwritten (installFile), never
+// drift-detected, never consumer config. They are NOT recorded in canonicalHashes
+// (installFile does not touch ws), matching the install path exactly. Each returns
+// the consumer-relative dest paths it wrote (for the upgrade summary).
+// ---------------------------------------------------------------------------
+export function renderClaudeAgentsCommands(ctx) {
+    const { dryRun, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const written = [];
+    const pairs = [
+        [getWorkflowsRoot(), ".claude/commands"],
+        [getPromptsRoot(), ".claude/agents"],
+    ];
+    for (const [src, dest] of pairs) {
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            // Resolve tracker blocks for workflow files; prompts are byte-identical.
+            const transform = dest === ".claude/commands"
+                ? (c) => substituteWorkflow(c, issueTracker).output
+                : null;
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    return written;
+}
+export function renderCursorAgentsCommands(ctx) {
+    const { dryRun, modelLookup, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const written = [];
+    // Commands: tracker block resolution → T1 → T2
+    {
+        const src = getWorkflowsRoot();
+        const dest = ".cursor/commands";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    // Agents: T3
+    {
+        const src = getPromptsRoot();
+        const dest = ".cursor/agents";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyT3(c, modelLookup);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    return written;
+}
+export function renderOpencodeAgentsCommands(ctx) {
+    const { dryRun, opencodeModelLookup, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const written = [];
+    // --- Agents: applyOpencodeAgent ---
+    {
+        const src = getPromptsRoot();
+        const dest = ".opencode/agents";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyOpencodeAgent(c, opencodeModelLookup);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
+        // is a dynamic mirror dir like .claude/agents and .cursor/agents)
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    // --- Commands: tracker substitution + applyOpencodeCommand ---
+    {
+        const src = getWorkflowsRoot();
+        const dest = ".opencode/commands";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => applyOpencodeCommand(substituteWorkflow(c, issueTracker).output);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    return written;
+}
+// ---------------------------------------------------------------------------
+// renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
+// `bkit upgrade` template walk (runUpgrade over .bkit/templates/) does NOT cover
+// (#251): host agents/commands (source-rendered) and the `.bkit/*.md` canonical
+// docs (runBkitDocs). All are bkit-owned, not consumer config, so a version bump
+// must refresh them. `.bkit/prompts.md` is markered → runBkitDocs block-merges it
+// (managed block refreshed, consumer `## Model Overrides` below bkit:end preserved).
+//
+// CRITICAL (#204/#219): docs stay single-source PACKAGE-side and are mirrored from
+// getBkitDocsRoot() — they are NEVER relocated into .bkit/templates/.
+//
+// Doc writes land in ctx.ws (runBkitDocs uses the tier writers) so the caller can
+// refresh their canonicalHashes; agent/command writes are intentionally NOT
+// ws-tracked (installFile), matching install — they never enter canonicalHashes.
+// `modules` should contain only hosts the consumer actually has installed.
+// Returns every consumer-relative path written (for the upgrade summary).
+// ---------------------------------------------------------------------------
+export function renderManagedOutputs(modules, ctx) {
+    const written = [];
+    // Canonical .bkit/*.md docs — always (core is always present once installed).
+    const docsBefore = ctx.ws.writes.length;
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    for (let i = docsBefore; i < ctx.ws.writes.length; i++) {
+        written.push(String(ctx.ws.writes[i].path));
+    }
+    // Host agents/commands — only for hosts the consumer has installed.
+    if (modules.has("claude"))
+        written.push(...renderClaudeAgentsCommands(ctx));
+    if (modules.has("cursor"))
+        written.push(...renderCursorAgentsCommands(ctx));
+    if (modules.has("opencode"))
+        written.push(...renderOpencodeAgentsCommands(ctx));
+    return written;
+}
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
     if (!fs.existsSync(src))
@@ -504,27 +684,10 @@ export function runClaudeModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    const pairs = [
-        [getWorkflowsRoot(), ".claude/commands"],
-        [getPromptsRoot(), ".claude/agents"],
-    ];
-    for (const [src, dest] of pairs) {
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            // Resolve tracker blocks for workflow files; prompts are byte-identical.
-            const transform = dest === ".claude/commands"
-                ? (c) => substituteWorkflow(c, issueTracker).output
-                : null;
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
-        }
-    }
+    // Source-rendered agents/commands (.claude/agents from .bkit/prompts, .claude/commands
+    // from .bkit/workflows). Extracted to renderClaudeAgentsCommands so `bkit upgrade`
+    // re-renders them identically (#251) — bkit-owned output, force-overwritten.
+    renderClaudeAgentsCommands(ctx);
     const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
     // Tier 2 JSON (contained) — deep-containment: settings.json
     // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
@@ -674,43 +837,13 @@ export function runClaudeModule(ctx) {
 // runCursorModule — T1/T2/T3 transforms from .agents/ → .cursor/
 // ---------------------------------------------------------------------------
 export function runCursorModule(ctx) {
-    const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    // Commands: tracker block resolution → T1 → T2
-    {
-        const src = getWorkflowsRoot();
-        const dest = ".cursor/commands";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
-        }
-    }
-    // Agents: T3
-    {
-        const src = getPromptsRoot();
-        const dest = ".cursor/agents";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyT3(c, modelLookup);
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
-        }
-    }
+    // Source-rendered agents/commands (.cursor/agents T3 from .bkit/prompts, .cursor/commands
+    // T1/T2 from .bkit/workflows). Extracted to renderCursorAgentsCommands so `bkit upgrade`
+    // re-renders them identically (#251) — bkit-owned output, force-overwritten.
+    renderCursorAgentsCommands(ctx);
     // Tier 2 JSON (contained) — deep-containment: hooks.json
     // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
     const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
@@ -930,64 +1063,14 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   --- end bkit reference .opencode/opencode.json ---
 `;
 export function runOpencodeModule(ctx) {
-    const { dryRun, opencodeModelLookup, advisories, ws, logPrefix } = ctx;
+    const { dryRun, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
     const provider = ctx.opencodeProvider ?? "ollama-local";
-    // --- Agents: applyOpencodeAgent ---
-    {
-        const src = getPromptsRoot();
-        const dest = ".opencode/agents";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyOpencodeAgent(c, opencodeModelLookup);
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
-        // is a dynamic mirror dir like .claude/agents and .cursor/agents)
-        if (!dryRun && fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
-                }
-            }
-        }
-    }
-    // --- Commands: tracker substitution + applyOpencodeCommand ---
-    {
-        const src = getWorkflowsRoot();
-        const dest = ".opencode/commands";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyOpencodeCommand(substituteWorkflow(c, issueTracker).output);
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        if (!dryRun && fs.existsSync(dest)) {
-            for (const f of fs.readdirSync(dest)) {
-                if (!f.endsWith(".md"))
-                    continue;
-                if (!f.startsWith(BKIT_PREFIX))
-                    continue;
-                if (!sourceSet.has(f)) {
-                    fs.rmSync(path.join(dest, f));
-                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
-                }
-            }
-        }
-    }
+    // Source-rendered agents/commands (.opencode/agents + .opencode/commands). Extracted to
+    // renderOpencodeAgentsCommands so `bkit upgrade` re-renders them identically (#251) —
+    // bkit-owned output, force-overwritten.
+    renderOpencodeAgentsCommands(ctx);
     // --- opencode.json — Tier-2 deep-contained (reconverged on upgrade) ---
     {
         const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");

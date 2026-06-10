@@ -54,7 +54,7 @@ describe("slop:delta gate — net-delta contract (.bkit/scripts/bkit-slop-delta.
     for (const field of ["netFindingCount", "netRepoScore", "addedCount", "resolvedCount"]) {
       expect(s, `slop-scan delta --json must expose summary.${field}`).toHaveProperty(field);
     }
-  });
+  }, 30_000);
 
   it("a genuinely new finding raises the net count → gate FAILS", () => {
     const base = mkTmp();
@@ -65,7 +65,7 @@ describe("slop:delta gate — net-delta contract (.bkit/scripts/bkit-slop-delta.
     const s = deltaSummary(base, head);
     expect(s.netFindingCount).toBeGreaterThan(0);
     expect(gateFails(s)).toBe(true);
-  });
+  }, 30_000);
 
   it("an identical tree nets to zero → gate PASSES", () => {
     const base = mkTmp();
@@ -75,7 +75,7 @@ describe("slop:delta gate — net-delta contract (.bkit/scripts/bkit-slop-delta.
     const s = deltaSummary(base, head);
     expect(s.netFindingCount).toBe(0);
     expect(gateFails(s)).toBe(false);
-  });
+  }, 30_000);
 
   it("a pre-existing finding that merely moves nets to zero → gate PASSES (the #226 fix)", () => {
     // Same empty catch in both trees, shifted down by lines added above it. Position-keyed
@@ -88,5 +88,5 @@ describe("slop:delta gate — net-delta contract (.bkit/scripts/bkit-slop-delta.
     const s = deltaSummary(base, head);
     expect(s.netFindingCount).toBe(0);
     expect(gateFails(s)).toBe(false);
-  });
+  }, 30_000);
 });

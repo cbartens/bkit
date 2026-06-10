@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs, printUsage, OPTIN_MODULES } from "./bkit-cli.js";
-import { dispatchModules, getPkgRoot, renderCloudWorkflow, } from "./bkit-modules.js";
+import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderManagedOutputs, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
@@ -1006,6 +1006,43 @@ function runStatus(cwd, logPrefix) {
     ].filter(Boolean);
     console.log(`${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`);
 }
+/**
+ * Detect which host modules a consumer has installed, by the presence of each host's
+ * source-rendered agents directory. Used by `bkit upgrade` to re-render (#251) only the
+ * hosts the consumer actually opted into — never force-creating an opencode/cursor tree.
+ */
+function detectInstalledHostModules(cwd) {
+    const mods = new Set();
+    if (fs.existsSync(path.join(cwd, ".claude", "agents")))
+        mods.add("claude");
+    if (fs.existsSync(path.join(cwd, ".cursor", "agents")))
+        mods.add("cursor");
+    if (fs.existsSync(path.join(cwd, ".opencode", "agents")))
+        mods.add("opencode");
+    return mods;
+}
+/**
+ * Detect the opencode provider id from a consumer's `.opencode/opencode.json`. The
+ * provider block is keyed by id (matching renderOpencodeJson + the --cloud=opencode
+ * constraint check), so the first key IS the provider. Returns null when absent or
+ * unparseable — the caller falls back to the install default so the opencode model
+ * lookup still resolves on upgrade.
+ */
+function detectOpencodeProvider(cwd) {
+    const jsonPath = path.join(cwd, ".opencode", "opencode.json");
+    if (!fs.existsSync(jsonPath))
+        return null;
+    try {
+        const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
+        if (cfg.provider && typeof cfg.provider === "object") {
+            return Object.keys(cfg.provider)[0] ?? null;
+        }
+    }
+    catch {
+        // unparseable opencode.json — fall back to the default provider
+    }
+    return null;
+}
 async function main() {
     const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, force, } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
@@ -1231,20 +1268,80 @@ async function main() {
             cwd: process.cwd(),
             tokens,
         });
+        // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
+        // bkit-managed OUTPUT files install also produces but that are NOT templates — host
+        // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
+        // `.bkit/*.md` canonical docs (runBkitDocs). These are bkit-owned, force-overwritten
+        // output; without this a version bump ships new config but stale prompts/agents/
+        // commands/docs (a consumer would have to re-run `bkit install` to get them). Only the
+        // hosts the consumer installed are re-rendered (detected by their agents dir) so upgrade
+        // never force-creates an opt-in host. `.bkit/prompts.md` is markered → runBkitDocs
+        // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
+        // preserved. Docs stay single-source PACKAGE-side (#204/#219) — never relocated to templates/.
+        const renderModules = detectInstalledHostModules(process.cwd());
+        const renderProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+        // Build the model lookups the SAME way the install dispatch does: DEFAULTS from the
+        // package's .bkit/prompts.md § Models, consumer overrides from the consumer's installed
+        // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
+        let renderModelLookup = new Map();
+        let renderOpencodeModelLookup = new Map();
+        const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+        const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
+        if (fs.existsSync(pkgPromptsMd)) {
+            try {
+                renderModelLookup = parseModelLookup(pkgPromptsMd);
+            }
+            catch {
+                // Not fatal — the cursor render fails per-file if a model is missing
+            }
+            applyModelOverrides(renderModelLookup, "cursor", consumerPromptsMd);
+            if (renderModules.has("opencode")) {
+                try {
+                    renderOpencodeModelLookup = buildOpencodeModelLookup(pkgPromptsMd, renderProvider);
+                }
+                catch {
+                    // Not fatal — the opencode render fails per-file if a model is missing
+                }
+                applyModelOverrides(renderOpencodeModelLookup, renderProvider, consumerPromptsMd);
+            }
+        }
+        const renderWs = { writes: [] };
+        const renderCtx = {
+            dryRun: upgradeFlags.dryRun,
+            tokens: tokens ?? { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
+            modelLookup: renderModelLookup,
+            opencodeModelLookup: renderOpencodeModelLookup,
+            opencodeProvider: renderProvider,
+            advisories: [],
+            ws: renderWs,
+            logPrefix: LOG_PREFIX,
+            postDispatch: [],
+            issueTracker: upgradeTracker,
+            cloudVariant: null,
+        };
+        const rendered = renderManagedOutputs(renderModules, renderCtx);
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
         // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
         // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
         // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
-        // bumps even when every file was a no-op skip.
+        // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs ARE
+        // in canonicalHashes (install records them via runBkitDocs → ws), so feed their writes
+        // in too — keeping install/upgrade `.bkit/version` parity. Agent/command writes are
+        // intentionally untracked (installFile), matching install — they never enter canonicalHashes.
         if (!upgradeFlags.dryRun) {
             const pkgVersion = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")).version;
-            updateCanonicalHashesAfterUpgrade(result, {
+            const renderedDocPaths = renderWs.writes.map((w) => path.relative(process.cwd(), path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path)));
+            updateCanonicalHashesAfterUpgrade({
+                updated: [...result.updated, ...renderedDocPaths],
+                skipped: result.skipped,
+                conflicts: result.conflicts,
+            }, {
                 dryRun: false,
                 cwd: process.cwd(),
                 pinnedVersion: pkgVersion,
             });
         }
-        console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}`);
+        console.log(`${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`);
         // Non-interactive mode: exit non-zero on conflicts
         if (upgradeFlags.nonInteractive && result.conflicts.length > 0) {
             process.exit(1);
