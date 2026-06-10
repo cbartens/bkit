@@ -1050,10 +1050,13 @@ export function runOpencodeModule(ctx) {
                         `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
                         `  3. Pull the seeded model: \`ollama pull qwen2.5-coder:7b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
                         `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
-                        `  5. Memory-safe server config (esp. laptops / fanless machines): keep ONE model resident and cap the KV cache:\n` +
-                        `       launchctl setenv OLLAMA_MAX_LOADED_MODELS 1   # never hold 2+ models (avoids swap thrash)\n` +
-                        `       launchctl setenv OLLAMA_KEEP_ALIVE 2m         # unload sooner after idle\n` +
-                        `     Restart the Ollama app after setting these. Also cap context per agent (num_ctx 8192-16384) — KV cache scales linearly with it.\n`);
+                        `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
+                        `     These are Ollama SERVER env vars (govern the \`ollama serve\` daemon) — they do NOT go in opencode.json. Where to set them:\n` +
+                        `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\` and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
+                        `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\` and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
+                        `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\` and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
+                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); KEEP_ALIVE=2m = unload sooner after idle.\n` +
+                        `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / KEEP_ALIVE values.\n`);
                 }
                 return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
                     `     ${pd.envVar}=<your-api-key>\n` +
