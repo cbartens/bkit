@@ -1061,7 +1061,7 @@ function getInstallingVersion(): string {
       return pkg.version ?? "0.0.0";
     }
   } catch {
-    // best-effort
+    return "0.0.0"; // best-effort: unreadable/garbled package.json
   }
   return "0.0.0";
 }
@@ -1172,7 +1172,7 @@ function detectOpencodeProvider(cwd: string): string | null {
       return Object.keys(cfg.provider)[0] ?? null;
     }
   } catch {
-    // unparseable opencode.json — fall back to the default provider
+    return null; // unparseable opencode.json — fall back to the default provider
   }
   return null;
 }
@@ -1794,8 +1794,8 @@ async function main() {
       const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
       if (deltaHeader) console.log(deltaHeader);
     }
-  } catch {
-    // Non-fatal — changelog header is informational
+  } catch (err) {
+    void err; // Non-fatal — changelog header is informational
   }
   const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
   const banner = formatChecklist(postFindings);
