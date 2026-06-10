@@ -4,7 +4,8 @@
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
     ".github/renovate.json5": "bbd32e18195b64407eb919610454bd4976cc93728a153a1408650f1664237b53",
-    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3"
+    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3",
+    ".opencode/plugin/gateguard.js": "363c3f799dfa104a76910447dbf480ca807924c5b9eacfbbdeeec2389c51b02d"
   },
   "canonicalHashes": {
     "docs/deployments.md": "f5b23da45a0cf8656548beceb83a33f0f22f6f66c69de19ab13280e401428f8e",
@@ -65,6 +66,8 @@
     ".bkit/friction.md": "7cc7937f5921370f38c9ce3151172cb314a61b82690a49097381f65cef6b44e0",
     "scripts/ci/bkit-protect-main.sh": "b9a9191a85170ed33f00443b62c3c3255cc1fc6c413f8ecdad256a030a311d4e",
     "scripts/tooling/slop-delta.sh": "43ed5d0f8bc0ea4060f0cfca62d340f20fdd0bb29f6b6ffde99534ef1427c2b2",
-    ".bkit/bkit-mode.sh": "0e6c5306e92c1e0a396bc355dc70daedc5ecceab5fba6092b91226906b84703f"
+    ".bkit/bkit-mode.sh": "0e6c5306e92c1e0a396bc355dc70daedc5ecceab5fba6092b91226906b84703f",
+    ".opencode/opencode.json": "4f88daa9782142763d4f7e0c76076f69d8b272e8cf882c1214682b7697c7a288",
+    ".opencode/plugin/gateguard.js": "363c3f799dfa104a76910447dbf480ca807924c5b9eacfbbdeeec2389c51b02d"
   }
 }
