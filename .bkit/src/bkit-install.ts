@@ -234,7 +234,7 @@ export function parseModelLookupForColumn(
  * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
  */
 export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
-  return parseModelLookupForColumn(subagentsMdPath, "Cursor model");
+  return parseModelLookupForColumn(subagentsMdPath, "Cursor");
 }
 
 /**
@@ -248,10 +248,19 @@ function tryParseModelLookupForColumn(
   const content = fs.readFileSync(subagentsMdPath, "utf-8");
   const modelsIdx = content.indexOf("## Models");
   if (modelsIdx === -1) return null;
-  const headerLine = content
-    .slice(modelsIdx)
-    .split("\n")
-    .find((l) => l.trim().startsWith("|") && l.includes("name"));
+  // The header row is the first table line in the § Models section (the row
+  // immediately above the `| --- | ... |` separator).
+  const sectionLines = content.slice(modelsIdx).split("\n");
+  let headerLine: string | undefined;
+  for (let i = 0; i < sectionLines.length; i++) {
+    const t = sectionLines[i]!.trim();
+    if (!t.startsWith("|")) continue;
+    const next = (sectionLines[i + 1] ?? "").trim();
+    if (next.startsWith("|") && /^[|\s:-]+$/.test(next)) {
+      headerLine = t;
+      break;
+    }
+  }
   if (!headerLine) return null;
   const headers = headerLine
     .split("|")
@@ -269,23 +278,31 @@ const OPENCODE_PROVIDER_FALLBACK_MODEL: Record<string, string> = {
   gemini: "gemini-2.0-flash",
 };
 
+// Map an opencode provider key → its human-friendly prompts.md § Models column header.
+// The table uses display headers ("Ollama (Local)", "Nvidia"); the install flag uses
+// provider keys ("ollama-local", "nvidia"). Providers absent here have no curated column.
+const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
+  "ollama-local": "Ollama (Local)",
+  nvidia: "Nvidia",
+};
+
 /**
  * Build the per-agent opencode model lookup for the selected provider.
  * Source of truth = prompts.md § Models, which carries one curated column per
- * provider (e.g. "ollama-local model", "nvidia model"). Providers without a
- * column fall back to a single documented default (consumer tunes after install).
- * Header-addressed: finds the "<provider> model" column by header name.
+ * provider ("Ollama (Local)", "Nvidia"). Providers without a column fall back to a
+ * single documented default (consumer tunes after install). Header-addressed.
  */
 export function buildOpencodeModelLookup(
   subagentsMdPath: string,
   provider: string,
 ): Map<string, string> {
-  const curated = tryParseModelLookupForColumn(subagentsMdPath, `${provider} model`);
+  const header = OPENCODE_PROVIDER_COLUMN[provider];
+  const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
   // Uncurated provider: prefix-correct single default for every agent.
   const names =
-    tryParseModelLookupForColumn(subagentsMdPath, "ollama-local model") ??
-    parseModelLookupForColumn(subagentsMdPath, "Claude model");
+    tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
+    parseModelLookupForColumn(subagentsMdPath, "Claude");
   const bare = OPENCODE_PROVIDER_FALLBACK_MODEL[provider] ?? "set-model-id";
   const out = new Map<string, string>();
   for (const name of names.keys()) out.set(name, `${provider}/${bare}`);

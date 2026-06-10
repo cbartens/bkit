@@ -39,7 +39,7 @@ function makeSubagentsMd(
         `| \`${r.name}\` | ${r.cursorModel} | ${r.opencodeModel ?? "ollama-local/test:7b"} | medium | — | test role |`,
     )
     .join("\n");
-  return `# Subagents\n\n## Models\n\n| name | Cursor model | opencode model | Claude effort | Cursor RO | role hint |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
+  return `# Subagents\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Cursor RO | Role |\n| --- | --- | --- | --- | --- | --- |\n${tableRows}\n`;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ describe("parseModelLookup", () => {
   });
 
   it("strips backticks from model values (table cells use backtick-wrapped values)", () => {
-    const content = `# S\n\n## Models\n\n| name | Cursor model | Claude effort | Cursor RO | role hint |\n| --- | --- | --- | --- | --- |\n| \`build-plan\` | \`composer-2.5\` | \`medium\` | — | task exec |\n`;
+    const content = `# S\n\n## Models\n\n| Prompt | Cursor | Effort | Cursor RO | Role |\n| --- | --- | --- | --- | --- |\n| \`build-plan\` | \`composer-2.5\` | \`medium\` | — | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-backtick.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseModelLookup(tmp);
@@ -1034,7 +1034,7 @@ describe("parseOpencodeModelLookup", () => {
   });
 
   it("parses the ollama-local model column from inline table string", () => {
-    const content = `# S\n\n## Models\n\n| name | Cursor model | ollama-local model | Claude effort | role hint |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5-coder:7b\` | \`medium\` | task exec |\n`;
+    const content = `# S\n\n## Models\n\n| Prompt | Cursor | Ollama (Local) | Effort | Role |\n| --- | --- | --- | --- | --- |\n| \`test-agent\` | \`composer-2.5\` | \`ollama-local/qwen2.5-coder:7b\` | \`medium\` | task exec |\n`;
     const tmp = path.join(os.tmpdir(), "test-opencode-lookup.md");
     fs.writeFileSync(tmp, content);
     const lookup = parseOpencodeModelLookup(tmp);
@@ -1099,7 +1099,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
 describe("parseModelLookupForColumn regression — header-addressed", () => {
   it("cursor column resolves to the same values as parseModelLookup (no positional shift)", () => {
     const cursorViaOld = parseModelLookup(".bkit/prompts.md");
-    const cursorViaNew = parseModelLookupForColumn(".bkit/prompts.md", "Cursor model");
+    const cursorViaNew = parseModelLookupForColumn(".bkit/prompts.md", "Cursor");
     expect(cursorViaNew.size).toBe(cursorViaOld.size);
     for (const [name, model] of cursorViaOld) {
       expect(cursorViaNew.get(name)).toBe(model);
