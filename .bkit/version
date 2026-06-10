@@ -4,11 +4,10 @@
     ".cursor/mcp.json": "bef9c267490695dbc897896f61767431c0a8cfd41c2c7ea53ebba70349b39214",
     ".envrc": "725173fa899233cf494394b867b017a95fe7ded6ecaa69d45105ed1cb19ed4cb",
     ".github/renovate.json5": "bbd32e18195b64407eb919610454bd4976cc93728a153a1408650f1664237b53",
-    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3",
-    ".bkit/bkit-mode.sh": "0e6c5306e92c1e0a396bc355dc70daedc5ecceab5fba6092b91226906b84703f"
+    ".claude/hooks/gateguard.cjs": "e44b5553a489723d382a7b1715ac48ff05dad10ad11b60123f06b46dee0bd8c3"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "c58a6613640e199c440fd7d9ddfad2075fd111505da3a4f09ffe7759075f0784",
+    "docs/deployments.md": "f5b23da45a0cf8656548beceb83a33f0f22f6f66c69de19ab13280e401428f8e",
     "docs/testing.md": "d47ea34994c5ad3924e540cd19c99167160b2b7146286f40438bdc3b7c020e83",
     ".claude/settings.json": "9fd0c032b2f5b90c6d793647f736fb01968b22daf2cdd0e5e1e01ad5a357a6df",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
@@ -47,7 +46,7 @@
     ".cursor/hooks.json": "e7daf9720bb6c665c333b6856caf6ed8087b5b6d91abb51a2cc36e8a6314745f",
     "docs/observability.md": "6e53db9598ce16dfa113a7599fec10232d8aadc292fa4e5e073496d91bc2b072",
     "scripts/bkit-set-protection.sh": "46d832823c71a775299a607a4013ef5adeb47bccaf8c1703356b5cb67a728cb5",
-    ".gitignore": "107d4ecfe6e96ef435c08b99d196d6a2867e30b9131c2c1c4049d97adcc40d8e",
+    ".gitignore": "334b5e3ee2b645d514f6950ef46c0582ccc3a1c787b0a16c6dce5d828a9b432e",
     ".cursor/mcp.json": "3303bcc673bb5961b72468158e8a6303a0f363bc0e14b111f3c59977a65b2bff",
     ".envrc": "dd6b15dcb3c81b78219e66acee10cf4ccce377de40989dc151750248031de41f",
     "docs/security.md": "913a13181a21e1f29246c933d31ef9d5afd87b9af7781296a9554bbd194c88fb",
@@ -56,7 +55,7 @@
     "docs/architecture.md": "eed5338d073b2804402da12f9f0b11305ca4ad48b1d821d7cde3d2b40b206b89",
     "docs/completed.md": "9ff38e0cc4aab4793c9ee762d96985190b109fd46d4a642df44b52d4ff44b5e5",
     "docs/decisions.md": "87e074fb26491bb466dafbc739b628079b544bbe6f3825acdf6d231d7b5238fe",
-    "docs/knowledge.md": "ab4c8fb821a938b2874e4f49c1112c33068df16db087b9929b9dbf38909184d0",
+    "docs/knowledge.md": "f0e5fb487f3a87fa31b07d0a1b851272ac30668f2e6b0d8deafa1ccb77fb1ee4",
     "docs/pending.md": "e3de91bab8685bbb88e68d1dd322ff5f5082d1e98550c68bc24f4cb6afbde7f1",
     "docs/technology.md": "afd35fc9735fe21f57ab9e6082d361379adbc76d1fc2256f5fef7248e93aa64d",
     ".github/workflows/bkit-cloud.yml": "98512955244d90efe276aa9543dd729c0ee44ee38a493d602d812fed8e1d10b5",

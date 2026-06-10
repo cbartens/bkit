@@ -72,15 +72,4 @@ Read and execute the matched command file for the current IDE.
 | `Plan` | `.claude/commands/bkit-plan.md` |
 | `Design` | `.claude/commands/bkit-design.md` |
 
-**opencode** (`.opencode/command/` — opt-in, installed via `bkit install --opencode=<provider>`):
-
-<!-- prettier-ignore -->
-| Label | Command |
-| --- | --- |
-| `Ship` | `.opencode/command/bkit-ship.md` |
-| `Debug` | `.opencode/command/bkit-debug.md` |
-| `Build` | `.opencode/command/bkit-build.md` |
-| `Plan` | `.opencode/command/bkit-plan.md` |
-| `Design` | `.opencode/command/bkit-design.md` |
-
 <!-- bkit:end -->
