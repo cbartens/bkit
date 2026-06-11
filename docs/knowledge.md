@@ -612,3 +612,16 @@
 - **Scope:** consumer
 - **Source:** agent
 - **Related:** #236, `.github/workflows/ci.yml`, `.bkit/templates/.cursor/Dockerfile`
+
+## KN-40: opencode zen gateway model IDs come from the live `/zen/v1/models`, not `/docs/zen` (2026-06-12)
+
+- **Category:** agentic
+- **Symptom:** Pinning zen (opencode-native gateway) models from the `https://opencode.ai/docs/zen` page would ship a non-existent id — the docs listed `qwen3.7-plus`/`qwen3.7-max`, but the live `https://opencode.ai/zen/v1/models` endpoint only had `qwen3.6-plus`. A pinned `opencode/qwen3.7-plus` fails at runtime.
+- **Root cause:** The docs page runs ahead of the deployed gateway. Same class as the Cursor model-ID lesson — probe the live API, never trust the stored/docs format.
+- **Fix or rule:** Always curate zen pins from `curl https://opencode.ai/zen/v1/models` (public, no auth; returns bare ids that opencode references as `opencode/<id>`), never the docs page. zen is managed-auth (`opencode auth login`) so bkit holds no key — the per-model agent-loop tool-call smoke is deferred to the consumer's login; document pins as **existence-validated** until then (a step above placeholders, honest about the unmet smoke).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, DE-28, `.bkit/prompts.md` § Models (Zen column), `.bkit/providers.md` § Models, Cursor-live-API analog (#205).

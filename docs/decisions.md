@@ -355,3 +355,13 @@
 - **Supersedes:** DE-26 Approach A (ccr router lane). DE-26 itself is retained as append-only history; the router code, docs, and `bkit mode` grammar it described are deleted.
 - **Source:** agent
 - **Related:** #245, DE-26 (Approach A — superseded), `.bkit/src/bkit-modules.ts` (deletion advisory), `.bkit/src/bkit-manifest.ts` (entry removed), `docs/knowledge.md` KN-34/KN-35/KN-36
+
+## DE-28: #245 — opencode provider allowlist expanded to seven (six OpenAI-compatible + zen managed-auth gateway) (2026-06-12)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** The opencode host's strict provider allowlist grows from {`ollama-local`, `nvidia`} to **seven**: + `groq`, `cerebras`, `openrouter`, `ollama` (cloud), `zen`. All seven ship curated per-agent model columns in `.bkit/prompts.md` § Models, tier-mapped (opus/sonnet/haiku/convergent) with **cross-platform model-identity reuse** — one canonical family per tier, each provider pinning its closest catalog match. `zen` (opencode-native gateway) gets a **distinct render path**: managed auth (`opencode auth login`, no `{env:KEY}` block), so `opencode.json` carries **no custom provider block**, and the provider is detected on upgrade from `bkit.opencodeProvider` persisted in `package.json` rather than the (absent) provider block. Model pins are probed from each provider's live `/v1/models` (for zen: the public `https://opencode.ai/zen/v1/models`), tool-call-smoked where a key is available (the six), or existence-validated where it is not (zen — managed auth, no key to bkit).
+- **Why:** DE-27 shipped only `ollama-local` + `nvidia`; #245 stayed open to broaden coverage to the common OpenAI-compatible backends + opencode's own gateway. zen breaks the `{env:KEY}` block pattern (auth is opencode-managed), so it needs its own render + manifest-detection path rather than a seventh `OPENCODE_PROVIDER_DEFAULTS` row treated like the others. Cross-platform identity reuse keeps behaviour comparable across hosts. Probing live (not the docs page) caught a real drift — zen's docs listed `qwen3.7-plus`, the live endpoint only `qwen3.6-plus` (KN-40).
+- **Supersedes:** the `gemini` provider named in DE-27 § Decision (descoped; the realized set is the six named OpenAI-compatible providers + zen). DE-27 retained as history.
+- **Source:** agent
+- **Related:** #245 (closed), DE-27 (opencode host shipped), commits `82036ad`/`12f4c49`/`a348faa`/`895ddf2`, `docs/knowledge.md` KN-40, `docs/completed.md` (opencode provider expansion + zen gateway), `.bkit/src/{bkit-cli,bkit-install,bkit-modules}.ts`, `.bkit/{prompts,providers}.md`.
