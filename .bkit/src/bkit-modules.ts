@@ -175,7 +175,7 @@ export interface ModuleContext {
   /** Issue tracker for workflow mirror substitution. Default: "none". */
   issueTracker: IssueTracker;
   /**
-   * Cloud variant chosen via `--cloud=claude|cursor`. null = not specified (cloud module
+   * Cloud variant chosen via `--auto=claude|cursor`. null = not specified (cloud module
    * not being installed). Used by `runCloudModule` to dispatch the correct variant.
    */
   cloudVariant?: CloudVariant | null;
@@ -193,14 +193,17 @@ const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // Top-level template files (non-directory) that belong to core.
 // `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
 // is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
-const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gitattributes"]);
+// CLAUDE.md is NOT here (#252): it moved to the `claude` module (a Claude-Code-only root
+// redirect, the analog of Cursor's .cursor/rules/00-shared-rules.mdc) — runClaudeModule
+// emits it. AGENTS.md (cross-host dispatch router) stays core.
+const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]);
 // Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
 // NOT shipped by the plain core pass — skip them there so the right owner writes them:
-//   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
+//   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependency=dependabot` only.
 // Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
@@ -828,7 +831,7 @@ export function runCoreModule(ctx: ModuleContext): void {
         "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
         "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
         "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
-        "`pnpm bkit install --full` to seed them all. Existing scripts are preserved\n" +
+        "`pnpm bkit install --tooling` to seed them all. Existing scripts are preserved\n" +
         "(consumer values always win).",
     });
   }
@@ -850,6 +853,24 @@ export function runClaudeModule(ctx: ModuleContext): void {
   // from .bkit/workflows). Extracted to renderClaudeAgentsCommands so `bkit upgrade`
   // re-renders them identically (#251) — bkit-owned output, force-overwritten.
   renderClaudeAgentsCommands(ctx);
+
+  // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude).
+  // It is a ROOT file (not under .claude/), so the .claude/ template walk does not cover it
+  // and core no longer emits it — the claude module writes it here. Tier-2 markered-text
+  // (writeTier2 html-comment), byte-identical to the prior core emit, so dogfood/upgrade
+  // stay no-op. The matching canonicalHashes entry is recorded by core's postDispatch from
+  // ws (which aggregates every module's writes), so version-pin bookkeeping is unchanged.
+  {
+    const src = path.join(getTemplatesRoot(), "CLAUDE.md");
+    const dst = "CLAUDE.md";
+    if (fs.existsSync(src)) {
+      const prevLen = ws.writes.length;
+      writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+      if (ws.writes.length > prevLen) {
+        console.log(`${logPrefix} ${tag}claude: ${dst}`);
+      }
+    }
+  }
 
   const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
 
@@ -1855,16 +1876,16 @@ export function runCiModule(ctx: ModuleContext): void {
     console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
 
-  // bkit-cloud.yml is no longer shipped by `--ci`. Post-CI auto-routing is
-  // now opt-in via `bkit install --cloud` (see `runCloudModule` below). The
-  // router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
+  // bkit-cloud.yml is no longer shipped by the ci module (`--tooling`). Post-CI
+  // auto-routing is now opt-in via `bkit install --auto=<variant>` (see `runCloudModule`
+  // below). The router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
   // Actions write permissions, and (Cursor half) a dashboard trigger — and it
   // depends on the issue tracker, which is itself opt-in. Shipping it on every
-  // `--full` / `--ci` install wired an autonomous router to a tracker that may
+  // tooling install wired an autonomous router to a tracker that may
   // not be configured. See issue #119 ("Managed Cloud Agents").
 
-  // renovate.json5 is no longer shipped by `--ci`. Renovate is now opt-in via
-  // `bkit install --renovate` (phase-gated). See `runRenovateModule` below
+  // renovate.json5 is no longer shipped by the ci module (`--tooling`). Renovate is opt-in via
+  // `bkit install --dependency=renovate` (phase-gated). See `runRenovateModule` below
   // and issue #123 follow-up for rationale (Renovate App's first scan reads
   // the default branch, so the file must reach `main` before App install —
   // default install can't sequence that).
@@ -1886,7 +1907,7 @@ export function runCiModule(ctx: ModuleContext): void {
       severity: "advisory",
       detect: "package.json not found — cannot ensure `typecheck` script.",
       action:
-        "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --ci` after creating package.json.",
+        "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --tooling` after creating package.json.",
     });
   } else if (ciScripts.malformed) {
     advisories.push({
@@ -2215,7 +2236,7 @@ export function runGitHooksModule(ctx: ModuleContext): void {
 // ---------------------------------------------------------------------------
 //
 // Renovate is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --renovate` and runs a two-phase flow gated on whether the
+// `bkit install --dependency=renovate` and runs a two-phase flow gated on whether the
 // config has reached the remote default branch:
 //
 //   Phase A — file NOT yet on origin/<DEFAULT_BRANCH>:
@@ -2333,8 +2354,8 @@ export function runRenovateModule(ctx: ModuleContext): void {
         "  A. Switch to Renovate (recommended):\n" +
         "     1. `git rm .github/dependabot.yml` (also `git rm .bkit/scripts/bkit-set-dependabot.sh` if present).\n" +
         "     2. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n" +
-        "     3. Re-run `pnpm bkit install --renovate`.\n\n" +
-        "  B. Keep Dependabot: skip `--renovate`; run `pnpm bkit install --dependabot` to keep using bkit's Dependabot module.",
+        "     3. Re-run `pnpm bkit install --dependency=renovate`.\n\n" +
+        "  B. Keep Dependabot: skip renovate; run `pnpm bkit install --dependency=dependabot` to keep using bkit's Dependabot module.",
     });
     return;
   }
@@ -2379,7 +2400,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
         "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
         "  1. Commit BOTH `.github/renovate.json5` AND `.github/renovate-local.json5` (the consumer-owned overrides file renovate.json5 pulls in via `extends`). Renovate raises a config error if the `extends` target is missing, so they must travel together.\n" +
         `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
-        `  3. Re-run \`pnpm bkit install --renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
+        `  3. Re-run \`pnpm bkit install --dependency=renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
         "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).\n\n" +
         RENOVATE_CUSTOMIZE_NOTE,
     });
@@ -2410,7 +2431,7 @@ export function runRenovateModule(ctx: ModuleContext): void {
 // ---------------------------------------------------------------------------
 //
 // Dependabot is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --dependabot` and is mutually exclusive with `--renovate`.
+// `bkit install --dependency=dependabot` and is mutually exclusive with `--renovate`.
 //
 // Unlike Renovate, Dependabot is first-party GitHub and does NOT have an
 // App-install race condition — the `dependabot.yml` file is read directly
@@ -2437,8 +2458,8 @@ export function runDependabotModule(ctx: ModuleContext): void {
         "  A. Switch to Dependabot:\n" +
         "     1. `git rm .github/renovate.json5`.\n" +
         "     2. Uninstall the Renovate GitHub App at https://github.com/settings/installations → Renovate → Configure → Uninstall.\n" +
-        "     3. Re-run `pnpm bkit install --dependabot`.\n\n" +
-        "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip `--dependabot`; the existing Renovate setup stays.",
+        "     3. Re-run `pnpm bkit install --dependency=dependabot`.\n\n" +
+        "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip dependabot; the existing Renovate setup stays.",
     });
     return;
   }
@@ -2489,7 +2510,7 @@ export function runDependabotModule(ctx: ModuleContext): void {
 // runCloudModule — opt-in cloud-agent integration (issue #119, "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
 //
-// NOT shipped by default install (--full) — opt-in via `bkit install --cloud=<variant>`,
+// NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
 // so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
 //   cloud=claude (tracker=github):

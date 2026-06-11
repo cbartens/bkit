@@ -304,7 +304,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   );
 
   function runBkitUpgrade() {
-    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--non-interactive"], {
+    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },

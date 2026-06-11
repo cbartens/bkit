@@ -724,7 +724,7 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
     action:
       "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
       "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
+      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --dependency=renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
   };
 }
 
@@ -1068,7 +1068,7 @@ function readConsumerDepUpdater(cwd: string): DepUpdater {
 /**
  * Emit a dependency-updater setup advisory (parity with the tracker advisory).
  * Renovate and Dependabot are both opt-in (mutually exclusive); neither ships
- * with `--full`. This nudges consumers to make the choice post-install.
+ * with a default install. This nudges consumers to make the choice post-install.
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * "deliberate opt-out" escape hatch):
@@ -1093,7 +1093,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       detect:
         "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
       action:
-        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
+        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --dependency=renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
     };
   }
 
@@ -1123,8 +1123,8 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
     action:
       "Optional post-install decision — pick one (mutually exclusive):\n\n" +
-      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
-      "  - `pnpm bkit install --dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
+      "  - `pnpm bkit install --dependency=renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
+      "  - `pnpm bkit install --dependency=dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
       'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
   };
 }
@@ -1175,8 +1175,8 @@ function hasExplicitCloudAgentsField(cwd: string): boolean {
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
  * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
- * `bkit install --cloud=claude`; it does NOT ship with `--full`. This nudges consumers
- * to make the choice post-install.
+ * `bkit install --auto=claude`; it does NOT ship with a default install. This nudges
+ * consumers to make the choice post-install.
  *
  * Also performs the cloud=claude config-consistency assertion (T1.8): when
  * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
@@ -1209,7 +1209,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
           detect:
             "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
           action:
-            "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
+            "Re-run `pnpm bkit install --auto=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
         };
       }
     }
@@ -1219,7 +1219,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
       severity: "advisory",
       detect:
         "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-      action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
+      action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
     };
   }
 
@@ -1237,8 +1237,8 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
     detect:
       "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
     action:
-      "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --cloud=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --cloud=cursor --tracker=linear`.\n\n" +
-      "Prerequisites for `cloud=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+      "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
+      "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
       'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
   };
 }

@@ -1119,8 +1119,8 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-none");
-    expect(result!.action).toMatch(/pnpm bkit install --renovate/);
-    expect(result!.action).toMatch(/pnpm bkit install --dependabot/);
+    expect(result!.action).toMatch(/pnpm bkit install --dependency=renovate/);
+    expect(result!.action).toMatch(/pnpm bkit install --dependency=dependabot/);
   });
 
   it("returns null when no workflows dir exists (nothing to update — no nudge)", () => {
@@ -1181,7 +1181,7 @@ describe("buildCloudSetupAdvisory", () => {
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-router-none");
-    expect(result!.action).toMatch(/pnpm bkit install --cloud/);
+    expect(result!.action).toMatch(/pnpm bkit install --auto=/);
   });
 
   it("returns null when no workflows dir exists (no CI to route on — no nudge)", () => {

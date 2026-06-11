@@ -1,7 +1,25 @@
-// bkit-cli.test.ts — v4-3 scope (CLI dispatch surface).
-// Stubs created in v4-2 Phase 0; filled by v4-3 Phase 3.
+// bkit-cli.test.ts — CLI dispatch surface (#252 redesign).
+// Surface: install requires ≥1 module flag (guard lives in main(), not parseArgs);
+// core implicit; --tooling expands to ci/lint/git-hooks; --auto replaces --cloud;
+// --dependency= replaces bare --renovate/--dependabot; --full/--core dropped.
 import { describe, expect, it, vi } from "vitest";
-import { parseArgs, printUsage, resolveModules, type ParsedArgs } from "./bkit-cli";
+import { parseArgs, printUsage, resolveModules, type ModuleFlag } from "./bkit-cli";
+
+/** Run `fn`, asserting it triggers process.exit(1); returns the joined console.error text. */
+function expectExit(fn: () => void): string {
+  const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+    throw new Error("process.exit called");
+  });
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expect(fn).toThrow("process.exit called");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    return errorSpy.mock.calls.map((c) => c[0]).join(" ");
+  } finally {
+    exitSpy.mockRestore();
+    errorSpy.mockRestore();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // parseArgs — verb parsing
@@ -9,453 +27,383 @@ import { parseArgs, printUsage, resolveModules, type ParsedArgs } from "./bkit-c
 
 describe("parseArgs — verb parsing", () => {
   it("install verb is parsed correctly", () => {
-    const result = parseArgs(["install"]);
-    expect(result.verb).toBe("install");
+    expect(parseArgs(["install", "--claude"]).verb).toBe("install");
   });
 
   it("check verb is parsed correctly", () => {
-    const result = parseArgs(["check"]);
-    expect(result.verb).toBe("check");
+    expect(parseArgs(["check"]).verb).toBe("check");
+  });
+
+  it("upgrade verb is parsed correctly", () => {
+    expect(parseArgs(["upgrade"]).verb).toBe("upgrade");
   });
 
   it("help verb is parsed correctly", () => {
-    const result = parseArgs(["help"]);
-    expect(result.verb).toBe("help");
+    expect(parseArgs(["help"]).verb).toBe("help");
   });
 
   it("--help flag is parsed as help verb", () => {
-    const result = parseArgs(["--help"]);
-    expect(result.verb).toBe("help");
+    expect(parseArgs(["--help"]).verb).toBe("help");
   });
 
   it("-h flag is parsed as help verb", () => {
-    const result = parseArgs(["-h"]);
-    expect(result.verb).toBe("help");
+    expect(parseArgs(["-h"]).verb).toBe("help");
   });
 
   it("no args defaults to help", () => {
-    const result = parseArgs([]);
-    expect(result.verb).toBe("help");
+    expect(parseArgs([]).verb).toBe("help");
   });
 
-  it("doctor verb is parsed correctly (P1.T1 — BAR-142 §A3)", () => {
-    const result = parseArgs(["doctor"]);
-    expect(result.verb).toBe("doctor");
+  it("doctor verb is parsed correctly", () => {
+    expect(parseArgs(["doctor"]).verb).toBe("doctor");
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — module flags
+// parseArgs — module flags (#252 surface)
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — module flags", () => {
-  it("--core flag parsed", () => {
-    const result = parseArgs(["install", "--core"]);
-    expect(result.modules.has("core")).toBe(true);
-  });
-
-  it("--claude flag parsed", () => {
+  it("--claude → claude + implicit core; recorded in moduleFlags", () => {
     const result = parseArgs(["install", "--claude"]);
     expect(result.modules.has("claude")).toBe(true);
     expect(result.modules.has("core")).toBe(true); // implicit
+    expect(result.moduleFlags.has("claude")).toBe(true);
   });
 
-  it("--cursor flag parsed", () => {
+  it("--cursor → cursor + implicit core", () => {
     const result = parseArgs(["install", "--cursor"]);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
+    expect([...result.modules].sort()).toEqual(["core", "cursor"]);
+    expect(result.moduleFlags.has("cursor")).toBe(true);
   });
 
-  it("--ci flag parsed", () => {
-    const result = parseArgs(["install", "--ci"]);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
+  it("--tooling expands to ci + lint + git-hooks (+ core)", () => {
+    const result = parseArgs(["install", "--tooling"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "git-hooks", "lint"]);
+    // moduleFlags carries the expanded internal names, not the literal "tooling".
+    expect([...result.moduleFlags].sort()).toEqual(["ci", "git-hooks", "lint"]);
   });
 
-  it("--lint flag parsed", () => {
-    const result = parseArgs(["install", "--lint"]);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
+  it("hosts compose: --claude --cursor --tooling → both hosts + tooling + core", () => {
+    const result = parseArgs(["install", "--claude", "--cursor", "--tooling"]);
+    expect([...result.modules].sort()).toEqual([
+      "ci",
+      "claude",
+      "core",
+      "cursor",
+      "git-hooks",
+      "lint",
+    ]);
   });
 
-  it("--git-hooks flag parsed", () => {
-    const result = parseArgs(["install", "--git-hooks"]);
-    expect(result.modules.has("git-hooks")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
-  });
-
-  it("--full flag parsed → all modules resolved (renovate + dependabot + cloud opt-in, excluded)", () => {
-    const result = parseArgs(["install", "--full"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("git-hooks")).toBe(true);
-    expect(result.modules.has("renovate")).toBe(false);
-    expect(result.modules.has("dependabot")).toBe(false);
-    expect(result.modules.has("cloud")).toBe(false);
-  });
-
-  it("no module flags → resolves to all modules (--full equivalent; renovate + dependabot + cloud excluded)", () => {
+  it("bare `install` records zero module flags (the ≥1 guard lives in main())", () => {
     const result = parseArgs(["install"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("git-hooks")).toBe(true);
-    expect(result.modules.has("renovate")).toBe(false);
-    expect(result.modules.has("dependabot")).toBe(false);
-    expect(result.modules.has("cloud")).toBe(false);
+    expect(result.verb).toBe("install");
+    expect(result.moduleFlags.size).toBe(0);
+    // resolveModules still adds implicit core; main() rejects the empty case.
+    expect([...result.modules]).toEqual(["core"]);
   });
 
-  it("--renovate alone → renovate + core only (not full stack)", () => {
-    const result = parseArgs(["install", "--renovate"]);
+  it("--dependency=renovate → renovate + core only", () => {
+    const result = parseArgs(["install", "--dependency=renovate"]);
     expect([...result.modules].sort()).toEqual(["core", "renovate"]);
+    expect(result.moduleFlags.has("renovate")).toBe(true);
   });
 
-  it("--full --renovate → all modules + renovate (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--renovate"]);
-    expect(result.modules.has("core")).toBe(true);
+  it("--dependency=dependabot → dependabot + core only", () => {
+    const result = parseArgs(["install", "--dependency=dependabot"]);
+    expect([...result.modules].sort()).toEqual(["core", "dependabot"]);
+  });
+
+  it("--dependency=<bad> → rejected", () => {
+    const msg = expectExit(() => parseArgs(["install", "--dependency=snyk"]));
+    expect(msg).toMatch(/Unknown dependency updater/);
+  });
+
+  it("--claude --tooling --dependency=renovate compose", () => {
+    const result = parseArgs(["install", "--claude", "--tooling", "--dependency=renovate"]);
     expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
     expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("git-hooks")).toBe(true);
     expect(result.modules.has("renovate")).toBe(true);
+    expect(result.modules.has("core")).toBe(true);
   });
 
-  it("--ci --renovate → ci + core + renovate (compose without --full)", () => {
-    const result = parseArgs(["install", "--ci", "--renovate"]);
-    expect([...result.modules].sort()).toEqual(["ci", "core", "renovate"]);
-  });
-
-  it("--cloud=claude alone → cloud + core only (not full stack)", () => {
-    const result = parseArgs(["install", "--cloud=claude"]);
+  it("--auto=claude → cloud + core only; cloudVariant=claude", () => {
+    const result = parseArgs(["install", "--auto=claude"]);
     expect([...result.modules].sort()).toEqual(["cloud", "core"]);
     expect(result.cloudVariant).toBe("claude");
+    expect(result.moduleFlags.has("cloud")).toBe(true);
   });
 
-  it("--cloud=cursor alone → cloud + core only (not full stack)", () => {
-    const result = parseArgs(["install", "--cloud=cursor"]);
+  it("--auto=cursor → cloud + core only; cloudVariant=cursor", () => {
+    const result = parseArgs(["install", "--auto=cursor"]);
     expect([...result.modules].sort()).toEqual(["cloud", "core"]);
     expect(result.cloudVariant).toBe("cursor");
   });
 
-  it("bare --cloud (install) → error (must use --cloud=claude or --cloud=cursor)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    expect(() => parseArgs(["install", "--cloud"])).toThrow();
-    exitSpy.mockRestore();
+  it("bare --auto (install) → error (variant required)", () => {
+    const msg = expectExit(() => parseArgs(["install", "--auto"]));
+    expect(msg).toMatch(/--auto requires an explicit variant/);
   });
 
-  it("--full --cloud=claude → all modules + cloud (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--cloud=claude"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("cloud")).toBe(true);
-    expect(result.modules.has("renovate")).toBe(false);
-    expect(result.modules.has("dependabot")).toBe(false);
-    expect(result.cloudVariant).toBe("claude");
+  it("--auto=<bad> → rejected", () => {
+    const msg = expectExit(() => parseArgs(["install", "--auto=banana"]));
+    expect(msg).toMatch(/Unknown cloud variant/);
   });
 
-  it("--ci --cloud=claude → ci + core + cloud (compose without --full)", () => {
-    const result = parseArgs(["install", "--ci", "--cloud=claude"]);
-    expect([...result.modules].sort()).toEqual(["ci", "cloud", "core"]);
-    expect(result.cloudVariant).toBe("claude");
+  it("--dependency=renovate + --dependency=dependabot → mutually exclusive", () => {
+    const msg = expectExit(() =>
+      parseArgs(["install", "--dependency=renovate", "--dependency=dependabot"]),
+    );
+    expect(msg).toMatch(/mutually exclusive/);
   });
 
-  it("--dependabot alone → dependabot + core only (mirror of --renovate single-purpose UX)", () => {
-    const result = parseArgs(["install", "--dependabot"]);
-    expect([...result.modules].sort()).toEqual(["core", "dependabot"]);
-  });
-
-  it("--full --dependabot → all modules + dependabot (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--dependabot"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("dependabot")).toBe(true);
-    expect(result.modules.has("renovate")).toBe(false);
-  });
-
-  it("--renovate --dependabot together is rejected (mutually exclusive)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--renovate", "--dependabot"])).toThrow(
-        "process.exit called",
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/mutually exclusive/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("--full --renovate --dependabot is also rejected (combo with full)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--full", "--renovate", "--dependabot"])).toThrow(
-        "process.exit called",
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("--full ≡ no flags (writeset equality)", () => {
-    const withFull = parseArgs(["install", "--full"]);
-    const noFlags = parseArgs(["install"]);
-    expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());
-  });
-
-  it("--ci --lint compose correctly: core + ci + lint only", () => {
-    const result = parseArgs(["install", "--ci", "--lint"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("claude")).toBe(false);
-    expect(result.modules.has("cursor")).toBe(false);
-    expect(result.modules.has("git-hooks")).toBe(false);
-  });
-
-  it("parseArgs returns all module flags in returned modules Set", () => {
-    // Test that parseArgs correctly returns the module list
+  it("parseArgs returns resolved modules as a Set", () => {
     const result = parseArgs(["install", "--claude"]);
-    // modules is a Set<ModuleFlag> containing resolved modules
     expect(result.modules).toBeInstanceOf(Set);
     expect([...result.modules].sort()).toEqual(["claude", "core"]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — unknown flag / verb rejection (covers retired init + --host=)
+// parseArgs — dropped flags now error (#252: D2/D3/D4/D7)
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — unknown flag rejection", () => {
-  it("unknown flag --foo causes process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
+describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", () => {
+  const dropped = [
+    "--full",
+    "--core",
+    "--ci",
+    "--lint",
+    "--git-hooks",
+    "--renovate",
+    "--dependabot",
+    "--cloud",
+    "--cloud=claude",
+  ];
+  for (const flag of dropped) {
+    it(`${flag} → Unknown flag`, () => {
+      const msg = expectExit(() => parseArgs(["install", flag]));
+      expect(msg).toMatch(/Unknown flag/);
     });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--foo"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
+  }
 
-  it("unknown verb causes process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["deploy"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("retired `init` verb is rejected as unknown (use `install --full`)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["init"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("retired `--host=claude` is rejected as unknown flag (use `--claude`)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--host=claude"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("retired `--host=cursor` is rejected as unknown flag (use `--cursor`)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--host=cursor"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
+  it("--non-interactive → Unknown flag (renamed to --auto-apply)", () => {
+    const msg = expectExit(() => parseArgs(["upgrade", "--non-interactive"]));
+    expect(msg).toMatch(/Unknown flag/);
   });
 });
 
 // ---------------------------------------------------------------------------
-// printUsage — help output
+// resolveModules — new verb-aware matrix (#252)
+// ---------------------------------------------------------------------------
+
+describe("resolveModules — verb-aware resolution", () => {
+  const set = (...m: ModuleFlag[]) => new Set<ModuleFlag>(m);
+
+  it("install: named modules + implicit core", () => {
+    expect([...resolveModules(set("claude"), "install")].sort()).toEqual(["claude", "core"]);
+    expect([...resolveModules(set("ci", "lint", "git-hooks"), "install")].sort()).toEqual([
+      "ci",
+      "core",
+      "git-hooks",
+      "lint",
+    ]);
+  });
+
+  it("install: empty flags → core only (main() guards the empty case)", () => {
+    expect([...resolveModules(set(), "install")]).toEqual(["core"]);
+  });
+
+  it("uninstall (bare): every module incl. opt-ins + core (zero footprint)", () => {
+    const all = resolveModules(set(), "uninstall");
+    for (const m of [
+      "core",
+      "claude",
+      "cursor",
+      "ci",
+      "lint",
+      "git-hooks",
+      "renovate",
+      "dependabot",
+      "cloud",
+      "opencode",
+    ] as ModuleFlag[]) {
+      expect(all.has(m), `bare uninstall should include ${m}`).toBe(true);
+    }
+  });
+
+  it("uninstall (targeted): named modules ONLY — core is NOT added", () => {
+    expect([...resolveModules(set("claude"), "uninstall")]).toEqual(["claude"]);
+    expect([...resolveModules(set("ci", "lint", "git-hooks"), "uninstall")].sort()).toEqual([
+      "ci",
+      "git-hooks",
+      "lint",
+    ]);
+    expect([...resolveModules(set("renovate"), "uninstall")]).toEqual(["renovate"]);
+  });
+
+  it("check/upgrade: core implicit + named (main() rejects stray module flags)", () => {
+    expect([...resolveModules(set(), "check")]).toEqual(["core"]);
+    expect([...resolveModules(set(), "upgrade")]).toEqual(["core"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — unknown flag / verb rejection
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — unknown flag / verb rejection", () => {
+  it("unknown flag --foo → exit 1", () => {
+    expect(expectExit(() => parseArgs(["install", "--foo"]))).toMatch(/Unknown flag/);
+  });
+
+  it("unknown verb → exit 1", () => {
+    expect(expectExit(() => parseArgs(["deploy"]))).toMatch(/Unknown verb/);
+  });
+
+  it("retired `init` verb is rejected as unknown", () => {
+    expect(expectExit(() => parseArgs(["init"]))).toMatch(/Unknown verb/);
+  });
+
+  it("retired `--host=claude` is rejected (use `--claude`)", () => {
+    expect(expectExit(() => parseArgs(["install", "--host=claude"]))).toMatch(/Unknown flag/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// printUsage — help output (#252 surface)
 // ---------------------------------------------------------------------------
 
 describe("printUsage — help output", () => {
-  it("help output lists all module flags (including opt-in --renovate, --dependabot and --cloud)", () => {
+  function usage(): string {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printUsage();
       expect(logSpy).toHaveBeenCalledTimes(1);
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("--core");
-      expect(output).toContain("--claude");
-      expect(output).toContain("--cursor");
-      expect(output).toContain("--ci");
-      expect(output).toContain("--lint");
-      expect(output).toContain("--git-hooks");
-      expect(output).toContain("--renovate");
-      expect(output).toContain("--dependabot");
-      expect(output).toContain("--cloud");
-      expect(output).toContain("--full");
+      return logSpy.mock.calls[0]?.[0] as string;
     } finally {
       logSpy.mockRestore();
     }
+  }
+
+  it("lists the new module flags", () => {
+    const output = usage();
+    expect(output).toContain("--claude");
+    expect(output).toContain("--cursor");
+    expect(output).toContain("--opencode=");
+    expect(output).toContain("--tooling");
+    expect(output).toContain("--dependency=");
+    expect(output).toContain("--auto=");
   });
 
-  it("help output includes compose examples", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("--ci --lint");
-      expect(output).toContain("--claude");
-    } finally {
-      logSpy.mockRestore();
-    }
+  it("does NOT advertise the dropped flags", () => {
+    const output = usage();
+    // The dropped bare flags must not appear as offered options.
+    expect(output).not.toMatch(/^\s*--full\b/m);
+    expect(output).not.toMatch(/^\s*--core\b/m);
+    expect(output).not.toMatch(/^\s*--ci\b/m);
+    expect(output).not.toMatch(/^\s*--lint\b/m);
+    expect(output).not.toMatch(/^\s*--git-hooks\b/m);
   });
 
-  it("help output includes doctor verb description (P1.T1 — BAR-142 §A3)", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("doctor");
-    } finally {
-      logSpy.mockRestore();
-    }
+  it("includes compose + core examples", () => {
+    const output = usage();
+    expect(output).toContain("--claude --cursor --tooling");
+    expect(output).toMatch(/[Cc]ore \(implicit/);
   });
 
-  it("help output includes uninstall verb (P2.T6)", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("uninstall");
-      expect(output).toContain("--dry-run");
-      expect(output).toContain("--nuke");
-    } finally {
-      logSpy.mockRestore();
-    }
+  it("documents install requires ≥1 module flag", () => {
+    expect(usage()).toMatch(/at least one module flag is REQUIRED/i);
+  });
+
+  it("includes doctor, status, uninstall verbs + uninstall flags", () => {
+    const output = usage();
+    expect(output).toContain("doctor");
+    expect(output).toContain("status");
+    expect(output).toContain("uninstall");
+    expect(output).toContain("--dry-run");
+    expect(output).toContain("--nuke");
+  });
+
+  it("documents the --auto-apply upgrade flag (renamed from --non-interactive)", () => {
+    const output = usage();
+    expect(output).toContain("--auto-apply");
+    expect(output).not.toContain("--non-interactive");
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — uninstall verb (P2.T6)
+// parseArgs — uninstall verb
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — uninstall verb (P2.T6)", () => {
+describe("parseArgs — uninstall verb", () => {
   it("uninstall verb is parsed correctly", () => {
+    expect(parseArgs(["uninstall"]).verb).toBe("uninstall");
+  });
+
+  it("bare uninstall → all modules incl. opt-in add-ons + core (zero footprint)", () => {
     const result = parseArgs(["uninstall"]);
-    expect(result.verb).toBe("uninstall");
+    for (const m of [
+      "core",
+      "claude",
+      "cursor",
+      "ci",
+      "lint",
+      "git-hooks",
+      "renovate",
+      "dependabot",
+      "cloud",
+      "opencode",
+    ] as ModuleFlag[]) {
+      expect(result.modules.has(m), `bare uninstall should include ${m}`).toBe(true);
+    }
   });
 
-  it("uninstall with no flags resolves to all modules INCLUDING opt-in add-ons (zero footprint)", () => {
-    const result = parseArgs(["uninstall"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("git-hooks")).toBe(true);
-    // Asymmetry vs install: full uninstall reaches opt-in add-ons so no bkit footprint remains.
-    expect(result.modules.has("renovate")).toBe(true);
-    expect(result.modules.has("dependabot")).toBe(true);
-    expect(result.modules.has("cloud")).toBe(true);
+  it("uninstall --tooling → ci + lint + git-hooks ONLY (targeted leaves core)", () => {
+    const result = parseArgs(["uninstall", "--tooling"]);
+    expect([...result.modules].sort()).toEqual(["ci", "git-hooks", "lint"]);
+    expect(result.modules.has("core")).toBe(false);
   });
 
-  it("opt-in asymmetry: install --full EXCLUDES opt-in add-ons; uninstall --full INCLUDES them", () => {
-    const inst = parseArgs(["install", "--full"]);
-    const unin = parseArgs(["uninstall", "--full"]);
-    expect(inst.modules.has("renovate")).toBe(false);
-    expect(inst.modules.has("dependabot")).toBe(false);
-    expect(inst.modules.has("cloud")).toBe(false);
-    expect(unin.modules.has("renovate")).toBe(true);
-    expect(unin.modules.has("dependabot")).toBe(true);
-    expect(unin.modules.has("cloud")).toBe(true);
+  it("uninstall --claude → claude ONLY (no core)", () => {
+    const result = parseArgs(["uninstall", "--claude"]);
+    expect([...result.modules]).toEqual(["claude"]);
   });
 
-  it("uninstall --cloud alone → core + cloud only (bare --cloud accepted for uninstall)", () => {
-    const result = parseArgs(["uninstall", "--cloud"]);
-    expect([...result.modules].sort()).toEqual(["cloud", "core"]);
-    // uninstall doesn't need a variant — it reads from package.json
+  it("uninstall --auto (bare) → cloud only; no variant needed", () => {
+    const result = parseArgs(["uninstall", "--auto"]);
+    expect([...result.modules]).toEqual(["cloud"]);
     expect(result.cloudVariant).toBeNull();
   });
 
-  it("uninstall with --ci --lint resolves to core + ci + lint", () => {
-    const result = parseArgs(["uninstall", "--ci", "--lint"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("ci")).toBe(true);
-    expect(result.modules.has("lint")).toBe(true);
-    expect(result.modules.has("claude")).toBe(false);
-  });
-
-  it("uninstall --renovate alone → core + renovate only (targeted is symmetric, not full stack)", () => {
-    const result = parseArgs(["uninstall", "--renovate"]);
-    expect([...result.modules].sort()).toEqual(["core", "renovate"]);
+  it("uninstall --dependency=renovate → renovate only", () => {
+    const result = parseArgs(["uninstall", "--dependency=renovate"]);
+    expect([...result.modules]).toEqual(["renovate"]);
   });
 
   it("uninstall --dry-run sets dryRun flag", () => {
-    const result = parseArgs(["uninstall", "--dry-run"]);
-    expect(result.uninstallFlags.dryRun).toBe(true);
+    expect(parseArgs(["uninstall", "--dry-run"]).uninstallFlags.dryRun).toBe(true);
   });
 
   it("uninstall --force sets force flag", () => {
-    const result = parseArgs(["uninstall", "--force"]);
-    expect(result.uninstallFlags.force).toBe(true);
+    expect(parseArgs(["uninstall", "--force"]).uninstallFlags.force).toBe(true);
   });
 
   it("uninstall --nuke sets nuke flag", () => {
-    const result = parseArgs(["uninstall", "--nuke"]);
-    expect(result.uninstallFlags.nuke).toBe(true);
+    expect(parseArgs(["uninstall", "--nuke"]).uninstallFlags.nuke).toBe(true);
   });
 
   it("uninstall --yes sets yes flag", () => {
-    const result = parseArgs(["uninstall", "--yes"]);
-    expect(result.uninstallFlags.yes).toBe(true);
+    expect(parseArgs(["uninstall", "--yes"]).uninstallFlags.yes).toBe(true);
   });
 
   it("uninstall --package sets stripPackage flag", () => {
-    const result = parseArgs(["uninstall", "--package"]);
-    expect(result.uninstallFlags.stripPackage).toBe(true);
+    expect(parseArgs(["uninstall", "--package"]).uninstallFlags.stripPackage).toBe(true);
+  });
+
+  it("uninstall --keep-tooling sets keepTooling flag", () => {
+    expect(parseArgs(["uninstall", "--keep-tooling"]).uninstallFlags.keepTooling).toBe(true);
   });
 
   it("uninstall --nuke --yes --force compose correctly", () => {
@@ -466,149 +414,99 @@ describe("parseArgs — uninstall verb (P2.T6)", () => {
   });
 
   it("uninstall flags default to false when not specified", () => {
-    const result = parseArgs(["uninstall"]);
-    expect(result.uninstallFlags.dryRun).toBe(false);
-    expect(result.uninstallFlags.force).toBe(false);
-    expect(result.uninstallFlags.nuke).toBe(false);
-    expect(result.uninstallFlags.yes).toBe(false);
-    expect(result.uninstallFlags.stripPackage).toBe(false);
+    const { uninstallFlags } = parseArgs(["uninstall"]);
+    expect(uninstallFlags.dryRun).toBe(false);
+    expect(uninstallFlags.force).toBe(false);
+    expect(uninstallFlags.nuke).toBe(false);
+    expect(uninstallFlags.yes).toBe(false);
+    expect(uninstallFlags.stripPackage).toBe(false);
   });
 
   it("install --auto-revert sets autoRevert flag", () => {
-    const result = parseArgs(["install", "--auto-revert"]);
-    expect(result.uninstallFlags.autoRevert).toBe(true);
-  });
-
-  it("uninstall --full === uninstall (no flags) — both resolve the complete set incl. opt-in", () => {
-    const withFull = parseArgs(["uninstall", "--full"]);
-    const noFlags = parseArgs(["uninstall"]);
-    expect([...withFull.modules].sort()).toEqual([...noFlags.modules].sort());
+    expect(parseArgs(["install", "--claude", "--auto-revert"]).uninstallFlags.autoRevert).toBe(
+      true,
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — --opencode flag (Task 2.3 "Done when")
+// parseArgs — upgrade flags
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — --opencode flag (Task 2.3)", () => {
-  it("--opencode=ollama-local alone → opencode + core only (opt-in, additive)", () => {
+describe("parseArgs — upgrade flags", () => {
+  it("--auto-apply sets the non-interactive upgrade mode", () => {
+    expect(parseArgs(["upgrade", "--auto-apply"]).upgradeFlags.nonInteractive).toBe(true);
+  });
+
+  it("--dry-run sets the upgrade dry-run mode", () => {
+    expect(parseArgs(["upgrade", "--dry-run"]).upgradeFlags.dryRun).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseArgs — --opencode flag
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --opencode flag", () => {
+  it("--opencode=ollama-local → opencode + core; provider recorded", () => {
     const result = parseArgs(["install", "--opencode=ollama-local"]);
     expect([...result.modules].sort()).toEqual(["core", "opencode"]);
     expect(result.opencodeProvider).toBe("ollama-local");
+    expect(result.moduleFlags.has("opencode")).toBe(true);
   });
 
   it("--opencode=nvidia → opencode + core, provider=nvidia", () => {
     const result = parseArgs(["install", "--opencode=nvidia"]);
     expect(result.modules.has("opencode")).toBe(true);
-    expect(result.modules.has("core")).toBe(true);
     expect(result.opencodeProvider).toBe("nvidia");
   });
 
   it("--opencode=openrouter → rejected (not in the strict allowlist)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=openrouter"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/unsupported provider/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("--opencode=gemini → rejected (not in the strict allowlist)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=gemini"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/unsupported provider/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
+    expect(expectExit(() => parseArgs(["install", "--opencode=openrouter"]))).toMatch(
+      /unsupported provider/,
+    );
   });
 
   it("bare --opencode (no value) on install is rejected — provider required", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/--opencode requires an explicit provider/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
+    expect(expectExit(() => parseArgs(["install", "--opencode"]))).toMatch(
+      /--opencode requires an explicit provider/,
+    );
   });
 
-  it("--full --opencode=ollama-local → all modules + opencode (opt-in alongside full stack)", () => {
-    const result = parseArgs(["install", "--full", "--opencode=ollama-local"]);
-    expect(result.modules.has("core")).toBe(true);
-    expect(result.modules.has("claude")).toBe(true);
-    expect(result.modules.has("cursor")).toBe(true);
-    expect(result.modules.has("opencode")).toBe(true);
+  it("--claude --opencode=ollama-local compose", () => {
+    const result = parseArgs(["install", "--claude", "--opencode=ollama-local"]);
+    expect([...result.modules].sort()).toEqual(["claude", "core", "opencode"]);
     expect(result.opencodeProvider).toBe("ollama-local");
   });
 
-  it("--ci --opencode=ollama-local → ci + core + opencode (compose without --full)", () => {
-    const result = parseArgs(["install", "--ci", "--opencode=ollama-local"]);
-    expect([...result.modules].sort()).toEqual(["ci", "core", "opencode"]);
-    expect(result.opencodeProvider).toBe("ollama-local");
+  it("opencode is NOT installed implicitly (additive opt-in)", () => {
+    expect(parseArgs(["install", "--claude"]).modules.has("opencode")).toBe(false);
   });
 
-  it("--full without --opencode → opencode NOT included (additive opt-in, not default)", () => {
-    const result = parseArgs(["install", "--full"]);
-    expect(result.modules.has("opencode")).toBe(false);
-  });
-
-  it("install (no flags) → opencode NOT included (additive opt-in, not in ALL_MODULES)", () => {
-    const result = parseArgs(["install"]);
-    expect(result.modules.has("opencode")).toBe(false);
-  });
-
-  it("uninstall --opencode alone → core + opencode only (bare --opencode accepted for uninstall)", () => {
+  it("uninstall --opencode (bare) → opencode only (no provider needed)", () => {
     const result = parseArgs(["uninstall", "--opencode"]);
-    expect([...result.modules].sort()).toEqual(["core", "opencode"]);
+    expect([...result.modules]).toEqual(["opencode"]);
     expect(result.opencodeProvider).toBeNull();
   });
 
-  it("uninstall (no flags) → opencode IS included (full uninstall reaches all opt-in modules)", () => {
-    const result = parseArgs(["uninstall"]);
-    expect(result.modules.has("opencode")).toBe(true);
+  it("bare uninstall reaches opencode (full opt-in removal)", () => {
+    expect(parseArgs(["uninstall"]).modules.has("opencode")).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
 // parseArgs — --opencode provider strict allowlist (OPENCODE_PROVIDERS)
-// Only "ollama-local" and "nvidia" are accepted; everything else is rejected.
 // ---------------------------------------------------------------------------
 
 describe("parseArgs — --opencode provider strict allowlist", () => {
-  // Accepted: the two supported providers
   it("--opencode=ollama-local is accepted", () => {
-    const result = parseArgs(["install", "--opencode=ollama-local"]);
-    expect(result.opencodeProvider).toBe("ollama-local");
-    expect(result.modules.has("opencode")).toBe(true);
+    expect(parseArgs(["install", "--opencode=ollama-local"]).opencodeProvider).toBe("ollama-local");
   });
 
   it("--opencode=nvidia is accepted", () => {
-    const result = parseArgs(["install", "--opencode=nvidia"]);
-    expect(result.opencodeProvider).toBe("nvidia");
-    expect(result.modules.has("opencode")).toBe(true);
+    expect(parseArgs(["install", "--opencode=nvidia"]).opencodeProvider).toBe("nvidia");
   });
 
-  // Rejected: any other value — well-formed slug or malformed, all hit the allowlist gate.
   const rejected: Array<[string, string]> = [
     ["openrouter", "removed provider"],
     ["gemini", "removed provider"],
@@ -623,114 +521,52 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
   ];
   for (const [value, why] of rejected) {
     it(`--opencode=${value} → rejected (${why})`, () => {
-      const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-        throw new Error("process.exit called");
-      });
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      try {
-        expect(() => parseArgs(["install", `--opencode=${value}`])).toThrow("process.exit called");
-        expect(exitSpy).toHaveBeenCalledWith(1);
-        const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-        expect(errMsg).toMatch(/unsupported provider/);
-      } finally {
-        exitSpy.mockRestore();
-        errorSpy.mockRestore();
-      }
+      expect(expectExit(() => parseArgs(["install", `--opencode=${value}`]))).toMatch(
+        /unsupported provider/,
+      );
     });
   }
 
-  // Empty value hits the "provider value required" gate (not the allowlist message).
-  it("--opencode= (empty value after equals) calls process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode="])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/requires a provider value/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
+  it("--opencode= (empty value after equals) → 'requires a provider value'", () => {
+    expect(expectExit(() => parseArgs(["install", "--opencode="]))).toMatch(
+      /requires a provider value/,
+    );
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — status verb (Task 4.1)
+// parseArgs — status verb
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — status verb (Task 4.1)", () => {
+describe("parseArgs — status verb", () => {
   it("status verb is parsed correctly", () => {
-    const result = parseArgs(["status"]);
-    expect(result.verb).toBe("status");
-  });
-
-  it("status verb with no module flags is fine (read-only, no modules needed)", () => {
-    const result = parseArgs(["status"]);
-    expect(result.verb).toBe("status");
-    // status is read-only — module flags are resolved but irrelevant
+    expect(parseArgs(["status"]).verb).toBe("status");
   });
 });
 
-// ---------------------------------------------------------------------------
-// printUsage — status verb listed in help text (Task 4.1)
-// ---------------------------------------------------------------------------
-
-describe("printUsage — status verb in help text (Task 4.1)", () => {
-  it("help text lists bkit status", () => {
+describe("printUsage — status + opencode in help text", () => {
+  function usage(): string {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
       printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("status");
+      return logSpy.mock.calls[0]?.[0] as string;
     } finally {
       logSpy.mockRestore();
     }
+  }
+
+  it("lists bkit status as read-only / writes-nothing", () => {
+    const output = usage();
+    expect(output).toContain("status");
+    expect(output).toMatch(
+      /status.*[Rr]ead-only|[Rr]ead-only.*status|Writes nothing.*status|status.*Writes nothing/s,
+    );
   });
 
-  it("help text describes status as read-only (writes nothing)", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      // status description should mention writes-nothing or read-only
-      expect(output).toMatch(
-        /status.*[Rr]ead-only|[Rr]ead-only.*status|Writes nothing.*status|status.*Writes nothing/s,
-      );
-    } finally {
-      logSpy.mockRestore();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// printUsage — --opencode listed in help text (Task 2.3)
-// ---------------------------------------------------------------------------
-
-describe("printUsage — --opencode in help text (Task 2.3)", () => {
-  it("help text lists --opencode=<provider>", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toContain("--opencode");
-    } finally {
-      logSpy.mockRestore();
-    }
-  });
-
-  it("help text describes opencode as additive and opt-in", () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    try {
-      printUsage();
-      const output = logSpy.mock.calls[0]?.[0] as string;
-      expect(output).toMatch(/opencode/i);
-      // additive / opt-in language
-      expect(output).toMatch(/additive|opt-in/i);
-    } finally {
-      logSpy.mockRestore();
-    }
+  it("describes opencode as additive + provider-required", () => {
+    const output = usage();
+    expect(output).toMatch(/opencode/i);
+    expect(output).toMatch(/additive/i);
+    expect(output).toMatch(/REQUIRED|required/);
   });
 });

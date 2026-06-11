@@ -1,7 +1,7 @@
 // bkit-cli.ts — parseArgs + printUsage for the v4-3 module-flag CLI surface.
 // Exported and consumed by bkit-install.ts main().
 import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
-/** Cloud-agent variant chosen via `--cloud=<variant>`. */
+/** Cloud-agent variant chosen via `--auto=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
 /**
  * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
@@ -16,73 +16,49 @@ export function parseCloudVariant(value) {
         ? value
         : null;
 }
-const MODULE_FLAGS = new Set([
-    "core",
-    "claude",
-    "cursor",
-    "opencode",
-    "ci",
-    "lint",
-    "git-hooks",
-    "renovate",
-    "dependabot",
-    "cloud",
-    "full",
-]);
-// ALL_MODULES (ordered dispatch sequence): core always first, full = all non-core.
-// `renovate`, `dependabot` and `cloud` are intentionally excluded — opt-in via
-// explicit `--renovate` / `--dependabot` / `--cloud`. Rationale (renovate): the
-// Renovate App's first scan reads the default branch, so the config must reach
-// `main` BEFORE the App is installed. Rationale (dependabot): consumers who pick
-// this path explicitly opt out of bkit's Renovate recommendation; installing both
-// opens competing PRs against the same packages. Rationale (cloud): the
-// `bkit-cloud.yml` workflow is inert without ANTHROPIC_API_KEY / OPENCODE_PROVIDER_KEY
-// secrets + GitHub Actions write permissions + (Cursor half) a dashboard trigger,
-// and it auto-dispatches cloud agents on CI completion — a deliberate opt-in, not
-// a default. See issue #119 ("Managed Cloud Agents").
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
+// `tooling` (expands to ci/lint/git-hooks) are intercepted by dedicated branches in
+// parseArgs before this set is consulted; the generic check only ever validates
+// claude/cursor. `full`, `core`, `ci`, `lint`, `git-hooks`, `renovate`, `dependabot`
+// and `cloud` are NO LONGER accepted as bare flags (#252): use `--tooling`,
+// `--dependency=<renovate|dependabot>`, and `--auto=<claude|cursor>`; core is implicit.
+const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "tooling"]);
+// ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
+// uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
 const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
-/** Opt-in modules: not included in `--full` or default install; require explicit flag. */
+/**
+ * Opt-in modules: never installed implicitly; each requires an explicit flag
+ * (`--dependency=`, `--auto=`, `--opencode=`). A bare/full `uninstall` DOES remove
+ * them (zero footprint). Rationale: renovate's App scans the default branch first;
+ * renovate+dependabot open competing PRs; cloud auto-dispatches agents and is inert
+ * without secrets; opencode is a provider-pluggable additive host. See issue #119.
+ */
 export const OPTIN_MODULES = new Set(["renovate", "dependabot", "cloud", "opencode"]);
-// Uninstall-specific flags (not module flags)
-const UNINSTALL_ONLY_FLAGS = new Set([
-    "dry-run",
-    "force",
-    "nuke",
-    "yes",
-    "package",
-    "keep-npmrc",
-    "keep-tooling",
-    "auto-revert",
-]);
-// Install-specific flags (not module flags; not uninstall flags)
-const INSTALL_ONLY_FLAGS = new Set(["auto-revert"]);
-export function resolveModules(flags, opts = {}) {
-    // Single opt-in flag alone (no --full) → core + that module ONLY. Targeted is
-    // symmetric across install/uninstall and never pulls in the rest of the stack.
-    if (flags.size === 1) {
-        for (const m of OPTIN_MODULES) {
-            if (flags.has(m))
-                return new Set(["core", m]);
-        }
-    }
-    // --full / empty → all non-opt-in modules. Opt-in add-ons are ASYMMETRIC:
-    //   install  adds one only when explicitly flagged (they need external setup —
-    //            App/secrets/dashboard/choice — so a default install must not auto-wire them);
-    //   uninstall adds ALL of them (a full uninstall must leave zero bkit footprint).
-    // Safe: runUninstall is manifest-driven + skip-absent, so removing a never-installed
-    // opt-in module's files is a harmless no-op.
-    if (flags.has("full") || flags.size === 0) {
-        const out = new Set(ALL_MODULES);
-        for (const m of OPTIN_MODULES) {
-            if (opts.optInModulesInFull || flags.has(m))
+/**
+ * Resolve the explicit module-flag set into the concrete module set to dispatch.
+ * `flags` holds the internal module names the user explicitly named — core is NOT
+ * among them (it is implicit) and `tooling` is already expanded to ci/lint/git-hooks
+ * by parseArgs. The install "≥1 flag required" rule is enforced by the caller
+ * (bkit-install.ts main), not here.
+ *
+ *   install / check / upgrade / doctor / status → core implicit + the named modules.
+ *   uninstall (bare)     → every module incl. opt-in add-ons + core (zero footprint).
+ *   uninstall (targeted) → the named modules ONLY (core is removed only by a bare
+ *                          uninstall — a targeted uninstall must not strip the shared
+ *                          foundation, e.g. `uninstall --tooling` keeps AGENTS.md).
+ */
+export function resolveModules(flags, verb) {
+    if (verb === "uninstall") {
+        if (flags.size === 0) {
+            const out = new Set(ALL_MODULES);
+            for (const m of OPTIN_MODULES)
                 out.add(m);
+            return out;
         }
-        return out;
+        return new Set(flags);
     }
-    // core is always implicit
     const out = new Set(flags);
     out.add("core");
-    out.delete("full");
     return out;
 }
 function defaultUninstallFlags() {
@@ -123,28 +99,23 @@ export function parseArgs(argv) {
         args.shift();
     }
     else if (firstArg !== undefined && !firstArg.startsWith("-")) {
-        // Unknown verb (`init` removed in v0.2.0 — use `install --full`)
+        // Unknown verb (`init` removed in v0.2.0 — name modules explicitly, e.g.
+        // `install --claude --tooling`).
         console.error(`[bkit] Unknown verb: ${firstArg}. Run \`bkit help\` for usage.`);
         process.exit(1);
     }
+    // Accumulates the internal module names the user explicitly named (no core;
+    // `--tooling` expanded to ci/lint/git-hooks). resolveModules turns this into the
+    // dispatch set; main() reads it for the install/check/upgrade flag guards.
     const moduleFlags = new Set();
     const uninstallFlags = defaultUninstallFlags();
     const upgradeFlags = defaultUpgradeFlags();
     let tracker = null;
     let cloudVariant = null;
     let opencodeProvider = null;
-    let force = false;
     for (const arg of args) {
         if (arg.startsWith("--")) {
-            const rawFlag = arg.slice(2);
-            // `--auto[=claude|cursor]` is the current name for the cloud-agent lane (issues
-            // #243/#244 freed "cloud" for the local/cloud execution-target swap). `--cloud[=…]`
-            // is kept as a deprecated alias. Both normalise to the internal `cloud` module.
-            const flag = rawFlag === "auto"
-                ? "cloud"
-                : rawFlag.startsWith("auto=")
-                    ? `cloud=${rawFlag.slice("auto=".length)}`
-                    : rawFlag;
+            const flag = arg.slice(2);
             // Value-bearing flag: --tracker=<github|linear|none>
             if (flag.startsWith("tracker=")) {
                 const value = flag.slice("tracker=".length);
@@ -156,21 +127,21 @@ export function parseArgs(argv) {
                 tracker = parsed;
                 continue;
             }
-            // Value-bearing flag: --cloud=<claude|cursor>
-            // Bare `--cloud` (no value) is accepted for uninstall (variant not needed — reads from
-            // package.json). For install/check/upgrade it requires an explicit variant; future
-            // improvement: resolve variant from recorded bkit.cloudAgents for check/upgrade too.
-            if (flag === "cloud") {
+            // Value-bearing flag: --auto=<claude|cursor> — cloud-agent (auto-dispatch) lane;
+            // sets the internal `cloud` module. Bare `--auto` (no variant) is accepted only on
+            // uninstall (variant read from package.json). The old `--cloud` / `--cloud=<v>`
+            // spelling was dropped (#252) — it now falls through to the generic "Unknown flag".
+            if (flag === "auto") {
                 if (verb !== "uninstall") {
                     console.error(`[bkit] --auto requires an explicit variant: --auto=claude or --auto=cursor. Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
-                // uninstall --cloud: add the module flag without setting a cloudVariant.
+                // uninstall --auto: add the module flag without setting a cloudVariant.
                 moduleFlags.add("cloud");
                 continue;
             }
-            if (flag.startsWith("cloud=")) {
-                const value = flag.slice("cloud=".length);
+            if (flag.startsWith("auto=")) {
+                const value = flag.slice("auto=".length);
                 const parsed = parseCloudVariant(value);
                 if (parsed === null) {
                     console.error(`[bkit] Unknown cloud variant: "${value}". Valid values: ${CLOUD_VARIANTS.join(", ")}`);
@@ -225,8 +196,10 @@ export function parseArgs(argv) {
                 continue;
             }
             if (flag === "force") {
+                // Uninstall-only (#252): force-delete Tier-3 files even if consumer-modified.
+                // The install-side tracker-switch override was dropped — tracker switching is
+                // now free, so `--force` no longer affects install.
                 uninstallFlags.force = true;
-                force = true;
                 continue;
             }
             if (flag === "nuke") {
@@ -253,12 +226,24 @@ export function parseArgs(argv) {
                 uninstallFlags.autoRevert = true;
                 continue;
             }
-            // Upgrade-specific flags (P4.T6)
-            if (flag === "non-interactive") {
+            // Upgrade-specific flag: --auto-apply (renamed from --non-interactive, #252) —
+            // auto-apply non-conflicting changes, emit the conflict list, exit non-zero on
+            // any conflict (CI-safe). The internal field stays `nonInteractive`.
+            if (flag === "auto-apply") {
                 upgradeFlags.nonInteractive = true;
                 continue;
             }
-            // Module flags (bare --cloud handled above; skip it here)
+            // --tooling (#252): CLI-level alias expanding to the interdependent ci+lint+git-hooks
+            // bundle (husky hooks run vale/slop; CI runs lint+check). Symmetric install↔uninstall.
+            if (flag === "tooling") {
+                moduleFlags.add("ci");
+                moduleFlags.add("lint");
+                moduleFlags.add("git-hooks");
+                continue;
+            }
+            // Bare module flags. opencode/tooling are intercepted above; only claude/cursor
+            // reach here. Everything else (incl. the dropped --full/--core/--ci/--lint/
+            // --git-hooks/--renovate/--dependabot/--cloud) hits the generic unknown-flag error.
             const moduleFlag = flag;
             if (!MODULE_FLAGS.has(moduleFlag)) {
                 console.error(`[bkit] Unknown flag: ${arg}. Run \`bkit help\` for usage.`);
@@ -278,33 +263,41 @@ export function parseArgs(argv) {
         console.error("[bkit] `--renovate` and `--dependabot` are mutually exclusive (running both opens competing PRs against the same packages). Pick one.");
         process.exit(1);
     }
-    // Full uninstall removes opt-in add-ons too (leave zero footprint); full install does not.
-    const modules = resolveModules(moduleFlags, { optInModulesInFull: verb === "uninstall" });
+    // resolveModules is verb-aware: a bare uninstall expands to all modules + opt-ins +
+    // core (zero footprint); every other verb keeps core implicit + the named modules.
+    const modules = resolveModules(moduleFlags, verb);
     return {
         verb,
         modules,
+        moduleFlags,
         uninstallFlags,
         upgradeFlags,
         tracker,
         cloudVariant,
         opencodeProvider,
-        force,
     };
 }
 export function printUsage() {
     console.log(`bkit — agent-stack consolidation CLI
 
 Usage:
-  bkit install [module-flags]   Install (or re-sync) agent + CI + lint stack.
-                                 No flags = --full (all modules).
-  bkit check [module-flags]     Dry-run — report drift without writing. Exits 1 on drift.
-  bkit upgrade [module-flags]   Upgrade installed files. Diffs old vs new templates;
-                                 conflict list emitted to stderr. Use --non-interactive
-                                 for CI (auto-apply non-conflicting; exit non-zero on conflicts).
+  bkit install <module-flags>   Install (or re-sync) the named modules + the implicit
+                                 core foundation. At least one module flag is REQUIRED —
+                                 a bare \`bkit install\` errors (name the modules below).
+                                 Hosts compose: --claude --cursor --opencode=<provider>.
+  bkit check                     Dry-run — drift-check everything already installed (no
+                                 module flags). Exits 1 on drift. This is the CI gate.
+  bkit upgrade [--auto-apply] [--dry-run]
+                                 Upgrade everything installed (no module flags). Diffs old
+                                 vs new templates; conflict list emitted to stderr. Use
+                                 --auto-apply for CI (apply non-conflicting; exit non-zero
+                                 on any conflict).
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
-                                 No flags = --full — ALL modules incl. opt-in add-ons
-                                 (renovate/dependabot/cloud), so no bkit footprint remains.
-                                 Target one with its flag (e.g. uninstall --cloud).
+                                 No flags = full removal — ALL modules incl. opt-in add-ons
+                                 (renovate/dependabot/cloud/opencode) + core, so no bkit
+                                 footprint remains. Target with the same module flags as
+                                 install (e.g. uninstall --tooling); a targeted uninstall
+                                 leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
@@ -312,46 +305,44 @@ Usage:
                                  Writes nothing. Exits 0.
   bkit help                     Print this message.
 
-Module flags (composable — same for install and uninstall):
-  --full          All modules (default when no flags given).
-  --core          .agents/ payload pass + .gitignore block + rules.md block + .bkit-version.
-  --claude        .claude/commands/ + .claude/agents/ (byte-identical mirror).
-  --cursor        .cursor/commands/ + .cursor/agents/ (T1/T2/T3 transforms).
-  --ci            .github/workflows/ci.yml (Tier 3 seed-or-print: byte-equal, tokens
-                  substituted; seeded once, never overwritten).
-  --lint          .vale.ini + .vale/styles/House/ + slop-scan.config.json + .prettierignore.
-  --git-hooks     .husky/pre-commit + .husky/pre-push (Tier 3 seed-or-print, v2.0.4+).
-  --dependency=renovate
-                  .github/renovate.json5 (opt-in, phase-gated — NOT in install --full;
-                  IS removed by uninstall --full).
-                  Phase A: file not yet on origin/<default-branch> → writes file, prints
-                  prompt to PR → main, then re-run. Phase B: file detected on default
-                  branch → prints GitHub App install URL + activation checklist.
-  --dependency=dependabot
-                  .github/dependabot.yml + .bkit/scripts/bkit-set-dependabot.sh (opt-in —
-                  NOT in install --full; IS removed by uninstall --full). First-party
-                  GitHub feature; no App install or phase gate.
-                  (renovate and dependabot are mutually exclusive. The bare --renovate /
-                  --dependabot flags remain as deprecated aliases.)
+Core (implicit — no flag; installed/upgraded on every install):
+  AGENTS.md (cross-host dispatch router), .agents/rules.md + payload, .gitignore +
+  .gitattributes managed blocks, docs/, .bkit/*.md + .bkit/.env.example, .bkit/version.
+
+Module flags (composable; symmetric install ↔ uninstall):
+  --claude        .claude/agents/ + .claude/commands/ (byte-identical mirror) + CLAUDE.md
+                  (root redirect to .agents/rules.md) + .claude settings/hooks.
+  --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
+                  .cursor/rules/00-shared-rules.mdc + .cursor settings.
   --opencode=<provider>
-                  Install opencode host (additive — coexists with always-on claude/cursor;
-                  opt-in via explicit --opencode=<provider>). Supported providers:
-                  ollama-local, nvidia.
-                  Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
-                  .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
-                  A provider value is REQUIRED — it names the API key env var and base URL
-                  seeded into opencode.json. Configure your provider key + base URL after install;
-                  run \`bkit doctor\` and \`bkit status\` to verify. NOT in install --full.
-                  IS removed by uninstall --full.
-  --auto=claude   Install Claude cloud-agent (auto-dispatch) integration (opt-in — NOT in
-                  install --full; IS removed by uninstall --full). Requires tracker=github.
-                  Ships: .github/workflows/bkit-cloud.yml + .claude/hooks/cloud-bootstrap.sh.
-                  Requires ANTHROPIC_API_KEY repo secret and the Claude GitHub App
-                  (run /install-github-app once). Records bkit.cloudAgents=claude.
-  --auto=cursor   Install Cursor cloud-agent integration (opt-in). Requires tracker=linear.
-                  Ships: .cursor/Dockerfile + .cursor/environment.json.
-                  Records bkit.cloudAgents=cursor.
-                  (--cloud=… is kept as a deprecated alias of --auto=….)
+                  Additive opencode host. A provider value is REQUIRED (names the API key
+                  env var + base URL seeded into opencode.json). Supported: ollama-local,
+                  nvidia. Ships .opencode/** (agents, commands, opencode.json, gateguard).
+                  Configure your provider key after install; verify with \`bkit doctor\`.
+  --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent
+                  bundle (husky runs vale/slop; CI runs lint+check). Tier-3 seed-or-print.
+  --dependency=<renovate|dependabot>
+                  Dependency updater (opt-in, mutually exclusive — both open PRs against
+                  the same packages). renovate is phase-gated against the default branch;
+                  dependabot is a first-party GitHub feature (no App / phase gate).
+  --auto=<claude|cursor>
+                  Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
+                  tracker=github + ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
+                  needs tracker=linear. Bare --auto is accepted on uninstall only.
+
+Cross-cutting / modifiers:
+  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none
+                        (default). Records bkit.issueTracker in package.json and substitutes
+                        tracker snippets into command mirrors. Switching is free (re-run with
+                        a new value). Does NOT own AGENTS.md (which is tracker-agnostic).
+
+Install flags:
+  --auto-revert         On a Phase 3 blocker, automatically run uninstall and exit 1.
+
+Upgrade flags:
+  --auto-apply          Apply non-conflicting changes; emit conflict list to stderr; exit
+                        non-zero when any conflict is detected (CI-safe).
+  --dry-run             Show what would change without writing.
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
@@ -362,33 +353,16 @@ Uninstall flags:
   --keep-npmrc    Preserve .npmrc (default: .npmrc is not bkit-managed, always preserved).
   --keep-tooling  Preserve tooling devDependencies (prettier/slop-scan/husky).
 
-Install flags:
-  --auto-revert         On Phase 3 blocker, automatically run uninstall and exit 1.
-  --tracker=<name>      Wire issue tracker integration. Values: github, linear, none (default).
-                        Writes bkit.issueTracker to package.json and substitutes tracker snippets
-                        into workflow mirrors (.claude/commands/, .cursor/commands/).
-  --force               Allow switching an established issue tracker (first-set is free;
-                        subsequent switches require --force to prevent accidental reconfiguration).
-
-Upgrade flags:
-  --non-interactive  Auto-apply non-conflicting changes; emit conflict list to stderr;
-                     exit non-zero when any conflict is detected (CI-safe).
-  --dry-run          Show what would change without writing.
-
 Examples:
-  bkit install                  Full stack install (all modules).
-  bkit install --claude         Only .claude/** + core.
-  bkit install --ci --lint      CI + lint stack + core; nothing else.
-  bkit install --renovate       Renovate config only (phase-gated; opt-in).
-  bkit install --dependabot     Dependabot config + helper script (opt-in; alternative to --renovate).
-  bkit install --cloud=claude   Claude cloud integration (GitHub tracker required; opt-in).
-  bkit install --cloud=cursor   Cursor cloud integration (Linear tracker required; opt-in).
-  bkit install --full --renovate  Full stack + Renovate opt-in.
-  bkit install --full           Explicit full stack (equivalent to no flags).
-  bkit check --full             Drift detection across full stack (CI gate).
-  bkit uninstall                Full stack uninstall (all modules).
-  bkit uninstall --dry-run      Preview what would be removed.
-  bkit uninstall --ci --lint    Uninstall CI + lint stack only.
+  bkit install --claude                       .claude/** + CLAUDE.md + core.
+  bkit install --claude --cursor --tooling    Both hosts + ci/lint/git-hooks + core.
+  bkit install --opencode=nvidia              opencode host (nvidia provider) + core.
+  bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
+  bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
+  bkit check                                  Drift-check everything installed (CI gate).
+  bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
+  bkit uninstall                              Full uninstall (all modules, zero footprint).
+  bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
 
 Consumer CI auth:
   Set GH_BKIT_TOKEN in GitHub Actions secrets (classic PAT with read:packages scope —

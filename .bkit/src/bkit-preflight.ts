@@ -208,9 +208,9 @@ export function detectBkitVersionPinStale(cwd: string): PreflightFinding | null 
   return {
     id: "bkit-version-pin-stale",
     severity: "advisory",
-    detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .bkit/version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run \`pnpm bkit install\`.`,
+    detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .bkit/version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run the bkit installer.`,
     action:
-      "Run `pnpm bkit install --full` to resync the .agents payload + version pin, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
+      "Run `pnpm bkit upgrade` to resync the .agents payload + version pin across everything you have installed, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
   };
 }
 

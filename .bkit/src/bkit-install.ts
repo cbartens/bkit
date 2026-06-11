@@ -2,11 +2,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs, printUsage, OPTIN_MODULES, type ModuleFlag } from "./bkit-cli.js";
+import {
+  parseArgs,
+  printUsage,
+  OPTIN_MODULES,
+  type ModuleFlag,
+  type CloudVariant,
+} from "./bkit-cli.js";
 import {
   dispatchModules,
   getPkgRoot,
   renderCloudWorkflow,
+  renderOpencodeJson,
   renderManagedOutputs,
   type ModuleContext,
 } from "./bkit-modules.js";
@@ -1176,6 +1183,56 @@ function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
 }
 
 /**
+ * Module set that `bkit check` drift-checks (#252 Step 3). Always core, plus the
+ * installed subset of the non-opt-in modules {claude, cursor, ci, lint, git-hooks},
+ * detected by sentinel file presence. This is exactly the coverage bare `check` had
+ * before (full minus opt-ins) but GATED on presence — so a `--cursor`-only repo no
+ * longer reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for
+ * missing ci.yml/.vale.ini. Opt-in modules (opencode/renovate/dependabot/cloud) stay
+ * out of the gate, matching prior behaviour (no provider-fallback false drift).
+ */
+function detectInstalledCheckModules(cwd: string): Set<ModuleFlag> {
+  const mods = new Set<ModuleFlag>(["core"]);
+  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
+  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
+  if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml"))) mods.add("ci");
+  if (
+    fs.existsSync(path.join(cwd, ".vale.ini")) ||
+    fs.existsSync(path.join(cwd, "slop-scan.config.json"))
+  ) {
+    mods.add("lint");
+  }
+  if (
+    fs.existsSync(path.join(cwd, ".husky", "pre-commit")) ||
+    fs.existsSync(path.join(cwd, ".husky", "pre-push"))
+  ) {
+    mods.add("git-hooks");
+  }
+  return mods;
+}
+
+/**
+ * Render a resolved module set back into valid new-surface CLI flags (#252) for
+ * recovery-hint text. Skips core (implicit), collapses ci/lint/git-hooks → --tooling,
+ * and maps opt-ins to their value-flag spellings.
+ */
+function modulesToCliFlags(
+  mods: Set<ModuleFlag>,
+  opencodeProvider: string | null,
+  cloudVariant: CloudVariant | null,
+): string {
+  const out: string[] = [];
+  if (mods.has("claude")) out.push("--claude");
+  if (mods.has("cursor")) out.push("--cursor");
+  if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
+  if (mods.has("ci") || mods.has("lint") || mods.has("git-hooks")) out.push("--tooling");
+  if (mods.has("renovate")) out.push("--dependency=renovate");
+  if (mods.has("dependabot")) out.push("--dependency=dependabot");
+  if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
+  return out.join(" ");
+}
+
+/**
  * Detect the opencode provider id from a consumer's `.opencode/opencode.json`. The
  * provider block is keyed by id (matching renderOpencodeJson + the --cloud=opencode
  * constraint check), so the first key IS the provider. Returns null when absent or
@@ -1202,17 +1259,39 @@ async function main() {
   const {
     verb,
     modules,
+    moduleFlags,
     uninstallFlags,
     upgradeFlags,
     tracker,
     cloudVariant,
     opencodeProvider,
-    force,
   } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
     return;
+  }
+
+  // #252 Step 2 — install requires ≥1 module flag (bare install errors; replaces the
+  // old implicit empty→full). `--tracker` / `--auto-revert` are modifiers and do not
+  // count. moduleFlags holds only the explicitly-named modules (core is implicit).
+  if (verb === "install" && moduleFlags.size === 0) {
+    console.error(
+      "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
+        "--claude, --cursor, --opencode=<provider>, --tooling (plus opt-ins " +
+        "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage.",
+    );
+    process.exit(1);
+  }
+
+  // #252 Step 3 / S4 — check/upgrade take NO module flags; they operate on everything
+  // already installed. A stray module flag is a hard error pointing to the no-flag form.
+  if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
+    console.error(
+      `[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
+        `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`,
+    );
+    process.exit(1);
   }
 
   if (verb === "doctor") {
@@ -1403,6 +1482,13 @@ async function main() {
       // package.json absent/unparseable — default tracker
     }
 
+    // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
+    // `@@OPENCODE_*@@` sentinels). Like bkit-cloud.yml it MUST be rendered the same way on
+    // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
+    // consumer's config (#245). Detect the installed provider so the render matches install.
+    const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
+    const upgradeOpencodeProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+
     const candidates: UpgradeCandidate[] = [];
     if (fs.existsSync(tplRoot)) {
       const collectTemplates = (dir: string, rel: string): void => {
@@ -1425,7 +1511,9 @@ async function main() {
             const contentOverride =
               relPath === CLOUD_WORKFLOW_RELPATH
                 ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
-                : undefined;
+                : relPath === OPENCODE_JSON_RELPATH
+                  ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider)
+                  : undefined;
             candidates.push({
               relPath,
               templatePath: entAbs,
@@ -1600,9 +1688,17 @@ async function main() {
 
   if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
+  // #252 Step 3 — `bkit check` scopes drift detection to what is INSTALLED (detected by
+  // sentinel files), not to a fixed full set. Otherwise a single-host repo would falsely
+  // report the absent host's files as drift. `install` keeps its explicit resolved set.
+  const effectiveModules = verb === "check" ? detectInstalledCheckModules(process.cwd()) : modules;
+
   // --- Phase 1: Preflight (read-only, before any writes) ---
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
-  const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
+  const { blockers, advisories: preflightAdvisories } = runPreflight(
+    effectiveModules,
+    process.cwd(),
+  );
   if (blockers.length > 0) {
     console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
     const blockerBanner = formatChecklist(blockers);
@@ -1634,7 +1730,7 @@ async function main() {
     // Consumer overrides merge after the base parse — parseModelOverrides is internally
     // guarded (returns [] when the file/section is absent), so it needs no catch here.
     applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
-    if (modules.has("opencode")) {
+    if (effectiveModules.has("opencode")) {
       const provider = opencodeProvider ?? "ollama-local";
       try {
         opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
@@ -1652,8 +1748,10 @@ async function main() {
 
   // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
   // package.json; else default to "none".
+  // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
+  // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
+  // `--force` override) was dropped along with install `--force`.
   let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
-  let recordedIssueTracker: IssueTracker | null = null; // the value already stored in package.json
   {
     const consumerPkgPath = path.join(process.cwd(), "package.json");
     if (fs.existsSync(consumerPkgPath)) {
@@ -1664,33 +1762,12 @@ async function main() {
         >;
         const bkitField = pkg.bkit as Record<string, unknown> | undefined;
         const stored = parseIssueTracker(bkitField?.issueTracker);
-        if (stored !== null) {
-          issueTracker = stored;
-          recordedIssueTracker = stored;
-        }
+        if (stored !== null) issueTracker = stored;
       } catch {
         // non-fatal — keep default
       }
     }
-    if (tracker !== null) {
-      // Tracker-switch hard-block: if a tracker is already recorded and differs from the
-      // requested one, require --force to override (FINAL SCOPE decision 4).
-      // First-set (no recorded tracker) is always free.
-      if (
-        recordedIssueTracker !== null &&
-        recordedIssueTracker !== "none" &&
-        recordedIssueTracker !== tracker &&
-        !force
-      ) {
-        console.error(
-          `[bkit] Tracker is already set to "${recordedIssueTracker}" in package.json. ` +
-            `Switching to "${tracker}" requires --force. ` +
-            `Re-run with --force to override: bkit install --tracker=${tracker} --force`,
-        );
-        process.exit(1);
-      }
-      issueTracker = tracker;
-    }
+    if (tracker !== null) issueTracker = tracker;
   }
 
   // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
@@ -1702,19 +1779,19 @@ async function main() {
     const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
     if (issueTracker !== requiredTracker) {
       console.error(
-        `[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
+        `[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
           `but the resolved tracker is "${issueTracker}". ` +
           (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
-            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --cloud=${cloudVariant}`
-            : `Use the matching cloud variant or reconfigure the tracker with --force.`),
+            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
+            : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`),
       );
       process.exit(1);
     }
-    // cloud=opencode additionally requires the local opencode host to be installed first
+    // auto=opencode additionally requires the local opencode host to be installed first
     // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
     if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
       console.error(
-        `[bkit] --cloud=opencode requires the local opencode host to be installed first.\n` +
+        `[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
           `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia)\n` +
           `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
       );
@@ -1789,7 +1866,8 @@ async function main() {
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---
-  dispatchModules(modules, ctx);
+  // check dispatches the detected installed set; install dispatches the resolved set.
+  dispatchModules(effectiveModules, ctx);
 
   const totalWrites = ws.writes.length;
 
@@ -1815,7 +1893,7 @@ async function main() {
   } catch (err) {
     void err; // Non-fatal — changelog header is informational
   }
-  const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
+  const postFindings = runPostInstallCheck(ctx.advisories, ws, effectiveModules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
@@ -1839,8 +1917,8 @@ async function main() {
   // Advisory findings are informational only and do NOT exit-1.
   const phase3Blockers = postFindings.filter((f) => f.severity === "blocker");
   if (phase3Blockers.length > 0) {
-    const moduleFlags = [...modules].map((m) => `--${m}`).join(" ");
-    const recoveryLine = `pnpm bkit uninstall ${moduleFlags} && <fix the issue> && pnpm bkit install ${moduleFlags}`;
+    const recoveryFlags = modulesToCliFlags(effectiveModules, opencodeProvider, cloudVariant);
+    const recoveryLine = `pnpm bkit uninstall ${recoveryFlags} && <fix the issue> && pnpm bkit install ${recoveryFlags}`;
     console.error(
       `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,
     );
@@ -1859,7 +1937,7 @@ async function main() {
         stripPackage: false,
         logPrefix: "[bkit-uninstall]",
       };
-      await runUninstall([...modules] as ModuleName[], uninstallCtx);
+      await runUninstall([...effectiveModules] as ModuleName[], uninstallCtx);
       console.log(`${LOG_PREFIX} --auto-revert: uninstall complete. Exiting 1.`);
     }
     process.exit(1);

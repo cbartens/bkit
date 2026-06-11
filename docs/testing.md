@@ -104,7 +104,7 @@ bkit's CI must catch any hard-fail a downstream consumer would hit on `pnpm bkit
 **Required coverage for every consumer-runtime hard-fail** (any `process.exit(1)` reachable from `bkit install` / `bkit check`):
 
 1. **Unit test** of the failure branch (positive: bad input → exit). Cheap regression guard.
-2. **Smoke spawn test** of `bkit install --full` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
+2. **Smoke spawn test** of `bkit install --claude --cursor --tooling` against a scratch consumer in `os.tmpdir()` (assert exit 0). Catches the failure regardless of which branch introduces it. Lives in `bkit-install.integration.test.ts` § Scenario 5.
 3. **Stale-state spawn test** of `bkit install` / `bkit check` against a consumer pre-seeded with the upgrade-skew condition (e.g. stale `.bkit/prompts.md`, missing managed-block markers, malformed YAML). Lives alongside Scenario 5.
 4. **Phase 3 blocker exit-1 + recovery test** — Scenario 6 (exit 1 with recovery line) + Scenario 7 (`--auto-revert` calls `runUninstall` in-process before exit). v0.7.0+.
 5. **Mid-failure rollback test** — Scenario 9: simulate failure after first module commit; assert consumer files byte-identical to pre-install state via `discardAllStaging` (KN-12). v0.9.0+.

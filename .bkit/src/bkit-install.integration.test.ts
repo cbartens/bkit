@@ -99,12 +99,16 @@ describe("Scenario 1 — blocker: no package.json → exit 1, zero writes", () =
     // Skip subprocess test if tsx is not available (CI without devDeps installed)
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 30_000,
-    });
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 30_000,
+      },
+    );
 
     expect(result.status).toBe(1);
     // The blocker checklist must be the cause of exit-1 (not an unrelated crash).
@@ -412,12 +416,16 @@ describe("Scenario 5 — full install smoke against scratch consumer", () => {
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -526,7 +534,7 @@ describe("Scenario 7 — bkit install subprocess exits 1 on Phase 3 blocker (P2.
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--ci"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--tooling"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
@@ -592,7 +600,7 @@ describe("Scenario 8 — bkit install --auto-revert reverts on Phase 3 blocker (
     const versionFilePath = path.join(tmpDir, ".bkit", "version");
     expect(fs.existsSync(versionFilePath)).toBe(false);
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--core", "--auto-revert"], {
+    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--claude", "--auto-revert"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: {
@@ -735,12 +743,16 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -788,12 +800,16 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full", "--tracker=github"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling", "--tracker=github"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -853,12 +869,16 @@ describe("MCP config Tier 3 scaffold — fresh install and consumer-modified ide
     );
     if (!fs.existsSync(tsxBin)) return;
 
-    const result = spawnSync(tsxBin, [bkitInstallPath, "install", "--full"], {
-      cwd: tmpDir,
-      encoding: "utf-8",
-      env: { ...process.env, NODE_NO_WARNINGS: "1" },
-      timeout: 60_000,
-    });
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "install", "--claude", "--cursor", "--tooling"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
 
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     expect(result.status, `install crashed:\n${combined}`).toBe(0);
@@ -1139,7 +1159,7 @@ describe("Scenario: runPayload .envrc directive migration (.agents/.env → .bki
 //
 // The build challenge (Finding 3 MEDIUM) identified that the tracker value was
 // persisted to package.json BEFORE the cloud/tracker constraint check ran.
-// For `bkit install --tracker=github --cloud=cursor`:
+// For `bkit install --tracker=github --auto=cursor`:
 //   1. Tracker-switch block passed.
 //   2. bkit.issueTracker="github" WRITTEN to package.json.
 //   3. Cloud/tracker constraint fired (cursor requires linear != github) → exit 1.
@@ -1149,7 +1169,7 @@ describe("Scenario: runPayload .envrc directive migration (.agents/.env → .bki
 // write, preserving the "no state written on hard error" invariant.
 //
 // These tests lock in the invariant:
-//   (a) `bkit install --tracker=github --cloud=cursor` exits non-zero.
+//   (a) `bkit install --tracker=github --auto=cursor` exits non-zero.
 //   (b) package.json is NOT mutated (issueTracker NOT written on mismatch).
 // ---------------------------------------------------------------------------
 
@@ -1159,7 +1179,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
   const getTsxBin = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
 
-  it("--tracker=github --cloud=cursor exits non-zero (constraint mismatch)", () => {
+  it("--tracker=github --auto=cursor exits non-zero (constraint mismatch)", () => {
     // Finding 3 (a): the mismatch must be a hard error — exit 1 every time.
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
@@ -1170,7 +1190,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
 
     const result = spawnSync(
       tsxBin,
-      [getInstallPath(), "install", "--tracker=github", "--cloud=cursor"],
+      [getInstallPath(), "install", "--tracker=github", "--auto=cursor"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -1191,7 +1211,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     expect(combined).toMatch(/cloud=cursor.*tracker.*linear|cursor.*requires.*linear/i);
   });
 
-  it("--tracker=github --cloud=cursor does NOT write bkit.issueTracker to package.json (no partial write)", () => {
+  it("--tracker=github --auto=cursor does NOT write bkit.issueTracker to package.json (no partial write)", () => {
     // Finding 3 (b): the "no state written on hard error" invariant.
     // The pre-remediation code wrote issueTracker BEFORE the constraint check,
     // meaning package.json was mutated even on a failed install.
@@ -1203,7 +1223,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     fs.writeFileSync(path.join(tmpDir, "package.json"), initialPkgJson, "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
 
-    spawnSync(tsxBin, [getInstallPath(), "install", "--tracker=github", "--cloud=cursor"], {
+    spawnSync(tsxBin, [getInstallPath(), "install", "--tracker=github", "--auto=cursor"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1221,7 +1241,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
     ).toBeUndefined();
   });
 
-  it("--tracker=linear --cloud=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
+  it("--tracker=linear --auto=cursor exits 0 and writes bkit.issueTracker=linear (matching pair)", () => {
     // Complementary positive case: the matching pair must succeed and persist state.
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
@@ -1232,7 +1252,7 @@ describe("Challenge Finding 3 — cloud/tracker constraint-before-write regressi
 
     const result = spawnSync(
       tsxBin,
-      [getInstallPath(), "install", "--tracker=linear", "--cloud=cursor"],
+      [getInstallPath(), "install", "--tracker=linear", "--auto=cursor"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -1333,7 +1353,7 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     const oldAutoPath = path.join(tmpDir, ".github", "workflows", "bkit-auto.yml");
     expect(fs.existsSync(oldAutoPath), "bkit-auto.yml must exist before upgrade").toBe(true);
 
-    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--non-interactive"], {
+    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--auto-apply"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -1363,16 +1383,12 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
     // Run upgrade --dry-run — even in dry-run mode the gate logic executes
     // (the log line appears but no FS write occurs). Since bkit-cloud.yml is absent
     // and not in candidates, the orphan removal code must NOT log the removal message.
-    const result = spawnSync(
-      tsxBin,
-      [getInstallPath(), "upgrade", "--non-interactive", "--dry-run"],
-      {
-        cwd: tmpDir,
-        encoding: "utf-8",
-        env: { ...process.env, NODE_NO_WARNINGS: "1" },
-        timeout: 60_000,
-      },
-    );
+    const result = spawnSync(tsxBin, [getInstallPath(), "upgrade", "--auto-apply", "--dry-run"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
 
     // bkit-auto.yml must still exist — removal was not triggered
     expect(
@@ -1387,7 +1403,7 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
 });
 
 // ---------------------------------------------------------------------------
-// Scenario P1-B — Ollama cloud warning: bkit install --cloud=opencode with
+// Scenario P1-B — Ollama cloud warning: bkit install --auto=opencode with
 // an existing .opencode/opencode.json that has provider key "ollama-local" must
 // emit a console.warn containing "ollama-local" and "local server".
 //
@@ -1395,7 +1411,7 @@ describe("Scenario P1-A — orphan-cleanup gate: bkit-auto.yml only removed when
 // diagnostic message to prevent a surprising runtime failure in the cloud job.
 // ---------------------------------------------------------------------------
 
-describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode install", () => {
+describe("Scenario P1-B — ollama-local cloud warning on --auto=opencode install", () => {
   const getInstallPath = () =>
     path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
   const getTsxBin = () =>
@@ -1405,7 +1421,7 @@ describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode insta
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return;
 
-    // Consumer prerequisites: package.json + .git + tracker=github (required for --cloud=opencode)
+    // Consumer prerequisites: package.json + .git + tracker=github (required for --auto=opencode)
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({
@@ -1434,12 +1450,12 @@ describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode insta
       "utf-8",
     );
 
-    // Run: bkit install --tracker=github --cloud=opencode
-    // The --opencode host is already "installed" (we seeded .opencode/), so --cloud=opencode
+    // Run: bkit install --tracker=github --auto=opencode
+    // The --opencode host is already "installed" (we seeded .opencode/), so --auto=opencode
     // should reach the provider check and emit the warning.
     const result = spawnSync(
       tsxBin,
-      [getInstallPath(), "install", "--tracker=github", "--cloud=opencode"],
+      [getInstallPath(), "install", "--tracker=github", "--auto=opencode"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -1496,7 +1512,7 @@ describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode insta
 
     const result = spawnSync(
       tsxBin,
-      [getInstallPath(), "install", "--tracker=github", "--cloud=opencode"],
+      [getInstallPath(), "install", "--tracker=github", "--auto=opencode"],
       {
         cwd: tmpDir,
         encoding: "utf-8",
@@ -1510,4 +1526,95 @@ describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode insta
     expect(combined).not.toMatch(/local server/i);
     expect(result.status, `Expected exit 0.\ncombined: ${combined}`).toBe(0);
   }, 90_000);
+});
+
+// ---------------------------------------------------------------------------
+// #252 — CLI surface redesign (subprocess): install ≥1-flag guard, check/upgrade
+// no-flag guard, and CLAUDE.md ownership move (core → claude).
+// ---------------------------------------------------------------------------
+
+describe("#252 — install requires ≥1 module flag; check/upgrade take none", () => {
+  let tmp: string;
+  const installPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
+  const tsxPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
+
+  function run(args: string[]) {
+    return spawnSync(tsxPath(), [installPath(), ...args], {
+      cwd: tmp,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1", GH_BKIT_TOKEN: "fake-token-for-test" },
+      timeout: 60_000,
+    });
+  }
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-252-"));
+    fs.writeFileSync(
+      path.join(tmp, "package.json"),
+      JSON.stringify({ name: "c", version: "0.0.0", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmp, ".git"), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it("bare `bkit install` errors (≥1 module flag required)", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["install"]);
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}\n${r.stderr}`).toMatch(/at least one module flag/i);
+  });
+
+  it("`bkit check --claude` (stray module flag) errors", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["check", "--claude"]);
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
+  });
+
+  it("`bkit upgrade --tooling` (stray module flag) errors", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["upgrade", "--tooling"]);
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}\n${r.stderr}`).toMatch(/takes no module flags/i);
+  });
+
+  it("`bkit install --claude` ships root CLAUDE.md (redirect)", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["install", "--claude"]);
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+    expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(true);
+    expect(fs.readFileSync(path.join(tmp, "CLAUDE.md"), "utf-8")).toContain(".agents/rules.md");
+    // Core is implicit — AGENTS.md ships too.
+    expect(fs.existsSync(path.join(tmp, "AGENTS.md"))).toBe(true);
+  });
+
+  it("`bkit install --cursor` (no claude) ships NO CLAUDE.md, but ships AGENTS.md (core)", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["install", "--cursor"]);
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+    expect(fs.existsSync(path.join(tmp, "CLAUDE.md"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, "AGENTS.md"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".cursor"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
+  });
+
+  it("`bkit install --tooling` ships ci.yml + .vale.ini; no host dirs", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    const r = run(["install", "--tooling"]);
+    expect(r.status, `${r.stdout}\n${r.stderr}`).toBe(0);
+    expect(fs.existsSync(path.join(tmp, ".github", "workflows", "ci.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".vale.ini"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".husky", "pre-commit"))).toBe(true);
+    expect(fs.existsSync(path.join(tmp, ".claude"))).toBe(false);
+    expect(fs.existsSync(path.join(tmp, ".cursor"))).toBe(false);
+  });
+
+  it("`bkit check` after a --cursor-only install reports no drift (no false .claude drift)", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    expect(run(["install", "--cursor"]).status).toBe(0);
+    const r = run(["check"]);
+    expect(r.status, `check should be clean:\n${r.stdout}\n${r.stderr}`).toBe(0);
+  });
 });
