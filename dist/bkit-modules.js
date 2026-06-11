@@ -1001,6 +1001,39 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "NVIDIA NIM",
     },
+    // Free-tier fast cloud — same OpenAI-compatible driver as nvidia, different endpoint/key.
+    groq: {
+        envVar: "GROQ_API_KEY",
+        baseURL: "https://api.groq.com/openai/v1",
+        apiPlaceholder: "{env:GROQ_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Groq",
+    },
+    cerebras: {
+        envVar: "CEREBRAS_API_KEY",
+        baseURL: "https://api.cerebras.ai/v1",
+        apiPlaceholder: "{env:CEREBRAS_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Cerebras",
+    },
+    // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
+    // provider (NOT the any-endpoint fallback #245 removed).
+    openrouter: {
+        envVar: "OPENROUTER_API_KEY",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiPlaceholder: "{env:OPENROUTER_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "OpenRouter",
+    },
+    // Cloud-hosted Ollama (ollama.com) — DISTINCT key from `ollama-local` (localhost, no API
+    // key). Matches opencode's own naming where built-in `ollama` = the cloud service.
+    ollama: {
+        envVar: "OLLAMA_API_KEY",
+        baseURL: "https://ollama.com/v1",
+        apiPlaceholder: "{env:OLLAMA_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Ollama (Cloud)",
+    },
 };
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
 const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
@@ -1160,9 +1193,9 @@ export function runOpencodeModule(ctx) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
                 }
-                // Local keyless provider (ollama-local) → local-setup guidance. Both supported
-                // providers now use the npm driver, so npmPackage no longer discriminates local
-                // vs remote — an empty apiPlaceholder (no API key) is the local marker.
+                // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
+                // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
+                // apiPlaceholder (no API key) is the local marker (ollama-local only).
                 if (!pd.apiPlaceholder) {
                     return (`  1. Ollama runs locally — no API key needed.\n` +
                         `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
@@ -1181,7 +1214,8 @@ export function runOpencodeModule(ctx) {
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
             })() +
             `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
-            `  4. Model IDs: see .bkit/providers.md § Models for the per-provider live /v1/models lookup recipe.\n` +
+            `  4. Model IDs: providers with curated pins (nvidia, ollama-local) install ready-to-run; ` +
+            `others (groq, cerebras, openrouter, ollama) install a \`${provider}/set-model-id\` placeholder for every agent that you MUST replace — see .bkit/providers.md § Models for the per-provider live /v1/models lookup recipe.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }

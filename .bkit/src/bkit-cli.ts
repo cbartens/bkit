@@ -29,7 +29,14 @@ export type CloudVariant = (typeof CLOUD_VARIANTS)[number];
  * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (bkit-modules.ts) and
  * OPENCODE_PROVIDER_COLUMN (bkit-install.ts § Models lookup).
  */
-export const OPENCODE_PROVIDERS = ["ollama-local", "nvidia"] as const;
+export const OPENCODE_PROVIDERS = [
+  "ollama-local",
+  "nvidia",
+  "groq",
+  "cerebras",
+  "openrouter",
+  "ollama",
+] as const;
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value: unknown): CloudVariant | null {
@@ -242,7 +249,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       }
 
       // Value-bearing flag: --opencode=<provider>
-      // Additive opencode host opt-in. Supported providers: ollama-local, nvidia (strict allowlist).
+      // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
+      // cerebras, openrouter, ollama (cloud) (strict allowlist).
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
@@ -426,8 +434,9 @@ Module flags (composable; symmetric install ↔ uninstall):
   --opencode=<provider>
                   Additive opencode host. A provider value is REQUIRED (names the API key
                   env var + base URL seeded into opencode.json). Supported: ollama-local,
-                  nvidia. Ships .opencode/** (agents, commands, opencode.json, gateguard).
-                  Configure your provider key after install; verify with \`bkit doctor\`.
+                  nvidia, groq, cerebras, openrouter, ollama (cloud). Ships .opencode/**
+                  (agents, commands, opencode.json, gateguard). Configure your provider key
+                  after install; verify with \`bkit doctor\`.
   --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent
                   bundle (husky runs vale/slop; CI runs lint+check). Tier-3 seed-or-print.
   --dependency=<renovate|dependabot>

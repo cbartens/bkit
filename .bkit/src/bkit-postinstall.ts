@@ -432,7 +432,11 @@ function walkRepoForHomeCheck(
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
+  } catch (err) {
+    // Unreadable directory (permissions / not-a-dir race): skip this subtree. Surfaced
+    // under BKIT_DEBUG so the skip is diagnosable rather than silently swallowed.
+    if (process.env.BKIT_DEBUG)
+      console.error(`[bkit] home-check skipped ${dir}: ${(err as Error).message}`);
     return;
   }
   for (const e of entries) {

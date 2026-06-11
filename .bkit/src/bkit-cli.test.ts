@@ -461,8 +461,14 @@ describe("parseArgs — --opencode flag", () => {
     expect(result.opencodeProvider).toBe("nvidia");
   });
 
-  it("--opencode=openrouter → rejected (not in the strict allowlist)", () => {
-    expect(expectExit(() => parseArgs(["install", "--opencode=openrouter"]))).toMatch(
+  it("--opencode=openrouter → opencode + core, provider=openrouter (#245 named provider)", () => {
+    const result = parseArgs(["install", "--opencode=openrouter"]);
+    expect(result.modules.has("opencode")).toBe(true);
+    expect(result.opencodeProvider).toBe("openrouter");
+  });
+
+  it("--opencode=gemini → rejected (still descoped — not in the strict allowlist)", () => {
+    expect(expectExit(() => parseArgs(["install", "--opencode=gemini"]))).toMatch(
       /unsupported provider/,
     );
   });
@@ -507,13 +513,21 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     expect(parseArgs(["install", "--opencode=nvidia"]).opencodeProvider).toBe("nvidia");
   });
 
+  // #245 provider expansion — these became valid (groq/cerebras free cloud; openrouter
+  // re-added as a NAMED provider, not the any-endpoint fallback; ollama = cloud Ollama).
+  const accepted = ["groq", "cerebras", "openrouter", "ollama"] as const;
+  for (const value of accepted) {
+    it(`--opencode=${value} is accepted (#245)`, () => {
+      expect(parseArgs(["install", `--opencode=${value}`]).opencodeProvider).toBe(value);
+    });
+  }
+
   const rejected: Array<[string, string]> = [
-    ["openrouter", "removed provider"],
-    ["gemini", "removed provider"],
-    ["openai", "well-formed but unsupported"],
+    ["gemini", "still descoped — not added in #245"],
+    ["openai", "well-formed but unsupported (Codex CLI lane, #247)"],
     ["anthropic", "well-formed but unsupported"],
     ["my-provider", "arbitrary user slug — no generic fallback"],
-    ["ollama", "near-miss (must be ollama-local)"],
+    ["ollama-cloud", "near-miss (cloud key is the bare `ollama`)"],
     ["MY_PROVIDER", "uppercase"],
     ["provider with spaces", "spaces"],
     ["x$y", "special character"],

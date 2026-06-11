@@ -242,9 +242,10 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
     if (curated)
         return curated;
-    // Defensive only: both supported providers (ollama-local, nvidia) have a curated column,
-    // so this branch is unreachable via the CLI (strict allowlist). Any unexpected id gets a
-    // prefix-correct sentinel for every agent (consumer sets the real model id).
+    // Reachable + intended for allowlisted providers WITHOUT a curated prompts.md column
+    // yet (groq, cerebras, openrouter, ollama — pending live-probe + tool-calling validation;
+    // see providers.md § Models). ollama-local and nvidia have columns and never reach here.
+    // Every agent gets a prefix-correct sentinel the consumer replaces with a real model id.
     const names = tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
         parseModelLookupForColumn(subagentsMdPath, "Claude");
     const bare = "set-model-id";
@@ -1187,9 +1188,14 @@ async function main() {
             if (opencodeProvider)
                 detectedProvider = opencodeProvider;
             // Per-provider cred check (present/absent only — no value echoed).
-            // Only the supported remote provider is listed; ollama-local is local (no key).
+            // Remote providers each name one API key; ollama-local is local (no key). Any
+            // remote provider absent here falls back to `${PROVIDER}_API_KEY` (see below).
             const PROVIDER_KEYS = {
                 nvidia: ["NVIDIA_API_KEY"],
+                groq: ["GROQ_API_KEY"],
+                cerebras: ["CEREBRAS_API_KEY"],
+                openrouter: ["OPENROUTER_API_KEY"],
+                ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
                 // ollama-local: local server, no API key required
             };
             // Local-only providers that use no remote API key
