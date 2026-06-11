@@ -1145,6 +1145,15 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
+
+  it("zen (#245 Phase 3): sentinel uses the opencode-side provider id, not the bkit key", () => {
+    // zen has no curated prompts.md column yet (catalog probe needs a live `opencode auth
+    // login`), so it falls through to the sentinel — but the prefix must be `opencode/`
+    // (model ids are opencode/<id>), NEVER `zen/`. Guards the key↔id split.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zen");
+    expect(lookup.size).toBeGreaterThan(0);
+    for (const [, model] of lookup) expect(model).toBe("opencode/set-model-id");
+  });
 });
 
 // ---------------------------------------------------------------------------

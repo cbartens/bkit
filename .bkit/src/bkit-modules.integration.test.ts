@@ -24,6 +24,7 @@ import {
   runCloudModule,
   runOpencodeModule,
   renderOpencodeJson,
+  opencodeProviderId,
   renderCloudWorkflow,
   dispatchModules,
   type ModuleContext,
@@ -2470,6 +2471,22 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 // (regression guard for #245: a stray `"api": "openai"` field makes opencode reject
 // the whole config, and env keys must use {env:VAR}, never shell ${VAR}.)
 // ---------------------------------------------------------------------------
+describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
+  it("passes through custom providers (key === opencode id)", () => {
+    for (const key of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+      expect(opencodeProviderId(key)).toBe(key);
+    }
+  });
+
+  it("maps the zen key to the opencode gateway id 'opencode' (#245 Phase 3)", () => {
+    expect(opencodeProviderId("zen")).toBe("opencode");
+  });
+
+  it("passes through an unknown key unchanged (defensive)", () => {
+    expect(opencodeProviderId("acme")).toBe("acme");
+  });
+});
+
 describe("renderOpencodeJson — opencode custom-provider format", () => {
   const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
 
@@ -2533,5 +2550,19 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.npm).toBe("@ai-sdk/openai-compatible");
     expect(block.options.baseURL).toBe("http://localhost:11434/v1");
     expect(block.options.apiKey).toBeUndefined();
+  });
+
+  it("zen (#245 Phase 3): managed auth — NO custom provider block at all", () => {
+    // zen is a first-class built-in opencode provider authenticated via `opencode auth login`,
+    // not a {env:KEY} block. renderOpencodeJson must emit no `provider` key (a stray custom
+    // block — npm/baseURL/apiKey — would be wrong and could shadow the built-in gateway).
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zen"));
+    expect(parsed.provider).toBeUndefined();
+    // The rest of the managed surface still renders normally.
+    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+    expect(parsed.mcp?.github?.type).toBe("remote");
+    expect(parsed.permission?.edit).toBe("allow");
+    // No leaked sentinels.
+    expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
   });
 });

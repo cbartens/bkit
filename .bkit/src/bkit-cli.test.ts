@@ -522,6 +522,12 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     });
   }
 
+  // #245 Phase 3 — zen (opencode-native gateway). bkit key is `zen`; the opencode-side
+  // provider id is `opencode`. Accepted at the CLI; render path differs (managed auth).
+  it("--opencode=zen is accepted (#245 Phase 3)", () => {
+    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("zen");
+  });
+
   const rejected: Array<[string, string]> = [
     ["gemini", "still descoped — not added in #245"],
     ["openai", "well-formed but unsupported (Codex CLI lane, #247)"],

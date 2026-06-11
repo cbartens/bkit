@@ -1034,7 +1034,28 @@ const OPENCODE_PROVIDER_DEFAULTS = {
         npmPackage: "@ai-sdk/openai-compatible",
         displayName: "Ollama (Cloud)",
     },
+    // opencode-native gateway. First-class built-in opencode provider (id "opencode";
+    // models opencode/<id>). Auth is opencode-managed (`opencode auth login`) — there is no
+    // env key and no baseURL to seed, so renderOpencodeJson emits NO custom provider block
+    // (managedAuth). Curated prompts.md column is deferred until the catalog is probed under
+    // a live login (#245 Phase 3); installs fall back to the opencode/set-model-id sentinel.
+    zen: {
+        envVar: "",
+        baseURL: "",
+        apiPlaceholder: "",
+        managedAuth: true,
+        providerId: "opencode",
+        displayName: "Zen",
+    },
 };
+/**
+ * The opencode-side provider id for a bkit provider key. Equal to the key for every custom
+ * provider (groq → groq); differs only for managed-auth gateways whose opencode id is fixed
+ * (zen → opencode). Model ids are `<providerId>/<model>`. Unknown keys pass through unchanged.
+ */
+export function opencodeProviderId(providerKey) {
+    return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
+}
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
 const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
 const OPENCODE_PROVIDER_KEY_SENTINEL = "@@OPENCODE_PROVIDER_KEY@@";
@@ -1077,6 +1098,13 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
         const mcp = parsed.mcp;
         if (mcp && Object.keys(mcp).length === 0) {
             delete parsed.mcp;
+        }
+        // Managed-auth gateways (zen): the provider is built into opencode and authenticated via
+        // `opencode auth login`, so there is NO custom provider block to seed — drop it entirely.
+        // Models are referenced as opencode/<id>; opencode resolves the built-in provider itself.
+        if (providerDefaults.managedAuth) {
+            delete parsed.provider;
+            return JSON.stringify(parsed, null, 2) + "\n";
         }
         // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
         // block with the npm-driver format: { npm, name, options: { baseURL } }
@@ -1193,6 +1221,13 @@ export function runOpencodeModule(ctx) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
                 }
+                // Managed-auth gateway (zen) → opencode holds the credential; no API key, no baseURL.
+                // Checked BEFORE the empty-apiPlaceholder branch (zen also has an empty apiPlaceholder
+                // but is NOT a local Ollama server).
+                if (pd.managedAuth) {
+                    return (`  1. zen is the opencode-native gateway — auth is opencode-managed, no API key.\n` +
+                        `  2. Log in once: \`opencode auth login\` (opencode.ai sign-in). Models are referenced as opencode/<id>.\n`);
+                }
                 // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
                 // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
                 // apiPlaceholder (no API key) is the local marker (ollama-local only).
@@ -1214,7 +1249,8 @@ export function runOpencodeModule(ctx) {
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
             })() +
             `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
-            `  4. Model IDs: all six providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama) install ready-to-run curated per-agent pins. ` +
+            `  4. Model IDs: the six OpenAI-compatible providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama) install ready-to-run curated per-agent pins. ` +
+            `zen installs the opencode/set-model-id sentinel for every agent — its curated column is deferred (pinning needs a live \`opencode auth login\` to probe the gateway catalog); replace the sentinels via .bkit/prompts.md § Model Overrides or per-agent model: after login. ` +
             `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });

@@ -180,4 +180,46 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     expect(parsed.provider?.nvidia).toBeDefined();
     expect(parsed.theme).toBe("consumer-custom-theme");
   }, 180_000);
+
+  it("zen (#245 Phase 3): install records the manifest provider; upgrade keeps it block-free (no ollama-local re-render)", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+
+    // Install the opencode host as the zen gateway (managed auth, no provider block).
+    const install = runBkit(["install", "--opencode=zen"]);
+    expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+
+    // (1) opencode.json has NO custom provider block — zen is built into opencode.
+    const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(fs.existsSync(opencodeJsonPath)).toBe(true);
+    const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
+      provider?: unknown;
+    };
+    expect(installed.provider).toBeUndefined();
+
+    // (2) The provider is recorded in the manifest — the ONLY upgrade-time detection signal
+    //     for a block-free gateway.
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { opencodeProvider?: string };
+    };
+    expect(pkg.bkit?.opencodeProvider).toBe("zen");
+
+    // (3) Agents seeded with the opencode-side prefix (opencode/…), never the bkit key zen/….
+    const agentsDir = path.join(tmpDir, ".opencode", "agents");
+    const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
+    expect(anAgent).toBeTruthy();
+    const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
+    expect(agentBody).toMatch(/model:\s*opencode\//);
+    expect(agentBody).not.toMatch(/model:\s*zen\//);
+
+    // (4) Upgrade must re-render opencode.json from the manifest provider (zen) — NOT fall back
+    //     to ollama-local and inject a stray provider block (the bug manifest-detection fixes).
+    const upgrade = runBkit(["upgrade", "--auto-apply"]);
+    expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+    const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as { provider?: unknown };
+    expect(
+      after.provider,
+      "upgrade must keep zen block-free, not re-render as ollama-local",
+    ).toBeUndefined();
+  }, 180_000);
 });

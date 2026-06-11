@@ -36,6 +36,10 @@ export const OPENCODE_PROVIDERS = [
   "cerebras",
   "openrouter",
   "ollama",
+  // opencode-native gateway (Zen). bkit key is "zen"; the underlying opencode provider id
+  // is "opencode" (models are opencode/<id>). Auth is opencode-managed (`opencode auth login`),
+  // NOT a {env:KEY} block — so it renders without a custom provider block (see renderOpencodeJson).
+  "zen",
 ] as const;
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
@@ -71,7 +75,8 @@ export interface ParsedArgs {
   cloudVariant: CloudVariant | null;
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
-   * Supported: "ollama-local", "nvidia" (see OPENCODE_PROVIDERS — strict allowlist).
+   * Supported: see OPENCODE_PROVIDERS — strict allowlist (ollama-local, nvidia, groq,
+   * cerebras, openrouter, ollama, zen).
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
@@ -250,7 +255,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --opencode=<provider>
       // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
-      // cerebras, openrouter, ollama (cloud) (strict allowlist).
+      // cerebras, openrouter, ollama (cloud), zen (opencode gateway) (strict allowlist).
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
@@ -434,7 +439,8 @@ Module flags (composable; symmetric install ↔ uninstall):
   --opencode=<provider>
                   Additive opencode host. A provider value is REQUIRED (names the API key
                   env var + base URL seeded into opencode.json). Supported: ollama-local,
-                  nvidia, groq, cerebras, openrouter, ollama (cloud). Ships .opencode/**
+                  nvidia, groq, cerebras, openrouter, ollama (cloud), zen (opencode gateway,
+                  managed auth — \`opencode auth login\`, no API key). Ships .opencode/**
                   (agents, commands, opencode.json, gateguard). Configure your provider key
                   after install; verify with \`bkit doctor\`.
   --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent

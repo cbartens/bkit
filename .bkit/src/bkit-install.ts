@@ -6,6 +6,7 @@ import {
   parseArgs,
   printUsage,
   OPTIN_MODULES,
+  OPENCODE_PROVIDERS,
   type ModuleFlag,
   type CloudVariant,
 } from "./bkit-cli.js";
@@ -15,6 +16,7 @@ import {
   renderCloudWorkflow,
   renderOpencodeJson,
   renderManagedOutputs,
+  opencodeProviderId,
   type ModuleContext,
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
@@ -303,17 +305,20 @@ export function buildOpencodeModelLookup(
   const header = OPENCODE_PROVIDER_COLUMN[provider];
   const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
-  // Sentinel fallback. All six current allowlisted providers (ollama-local, nvidia, groq,
-  // cerebras, openrouter, ollama) now ship a curated prompts.md column and never reach here
-  // (#245 Phase 2, 2026-06-11). This path is the safety net for a FUTURE allowlisted provider
-  // added before its column lands — every agent gets a prefix-correct sentinel the consumer
+  // Sentinel fallback. The six OpenAI-compatible providers (ollama-local, nvidia, groq,
+  // cerebras, openrouter, ollama) ship a curated prompts.md column and never reach here
+  // (#245 Phase 2, 2026-06-11). This path is the safety net for an allowlisted provider
+  // whose column has not landed yet — currently `zen` (#245 Phase 3: catalog probe needs a
+  // live `opencode auth login`). Every agent gets a prefix-correct sentinel the consumer
   // replaces with a real model id (see providers.md § Models for the live-probe recipe).
+  // The prefix is the opencode-side provider id (zen → opencode), not the bkit key.
   const names =
     tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
     parseModelLookupForColumn(subagentsMdPath, "Claude");
   const bare = "set-model-id";
+  const prefix = opencodeProviderId(provider);
   const out = new Map<string, string>();
-  for (const name of names.keys()) out.set(name, `${provider}/${bare}`);
+  for (const name of names.keys()) out.set(name, `${prefix}/${bare}`);
   return out;
 }
 
@@ -1136,19 +1141,17 @@ function runStatus(cwd: string, logPrefix: string): void {
   // --- opencode host ---
   const opencodeDir = path.join(cwd, ".opencode");
   const opencodePresent = fs.existsSync(opencodeDir);
-  let opencodeProvider = "unknown";
+  // Provider is the bkit provider key — resolved manifest-first (detectOpencodeProvider),
+  // which also covers managed-auth gateways (zen) whose opencode.json has no provider block.
+  let opencodeProvider = detectOpencodeProvider(cwd) ?? "unknown";
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
   if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
     try {
       const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
-        provider?: { name?: string };
         model?: string;
         models?: Record<string, unknown>;
       };
-      // opencode.json structure: provider block has the provider name/id
-      // Try to extract provider and model from the config
-      if (cfg.provider?.name) opencodeProvider = cfg.provider.name;
       if (cfg.model) opencodeModel = cfg.model;
       // Fallback: look for non-empty models map
       if (opencodeModel === "unknown" && cfg.models) {
@@ -1239,13 +1242,37 @@ function modulesToCliFlags(
 }
 
 /**
- * Detect the opencode provider id from a consumer's `.opencode/opencode.json`. The
- * provider block is keyed by id (matching renderOpencodeJson + the --cloud=opencode
- * constraint check), so the first key IS the provider. Returns null when absent or
- * unparseable — the caller falls back to the install default so the opencode model
- * lookup still resolves on upgrade.
+ * Detect the bkit opencode provider key a consumer installed.
+ *
+ * Resolution order:
+ *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
+ *     This is the ONLY signal for managed-auth gateways (zen) whose opencode.json carries no
+ *     custom provider block; without it upgrade would re-render zen as the ollama-local default.
+ *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
+ *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
+ *  3. null — caller falls back to the install default so the model lookup still resolves.
+ *
+ * The manifest value is validated against the allowlist so a hand-edited package.json cannot
+ * smuggle an unsupported provider into the render path.
  */
 function detectOpencodeProvider(cwd: string): string | null {
+  const pkgPath = path.join(cwd, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        bkit?: { opencodeProvider?: unknown };
+      };
+      const stored = pkg.bkit?.opencodeProvider;
+      if (
+        typeof stored === "string" &&
+        (OPENCODE_PROVIDERS as readonly string[]).includes(stored)
+      ) {
+        return stored;
+      }
+    } catch {
+      // unparseable package.json — fall through to opencode.json detection
+    }
+  }
   const jsonPath = path.join(cwd, ".opencode", "opencode.json");
   if (!fs.existsSync(jsonPath)) return null;
   try {
@@ -1338,21 +1365,10 @@ async function main() {
         `${LOG_PREFIX} opencode binary: ${opencodeInstalled ? "FOUND (" + whichResult.stdout.trim() + ")" : "NOT FOUND (install opencode first)"}`,
       );
 
-      // Read provider from opencode.json to check creds
-      let detectedProvider: string | null = null;
-      if (fs.existsSync(opencodeJsonPath)) {
-        try {
-          const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
-            provider?: Record<string, unknown>;
-          };
-          detectedProvider =
-            cfg.provider && typeof cfg.provider === "object"
-              ? (Object.keys(cfg.provider)[0] ?? null)
-              : null;
-        } catch {
-          // best-effort
-        }
-      }
+      // Resolve provider: manifest-first (detectOpencodeProvider) so managed-auth gateways
+      // (zen — no provider block in opencode.json) are still detected; the `--opencode=`
+      // flag, if given this run, overrides.
+      let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
       if (opencodeProvider) detectedProvider = opencodeProvider;
 
       // Per-provider cred check (present/absent only — no value echoed).
@@ -1368,7 +1384,31 @@ async function main() {
       };
       // Local-only providers that use no remote API key
       const LOCAL_PROVIDERS = new Set(["ollama-local"]);
-      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
+      // Managed-auth gateways (zen): no API key env var — opencode holds the credential
+      // (`opencode auth login`). The doctor check is "is opencode logged in for this gateway",
+      // not "is $KEY set". Best-effort: parse `opencode auth list` for the `opencode` provider.
+      const MANAGED_AUTH_PROVIDERS = new Set(["zen"]);
+      if (detectedProvider && MANAGED_AUTH_PROVIDERS.has(detectedProvider)) {
+        let authState = "UNKNOWN — run `opencode auth login` if not already authenticated";
+        if (opencodeInstalled) {
+          const authResult = spawnSyncLocal("opencode", ["auth", "list"], { encoding: "utf-8" });
+          if (authResult.status === 0 && typeof authResult.stdout === "string") {
+            // The gateway shows up as the built-in `opencode` provider entry in `auth list`.
+            // The output header always names the auth.json path (…/opencode/auth.json), so a
+            // naive substring match false-positives — exclude the header/path line, then look
+            // for an `opencode` credential entry among the remaining lines.
+            const stripAnsi = (s: string) => s.replace(/\[[0-9;]*m/g, "");
+            const loggedIn = stripAnsi(authResult.stdout)
+              .split("\n")
+              .filter((l) => !/auth\.json|Credentials|Environment/i.test(l))
+              .some((l) => /\bopencode\b/i.test(l));
+            authState = loggedIn ? "LOGGED IN" : "NOT LOGGED IN (run `opencode auth login`)";
+          }
+        }
+        console.log(
+          `${LOG_PREFIX} zen (opencode gateway): opencode-managed auth — no API key env var. Auth: ${authState}`,
+        );
+      } else if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
         const keys = PROVIDER_KEYS[detectedProvider] ?? [
           `${detectedProvider.toUpperCase()}_API_KEY`,
         ];
@@ -1836,16 +1876,24 @@ async function main() {
     }
   }
 
-  // Persist tracker to consumer package.json AFTER all hard-error gates pass.
-  // This preserves the "no files written on mismatch" invariant.
-  if (tracker !== null) {
+  // Persist bkit manifest fields to consumer package.json AFTER all hard-error gates pass.
+  // This preserves the "no files written on mismatch" invariant. Two fields are recorded:
+  //   - issueTracker: when a `--tracker=` value was given this run.
+  //   - opencodeProvider: when an `--opencode=<provider>` value was given this run. This is
+  //     the authoritative provider record detectOpencodeProvider reads on upgrade — REQUIRED
+  //     for managed-auth gateways (zen), whose opencode.json carries no provider block to
+  //     detect from. Both are merged in one read-modify-write to avoid double-writing.
+  const persistTracker = tracker !== null;
+  const persistProvider = opencodeProvider !== null && effectiveModules.has("opencode");
+  if ((persistTracker || persistProvider) && !dryRun) {
     const consumerPkgPath2 = path.join(process.cwd(), "package.json");
-    if (fs.existsSync(consumerPkgPath2) && !dryRun) {
+    if (fs.existsSync(consumerPkgPath2)) {
       try {
         const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
         const pkg = JSON.parse(raw) as Record<string, unknown>;
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-        bkit.issueTracker = tracker;
+        if (persistTracker) bkit.issueTracker = tracker;
+        if (persistProvider) bkit.opencodeProvider = opencodeProvider;
         pkg.bkit = bkit;
         const indentMatch = raw.match(/\n([ \t]+)"/);
         const indent = indentMatch ? indentMatch[1] : "  ";
@@ -1855,7 +1903,14 @@ async function main() {
           JSON.stringify(pkg, null, indent) + trailingNewline,
           "utf-8",
         );
-        console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+        if (persistTracker) {
+          console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+        }
+        if (persistProvider) {
+          console.log(
+            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" in package.json`,
+          );
+        }
       } catch {
         // non-fatal
       }
