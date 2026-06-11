@@ -124,7 +124,7 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     fs.writeFileSync(promptsPath, tamperedPrompts, "utf-8");
 
     // --- Upgrade: must re-render everything install does. ---
-    const upgrade = runBkit(["upgrade", "--non-interactive"]);
+    const upgrade = runBkit(["upgrade", "--auto-apply"]);
     const upgradeCombined = `${upgrade.stdout}\n${upgrade.stderr}`;
     expect(upgradeCombined).toMatch(/\[bkit-upgrade\]/);
     // Summary surfaces the re-render pass.
@@ -142,5 +142,42 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     const promptsAfter = fs.readFileSync(promptsPath, "utf-8");
     expect(promptsAfter).not.toContain(MANAGED_SENTINEL);
     expect(promptsAfter).toContain(OVERRIDE_ROW);
+  }, 180_000);
+
+  it("upgrade renders opencode.json with provider/tracker sentinels resolved (no raw @@…@@ leak, #245)", () => {
+    const tsxBin = getTsxBin();
+    if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
+
+    // Install the opencode host (nvidia) — opencode.json is templated with @@OPENCODE_*@@
+    // sentinels that renderOpencodeJson resolves on install.
+    const install = runBkit(["install", "--opencode=nvidia"]);
+    expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
+
+    const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(fs.existsSync(opencodeJsonPath)).toBe(true);
+    // Install resolves every sentinel.
+    expect(fs.readFileSync(opencodeJsonPath, "utf-8")).not.toContain("@@");
+
+    // Add a consumer-owned key so we also confirm the Tier-2 deep-merge still preserves it.
+    const tampered = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    tampered.theme = "consumer-custom-theme";
+    fs.writeFileSync(opencodeJsonPath, JSON.stringify(tampered, null, 2) + "\n", "utf-8");
+
+    // Upgrade must render opencode.json the SAME way install does (contentOverride) — NOT
+    // deep-merge the raw template, which would inject the literal @@OPENCODE_*@@ sentinel keys.
+    const upgrade = runBkit(["upgrade", "--auto-apply"]);
+    expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
+
+    const after = fs.readFileSync(opencodeJsonPath, "utf-8");
+    expect(after, "upgrade must not leak raw @@…@@ sentinels into opencode.json").not.toContain(
+      "@@",
+    );
+    const parsed = JSON.parse(after) as { provider?: Record<string, unknown>; theme?: string };
+    // Provider block intact (nvidia), consumer key preserved by the deep-merge.
+    expect(parsed.provider?.nvidia).toBeDefined();
+    expect(parsed.theme).toBe("consumer-custom-theme");
   }, 180_000);
 });

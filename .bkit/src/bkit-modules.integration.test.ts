@@ -480,7 +480,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
     expect(phaseA).toBeDefined();
     expect(phaseA!.action).toMatch(/Phase A/);
-    expect(phaseA!.action).toMatch(/pnpm bkit install --renovate/);
+    expect(phaseA!.action).toMatch(/pnpm bkit install --dependency=renovate/);
     // Must NOT print the App-install URL in Phase A.
     expect(phaseA!.action).not.toMatch(/github\.com\/apps\/renovate/);
     // Phase A (not only Phase B) must carry the renovate-local override guidance:

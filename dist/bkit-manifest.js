@@ -33,8 +33,8 @@ export function parseIssueTracker(value) {
 // ---------------------------------------------------------------------------
 /**
  * Dependency-update tool chosen by the consumer (opt-in, mutually exclusive).
- * - `renovate`   — `bkit install --renovate` (recommended).
- * - `dependabot` — `bkit install --dependabot` (alternative).
+ * - `renovate`   — `bkit install --dependency=renovate` (recommended).
+ * - `dependabot` — `bkit install --dependency=dependabot` (alternative).
  * - `none`       — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.depUpdater` by the owning module so the
@@ -54,11 +54,11 @@ export function parseDepUpdater(value) {
 // ---------------------------------------------------------------------------
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-cloud.yml`
+ * - `claude`  — `bkit install --auto=claude` installed `.github/workflows/bkit-cloud.yml`
  *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
- * - `cursor`  — `bkit install --cloud=cursor` installed `.cursor/Dockerfile`
+ * - `cursor`  — `bkit install --auto=cursor` installed `.cursor/Dockerfile`
  *               + `.cursor/environment.json`. Requires `tracker=linear`.
- * - `opencode` — `bkit install --cloud=opencode` installed `.github/workflows/bkit-cloud.yml`
+ * - `opencode` — `bkit install --auto=opencode` installed `.github/workflows/bkit-cloud.yml`
  *               (same file as claude; both jobs coexist, runtime-gated by secret presence).
  *               Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
@@ -89,7 +89,8 @@ export function parseCloudAgents(value) {
 // ---------------------------------------------------------------------------
 const CORE_MANIFEST = [
     { path: "AGENTS.md", format: "markered-text", module: "core" },
-    { path: "CLAUDE.md", format: "markered-text", module: "core" },
+    // CLAUDE.md moved core → claude (#252) — see CLAUDE_MANIFEST. AGENTS.md (the
+    // cross-host dispatch router) stays core; CLAUDE.md is a Claude-Code-only redirect.
     { path: ".gitignore", format: "markered-text", module: "core" },
     // Append-only ledger union-merge rules live in a managed block; consumers may add
     // their own attributes outside the block, so this is markered-text (not whole-file).
@@ -107,6 +108,10 @@ const CORE_MANIFEST = [
     { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 const CLAUDE_MANIFEST = [
+    // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
+    // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
+    // Emitted by runClaudeModule (a root file, outside the .claude/ dir walk).
+    { path: "CLAUDE.md", format: "markered-text", module: "claude" },
     { path: ".claude/settings.json", format: "json", module: "claude" },
     { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
     // GateGuard advisory PreToolUse hook — fully bkit-owned Node script (no consumer
@@ -227,12 +232,12 @@ const CLOUD_MANIFEST = [
     // CLOUD_MANIFEST_OPENCODE shares bkit-cloud.yml with claude; skip duplicate workflow entry.
     ...CLOUD_MANIFEST_CURSOR,
 ];
-// Renovate is opt-in via `bkit install --renovate` — phase-gated against the
+// Renovate is opt-in via `bkit install --dependency=renovate` — phase-gated against the
 // default branch. NOT included in --full. See issue #123 follow-up.
 const RENOVATE_MANIFEST = [
     { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
 ];
-// Dependabot is opt-in via `bkit install --dependabot` — first-party GitHub
+// Dependabot is opt-in via `bkit install --dependency=dependabot` — first-party GitHub
 // feature, no App install required. Mutually exclusive with --renovate. NOT
 // included in --full. See issue #109 (origin) + #123 follow-up. dependabot.yml
 // is Tier 3 (seed-or-print) because consumers commonly tune the npm section

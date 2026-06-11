@@ -17,6 +17,29 @@ import {
 } from "./bkit-manifest";
 
 // ---------------------------------------------------------------------------
+// CLAUDE.md ownership move core → claude (#252)
+// ---------------------------------------------------------------------------
+
+describe("CLAUDE.md ownership (#252: moved core → claude)", () => {
+  it("CLAUDE.md is owned by the claude module (markered-text)", () => {
+    const entry = getInstallManifest().find((e) => e.path === "CLAUDE.md");
+    expect(entry).toBeDefined();
+    expect(entry!.module).toBe("claude");
+    expect(entry!.format).toBe("markered-text");
+  });
+
+  it("getModuleManifest('claude') includes CLAUDE.md", () => {
+    expect(getModuleManifest("claude").some((e) => e.path === "CLAUDE.md")).toBe(true);
+  });
+
+  it("getModuleManifest('core') does NOT include CLAUDE.md (but keeps AGENTS.md)", () => {
+    const core = getModuleManifest("core");
+    expect(core.some((e) => e.path === "CLAUDE.md")).toBe(false);
+    expect(core.some((e) => e.path === "AGENTS.md")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CLOUD_MANIFEST_CLAUDE / CLOUD_MANIFEST_CURSOR — variant-split (T1.5 / DECISION-D)
 // Derived Test Matrix row 14: each manifest entry tagged with / gated by its owning variant.
 // ---------------------------------------------------------------------------

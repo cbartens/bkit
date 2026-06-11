@@ -16,11 +16,11 @@
 <!-- prettier-ignore -->
 | Host | Tier | Subagent dir | Command dir | Settings | Hooks | Install |
 | --- | --- | --- | --- | --- | --- | --- |
-| Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | always-on (`--full`) |
-| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | always-on (`--full`) |
+| Claude Code | canonical | `.claude/agents/` | `.claude/commands/` | `.claude/settings.json` | `.claude/hooks/` (registered in settings) | `bkit install --claude` |
+| Cursor | derived | `.cursor/agents/` | `.cursor/commands/` | `.cursor/settings.json` + `.cursor/environment.json` + `.cursor/Dockerfile` | `.cursor/hooks/` (registered in `.cursor/hooks.json`) | `bkit install --cursor` |
 | opencode | additive (opt-in) | `.opencode/agents/` | `.opencode/commands/` | `.opencode/opencode.json` | `.opencode/plugin/gateguard.js` (PreToolUse) | `bkit install --opencode=<provider>` |
 
-**Additive host model:** claude and cursor are always-on (included in every `--full` install). opencode is opt-in and additive — it installs alongside claude/cursor, never replacing them. No `--claude` flag exists. Provider selection (`ollama-local`, `nvidia` — strict allowlist) is an install-time decision: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
+**Explicit host axis (no implicit full):** `bkit install` requires at least one module flag — a bare `bkit install` errors. Every host is named explicitly and hosts compose: `bkit install --claude --cursor --opencode=nvidia` installs all three (plus the implicit core foundation). The distinction between hosts is **nullary vs unary**: claude and cursor are nullary (each resolves to exactly one rendering — claude _is_ the canonical Anthropic format, cursor _is_ its derived catalog), whereas `--opencode` is unary (a provider-pluggable host that cannot render without `=<provider>`). Provider selection (`ollama-local`, `nvidia` — strict allowlist) is therefore part of the flag: `bkit install --opencode=<provider>`. Switch providers by re-running install. `bkit status` shows installed hosts + active providers; `bkit doctor` checks credentials + tool reachability.
 
 **Single active provider:** bkit manages one provider block in `opencode.json` at a time. Running `bkit install --opencode=ollama-local` after `bkit install --opencode=nvidia` replaces the managed provider block (nvidia → ollama-local). If you need multiple providers simultaneously (e.g. ollama-local for local + nvidia for cloud), manually add the second provider block to `.opencode/opencode.json` — bkit's Tier-2 deep-merge reconverge preserves manually-added keys across upgrades.
 
@@ -315,7 +315,7 @@ These are **Ollama-local only** — remote providers (`nvidia`) are stateless cl
 | Cursor | `AGENTS.md` (root, AGENTS.md spec) + `.cursor/rules/*.mdc` (MDC: markdown + optional YAML frontmatter with `description`, `globs`, `alwaysApply`) | Plain markdown / MDC |
 | Both (de-facto cross-host convention) | `AGENTS.md` increasingly read by all hosts incl. Claude Code, Codex, Cursor | Plain markdown |
 
-**Current setup:** `CLAUDE.md`, `AGENTS.md`, `.cursor/rules/00-shared-rules.mdc` all contain a one-line redirect to `AGENTS.md`. AGENTS.md additionally carries cross-host workflow router (Linear-issue parsing → label-based command dispatch). All three files MUST exist after install.
+**Current setup:** `CLAUDE.md` and `.cursor/rules/00-shared-rules.mdc` each contain a one-line redirect to `.agents/rules.md`. `AGENTS.md` is the cross-host dispatch spine — it carries the workflow router (Linear-issue parsing → label-based command dispatch) and is read by every host. **Ownership is host-scoped (#252):** `CLAUDE.md` ships with `--claude` (a Claude-Code affordance, the exact analog of Cursor's `.cursor/rules/00-shared-rules.mdc`, which ships with `--cursor`); `AGENTS.md` is core (always installed). Each host brings its own redirect — there is no longer a rule that all three redirect files must coexist. A `--cursor`-only install ships no `CLAUDE.md`; a `--claude`-only install ships no `.cursor/rules/`.
 
 **Transform:** generator manages these via **managed-block markers** (`<!-- bkit:start -->` … `<!-- bkit:end -->`). Content inside block is regenerated; content outside preserved.
 
