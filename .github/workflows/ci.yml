@@ -311,10 +311,15 @@ jobs:
         env:
           VALE_VERSION: "3.9.1"
         run: |
-          curl -sfL "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/vale" sync
+          # vale sync pulls styles (write-good) from GitHub — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            "$RUNNER_TEMP/vale" sync && break
+            [ "$i" = 3 ] && { echo "::error::vale sync failed after 3 attempts"; exit 1; }
+            echo "::warning::vale sync attempt $i failed — retrying in 5s"; sleep 5
+          done
 
       - name: Run Vale Prose Lint
         if: steps.cache.outputs.skip != 'true'
@@ -339,8 +344,13 @@ jobs:
       - name: Run Actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
-          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
-          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"
+          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
+            [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
+            echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
+          done
           "$RUNNER_TEMP/actionlint" -color
 
       # bkit ships pre-built (no `prepare: tsc` since v0.3.0). dist/ must be

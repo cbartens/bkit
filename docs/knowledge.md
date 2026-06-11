@@ -599,3 +599,16 @@
 - **Scope:** consumer
 - **Source:** agent
 - **Related:** #245, `.bkit/src/bkit-install.ts`
+
+## KN-39: CI tool downloads flake on transient CDN blips — retry one-shot fetches, loop subcommand fetches (2026-06-11)
+
+- **Category:** infra
+- **Symptom:** `bkit-tests` goes red on a transient network/CDN hiccup while downloading a CI tool (vale tarball, actionlint binary, opencode installer) — a one-off failure with no code cause; a re-run is green.
+- **Root cause:** A one-shot `curl` with no retry dies on the first blip. For a fetch buried inside a tool subcommand (`vale sync` pulling styles) or a third-party installer script (`download-actionlint.bash` fetching the binary), there is no curl flag to harden — the bare invocation has no retry at all.
+- **Fix or rule:** One-shot `curl` → add `--retry 3 --retry-all-errors` (needs curl ≥ 7.71; ubuntu-latest 8.x and the Debian Dockerfile base are clear). Fetch inside a subcommand / 3rd-party script → wrap in a 3× retry-loop that `exit 1`s loudly after the last attempt (never a bare loop that swallows a persistent outage). Applied to `ci.yml`, `.cursor/Dockerfile`, `bkit-cloud.yml` (own + template) and the `cloud.md` setup script. Do NOT "simplify" the loops back to a single call.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #236, `.github/workflows/ci.yml`, `.bkit/templates/.cursor/Dockerfile`

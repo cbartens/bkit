@@ -164,7 +164,7 @@ set -euo pipefail
 VALE_VERSION="3.9.1"
 if ! command -v vale >/dev/null 2>&1; then
   cd /tmp
-  curl -sfLO "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
+  curl -fsSLO --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz"
   tar -xzf "vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -C /usr/local/bin vale
   chmod +x /usr/local/bin/vale
 fi
