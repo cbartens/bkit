@@ -340,13 +340,10 @@ jobs:
         if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          # Fan out the generic OPENCODE_PROVIDER_KEY to all known provider env var names.
-          # The committed .opencode/opencode.json references one of these (e.g. ${NVIDIA_API_KEY});
-          # whichever it references will be set. No Claude identity leak — ANTHROPIC_API_KEY is absent.
+          # Map the generic OPENCODE_PROVIDER_KEY to the supported remote provider env var.
+          # The committed .opencode/opencode.json references ${NVIDIA_API_KEY} (nvidia is the only
+          # cloud-capable provider; ollama-local is local-only). No Claude identity leak — ANTHROPIC_API_KEY is absent.
           NVIDIA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          GEMINI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).
           BKIT_PHASE: ${{ steps.ctx.outputs.phase }}

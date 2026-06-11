@@ -4,10 +4,10 @@ name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Glob
-  - Write
-  - Edit
+  read: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: low
 ---
 

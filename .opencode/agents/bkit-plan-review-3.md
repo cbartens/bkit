@@ -4,11 +4,11 @@ name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 model: nvidia/deepseek-ai/deepseek-v4-pro
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: medium
 ---
 

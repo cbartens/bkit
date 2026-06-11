@@ -224,13 +224,6 @@ function tryParseModelLookupForColumn(subagentsMdPath, columnHeader) {
         return null;
     return parseModelLookupForColumn(subagentsMdPath, columnHeader);
 }
-// Single documented starting-point model for opencode providers WITHOUT a curated
-// per-prompt column in prompts.md. Consumers tune via providers.md § Models
-// (live /v1/models lookup). Prefix is added at build time.
-const OPENCODE_PROVIDER_FALLBACK_MODEL = {
-    openrouter: "qwen/qwen-2.5-coder-32b-instruct",
-    gemini: "gemini-2.0-flash",
-};
 // Map an opencode provider key → its human-friendly prompts.md § Models column header.
 // The table uses display headers ("Ollama (Local)", "Nvidia"); the install flag uses
 // provider keys ("ollama-local", "nvidia"). Providers absent here have no curated column.
@@ -249,10 +242,12 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
     if (curated)
         return curated;
-    // Uncurated provider: prefix-correct single default for every agent.
+    // Defensive only: both supported providers (ollama-local, nvidia) have a curated column,
+    // so this branch is unreachable via the CLI (strict allowlist). Any unexpected id gets a
+    // prefix-correct sentinel for every agent (consumer sets the real model id).
     const names = tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
         parseModelLookupForColumn(subagentsMdPath, "Claude");
-    const bare = OPENCODE_PROVIDER_FALLBACK_MODEL[provider] ?? "set-model-id";
+    const bare = "set-model-id";
     const out = new Map();
     for (const name of names.keys())
         out.set(name, `${provider}/${bare}`);
@@ -331,10 +326,41 @@ const EFFORT_TO_REASONING_EFFORT = {
 // Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
 const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
 /**
+ * Convert a Claude `tools:` frontmatter block (a YAML array of capitalized tool names,
+ * e.g. `- Read`/`- Write`) into opencode's `AgentConfig.tools` shape: an object map of
+ * lowercase tool names → true (`tools:\n  read: true`). opencode REJECTS the array form
+ * ("tools: Expected object | undefined, got [...]"), and its tool names are lowercase.
+ * Returns "" when there are no tools (field omitted — also valid per the schema).
+ */
+export function opencodeToolsBlock(toolsBlock) {
+    if (!toolsBlock)
+        return "";
+    const names = [];
+    for (const m of toolsBlock.matchAll(/^[ \t]*-[ \t]*([A-Za-z][\w-]*)/gm))
+        names.push(m[1]);
+    if (names.length === 0) {
+        // Fallback: inline array form `tools: [Read, Write]`.
+        const inline = toolsBlock.match(/\[([^\]]*)\]/);
+        if (inline) {
+            for (const t of inline[1].split(",")) {
+                const n = t.trim().replace(/['"]/g, "");
+                if (n)
+                    names.push(n);
+            }
+        }
+    }
+    if (names.length === 0)
+        return "";
+    let out = "tools:\n";
+    for (const n of names)
+        out += `  ${n.toLowerCase()}: true\n`;
+    return out;
+}
+/**
  * OC1: opencode agent frontmatter rewrite.
- * Emits: mode, name, description, model, tools (passthrough), reasoningEffort (from effort).
- * Drops: Claude-only fields (permissionMode, maxTurns, is_background, readonly) and the
- * original effort field (replaced by reasoningEffort).
+ * Emits: mode, name, description, model, tools (Claude array → opencode object map),
+ * reasoningEffort (from effort). Drops: Claude-only fields (permissionMode, maxTurns,
+ * is_background, readonly) and the original effort field (replaced by reasoningEffort).
  * Hard-fails with non-zero exit if model lookup missing for name.
  */
 export function applyOpencodeAgent(content, opencodeModelLookup) {
@@ -368,8 +394,7 @@ export function applyOpencodeAgent(content, opencodeModelLookup) {
         newFm += `description: ${description}\n`;
     }
     newFm += `model: ${opencodeModel}\n`;
-    if (toolsBlock)
-        newFm += `${toolsBlock}\n`;
+    newFm += opencodeToolsBlock(toolsBlock);
     if (effort) {
         const reasoningEffort = EFFORT_TO_REASONING_EFFORT[effort];
         if (reasoningEffort) {
@@ -1095,13 +1120,10 @@ async function main() {
             }
             if (opencodeProvider)
                 detectedProvider = opencodeProvider;
-            // Per-provider cred check (present/absent only — no value echoed)
+            // Per-provider cred check (present/absent only — no value echoed).
+            // Only the supported remote provider is listed; ollama-local is local (no key).
             const PROVIDER_KEYS = {
                 nvidia: ["NVIDIA_API_KEY"],
-                openrouter: ["OPENROUTER_API_KEY"],
-                gemini: ["GEMINI_API_KEY"],
-                openai: ["OPENAI_API_KEY"],
-                anthropic: ["ANTHROPIC_API_KEY"],
                 // ollama-local: local server, no API key required
             };
             // Local-only providers that use no remote API key
@@ -1482,7 +1504,7 @@ async function main() {
         // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
         if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
             console.error(`[bkit] --cloud=opencode requires the local opencode host to be installed first.\n` +
-                `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia, --opencode=openrouter)\n` +
+                `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
             process.exit(1);
         }

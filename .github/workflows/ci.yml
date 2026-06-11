@@ -236,6 +236,12 @@ jobs:
     needs: [bkit-decide]
     if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
+    outputs:
+      # Non-hollow signal for the capstone: did the unit tier actually execute tests, or
+      # pass vacuously (--passWithNoTests / glob drift / all-skipped)? cache_skip tells a real
+      # run from the SHA-cache short-circuit (which was already validated on the cached SHA).
+      cache_skip: ${{ steps.cache.outputs.skip }}
+      tests_ran: ${{ steps.vitest.outputs.ran }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -350,13 +356,22 @@ jobs:
         run: pnpm bkit check
 
       - name: Run Vitest Tests
+        id: vitest
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm test
+        run: |
+          # Emit an executed-test count (passed + failed, excluding skipped) so the capstone
+          # can reject a vacuous green — vitest exiting 0 having run zero tests. Dual reporter:
+          # default to the log, json to a file we parse. (`vitest run` == the `test` script.)
+          pnpm exec vitest run --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/vitest-result.json"
+          RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/vitest-result.json")
+          echo "ran=$RAN" >> "$GITHUB_OUTPUT"
+          echo "::notice::vitest executed $RAN test(s)."
 
   # ── bkit-tests-check ── capstone; needs all tiers; if: !cancelled() (NOT always() — a
   # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not
   # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-decide
-  # succeeded and, when run_level != none, bkit-tests succeeded. bkit's SOLE branch-protection
+  # succeeded and, when run_level != none, bkit-tests succeeded AND executed >0 tests (not a
+  # vacuous green). bkit's SOLE branch-protection
   # required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
   # "the planned suite ran and passed", not "nothing visibly failed".
   bkit-tests-check:
@@ -371,6 +386,8 @@ jobs:
           PLAN: ${{ needs.bkit-decide.outputs.plan }}
           DECIDE_RESULT: ${{ needs.bkit-decide.result }}
           TESTS_RESULT: ${{ needs.bkit-tests.result }}
+          TESTS_RAN: ${{ needs.bkit-tests.outputs.tests_ran }}
+          CACHE_SKIP: ${{ needs.bkit-tests.outputs.cache_skip }}
         run: |
           FAIL=0
           plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
@@ -384,11 +401,25 @@ jobs:
             echo "::error::plan.run_level=$plan_run_level but bkit-tests result=$TESTS_RESULT"
             FAIL=1
           fi
+          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of the unit tier must have
+          # executed >0 tests — guards the green-with-zero hole (vitest exiting 0 having run
+          # nothing: --passWithNoTests / glob drift / all-skipped). cache_skip=true was already
+          # validated on the cached SHA, and run_level=none is a deliberate skip — both assert nothing.
+          if [ "$plan_run_level" != "none" ] && [ "$TESTS_RESULT" = "success" ] && [ "$CACHE_SKIP" != "true" ]; then
+            case "$TESTS_RAN" in
+              ''|*[!0-9]*)
+                echo "::error::bkit-tests succeeded but its executed-test count is non-numeric ('$TESTS_RAN') — cannot confirm tests ran."
+                FAIL=1 ;;
+              0)
+                echo "::error::bkit-tests succeeded but executed 0 tests — vacuous green (expected >0)."
+                FAIL=1 ;;
+            esac
+          fi
           if [ "$FAIL" = "1" ]; then
             echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
             exit 1
           fi
-          echo "✅ bkit-tests-check passed — planned suite ran and succeeded (run_level=$plan_run_level)."
+          echo "✅ bkit-tests-check passed — planned suite ran (${TESTS_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSUMER SCAFFOLD (not used by bkit). bkit ships the FULL multi-tier scaffold to

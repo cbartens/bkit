@@ -4,11 +4,11 @@ name: bkit-plan-review-2
 description: Senior reviewer auditing plan task dependency correctness and design-coverage.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: low
 ---
 

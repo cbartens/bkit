@@ -4,12 +4,12 @@ name: bkit-build-challenge-1
 description: Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

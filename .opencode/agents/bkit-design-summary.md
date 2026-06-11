@@ -4,9 +4,9 @@ name: bkit-design-summary
 description: Senior reviewer evaluating a design doc for readiness to enter planning.
 model: nvidia/openai/gpt-oss-20b
 tools:
-  - Read
-  - Write
-  - Edit
+  read: true
+  write: true
+  edit: true
 reasoningEffort: none
 ---
 

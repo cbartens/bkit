@@ -4,12 +4,12 @@ name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

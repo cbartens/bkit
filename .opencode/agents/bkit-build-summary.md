@@ -4,9 +4,9 @@ name: bkit-build-summary
 description: Senior reviewer evaluating a completed build cycle for shippability.
 model: nvidia/openai/gpt-oss-20b
 tools:
-  - Read
-  - Write
-  - Edit
+  read: true
+  write: true
+  edit: true
 reasoningEffort: none
 ---
 

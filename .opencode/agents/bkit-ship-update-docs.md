@@ -4,12 +4,12 @@ name: bkit-ship-update-docs
 description: Senior tech writer syncing project docs with state shipped this cycle and appending the cycle entry.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

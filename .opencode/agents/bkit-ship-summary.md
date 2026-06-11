@@ -4,9 +4,9 @@ name: bkit-ship-summary
 description: Senior reviewer evaluating a ship cycle for completion and follow-up needs.
 model: nvidia/openai/gpt-oss-20b
 tools:
-  - Read
-  - Write
-  - Edit
+  read: true
+  write: true
+  edit: true
 reasoningEffort: none
 ---
 

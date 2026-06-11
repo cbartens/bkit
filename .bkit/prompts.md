@@ -126,7 +126,7 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 
 > **Context-window note:** Claude Code's `model:` frontmatter accepts standard model IDs (e.g. `claude-opus-4-8`); bracket-suffix variants like `claude-opus-4-8[1m]` for the 1M-context build are NOT documented as supported in subagent frontmatter. xhigh-tier agents currently pin to `claude-opus-4-8` (200K context). If input-size truncation surfaces, options are: (a) verify whether `claude-opus-4-8[1m]` works empirically and switch, (b) split the agent's inputs, (c) escalate via env var `CLAUDE_CODE_SUBAGENT_MODEL`.
 >
-> **opencode model IDs:** Each opencode provider has its own column; cells are the full provider-prefixed ID (`<provider>/<model-id>`, e.g. `ollama-local/qwen3-coder:30b`, `nvidia/moonshotai/kimi-k2.6`). `bkit install --opencode=<provider>` installs the matching column verbatim. Providers without a column (`openrouter`, `gemini`, custom) install a single documented fallback — tune per agent after running `bkit doctor`. See `.bkit/providers.md` § Models for the per-provider live `/v1/models` lookup recipe.
+> **opencode model IDs:** Each opencode provider has its own column; cells are the full provider-prefixed ID (`<provider>/<model-id>`, e.g. `ollama-local/qwen3-coder:30b`, `nvidia/moonshotai/kimi-k2.6`). `bkit install --opencode=<provider>` installs the matching column verbatim. Supported providers are `ollama-local` and `nvidia` (strict allowlist). See `.bkit/providers.md` § Models for the per-provider live `/v1/models` lookup recipe.
 >
 > **`Ollama (Local)` is uniform by design; cloud providers mirror the Claude tier.** The `Ollama (Local)` column pins **every** agent to one model: on a single local box `OLLAMA_MAX_LOADED_MODELS=1` is the memory-safe setting, and per-agent variation would force Ollama to unload+reload between workflow steps (swap thrash). Effort differentiation still happens via `reasoningEffort`. The `Nvidia` (and other cloud) columns instead mirror the Claude tier (opus/sonnet/haiku → a per-tier model), with a chain-of-thought reasoner swapped in for the convergent-reasoning agents (risk/diagnosis lens) — no memory pressure, real parallelism. Each column is per-row, so any single cell can be re-pinned.
 
@@ -197,7 +197,7 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 > - **Cursor** (`/v0/models`) — `claude-opus-4-8-thinking-high`, `gpt-5.5-high`, `composer-2.5` present. **No Sonnet is offered** → build/ship orchestrators use `composer-2.5` (was a Sonnet-thinking ID). Fable 5 now offered (`claude-fable-5-thinking-high`/`-xhigh`) — not adopted.
 > - **Nvidia NIM** (`/v1/models`) — all four column IDs present (`moonshotai/kimi-k2.6`, `qwen/qwen3-coder-480b-a35b-instruct`, `deepseek-ai/deepseek-v4-pro`, `openai/gpt-oss-20b`).
 > - **Ollama (Local)** — `qwen3-coder:30b` pulled + installed (M5 Air 32 GB target).
-> - **OpenRouter** (`/api/v1/models`, public) — mirrors all the above; reference for a future `openrouter` provider column.
+> - **OpenRouter** (`/api/v1/models`, public) — mirrors all the above; handy keyless public cross-check for the IDs (not a bkit-supported opencode provider).
 
 ### Orchestrators (slash commands)
 

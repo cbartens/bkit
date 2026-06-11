@@ -4,11 +4,11 @@ name: bkit-build-challenge-reconcile
 description: Senior reviewer reconciling parallel build-challenge findings into a single canonical artifact.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  edit: true
+  bash: true
 reasoningEffort: high
 ---
 

@@ -4,12 +4,12 @@ name: bkit-utility-audit-security
 description: Senior security engineer auditing auth, secrets, validation, and data exposure.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

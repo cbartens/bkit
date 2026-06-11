@@ -4,12 +4,12 @@ name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: low
 ---
 

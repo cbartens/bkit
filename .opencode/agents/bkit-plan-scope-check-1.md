@@ -4,11 +4,11 @@ name: bkit-plan-scope-check-1
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: low
 ---
 

@@ -918,6 +918,22 @@ describe("applyOpencodeAgent", () => {
     expect(result).toContain("tools:");
   });
 
+  it("converts Claude tools array → opencode tools object map with lowercase names", () => {
+    // opencode's AgentConfig.tools is an object {name: boolean}, NOT a YAML array, and
+    // its tool names are lowercase. The array form fails: "tools: Expected object, got [...]".
+    const input = `---\nname: build-plan\ndescription: desc\neffort: low\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Glob\n  - Write\n  - Edit\n  - WebFetch\n---\nBody.\n`;
+    const result = applyOpencodeAgent(input, opencodeModelLookup);
+    expect(result).toContain("tools:\n");
+    expect(result).toContain("  read: true");
+    expect(result).toContain("  glob: true");
+    expect(result).toContain("  write: true");
+    expect(result).toContain("  edit: true");
+    expect(result).toContain("  webfetch: true");
+    // No array-form items survive (would be "  - Read"), and no capitalized tool keys.
+    expect(result).not.toMatch(/^\s*-\s*Read/m);
+    expect(result).not.toContain("Read: true");
+  });
+
   it("maps effort: medium → reasoningEffort: low", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup);
@@ -959,13 +975,14 @@ describe("applyOpencodeAgent", () => {
     expect(result).not.toContain("effort:");
   });
 
-  it("passes tools block through verbatim", () => {
+  it("rewrites the tools block to opencode's object map (not the Claude array)", () => {
     const input = `---\nname: build-plan\ndescription: desc\neffort: medium\nmodel: claude-sonnet-4-6\ntools:\n  - Read\n  - Edit\n  - Bash\n---\nBody.\n`;
     const result = applyOpencodeAgent(input, opencodeModelLookup);
     expect(result).toContain("tools:");
-    expect(result).toContain("- Read");
-    expect(result).toContain("- Edit");
-    expect(result).toContain("- Bash");
+    expect(result).toContain("  read: true");
+    expect(result).toContain("  edit: true");
+    expect(result).toContain("  bash: true");
+    expect(result).not.toContain("- Read");
   });
 
   it("preserves agent body unchanged", () => {
@@ -1080,14 +1097,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
   });
 
-  it("uncurated provider (openrouter/gemini): single documented fallback, provider-prefixed", () => {
-    const or = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
-    const ge = buildOpencodeModelLookup(".bkit/prompts.md", "gemini");
-    for (const [, model] of or) expect(model).toBe("openrouter/qwen/qwen-2.5-coder-32b-instruct");
-    for (const [, model] of ge) expect(model).toBe("gemini/gemini-2.0-flash");
-  });
-
-  it("unknown provider: prefix-correct sentinel for every agent (consumer tunes)", () => {
+  it("unknown provider: prefix-correct sentinel for every agent (defensive — CLI gates the allowlist)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "acme");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");

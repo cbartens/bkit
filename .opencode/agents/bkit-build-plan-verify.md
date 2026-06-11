@@ -4,12 +4,12 @@ name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

@@ -1,69 +1,35 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "permission": {
-    "rules": [
-      {
-        "description": "Allow reading any file",
-        "tools": ["Read"],
-        "mode": "allow"
-      },
-      {
-        "description": "Allow writing files (agents write output artifacts)",
-        "tools": ["Write", "Edit"],
-        "mode": "allow"
-      },
-      {
-        "description": "Allow grep and glob for code navigation",
-        "tools": ["Grep", "Glob"],
-        "mode": "allow"
-      },
-      {
-        "description": "Allow bash execution (gated by gateguard plugin)",
-        "tools": ["Bash"],
-        "mode": "allow"
-      },
-      {
-        "description": "Allow task dispatch (orchestrator spawns subagents)",
-        "tools": ["Task"],
-        "mode": "allow"
-      },
-      {
-        "description": "Ask before sudo commands",
-        "tools": ["Bash(sudo:*)"],
-        "mode": "ask"
-      },
-      {
-        "description": "Ask before curl/wget network ops",
-        "tools": ["Bash(curl:*)", "Bash(wget:*)"],
-        "mode": "ask"
-      },
-      {
-        "description": "Deny destructive git force-push",
-        "tools": ["Bash(git push --force:*)", "Bash(git push -f:*)"],
-        "mode": "deny"
-      },
-      {
-        "description": "Allow --force-with-lease (Step 2 rebase companion on personal feat/fix branches). Placed AFTER the force deny so last-match-wins permits it even if the glob matcher treats --force as a prefix; bare --force / -f stay denied above.",
-        "tools": ["Bash(git push --force-with-lease:*)"],
-        "mode": "allow"
-      },
-      {
-        "description": "Deny rm -rf on root or home",
-        "tools": ["Bash(rm -rf /*)", "Bash(rm -rf ~/*)", "Bash(rm -rf $HOME/*)"],
-        "mode": "deny"
-      }
-    ]
+    "read": "allow",
+    "edit": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "task": "allow",
+    "bash": {
+      "*": "allow",
+      "sudo *": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "rm -rf /*": "deny",
+      "rm -rf ~/*": "deny",
+      "rm -rf $HOME/*": "deny",
+      "git push --force-with-lease*": "allow"
+    }
   },
   "mcp": {
     "@@OPENCODE_TRACKER_MCP@@": {}
   },
-  "plugins": [".opencode/plugin/gateguard.js"],
+  "plugin": [".opencode/plugin/gateguard.js"],
   "provider": {
     "@@OPENCODE_PROVIDER_KEY@@": {
-      "api": "openai",
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "@@OPENCODE_PROVIDER_KEY@@",
       "options": {
-        "apiKey": "${@@OPENCODE_PROVIDER_ENV_VAR@@}",
-        "baseURL": "@@OPENCODE_PROVIDER_BASE_URL@@"
+        "baseURL": "@@OPENCODE_PROVIDER_BASE_URL@@",
+        "apiKey": "{env:@@OPENCODE_PROVIDER_ENV_VAR@@}"
       }
     }
   }

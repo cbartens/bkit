@@ -974,17 +974,12 @@ const OPENCODE_PROVIDER_DEFAULTS = {
     nvidia: {
         envVar: "NVIDIA_API_KEY",
         baseURL: "https://integrate.api.nvidia.com/v1",
-        apiPlaceholder: "${NVIDIA_API_KEY}",
-    },
-    openrouter: {
-        envVar: "OPENROUTER_API_KEY",
-        baseURL: "https://openrouter.ai/api/v1",
-        apiPlaceholder: "${OPENROUTER_API_KEY}",
-    },
-    gemini: {
-        envVar: "GEMINI_API_KEY",
-        baseURL: "https://generativelanguage.googleapis.com/v1beta/openai",
-        apiPlaceholder: "${GEMINI_API_KEY}",
+        // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
+        // and makes opencode reject the whole config) and read keys via {env:VAR} — never
+        // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
+        apiPlaceholder: "{env:NVIDIA_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "NVIDIA NIM",
     },
 };
 // Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
@@ -997,21 +992,23 @@ const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
  * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
  * and fills in provider-specific fields.
  */
-function renderOpencodeJson(templatePath, tracker, provider) {
+export function renderOpencodeJson(templatePath, tracker, provider) {
     const raw = fs.readFileSync(templatePath, "utf-8");
-    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? {
-        envVar: `${provider.toUpperCase()}_API_KEY`,
-        baseURL: `https://${provider}.example.com/v1`,
-        apiPlaceholder: `\${${provider.toUpperCase()}_API_KEY}`,
-    };
+    // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
+    // a known key here. Fall back to the local default (never a synthesized placeholder URL)
+    // for any unexpected id rather than emitting a non-working endpoint.
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? OPENCODE_PROVIDER_DEFAULTS["ollama-local"];
     // Resolve tracker MCP entry
+    // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
+    // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
+    // secrets via {env:VAR} (NOT shell ${VAR}). See https://opencode.ai/config.json.
     let mcpEntry;
     if (tracker === "github") {
         mcpEntry =
-            '"github": { "type": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer ${GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
     }
     else if (tracker === "linear") {
-        mcpEntry = '"linear": { "type": "http", "url": "https://mcp.linear.app/mcp" }';
+        mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
     }
     else {
         mcpEntry = "";
@@ -1031,11 +1028,17 @@ function renderOpencodeJson(templatePath, tracker, provider) {
         // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
         // block with the npm-driver format: { npm, name, options: { baseURL } }
         if (providerDefaults.npmPackage) {
+            // Remote providers (nvidia) carry an apiKey as {env:VAR}; local (ollama-local) has
+            // an empty placeholder → no apiKey field. opencode rejects an unknown "api" field,
+            // so the block is rebuilt to the npm-driver shape only.
+            const options = { baseURL: providerDefaults.baseURL };
+            if (providerDefaults.apiPlaceholder)
+                options.apiKey = providerDefaults.apiPlaceholder;
             parsed.provider = {
                 [provider]: {
                     npm: providerDefaults.npmPackage,
                     name: providerDefaults.displayName ?? provider,
-                    options: { baseURL: providerDefaults.baseURL },
+                    options,
                 },
             };
         }
@@ -1050,12 +1053,12 @@ const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
 
   Open .opencode/opencode.json. Compare against the bkit reference below.
-  bkit owns: the \`permission.rules\` block, the \`plugins\` array, and the \`mcp\` entries
+  bkit owns: the \`permission\` block, the \`plugin\` array, and the \`mcp\` entries
   it seeded. You own: any additional \`provider\` entries, model lists, and custom mcp servers.
 
   Required merge actions:
-  1. Ensure the \`permission.rules\` array contains the bkit reference entries.
-  2. Ensure the \`plugins\` array includes ".opencode/plugin/gateguard.js".
+  1. Ensure the \`permission\` block contains the bkit reference entries.
+  2. Ensure the \`plugin\` array includes ".opencode/plugin/gateguard.js".
   3. Preserve your provider configuration and any custom mcp servers.
 
   --- begin bkit reference .opencode/opencode.json ---
@@ -1137,7 +1140,10 @@ export function runOpencodeModule(ctx) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
                 }
-                if (pd.npmPackage) {
+                // Local keyless provider (ollama-local) → local-setup guidance. Both supported
+                // providers now use the npm driver, so npmPackage no longer discriminates local
+                // vs remote — an empty apiPlaceholder (no API key) is the local marker.
+                if (!pd.apiPlaceholder) {
                     return (`  1. Ollama runs locally — no API key needed.\n` +
                         `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
                         `  3. Pull the seeded model: \`ollama pull qwen3-coder:30b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
@@ -1147,7 +1153,7 @@ export function runOpencodeModule(ctx) {
                         `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
                         `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
                         `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
-                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia, openrouter, …) ignore them.\n` +
+                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia) ignore them.\n` +
                         `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`);
                 }
                 return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
@@ -2236,7 +2242,7 @@ export function runCloudModule(ctx) {
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your provider API key (e.g. NVIDIA NIM key, OpenRouter key, Gemini key). The workflow maps this one secret to all known provider env var names (`NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`) so the `.opencode/opencode.json` `${VAR}` reference resolves correctly.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your provider API key (NVIDIA NIM key). The workflow maps this one secret to the provider env var name (`NVIDIA_API_KEY`) so the `.opencode/opencode.json` `${VAR}` reference resolves correctly.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +

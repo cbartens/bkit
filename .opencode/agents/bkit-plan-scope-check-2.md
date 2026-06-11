@@ -4,11 +4,11 @@ name: bkit-plan-scope-check-2
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: low
 ---
 

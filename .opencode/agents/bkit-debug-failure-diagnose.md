@@ -4,12 +4,12 @@ name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI/runtime failure root-cause analysis.
 model: nvidia/deepseek-ai/deepseek-v4-pro
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: high
 ---
 

@@ -4,9 +4,9 @@ name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
 model: nvidia/openai/gpt-oss-20b
 tools:
-  - Read
-  - Write
-  - Edit
+  read: true
+  write: true
+  edit: true
 reasoningEffort: none
 ---
 

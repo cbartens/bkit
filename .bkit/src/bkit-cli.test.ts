@@ -504,16 +504,36 @@ describe("parseArgs — --opencode flag (Task 2.3)", () => {
     expect(result.opencodeProvider).toBe("nvidia");
   });
 
-  it("--opencode=openrouter → opencode + core, provider=openrouter", () => {
-    const result = parseArgs(["install", "--opencode=openrouter"]);
-    expect(result.modules.has("opencode")).toBe(true);
-    expect(result.opencodeProvider).toBe("openrouter");
+  it("--opencode=openrouter → rejected (not in the strict allowlist)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=openrouter"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/unsupported provider/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
-  it("--opencode=gemini → opencode + core, provider=gemini", () => {
-    const result = parseArgs(["install", "--opencode=gemini"]);
-    expect(result.modules.has("opencode")).toBe(true);
-    expect(result.opencodeProvider).toBe("gemini");
+  it("--opencode=gemini → rejected (not in the strict allowlist)", () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+      throw new Error("process.exit called");
+    });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => parseArgs(["install", "--opencode=gemini"])).toThrow("process.exit called");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+      expect(errMsg).toMatch(/unsupported provider/);
+    } finally {
+      exitSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 
   it("bare --opencode (no value) on install is rejected — provider required", () => {
@@ -570,24 +590,56 @@ describe("parseArgs — --opencode flag (Task 2.3)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseArgs — --opencode provider name validation (P1 fix: /^[a-z][a-z0-9-]{0,30}$/)
+// parseArgs — --opencode provider strict allowlist (OPENCODE_PROVIDERS)
+// Only "ollama-local" and "nvidia" are accepted; everything else is rejected.
 // ---------------------------------------------------------------------------
 
-describe("parseArgs — --opencode provider name validation (P1 regression)", () => {
-  // Valid providers: must pass without error
-  it("--opencode=gemini-pro is a valid provider name (hyphenated)", () => {
-    const result = parseArgs(["install", "--opencode=gemini-pro"]);
-    expect(result.opencodeProvider).toBe("gemini-pro");
+describe("parseArgs — --opencode provider strict allowlist", () => {
+  // Accepted: the two supported providers
+  it("--opencode=ollama-local is accepted", () => {
+    const result = parseArgs(["install", "--opencode=ollama-local"]);
+    expect(result.opencodeProvider).toBe("ollama-local");
     expect(result.modules.has("opencode")).toBe(true);
   });
 
-  it("--opencode=my-provider is a valid provider name (hyphenated user slug)", () => {
-    const result = parseArgs(["install", "--opencode=my-provider"]);
-    expect(result.opencodeProvider).toBe("my-provider");
+  it("--opencode=nvidia is accepted", () => {
+    const result = parseArgs(["install", "--opencode=nvidia"]);
+    expect(result.opencodeProvider).toBe("nvidia");
     expect(result.modules.has("opencode")).toBe(true);
   });
 
-  // Invalid: empty string after `=`
+  // Rejected: any other value — well-formed slug or malformed, all hit the allowlist gate.
+  const rejected: Array<[string, string]> = [
+    ["openrouter", "removed provider"],
+    ["gemini", "removed provider"],
+    ["openai", "well-formed but unsupported"],
+    ["anthropic", "well-formed but unsupported"],
+    ["my-provider", "arbitrary user slug — no generic fallback"],
+    ["ollama", "near-miss (must be ollama-local)"],
+    ["MY_PROVIDER", "uppercase"],
+    ["provider with spaces", "spaces"],
+    ["x$y", "special character"],
+    ["1nvidia", "starts with digit"],
+  ];
+  for (const [value, why] of rejected) {
+    it(`--opencode=${value} → rejected (${why})`, () => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
+        throw new Error("process.exit called");
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        expect(() => parseArgs(["install", `--opencode=${value}`])).toThrow("process.exit called");
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
+        expect(errMsg).toMatch(/unsupported provider/);
+      } finally {
+        exitSpy.mockRestore();
+        errorSpy.mockRestore();
+      }
+    });
+  }
+
+  // Empty value hits the "provider value required" gate (not the allowlist message).
   it("--opencode= (empty value after equals) calls process.exit(1)", () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
       throw new Error("process.exit called");
@@ -596,97 +648,8 @@ describe("parseArgs — --opencode provider name validation (P1 regression)", ()
     try {
       expect(() => parseArgs(["install", "--opencode="])).toThrow("process.exit called");
       expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  // Invalid: uppercase characters
-  it("--opencode=MY_PROVIDER (uppercase) calls process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=MY_PROVIDER"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
       const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/provider name must match/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  // Invalid: spaces in provider name
-  it("--opencode='provider with spaces' calls process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=provider with spaces"])).toThrow(
-        "process.exit called",
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  // Invalid: special character ($)
-  it("--opencode=x$y (special character) calls process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=x$y"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  // Invalid: 32-character string (exceeds 31-char max of /^[a-z][a-z0-9-]{0,30}$/)
-  it("--opencode=<32-char string> calls process.exit(1) (exceeds max length)", () => {
-    // regex: first char + 0..30 more = max 31 chars total. 32 chars exceeds that.
-    const tooLong = "a" + "b".repeat(31); // 32 chars
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", `--opencode=${tooLong}`])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
-      const errMsg = errorSpy.mock.calls.map((c) => c[0]).join(" ");
-      expect(errMsg).toMatch(/provider name must match/);
-    } finally {
-      exitSpy.mockRestore();
-      errorSpy.mockRestore();
-    }
-  });
-
-  // Boundary: exactly 31 characters is valid (max: 1 + 30 = 31)
-  it("--opencode=<31-char string> is valid (boundary: exactly at max length)", () => {
-    const maxLen = "a" + "b".repeat(30); // 31 chars
-    const result = parseArgs(["install", `--opencode=${maxLen}`]);
-    expect(result.opencodeProvider).toBe(maxLen);
-    expect(result.modules.has("opencode")).toBe(true);
-  });
-
-  // Invalid: starts with digit (regex requires first char [a-z])
-  it("--opencode=1nvidia (starts with digit) calls process.exit(1)", () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation((_code) => {
-      throw new Error("process.exit called");
-    });
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      expect(() => parseArgs(["install", "--opencode=1nvidia"])).toThrow("process.exit called");
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errMsg).toMatch(/requires a provider value/);
     } finally {
       exitSpy.mockRestore();
       errorSpy.mockRestore();

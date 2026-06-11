@@ -4,10 +4,10 @@ name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  bash: true
 reasoningEffort: low
 ---
 

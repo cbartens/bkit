@@ -4,12 +4,12 @@ name: bkit-ship-deferred-sweep
 description: Senior reviewer gating a ship on intended-vs-actual completeness and resurfacing declared deferred work.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

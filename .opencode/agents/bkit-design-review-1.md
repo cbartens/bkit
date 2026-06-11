@@ -4,14 +4,14 @@ name: bkit-design-review-1
 description: Senior engineer assessing whether a design is buildable with the approved stack.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
-  - WebFetch
-  - WebSearch
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
+  webfetch: true
+  websearch: true
 reasoningEffort: medium
 ---
 

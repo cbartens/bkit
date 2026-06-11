@@ -4,10 +4,10 @@ name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
+  read: true
+  grep: true
+  glob: true
+  write: true
 reasoningEffort: low
 ---
 

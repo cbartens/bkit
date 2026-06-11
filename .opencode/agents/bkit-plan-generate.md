@@ -4,11 +4,11 @@ name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: high
 ---
 

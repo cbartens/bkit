@@ -4,14 +4,14 @@ name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
-  - WebFetch
-  - WebSearch
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
+  webfetch: true
+  websearch: true
 reasoningEffort: low
 ---
 

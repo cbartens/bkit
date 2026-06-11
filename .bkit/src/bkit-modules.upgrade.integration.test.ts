@@ -376,10 +376,10 @@ describe("opencode opencode.json reconverge on upgrade", () => {
           name: "Ollama (Local)",
           options: { baseURL: "http://localhost:11434/v1" },
         },
-        // Consumer added their own provider
-        openrouter: {
-          options: { baseURL: "https://openrouter.ai/api/v1" },
-          apiKey: "${OPENROUTER_API_KEY}",
+        // Consumer added their own (non-bkit) provider — must survive reconverge
+        customllm: {
+          options: { baseURL: "https://llm.internal.example/v1" },
+          apiKey: "${CUSTOMLLM_API_KEY}",
         },
       },
       // Consumer added their own mcp config
@@ -395,8 +395,8 @@ describe("opencode opencode.json reconverge on upgrade", () => {
 
     // bkit ollama-local provider still present (reconverged)
     expect(afterDoc.provider?.["ollama-local"]?.options?.baseURL).toBe("http://localhost:11434/v1");
-    // Consumer's openrouter provider preserved
-    expect(afterDoc.provider?.openrouter?.apiKey).toBe("${OPENROUTER_API_KEY}");
+    // Consumer's custom (non-bkit) provider preserved
+    expect(afterDoc.provider?.customllm?.apiKey).toBe("${CUSTOMLLM_API_KEY}");
     // Consumer's mcp config preserved
     expect(afterDoc.mcp?.myServer?.command).toBe("npx");
     // Plugin still wired

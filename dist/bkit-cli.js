@@ -3,6 +3,13 @@
 import { ISSUE_TRACKERS, parseIssueTracker } from "./bkit-manifest.js";
 /** Cloud-agent variant chosen via `--cloud=<variant>`. */
 export const CLOUD_VARIANTS = ["claude", "cursor", "opencode"];
+/**
+ * Providers bkit supports for the opencode host. `--opencode=<provider>` accepts
+ * ONLY these — anything else is rejected (no generic/arbitrary-endpoint fallback).
+ * Keep in sync with OPENCODE_PROVIDER_DEFAULTS (bkit-modules.ts) and
+ * OPENCODE_PROVIDER_COLUMN (bkit-install.ts § Models lookup).
+ */
+export const OPENCODE_PROVIDERS = ["ollama-local", "nvidia"];
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value) {
     return typeof value === "string" && CLOUD_VARIANTS.includes(value)
@@ -174,7 +181,7 @@ export function parseArgs(argv) {
                 continue;
             }
             // Value-bearing flag: --opencode=<provider>
-            // Additive opencode host opt-in. Provider examples: ollama-local, nvidia, openrouter, gemini.
+            // Additive opencode host opt-in. Supported providers: ollama-local, nvidia (strict allowlist).
             // A value is required (provider identifies which API key + base URL to configure).
             if (flag === "opencode") {
                 if (verb !== "uninstall") {
@@ -191,8 +198,8 @@ export function parseArgs(argv) {
                     console.error(`[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`);
                     process.exit(1);
                 }
-                if (!/^[a-z][a-z0-9-]{0,30}$/.test(value)) {
-                    console.error(`[bkit] --opencode= provider name must match /^[a-z][a-z0-9-]{0,30}$/ (got: ${JSON.stringify(value)}).`);
+                if (!OPENCODE_PROVIDERS.includes(value)) {
+                    console.error(`[bkit] --opencode= unsupported provider ${JSON.stringify(value)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`);
                     process.exit(1);
                 }
                 opencodeProvider = value;
@@ -328,8 +335,8 @@ Module flags (composable — same for install and uninstall):
                   --dependabot flags remain as deprecated aliases.)
   --opencode=<provider>
                   Install opencode host (additive — coexists with always-on claude/cursor;
-                  opt-in via explicit --opencode=<provider>). Provider examples:
-                  ollama-local, nvidia, openrouter, gemini.
+                  opt-in via explicit --opencode=<provider>). Supported providers:
+                  ollama-local, nvidia.
                   Ships: .opencode/agents/*.md + .opencode/commands/*.md (transforms),
                   .opencode/opencode.json (Tier-2, deep-contained), .opencode/plugin/gateguard.js.
                   A provider value is REQUIRED — it names the API key env var and base URL

@@ -4,11 +4,11 @@ name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: low
 ---
 

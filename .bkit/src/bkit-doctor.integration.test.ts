@@ -546,10 +546,11 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
       JSON.stringify({
         provider: {
           nvidia: {
-            api: "openai",
+            npm: "@ai-sdk/openai-compatible",
+            name: "NVIDIA NIM",
             options: {
-              apiKey: "${NVIDIA_API_KEY}",
               baseURL: "https://integrate.api.nvidia.com/v1",
+              apiKey: "{env:NVIDIA_API_KEY}",
             },
           },
         },

@@ -161,7 +161,7 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 - **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider-portable execution.** Because the model pins are per-agent, `bkit install --opencode=<provider>` adds an opencode host alongside the always-on Claude/Cursor hosts — the harness is unchanged; only the inference backend moves. The same five-phase, gated, parallel pipeline runs on Ollama, NVIDIA NIM, OpenRouter, Gemini, or any OpenAI-compatible endpoint. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Provider-portable execution.** Because the model pins are per-agent, `bkit install --opencode=<provider>` adds an opencode host alongside the always-on Claude/Cursor hosts — the harness is unchanged; only the inference backend moves. The same five-phase, gated, parallel pipeline runs on Ollama (local) or NVIDIA NIM. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
 
 ### Known gaps, scoped as opportunities
 

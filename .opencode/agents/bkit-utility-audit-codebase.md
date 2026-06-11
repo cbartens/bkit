@@ -4,12 +4,12 @@ name: bkit-utility-audit-codebase
 description: Senior architect reviewing a codebase against best practices and project goals.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: medium
 ---
 

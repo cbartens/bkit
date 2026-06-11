@@ -4,12 +4,12 @@ name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: low
 ---
 

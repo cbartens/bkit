@@ -4,11 +4,11 @@ name: bkit-design-generate
 description: Senior architect generating unified design doc from parallel exploration brainstorms.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
 reasoningEffort: high
 ---
 

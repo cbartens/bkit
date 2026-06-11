@@ -4,12 +4,12 @@ name: bkit-utility-audit-logs-ship
 description: Senior SRE running a post-deploy smoke check for new errors and regressions.
 model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  write: true
+  edit: true
+  bash: true
 reasoningEffort: low
 ---
 

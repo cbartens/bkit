@@ -1482,10 +1482,11 @@ describe("Scenario P1-B — ollama-local cloud warning on --cloud=opencode insta
       JSON.stringify({
         provider: {
           nvidia: {
-            api: "openai",
+            npm: "@ai-sdk/openai-compatible",
+            name: "NVIDIA NIM",
             options: {
-              apiKey: "${NVIDIA_API_KEY}",
               baseURL: "https://integrate.api.nvidia.com/v1",
+              apiKey: "{env:NVIDIA_API_KEY}",
             },
           },
         },

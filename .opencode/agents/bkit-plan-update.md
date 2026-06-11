@@ -4,11 +4,11 @@ name: bkit-plan-update
 description: Senior editor merging review and scope critiques into the plan, no scope expansion.
 model: nvidia/moonshotai/kimi-k2.6
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Edit
-  - Bash
+  read: true
+  grep: true
+  glob: true
+  edit: true
+  bash: true
 reasoningEffort: high
 ---
 

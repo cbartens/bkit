@@ -4,10 +4,10 @@ name: bkit-design-brainstorm-ideate-3
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 model: nvidia/deepseek-ai/deepseek-v4-pro
 tools:
-  - Read
-  - Grep
-  - Glob
-  - Write
+  read: true
+  grep: true
+  glob: true
+  write: true
 reasoningEffort: medium
 ---
 

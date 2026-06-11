@@ -23,6 +23,7 @@ import {
   runDependabotModule,
   runCloudModule,
   runOpencodeModule,
+  renderOpencodeJson,
   renderCloudWorkflow,
   dispatchModules,
   type ModuleContext,
@@ -2336,9 +2337,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
     expect(fs.existsSync(jsonPath)).toBe(true);
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as Record<string, unknown>;
-    // Must have permission + plugins blocks (no plaintext key material)
+    // Must have permission + plugin blocks (no plaintext key material)
     expect(parsed).toHaveProperty("permission");
-    expect(parsed).toHaveProperty("plugins");
+    expect(parsed).toHaveProperty("plugin");
     // No plaintext API key — provider key must be an env-var reference
     const jsonStr = JSON.stringify(parsed);
     expect(jsonStr).not.toMatch(/sk-[a-zA-Z0-9]{20,}/); // no raw API key
@@ -2461,5 +2462,76 @@ describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2
 
     // After removal, agent/command/plugin dirs and json are gone
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderOpencodeJson — provider block must match opencode's custom-provider schema
+// (regression guard for #245: a stray `"api": "openai"` field makes opencode reject
+// the whole config, and env keys must use {env:VAR}, never shell ${VAR}.)
+// ---------------------------------------------------------------------------
+describe("renderOpencodeJson — opencode custom-provider format", () => {
+  const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
+
+  it("nvidia (remote): npm driver, custom-provider shape, apiKey via {env:VAR}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const block = parsed.provider?.nvidia;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://integrate.api.nvidia.com/v1");
+    expect(block.options.apiKey).toBe("{env:NVIDIA_API_KEY}");
+    // No shell-style interpolation in the provider block (opencode reads {env:VAR}).
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("github MCP: type 'remote' (not 'http') + {env:} header — opencode schema valid", () => {
+    // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
+    // its presence makes opencode reject the whole config. Regression guard for #245.
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const gh = parsed.mcp?.github;
+    expect(gh.type).toBe("remote");
+    expect(gh.headers.Authorization).toBe("Bearer {env:GH_TOKEN}");
+    expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
+    expect(JSON.stringify(parsed.mcp)).not.toContain("${");
+  });
+
+  it("linear MCP: type 'remote' (not 'http')", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "linear", "nvidia"));
+    expect(parsed.mcp?.linear?.type).toBe("remote");
+  });
+
+  it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+    expect(parsed.plugins).toBeUndefined();
+  });
+
+  it("permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const perm = parsed.permission;
+    expect(perm.rules).toBeUndefined(); // the Claude-style array that opencode rejects
+    expect(perm.edit).toBe("allow");
+    expect(perm.task).toBe("allow");
+    expect(typeof perm.bash).toBe("object");
+    expect(perm.bash["git push --force*"]).toBe("deny");
+    expect(perm.bash["git push --force-with-lease*"]).toBe("allow");
+    expect(perm.bash["rm -rf /*"]).toBe("deny");
+    expect(perm.bash["sudo *"]).toBe("ask");
+    // last-match-wins: the --force-with-lease allow MUST come after the --force deny,
+    // else force-with-lease (which matches "git push --force*") would be denied.
+    const keys = Object.keys(perm.bash);
+    expect(keys.indexOf("git push --force-with-lease*")).toBeGreaterThan(
+      keys.indexOf("git push --force*"),
+    );
+  });
+
+  it("ollama-local (local): npm driver, NO apiKey (keyless local server)", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "ollama-local"));
+    const block = parsed.provider?.["ollama-local"];
+    expect(block).toBeTruthy();
+    expect(block.api).toBeUndefined();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("http://localhost:11434/v1");
+    expect(block.options.apiKey).toBeUndefined();
   });
 });
