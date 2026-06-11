@@ -1249,9 +1249,8 @@ export function runOpencodeModule(ctx) {
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
             })() +
             `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
-            `  4. Model IDs: the six OpenAI-compatible providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama) install ready-to-run curated per-agent pins. ` +
-            `zen installs the opencode/set-model-id sentinel for every agent — its curated column is deferred (pinning needs a live \`opencode auth login\` to probe the gateway catalog); replace the sentinels via .bkit/prompts.md § Model Overrides or per-agent model: after login. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier.\n` +
+            `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zen) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. zen pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your \`opencode auth login\`.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }

@@ -1133,8 +1133,16 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
   });
 
-  it("no curated provider returns the set-model-id sentinel (all six are now curated)", () => {
-    for (const provider of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+  it("every allowlisted provider ships a curated column (no set-model-id sentinel — all seven)", () => {
+    for (const provider of [
+      "ollama-local",
+      "nvidia",
+      "groq",
+      "cerebras",
+      "openrouter",
+      "ollama",
+      "zen",
+    ]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
       for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
     }
@@ -1146,13 +1154,20 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 
-  it("zen (#245 Phase 3): sentinel uses the opencode-side provider id, not the bkit key", () => {
-    // zen has no curated prompts.md column yet (catalog probe needs a live `opencode auth
-    // login`), so it falls through to the sentinel — but the prefix must be `opencode/`
-    // (model ids are opencode/<id>), NEVER `zen/`. Guards the key↔id split.
+  it("zen (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
+    // zen ships a curated "Zen" column probed against the live https://opencode.ai/zen/v1/models
+    // endpoint (2026-06-12). Cells are opencode/<id> (the gateway reference format), NEVER zen/<id>.
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zen");
     expect(lookup.size).toBeGreaterThan(0);
-    for (const [, model] of lookup) expect(model).toBe("opencode/set-model-id");
+    for (const [, model] of lookup) {
+      expect(model).toMatch(/^opencode\//);
+      expect(model).not.toContain("set-model-id");
+    }
+    // Tier identities reused from the cross-platform map (opus=kimi-k2.6, convergent=deepseek-v4-pro).
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.6"); // opus
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
+    expect(lookup.get("bkit-design-summary")).toBe("opencode/gemini-3-flash"); // haiku
+    expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
   });
 });
 

@@ -234,6 +234,9 @@ const OPENCODE_PROVIDER_COLUMN = {
     cerebras: "Cerebras",
     openrouter: "OpenRouter",
     ollama: "Ollama (Cloud)",
+    // zen (opencode-native gateway): the bkit key is `zen` but the column header is "Zen" and
+    // the cells are opencode-side ids (opencode/<id>), matching the gateway's reference format.
+    zen: "Zen",
 };
 /**
  * Build the per-agent opencode model lookup for the selected provider.
@@ -246,13 +249,13 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
     if (curated)
         return curated;
-    // Sentinel fallback. The six OpenAI-compatible providers (ollama-local, nvidia, groq,
-    // cerebras, openrouter, ollama) ship a curated prompts.md column and never reach here
-    // (#245 Phase 2, 2026-06-11). This path is the safety net for an allowlisted provider
-    // whose column has not landed yet — currently `zen` (#245 Phase 3: catalog probe needs a
-    // live `opencode auth login`). Every agent gets a prefix-correct sentinel the consumer
-    // replaces with a real model id (see providers.md § Models for the live-probe recipe).
-    // The prefix is the opencode-side provider id (zen → opencode), not the bkit key.
+    // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
+    // openrouter, ollama, zen) ship a curated prompts.md column and never reach here (#245
+    // Phase 2 cloud providers 2026-06-11; Phase 3 zen 2026-06-12). This path is the safety net
+    // for a FUTURE allowlisted provider added before its column lands — every agent gets a
+    // prefix-correct sentinel the consumer replaces with a real model id (see providers.md
+    // § Models for the live-probe recipe). The prefix is the opencode-side provider id (the
+    // gateway key → opencode for zen), not necessarily the bkit key.
     const names = tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
         parseModelLookupForColumn(subagentsMdPath, "Claude");
     const bare = "set-model-id";
