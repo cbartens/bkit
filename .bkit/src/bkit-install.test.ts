@@ -1097,6 +1097,49 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     expect(lookup.get("bkit-debug-failure-diagnose")).toBe("nvidia/deepseek-ai/deepseek-v4-pro");
   });
 
+  // #245 Phase 2 — the four OpenAI-compatible providers now ship curated columns.
+  // Tier anchors: ideate-1 = opus, ideate-2 = sonnet, design-summary = haiku,
+  // build-challenge-2 / debug-failure-diagnose = convergent (CoT reasoner).
+  it("openrouter: matches nvidia opus/sonnet/haiku identities; v3.2 reasoner for convergent", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "openrouter");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("openrouter/moonshotai/kimi-k2.6");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("openrouter/qwen/qwen3-coder");
+    expect(lookup.get("bkit-design-summary")).toBe("openrouter/openai/gpt-oss-20b");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("openrouter/deepseek/deepseek-v3.2");
+    expect(lookup.get("bkit-debug-failure-diagnose")).toBe("openrouter/deepseek/deepseek-v3.2");
+  });
+
+  it("ollama (cloud): identical model identities to nvidia across all four tiers", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "ollama");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("ollama/kimi-k2.6");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("ollama/qwen3-coder:480b");
+    expect(lookup.get("bkit-design-summary")).toBe("ollama/gpt-oss:20b");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("ollama/deepseek-v4-pro");
+  });
+
+  it("groq: opus+convergent collapse onto gpt-oss-120b (no Kimi/Qwen3-Coder in catalog)", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "groq");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("groq/openai/gpt-oss-120b");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("groq/qwen/qwen3-32b");
+    expect(lookup.get("bkit-design-summary")).toBe("groq/openai/gpt-oss-20b");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("groq/openai/gpt-oss-120b");
+  });
+
+  it("cerebras: two-model catalog collapse (glm-4.7 opus/convergent, gpt-oss-120b sonnet/haiku)", () => {
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "cerebras");
+    expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("cerebras/zai-glm-4.7");
+    expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("cerebras/gpt-oss-120b");
+    expect(lookup.get("bkit-design-summary")).toBe("cerebras/gpt-oss-120b");
+    expect(lookup.get("bkit-build-challenge-2")).toBe("cerebras/zai-glm-4.7");
+  });
+
+  it("no curated provider returns the set-model-id sentinel (all six are now curated)", () => {
+    for (const provider of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+      const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
+      for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
+    }
+  });
+
   it("unknown provider: prefix-correct sentinel for every agent (defensive — CLI gates the allowlist)", () => {
     const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "acme");
     expect(lookup.size).toBeGreaterThan(0);

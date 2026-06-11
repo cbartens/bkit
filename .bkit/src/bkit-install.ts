@@ -284,6 +284,10 @@ function tryParseModelLookupForColumn(
 const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
   "ollama-local": "Ollama (Local)",
   nvidia: "Nvidia",
+  groq: "Groq",
+  cerebras: "Cerebras",
+  openrouter: "OpenRouter",
+  ollama: "Ollama (Cloud)",
 };
 
 /**
@@ -299,10 +303,11 @@ export function buildOpencodeModelLookup(
   const header = OPENCODE_PROVIDER_COLUMN[provider];
   const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
-  // Reachable + intended for allowlisted providers WITHOUT a curated prompts.md column
-  // yet (groq, cerebras, openrouter, ollama — pending live-probe + tool-calling validation;
-  // see providers.md § Models). ollama-local and nvidia have columns and never reach here.
-  // Every agent gets a prefix-correct sentinel the consumer replaces with a real model id.
+  // Sentinel fallback. All six current allowlisted providers (ollama-local, nvidia, groq,
+  // cerebras, openrouter, ollama) now ship a curated prompts.md column and never reach here
+  // (#245 Phase 2, 2026-06-11). This path is the safety net for a FUTURE allowlisted provider
+  // added before its column lands — every agent gets a prefix-correct sentinel the consumer
+  // replaces with a real model id (see providers.md § Models for the live-probe recipe).
   const names =
     tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
     parseModelLookupForColumn(subagentsMdPath, "Claude");

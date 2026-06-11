@@ -1214,8 +1214,8 @@ export function runOpencodeModule(ctx) {
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
             })() +
             `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
-            `  4. Model IDs: providers with curated pins (nvidia, ollama-local) install ready-to-run; ` +
-            `others (groq, cerebras, openrouter, ollama) install a \`${provider}/set-model-id\` placeholder for every agent that you MUST replace — see .bkit/providers.md § Models for the per-provider live /v1/models lookup recipe.\n` +
+            `  4. Model IDs: all six providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }
