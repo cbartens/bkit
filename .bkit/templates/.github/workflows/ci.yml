@@ -456,6 +456,11 @@ jobs:
 #       # SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) over REST — port-5432
 #       # direct from CI runners is IPv4-flaky. Note: PostgREST `GET /rest/v1/` (OpenAPI) is service_role-only by
 #       # default — fetch the exposed surface with the service-role key, then probe each table with the ANON key.
+#       # AUTO-DISCOVERING (no hardcoded table list — catches the NEXT table too): (1) list every public table via the
+#       # catalog RPC; (2) assert each has RLS enabled; (3) anon-probe each and assert it reads [] (no cross-tenant leak).
+#       # Supabase/PostgREST is the WORKED EXAMPLE — swap the catalog source + anon-probe for your stack's equivalent
+#       # (any store with row-scoped authz). RLS coverage is stack-specific, so bkit ships the PATTERN here, not a
+#       # drop-in test. Full rationale: docs/testing.md § Schema-invariant DB checks.
 #
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the

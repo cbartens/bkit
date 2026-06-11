@@ -313,6 +313,186 @@ export function detectCiYmlMissingActionlint(cwd) {
     };
 }
 /**
+ * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
+ * CI contract. ci.yml is Tier-3 seed-or-print (consumer-owned, freely edited) — bkit
+ * never rewrites it, so over time a copy can silently lose a load-bearing invariant and
+ * reintroduce a bug bkit already fixed (e.g. the concurrency-cancel that killed a
+ * push-only @live canary). WARNING-ONLY presence check: flags the ABSENCE of a known-good
+ * fragment, never "differs from canonical" (which would be all false-positives — the file
+ * is meant to be edited). Fires only when the consumer opted into the capstone scaffold
+ * (bkit-managed markers + a bkit-tests-check job).
+ */
+export function detectCiYmlCapstoneContractDrift(cwd) {
+    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+    if (!fs.existsSync(ciPath))
+        return null;
+    const content = fs.readFileSync(ciPath, "utf-8");
+    if (!/^\s*# bkit:start\b/m.test(content))
+        return null; // consumer-owned, not bkit-managed
+    if (!content.includes("bkit-tests-check"))
+        return null; // capstone scaffold not in use
+    const missing = [];
+    // 1. Capstone must run on !cancelled() (NOT always()) — else a concurrency-cancel
+    //    stamps a bogus failure on the required check and blocks release PRs.
+    if (!content.includes("!cancelled()")) {
+        missing.push("the capstone `if: ${{ !cancelled() }}` guard — without it a concurrency-cancel stamps a bogus failure on the required check (use `!cancelled()`, never `always()`).");
+    }
+    // 2. Concurrency must cancel PR runs ONLY — never push/main runs (those carry the
+    //    push-only @live canary and are observed by downstream workflow_run triggers).
+    if (/concurrency:/.test(content) && /cancel-in-progress:\s*true\b/.test(content)) {
+        missing.push("PR-only concurrency cancellation — `cancel-in-progress: true` cancels push/main runs too (kills the push-only @live canary / release CI). Gate it: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`.");
+    }
+    // 3. Non-hollow capstone: it must assert tiers actually executed >0 tests, not just
+    //    that the job exited 0 (passWithNoTests / no-CI-home / all-skipIf are green-with-zero).
+    if (!/_ran\b/.test(content) &&
+        !/_count\b/.test(content) &&
+        !/executed\s*\d*\s*tests?/i.test(content)) {
+        missing.push('an executed-count assertion (non-hollow gate) — the capstone should assert each planned tier ran >0 tests (e.g. a `*_ran` job output), else passWithNoTests / a tagged suite with no CI home / all-skipIf tests pass vacuously. See docs/testing.md § "Validated means executed".');
+    }
+    if (missing.length === 0)
+        return null;
+    return {
+        id: "ci-yml-capstone-contract-drift",
+        severity: "advisory",
+        detect: `.github/workflows/ci.yml (bkit-managed) has a bkit-tests-check capstone missing ${missing.length} ` +
+            "load-bearing invariant(s) from bkit's canonical CI contract. ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
+        action: "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit ci.yml template):\n\n" +
+            missing.map((m) => "  - " + m).join("\n"),
+    };
+}
+// Tag-gated tiers invoked via a per-package script: a tagged test whose owning package
+// declares no matching script is silently skipped by `turbo run <script>` (exits 0) —
+// the tag is dead and the tier ghost-greens. Suffix-based tiers (integration via
+// *.integration.test.ts) are covered by the ci.yml template's own missing-script warning.
+const TAG_SCRIPT_HOMES = [
+    { tag: "@live", script: "test:live" },
+    { tag: "@smoke", script: "test:smoke" },
+];
+const HOME_WALK_SKIP_DIRS = new Set([
+    "node_modules",
+    ".git",
+    "dist",
+    ".next",
+    "coverage",
+    ".turbo",
+    "playwright-report",
+    "test-results",
+    ".vercel",
+]);
+function walkRepoForHomeCheck(dir, testFiles, packageJsons, depth = 0) {
+    if (depth > 8)
+        return;
+    let entries;
+    try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+    }
+    catch {
+        return;
+    }
+    for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) {
+            if (HOME_WALK_SKIP_DIRS.has(e.name))
+                continue;
+            walkRepoForHomeCheck(full, testFiles, packageJsons, depth + 1);
+        }
+        else if (e.name === "package.json") {
+            packageJsons.push(full);
+        }
+        else if (/\.(test|spec)\.[cm]?tsx?$/.test(e.name)) {
+            testFiles.push(full);
+        }
+    }
+}
+/**
+ * Detect `@live` / `@smoke`-tagged tests whose owning package declares no matching
+ * `test:live` / `test:smoke` script — they have "no CI home": `turbo run test:live`
+ * skips a package with no such script and exits 0, so the tagged tests never run and the
+ * live/smoke tier reports green having executed nothing (ghost-green, the #483 class).
+ *
+ * Stack/convention-safe: only flags a tag when the convention is ACTIVE in the repo (at
+ * least one package declares the script) — so it is a silent no-op for repos that don't
+ * use the live-testing convention, and for incidental `@live` string matches. WARNING-only;
+ * the capstone's `run_live => live_ran > 0` assertion is the runtime backstop, this catches
+ * it earlier (install / pre-push).
+ */
+export function detectTaggedTestsWithoutCiHome(cwd) {
+    const testFiles = [];
+    const packageJsons = [];
+    walkRepoForHomeCheck(cwd, testFiles, packageJsons);
+    if (testFiles.length === 0 || packageJsons.length === 0)
+        return null;
+    // pkgPath -> scripts object; and the set of every script name declared anywhere.
+    const pkgScripts = new Map();
+    const declaredScripts = new Set();
+    for (const pj of packageJsons) {
+        try {
+            const parsed = JSON.parse(fs.readFileSync(pj, "utf-8"));
+            const scripts = parsed.scripts ?? {};
+            pkgScripts.set(pj, scripts);
+            for (const name of Object.keys(scripts))
+                declaredScripts.add(name);
+        }
+        catch {
+            pkgScripts.set(pj, {});
+        }
+    }
+    const nearestPkg = (fileDir) => {
+        let dir = fileDir;
+        for (;;) {
+            const pj = path.join(dir, "package.json");
+            if (pkgScripts.has(pj))
+                return pj;
+            const parent = path.dirname(dir);
+            if (parent === dir || dir === cwd)
+                return pkgScripts.has(pj) ? pj : null;
+            dir = parent;
+        }
+    };
+    const homeless = new Map(); // tag -> set of "pkgdir (needs `script`)"
+    for (const file of testFiles) {
+        let text;
+        try {
+            text = fs.readFileSync(file, "utf-8");
+        }
+        catch {
+            continue;
+        }
+        for (const { tag, script } of TAG_SCRIPT_HOMES) {
+            if (!declaredScripts.has(script))
+                continue; // convention not active for this tag
+            if (!text.includes(tag))
+                continue;
+            const pj = nearestPkg(path.dirname(file));
+            if (!pj)
+                continue;
+            if (typeof pkgScripts.get(pj)?.[script] !== "string") {
+                const rel = path.relative(cwd, path.dirname(pj)) || ".";
+                if (!homeless.has(tag))
+                    homeless.set(tag, new Set());
+                homeless.get(tag)?.add(rel);
+            }
+        }
+    }
+    if (homeless.size === 0)
+        return null;
+    const lines = [];
+    for (const { tag, script } of TAG_SCRIPT_HOMES) {
+        const pkgs = homeless.get(tag);
+        if (pkgs && pkgs.size > 0) {
+            lines.push(`  ${tag} (run by \`turbo run ${script}\`) → add \`${script}\` to: ${[...pkgs].sort().join(", ")}`);
+        }
+    }
+    return {
+        id: "tagged-tests-no-ci-home",
+        severity: "advisory",
+        detect: "Found `@live`/`@smoke`-tagged tests in package(s) that declare no matching `test:live`/`test:smoke` script. `turbo run test:live` skips a package with no such script and exits 0 — the tagged tests never run, and the tier reports green having executed nothing (ghost-green / 'no CI home').",
+        action: "Give each tagged suite a CI home — add the matching script to the package's package.json so the live/smoke tier actually invokes it:\n\n" +
+            lines.join("\n") +
+            '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.',
+    };
+}
+/**
  * Detect whether vale is installed but write-good styles are not synced.
  * Returns null if vale is not on PATH (silent skip — not an error).
  */
@@ -1649,6 +1829,15 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const ciActionlint = detectCiYmlMissingActionlint(cwd);
     if (ciActionlint)
         phase3.push(ciActionlint);
+    // ci.yml capstone drifted from canonical contract (warning-only presence checks).
+    const capstoneDrift = detectCiYmlCapstoneContractDrift(cwd);
+    if (capstoneDrift)
+        phase3.push(capstoneDrift);
+    // @live/@smoke-tagged tests whose owning package declares no test:live/test:smoke
+    // script — "no CI home", the #483 ghost-green class.
+    const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd);
+    if (taggedNoHome)
+        phase3.push(taggedNoHome);
     // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
     for (const stub of detectBkitStubs(cwd))
         phase3.push(stub);

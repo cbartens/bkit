@@ -29,6 +29,8 @@ import {
   detectGhaFloatingTags,
   detectBkitCloudYmlAlwaysTrueGate,
   detectCiYmlMissingActionlint,
+  detectCiYmlCapstoneContractDrift,
+  detectTaggedTestsWithoutCiHome,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
@@ -1895,6 +1897,108 @@ describe("detectCiYmlMissingActionlint", () => {
   it("returns null when an actionlint step is already present", () => {
     writeCi(MANAGED_NO_ACTIONLINT + '      - run: "$RUNNER_TEMP/actionlint" -color\n');
     expect(detectCiYmlMissingActionlint(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectCiYmlCapstoneContractDrift
+// ---------------------------------------------------------------------------
+
+describe("detectCiYmlCapstoneContractDrift", () => {
+  function writeCi(content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+  }
+  // A bkit-managed ci.yml whose capstone carries all three load-bearing invariants.
+  const GOOD =
+    "name: CI\n" +
+    "# bkit:start\n" +
+    "concurrency:\n" +
+    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n" +
+    "jobs:\n" +
+    "  bkit-tests-check:\n" +
+    "    if: ${{ !cancelled() }}\n" +
+    "    steps:\n" +
+    '      - run: test "$unit_ran" -gt 0\n';
+
+  it("returns null when ci.yml is absent", () => {
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when not bkit-managed (no markers)", () => {
+    writeCi("name: CI\njobs:\n  bkit-tests-check:\n    if: ${{ always() }}\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when there is no bkit-tests-check capstone", () => {
+    writeCi("name: CI\n# bkit:start\njobs:\n  bkit-tests:\n    steps: []\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when all invariants are present", () => {
+    writeCi(GOOD);
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("fires when the capstone uses always() instead of !cancelled()", () => {
+    writeCi(GOOD.replace("${{ !cancelled() }}", "${{ always() }}"));
+    const f = detectCiYmlCapstoneContractDrift(tmpDir);
+    expect(f?.id).toBe("ci-yml-capstone-contract-drift");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("!cancelled()");
+  });
+  it("fires when concurrency cancels push runs (cancel-in-progress: true)", () => {
+    writeCi(
+      GOOD.replace(
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+        "cancel-in-progress: true",
+      ),
+    );
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("PR-only");
+  });
+  it("fires when the capstone has no executed-count assertion", () => {
+    writeCi(GOOD.replace('      - run: test "$unit_ran" -gt 0\n', "      - run: echo ok\n"));
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("executed-count");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectTaggedTestsWithoutCiHome
+// ---------------------------------------------------------------------------
+
+describe("detectTaggedTestsWithoutCiHome", () => {
+  function writePkg(relDir: string, scripts: Record<string, string>) {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: relDir || "root", scripts }),
+    );
+  }
+  function writeTest(relPath: string, content: string) {
+    const full = path.join(tmpDir, relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+
+  it("returns null when there are no test files", () => {
+    writePkg("", { "test:live": "vitest" });
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("returns null when @live appears but NO package declares test:live (convention inactive)", () => {
+    writePkg("", { test: "vitest" });
+    writeTest("packages/a/x.test.ts", 'it("@live works", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("fires when a package has an @live test but no test:live while another package declares it", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("packages/utils", { test: "vitest" }); // no test:live
+    writeTest("packages/utils/u.test.ts", 'describe("@live", () => { it("x", () => {}); });');
+    const f = detectTaggedTestsWithoutCiHome(tmpDir);
+    expect(f?.id).toBe("tagged-tests-no-ci-home");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("packages/utils");
+  });
+  it("returns null when the @live test's package declares test:live", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" });
+    writeTest("packages/api/a.test.ts", 'it("@live", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
   });
 });
 
