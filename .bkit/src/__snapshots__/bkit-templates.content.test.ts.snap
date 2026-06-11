@@ -172,10 +172,15 @@ jobs:
         env:
           VALE_VERSION: "3.9.1"
         run: |
-          curl -sfL "https://github.com/errata-ai/vale/releases/download/v\${VALE_VERSION}/vale_\${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v\${VALE_VERSION}/vale_\${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
           tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
-          "$RUNNER_TEMP/vale" sync
+          # vale sync pulls styles (write-good) from GitHub — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            "$RUNNER_TEMP/vale" sync && break
+            [ "$i" = 3 ] && { echo "::error::vale sync failed after 3 attempts"; exit 1; }
+            echo "::warning::vale sync attempt $i failed — retrying in 5s"; sleep 5
+          done
 
       - name: Run Vale Prose Lint
         if: steps.cache.outputs.skip != 'true'
@@ -200,8 +205,13 @@ jobs:
       - name: Run Actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
-          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
-          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"
+          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
+          for i in 1 2 3; do
+            bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
+            [ "$i" = 3 ] && { echo "::error::actionlint download failed after 3 attempts"; exit 1; }
+            echo "::warning::actionlint download attempt $i failed — retrying in 5s"; sleep 5
+          done
           "$RUNNER_TEMP/actionlint" -color
 
       - name: Run Bkit Check
@@ -391,6 +401,10 @@ jobs:
 #   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
 #   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
 #     integration_outcome: \${{ steps.integration.outcome }} ; e2e_outcome: \${{ steps.e2e.outcome }}
+#     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just
+#       that the step exited 0. A DECLARED tier (script/step exists) can execute ZERO and still go green: vitest --passWithNoTests,
+#       all-skipIf-gated, or \`turbo run test:X\` where no package declares test:X. Emit per tier from the runner's machine summary
+#       (vitest --reporter=json -> numPassedTests+numFailedTests; playwright --reporter=json -> stats.expected+unexpected). JOB 4 asserts >0.
 #   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the named verbose-ci-env block from the starter (preflight checks it by name).
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
@@ -437,6 +451,9 @@ jobs:
 #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
 #       - name: Run Live Tests               # @live needs the deployed URL (branch alias); --continue. e.g.:
 #       #   DEPLOY_URL=https://your-app.example.com; TEST_URL=$DEPLOY_URL API_URL=$DEPLOY_URL/api/v1 npx turbo run test:live --continue
+#       #   EMIT live_ran (executed count, as JOB 2 does) — \`turbo run test:live\` with no package declaring test:live runs NOTHING and
+#       #   exits 0, so tests-live==success with live_ran=0 is the classic ghost-green. CI HOME: every @live-tagged test must live in a
+#       #   package whose test:live script this tier invokes, or the tag is dead. JOB 4 asserts run_live => live_ran>0 as the backstop.
 #       # SCHEMA INVARIANTS (recommended home once you have a deploy): a @live test validates the REAL deployed
 #       # schema — stronger than pgTAP's CI-local fixture, which can stay green while prod drifts. It calls a
 #       # SECURITY DEFINER, service_role-only catalog RPC (e.g. public.rls_coverage_gaps()) over REST — port-5432
@@ -449,9 +466,14 @@ jobs:
 #   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-live]; if: \${{ !cancelled() }}; timeout-minutes: 2
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
-#       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome. Assert + exit 1 on mismatch:
+#       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome + *_ran counts. Assert + exit 1 on mismatch:
 #       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
 #       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
+#       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
+#       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),
+#       #   live_ran (run_live). A declared tier that exits 0 having run ZERO tests is green-by-construction, NOT validated. A tier with NO
+#       #   entrypoint asserts nothing (a repo with no integration/E2E/@live tier is valid — bkit's own has none). Do NOT count a SHA-cache
+#       #   short-circuit as zero (it was validated on the cached SHA): gate the count assertion on "this run actually executed the tier".
 #       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
 #
 # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
