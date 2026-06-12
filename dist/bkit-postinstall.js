@@ -372,6 +372,7 @@ const TAG_SCRIPT_HOMES = [
 const HOME_WALK_SKIP_DIRS = new Set([
     "node_modules",
     ".git",
+    ".worktrees", // local git worktree roots — checkouts of the same repo, not part of it
     "dist",
     ".next",
     "coverage",
@@ -408,6 +409,22 @@ function walkRepoForHomeCheck(dir, testFiles, packageJsons, depth = 0) {
             testFiles.push(full);
         }
     }
+}
+// A tag gates a tier by appearing in a test's NAME — the runner selects it with a
+// `-t @live` / `--testNamePattern` filter, which matches the test TITLE. So only a tag
+// inside a test-title string is a real tagged test; the same token in a code comment or
+// an unrelated string literal (e.g. a doc-comment that documents the convention) is not.
+// Matches the tag inside the title argument of it / test / describe / bench / suite,
+// including `.only` / `.skip` / `.each(table)` chains and ' " ` quotes.
+const TEST_DEF_TITLE = /\b(?:it|test|describe|bench|suite)(?:\.\w+)*\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+function tagUsedInTestTitle(text, tag) {
+    TEST_DEF_TITLE.lastIndex = 0;
+    let m;
+    while ((m = TEST_DEF_TITLE.exec(text)) !== null) {
+        if (m[2].includes(tag))
+            return true;
+    }
+    return false;
 }
 /**
  * Detect `@live` / `@smoke`-tagged tests whose owning package declares no matching
@@ -467,7 +484,9 @@ export function detectTaggedTestsWithoutCiHome(cwd) {
             if (!declaredScripts.has(script))
                 continue; // convention not active for this tag
             if (!text.includes(tag))
-                continue;
+                continue; // fast reject before the title-context regex
+            if (!tagUsedInTestTitle(text, tag))
+                continue; // tag must be in a test TITLE, not a comment/other string
             const pj = nearestPkg(path.dirname(file));
             if (!pj)
                 continue;

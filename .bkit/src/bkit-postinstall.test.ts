@@ -2002,6 +2002,37 @@ describe("detectTaggedTestsWithoutCiHome", () => {
     writeTest("packages/api/a.test.ts", 'it("@live", () => {});');
     expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
   });
+  it("does not scan .worktrees roots (local git worktrees, not part of the repo)", () => {
+    writePkg("", { "test:live": "vitest --project live" }); // root declares it → convention active, no homeless tags
+    // A sibling git worktree checkout of the same repo, with a homeless @live test.
+    writePkg(".worktrees/feat", { test: "vitest" });
+    writeTest(".worktrees/feat/u.test.ts", 'it("@live works", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("ignores @live in comments / non-title string literals (only test titles count)", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("packages/utils", { test: "vitest" }); // no test:live
+    writeTest(
+      "packages/utils/u.test.ts",
+      [
+        "// Run the @live tier with -t @live; see docs.", // line comment
+        'const TAG = "@live"; // unrelated string literal', // string literal, not a title
+        'it("plain unit test", () => {});', // a real title, but untagged
+      ].join("\n"),
+    );
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("fires when @live is in a test title even amid comment mentions", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("packages/utils", { test: "vitest" }); // no test:live
+    writeTest(
+      "packages/utils/u.test.ts",
+      '// @live convention note\nit("does the thing @live", () => {});',
+    );
+    const f = detectTaggedTestsWithoutCiHome(tmpDir);
+    expect(f?.id).toBe("tagged-tests-no-ci-home");
+    expect(f?.action).toContain("packages/utils");
+  });
 });
 
 // ---------------------------------------------------------------------------
