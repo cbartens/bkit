@@ -743,11 +743,11 @@ description: "Plan Feature — Autonomous plan generation"
    ```
 5. <!-- bkit:tracker github start -->
 
-   No issue-state change.
+   No issue changes.
    <!-- bkit:tracker github end -->
    <!-- bkit:tracker linear start -->
 
-   Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
+   Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review" })`.
    <!-- bkit:tracker linear end -->
    <!-- bkit:tracker github start -->
 
@@ -797,7 +797,7 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
 <!-- bkit:tracker true start -->
-- [ ] Issue update attempted (status/state `In Review`; phase label `bkit:plan` preserved)
+- [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 11` comment
 - [ ] Issue comment attempted (`Step 11` section)
 <!-- bkit:tracker true end -->

@@ -93,7 +93,7 @@ Re-runnable: source workflows carry the wired variants; switching trackers (`--t
 - **Projects v2 board sync** (`issue-update-status`): best-effort — never gates; on failure the workflow retries once after 5s then continues. The `update_project_item` call needs the numeric `item_id`, NOT the node id returned by `add_project_item` — hence the intervening `projects_list` resolve step. The status `value` is the single-select **option id** (e.g. `47fc9ee4`), not the option name. Linear has no separate board (issue state carries the status) → its `issue-update-status` is a no-op.
 - **Blocked-by edges:** GitHub Issues have no native `blockedBy` field → encoded via a `<!-- bkit:blocked-by -->` marker block in the issue body. Linear has a native `blockedBy` (append-only; re-runs with unchanged edges are no-ops).
 - **Sub-issue create:** GitHub has no `parentId` on issue create → two calls (`issue_write` create, then `sub_issue_write` attach). Linear attaches via `parentId` in the create call (one call).
-- **issue-update-review** (phase-close hand-off): GitHub no-op — the phase label set in `issue-update-phase` carries the completion signal until ship's terminal `issue-update-merged`.
+- **issue-update-review** (phase-close hand-off): **update state only — never change a label on close.** GitHub: no-op (the `issue-update-phase` phase label carries the signal until ship's `issue-update-merged`). Linear: `save_issue({ id, state: "In Review" })` — no `labels` param (partial update; sending `labels` full-replaces and would drop additive labels like `bkit:auto`/`bkit:debug`).
 - **issue-update-merged** (ship terminal): bkit **never auto-closes / never sets Done**. Ship drops the phase labels, adds `bkit:merged`, and moves the issue to **In Review** — Linear `state: "In Review"`, GitHub left **open** (the board, if wired, goes to the review option, not done). A human reviews the merged change and closes the issue manually. Rationale: a merge is not an acceptance — a person should confirm the shipped result before the issue is considered done, so closing stays a deliberate human act.
 
 ## Two-Layer Separation Rules
@@ -125,7 +125,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 6. Step 2 — Worktree Setup         (create/resume .worktrees/{FID}, copy env, pnpm install, save input, status init + `start-workflow` + `worktree-setup` step entries committed on `feat/{FID}`)
 7. Phase-specific steps            (subagent invocations, gates, per-step new comment post)
 8. Summary step                    (subagent → commit → push → verdict)
-9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal `bkit:merged` + In Review via `issue-update-merged` (issue left OPEN — human reviews + closes); non-ship phases preserve phase label; **final return** = verbatim `{phase}-summary.md` to user as the last action (#168))
+9. Close Workflow                  (status done, lock release, state → hand-off via `issue-update-review`; ship terminal `bkit:merged` + In Review via `issue-update-merged` (issue left OPEN — human reviews + closes); non-ship phases update state only, phase label unchanged; **final return** = verbatim `{phase}-summary.md` to user as the last action (#168))
 ```
 
 **Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and posts a NEW tracker comment with one fenced section (see § Comment Lifecycle).
@@ -1122,7 +1122,7 @@ When writing or editing `.bkit/workflows/bkit-*.md` (canonical source — `bkit 
 - [ ] Verdict-bearing steps extract `{*_VERDICT}` and route per § Verdict vocabulary.
 - [ ] Loops cap at `MAX_*_ATTEMPT` constants; exhaustion → Failure Path; per-attempt logs use `-{N}` filename suffix.
 - [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm turbo`; exceeded → Failure Path.
-- [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases preserve phase label.
+- [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases update state only, phase label unchanged.
 - [ ] Docs-only commits include both `bkit [skip build]` and `bkit [skip ci]` (§ CI / Vercel commit tags).
 - [ ] Branch eligibility check on phases that don't create their own branch (`/bkit-debug`, `/bkit-ship`).
 - [ ] Token efficient — tables > prose, `→` not `then`, no sub-bullets when a table works.

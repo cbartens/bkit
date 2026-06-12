@@ -950,11 +950,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    ```
 10. <!-- bkit:tracker github start -->
 
-    No issue-state change.
+    No issue changes.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
 
-    Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
+    Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review" })`.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker github start -->
 
@@ -1037,7 +1037,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
 <!-- bkit:tracker true start -->
-- [ ] Issue update attempted (phase label `bkit:debug` preserved, status/state `In Review`)
+- [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
 - [ ] Issue comment attempted (`Step 10` section)
