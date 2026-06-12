@@ -15,6 +15,7 @@ import {
   getPkgRoot,
   renderCloudWorkflow,
   renderOpencodeJson,
+  buildMcpJson,
   renderManagedOutputs,
   opencodeProviderId,
   type ModuleContext,
@@ -49,9 +50,17 @@ import {
 // ---------------------------------------------------------------------------
 // Staging helpers (P4.T1 / P4.T2)
 //
-// Transactional install: each module writes into `.bkit-staging/<module>/`
-// first. `commitStaging` atomically renames the staging dir to the real
-// destination when ALL modules succeed. `discardStaging` cleans up on failure.
+// `.bkit-staging/` is a per-run SCRATCH area: modules render derived files there
+// (e.g. opencode.json) before comparing/merging into the consumer destination.
+// runInstall Phase 2 cleans it up after every dispatch — success or failure —
+// via `finally { discardAllStaging() }`.
+//
+// NOTE: `commitStaging` / `discardStaging` / `initStagingDir` are atomic-rename
+// PRIMITIVES retained for a future true per-module transactional path. They are
+// NOT on the current install path: dispatch writes module files directly to their
+// destinations and is NOT atomic across modules. A mid-dispatch failure can leave
+// earlier modules' files written (and `.bkit/version` unpinned); `bkit install`
+// is idempotent, so re-running completes a partial install. (#255 P1-5)
 //
 // Design contract (BAR-142 §A4):
 //   - Staging path: `.bkit-staging/<module>/` relative to cwd.
@@ -59,11 +68,6 @@ import {
 //   - commitStaging: move each staged file → real destination (fs.renameSync).
 //     Falls back to copy+delete if cross-device rename throws EXDEV.
 //   - discardStaging: fs.rmSync(stagingDir, { recursive: true, force: true }).
-//
-// Callers:
-//   - bkit-modules.ts dispatchModules wraps each module fn with commit/discard
-//     so a crash inside any module discards that module's staging dir and all
-//     prior modules' staging dirs that have not yet been committed.
 // ---------------------------------------------------------------------------
 
 /** Staging root dir — all staging work lives under this path (relative to cwd). */
@@ -1195,18 +1199,27 @@ function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
 }
 
 /**
- * Module set that `bkit check` drift-checks (#252 Step 3). Always core, plus the
- * installed subset of the non-opt-in modules {claude, cursor, ci, lint, git-hooks},
- * detected by sentinel file presence. This is exactly the coverage bare `check` had
- * before (full minus opt-ins) but GATED on presence — so a `--cursor`-only repo no
- * longer reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for
- * missing ci.yml/.vale.ini. Opt-in modules (opencode/renovate/dependabot/cloud) stay
- * out of the gate, matching prior behaviour (no provider-fallback false drift).
+ * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
+ * subset of {claude, cursor, opencode, ci, lint, git-hooks}. Two callers:
+ *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo no longer
+ *     reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for ci.yml/.vale.ini.
+ *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
+ *     module the consumer never installed (the install↔upgrade divergence: upgrade used to seed
+ *     ci/lint/git-hooks/cursor files for a claude-only consumer, which `check` then flagged).
+ *
+ * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
+ * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
+ * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
+ * + the package.json tracker resolution), so an nvidia/zen/… consumer is checked against its own
+ * config — not the ollama-local default — and the dry-run path is read-only (installFile /
+ * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
+ * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
  */
-function detectInstalledCheckModules(cwd: string): Set<ModuleFlag> {
+function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   const mods = new Set<ModuleFlag>(["core"]);
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
+  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
   if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml"))) mods.add("ci");
   if (
     fs.existsSync(path.join(cwd, ".vale.ini")) ||
@@ -1522,6 +1535,15 @@ async function main() {
       for (const entry of getModuleManifest(mod as ModuleName)) optInPaths.add(entry.path);
     }
 
+    // Host/tooling modules (claude, cursor, ci, lint, git-hooks) must ALSO not be force-created
+    // by upgrade — post-#252 each is separately installable, so a `--claude`-only consumer must
+    // not get cursor/ci/lint/git-hooks files seeded on upgrade (which `check` then flags for the
+    // package.json scripts the template walk never injects — the install↔upgrade divergence). We
+    // gate them on sentinel-detected installation, exactly like `bkit check` scopes its drift
+    // gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
+    // modules keep their dest-presence gating just below.
+    const installedModules = detectInstalledModules(process.cwd());
+
     // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
     // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
     const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
@@ -1543,6 +1565,15 @@ async function main() {
     const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
     const upgradeOpencodeProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
 
+    // .mcp.json / .cursor/mcp.json are seeded tracker-FILTERED on install (buildMcpJson keeps only
+    // the selected tracker's mcpServers entry). The raw templates carry BOTH trackers, so without
+    // rendering them the same way here the upgrade walk compares the all-tracker template against
+    // the filtered on-disk seed → a false seed-or-print conflict on every same-version run (#255
+    // P3). Token-free, so the override is byte-identical to what install wrote — genuine consumer
+    // drift still differs and surfaces as a real conflict. (Same fix shape as bkit-cloud.yml #138.)
+    const MCP_ROOT_RELPATH = ".mcp.json";
+    const CURSOR_MCP_RELPATH = path.join(".cursor", "mcp.json");
+
     const candidates: UpgradeCandidate[] = [];
     if (fs.existsSync(tplRoot)) {
       const collectTemplates = (dir: string, rel: string): void => {
@@ -1559,6 +1590,18 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
+            // Skip host/tooling-module files when that module is not installed — upgrade updates
+            // only what the consumer opted into, never force-creating a new module. opt-ins are
+            // handled by the dest-presence check above; core + entry-less files always pass.
+            const ownerModule = entry?.module;
+            if (
+              ownerModule &&
+              ownerModule !== "core" &&
+              !optInPaths.has(relPath) &&
+              !installedModules.has(ownerModule)
+            ) {
+              continue;
+            }
             // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
             // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
             // so upgrade emits byte-identical output (install/upgrade can never disagree).
@@ -1567,7 +1610,9 @@ async function main() {
                 ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
                 : relPath === OPENCODE_JSON_RELPATH
                   ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider)
-                  : undefined;
+                  : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
+                    ? buildMcpJson(entAbs, upgradeTracker)
+                    : undefined;
             candidates.push({
               relPath,
               templatePath: entAbs,
@@ -1748,7 +1793,19 @@ async function main() {
   // #252 Step 3 — `bkit check` scopes drift detection to what is INSTALLED (detected by
   // sentinel files), not to a fixed full set. Otherwise a single-host repo would falsely
   // report the absent host's files as drift. `install` keeps its explicit resolved set.
-  const effectiveModules = verb === "check" ? detectInstalledCheckModules(process.cwd()) : modules;
+  const effectiveModules = verb === "check" ? detectInstalledModules(process.cwd()) : modules;
+
+  // #255 #8 — RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so
+  // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
+  // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
+  // the opencode drift check render with the consumer's real provider instead of the
+  // ollama-local default — otherwise an nvidia/groq/zen/… consumer reports false drift. On
+  // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
+  // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
+  // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
+  // leaks into what we record. (Tracker is already resolved from package.json below, so the
+  // opencode mcp block — which is tracker-dependent — already renders correctly on check.)
+  const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
 
   // --- Phase 1: Preflight (read-only, before any writes) ---
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
@@ -1788,7 +1845,7 @@ async function main() {
     // guarded (returns [] when the file/section is absent), so it needs no catch here.
     applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
     if (effectiveModules.has("opencode")) {
-      const provider = opencodeProvider ?? "ollama-local";
+      const provider = renderOpencodeProvider ?? "ollama-local";
       try {
         opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
       } catch {
@@ -1928,7 +1985,7 @@ async function main() {
     tokens,
     modelLookup,
     opencodeModelLookup,
-    opencodeProvider,
+    opencodeProvider: renderOpencodeProvider,
     advisories,
     ws,
     logPrefix: LOG_PREFIX,
@@ -1941,7 +1998,18 @@ async function main() {
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---
   // check dispatches the detected installed set; install dispatches the resolved set.
-  dispatchModules(effectiveModules, ctx);
+  //
+  // `.bkit-staging/` is a per-run scratch area for rendered files (e.g. opencode.json) — NOT a
+  // cross-module commit/rollback transaction. Module fns write directly to their consumer
+  // destinations, so a mid-dispatch failure can leave files already written (postDispatch — the
+  // `.bkit/version` pin — does not run). We surface the error rather than swallow it, and always
+  // clean up the scratch dir. `bkit install` is idempotent, so re-running completes a partial
+  // install. (#255 P1-5 — see README § Install staging directory.)
+  try {
+    dispatchModules(effectiveModules, ctx);
+  } finally {
+    discardAllStaging();
+  }
 
   const totalWrites = ws.writes.length;
 

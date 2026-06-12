@@ -163,20 +163,38 @@ export function deepMergeJson(base: JsonValue, override: JsonValue): JsonValue {
     // base is not a plain object — override wins wholesale
     return override;
   }
-  // Both are plain objects — recursive merge
-  const result: { [k: string]: JsonValue } = { ...base };
-  for (const [key, val] of Object.entries(override)) {
+  // Both are plain objects — recursive merge.
+  //
+  // Key ORDER follows `override` (the bkit template) for keys it defines, then appends
+  // base-only (consumer) keys. The template is the authority on ordering: this matters for
+  // order-significant maps like opencode's last-match-wins `permission.bash`, where a
+  // `git push --force-with-lease*: allow` placed last in the template must stay last after an
+  // upgrade/reconverge merge. Starting from `{...base}` (consumer order) instead let a stale
+  // consumer ordering put the narrower `git push --force*: deny` after it, silently DENYING
+  // force-with-lease (which rules.md permits on personal branches). (#255 P2-10)
+  const baseObj = base as { [k: string]: JsonValue };
+  const overrideObj = override as { [k: string]: JsonValue };
+  const result: { [k: string]: JsonValue } = {};
+  // 1. Template keys first, in template order (recurse where both sides are plain objects).
+  for (const [key, val] of Object.entries(overrideObj)) {
+    const baseVal = baseObj[key];
     if (
-      key in result &&
-      result[key] !== null &&
-      typeof result[key] === "object" &&
-      !Array.isArray(result[key]) &&
+      key in baseObj &&
+      baseVal !== null &&
+      typeof baseVal === "object" &&
+      !Array.isArray(baseVal) &&
       val !== null &&
       typeof val === "object" &&
       !Array.isArray(val)
     ) {
-      result[key] = deepMergeJson(result[key], val);
+      result[key] = deepMergeJson(baseVal, val);
     } else {
+      result[key] = val;
+    }
+  }
+  // 2. Consumer-only keys preserved, appended after the template's keys.
+  for (const [key, val] of Object.entries(baseObj)) {
+    if (!(key in result)) {
       result[key] = val;
     }
   }

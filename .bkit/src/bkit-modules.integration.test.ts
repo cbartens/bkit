@@ -2358,6 +2358,57 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
   });
 
+  // #255 P2-9 — a provider switch must not leave a stale bkit provider block behind.
+  it("provider switch nvidia → zen (managed-auth) prunes the stale nvidia block", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    let parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
+    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
+
+    // zen is managed-auth → its rendered template ships NO provider block.
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
+    parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "stale nvidia provider must be pruned").toBeUndefined();
+    // No orphan {env:NVIDIA_API_KEY} reference requiring a now-irrelevant secret.
+    expect(fs.readFileSync(jsonPath, "utf-8")).not.toContain("NVIDIA_API_KEY");
+  });
+
+  it("provider switch nvidia → groq prunes the old keyed provider and seeds the new one", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.groq, "new provider present").toBeDefined();
+    expect(parsed.provider?.nvidia, "old provider pruned").toBeUndefined();
+  });
+
+  it("preserves a consumer-added provider block across a bkit provider switch", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    // Consumer adds their own provider under a key bkit never seeds.
+    const doc = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    (doc.provider as Record<string, unknown>)["my-custom"] = {
+      npm: "@acme/driver",
+      name: "my-custom",
+      options: {},
+    };
+    fs.writeFileSync(jsonPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.["my-custom"], "consumer provider preserved").toBeDefined();
+    expect(parsed.provider?.nvidia, "stale bkit provider pruned").toBeUndefined();
+    expect(parsed.provider?.groq, "new bkit provider present").toBeDefined();
+  });
+
   it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
     const ctx = makeOpencodeCtx({ opencodeProvider: "nvidia" });
     runOpencodeModule(ctx);
@@ -2533,7 +2584,27 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(perm.bash["git push --force*"]).toBe("deny");
     expect(perm.bash["git push --force-with-lease*"]).toBe("allow");
     expect(perm.bash["rm -rf /*"]).toBe("deny");
+    expect(perm.bash["chmod -R 777 /*"]).toBe("deny");
     expect(perm.bash["sudo *"]).toBe("ask");
+    // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
+    // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
+    // surface must NOT be weaker than the Claude peer it ships alongside.
+    for (const cmd of [
+      "git reset --hard*",
+      "git clean -fd*",
+      "git filter-branch*",
+      "git checkout -- .*",
+      "git restore .*",
+      "git stash drop*",
+      "git rebase -i*",
+      "gh repo delete*",
+      "gh pr close*",
+      "gh release delete*",
+      "vercel rm*",
+      "supabase db reset*",
+    ]) {
+      expect(perm.bash[cmd], `${cmd} must be gated 'ask'`).toBe("ask");
+    }
     // last-match-wins: the --force-with-lease allow MUST come after the --force deny,
     // else force-with-lease (which matches "git push --force*") would be denied.
     const keys = Object.keys(perm.bash);

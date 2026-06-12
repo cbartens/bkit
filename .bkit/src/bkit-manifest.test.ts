@@ -234,6 +234,45 @@ describe("getInstallManifest", () => {
     expect(prettierEntry!.format).toBe("markered-text");
   });
 
+  // #255 P1-7 — files install writes that no uninstall path previously reclaimed.
+  it("lint manifest includes .lintstagedrc.json (seed-or-print) so uninstall reclaims it (#255)", () => {
+    const entry = getInstallManifest(["lint"]).find((e) => e.path === ".lintstagedrc.json");
+    expect(entry, ".lintstagedrc.json must be in the manifest").toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.seedOrPrint).toBe(true);
+  });
+
+  it("lint manifest enumerates every .vale/styles/House/*.yml file in the template (#255)", () => {
+    const houseDir = path.resolve(".bkit/templates/.vale/styles/House");
+    const templateFiles = fs
+      .readdirSync(houseDir)
+      .filter((f) => f.endsWith(".yml"))
+      .map((f) => `.vale/styles/House/${f}`)
+      .sort();
+    expect(templateFiles.length).toBeGreaterThan(0);
+    const manifestHouse = getInstallManifest(["lint"])
+      .filter((e) => e.path.startsWith(".vale/styles/House/"))
+      .map((e) => e.path)
+      .sort();
+    // Exact parity: a House rule added to the template without a manifest entry would
+    // otherwise silently survive uninstall again.
+    expect(manifestHouse).toEqual(templateFiles);
+    for (const e of getInstallManifest(["lint"]).filter((x) =>
+      x.path.startsWith(".vale/styles/House/"),
+    )) {
+      expect(e.format).toBe("byte-equal-text");
+    }
+  });
+
+  it("renovate manifest includes consumer-owned renovate-local.json5 so uninstall reclaims it (#255)", () => {
+    const entry = getInstallManifest(["renovate"]).find(
+      (e) => e.path === ".github/renovate-local.json5",
+    );
+    expect(entry, "renovate-local.json5 must be in the manifest").toBeDefined();
+    expect(entry!.format).toBe("byte-equal-text");
+    expect(entry!.seedOrPrint).toBe(true);
+  });
+
   it("git-hooks manifest includes .husky files as byte-equal-text (Tier 3 seed-or-print, v2.0.4)", () => {
     const entries = getInstallManifest(["git-hooks"]);
     const preCommit = entries.find((e) => e.path === ".husky/pre-commit");

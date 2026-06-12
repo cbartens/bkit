@@ -311,6 +311,17 @@ const CLOUD_MANIFEST: ManifestEntry[] = [
 // default branch. NOT included in --full. See issue #123 follow-up.
 const RENOVATE_MANIFEST: ManifestEntry[] = [
   { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
+  // .github/renovate-local.json5 — consumer-owned overrides, seeded once (create-if-absent)
+  // and deliberately unmanaged: it has NO template file, so the template-walking check/upgrade
+  // collector never sees it (its whole purpose is to diverge from the seed). Listed here ONLY
+  // so uninstall reclaims it — hash-guarded (removed while still byte-equal to the seed,
+  // preserved once customised), unconditional on --nuke (#255 P1-7).
+  {
+    path: ".github/renovate-local.json5",
+    format: "byte-equal-text",
+    module: "renovate",
+    seedOrPrint: true,
+  },
 ];
 
 // Dependabot is opt-in via `bkit install --dependency=dependabot` — first-party GitHub
@@ -327,8 +338,18 @@ const LINT_MANIFEST: ManifestEntry[] = [
   { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: ".prettierignore", format: "markered-text", module: "lint" },
-  // .vale/styles/House/ — fully managed as a directory; individual files
-  // are enumerated at uninstall time.
+  // .lintstagedrc.json — Tier 3 seed-or-print (consumer may customise; pairs with the
+  // lint-staged call in the pre-commit hook). Hash-guarded delete on uninstall: removed
+  // when still byte-equal to the seed, preserved once the consumer edits it (#255 P1-7).
+  { path: ".lintstagedrc.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
+  // .vale/styles/House/*.yml — Tier 1 (fully managed, bkit-owned, byte-identical to the
+  // template; force-overwritten every install). Enumerated explicitly so uninstall removes
+  // them and install records their hashes (byteEqualPaths is manifest-derived). Keep in sync
+  // with .bkit/templates/.vale/styles/House/ — a parity test guards against drift (#255 P1-7).
+  { path: ".vale/styles/House/Filler.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/Hedging.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/LLMSlop.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/Verbose.yml", format: "byte-equal-text", module: "lint" },
   {
     path: "package.json",
     format: "markered-text",

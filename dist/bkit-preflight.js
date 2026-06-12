@@ -95,8 +95,8 @@ export function detectNotGitRepo(cwd, modules) {
     return {
         id: "not-git-repo",
         severity: "blocker",
-        detect: "--core requested but .git/ directory not found — this is not a git repository.",
-        action: "Run `git init` to initialise a git repo, then re-run. Or omit `--core` if you don't need bkit's git-hooks module.",
+        detect: "core install requested but .git/ directory not found — this is not a git repository.",
+        action: "Run `git init` to initialise a git repo, then re-run. bkit installs into a git repository — its git-hooks module and managed .gitignore/.gitattributes blocks require one (core is implicit; there is no --core flag to omit).",
     };
 }
 // ---------------------------------------------------------------------------

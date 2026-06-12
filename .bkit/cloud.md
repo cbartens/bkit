@@ -28,7 +28,7 @@ Three cloud stacks — each agent pairs with one tracker. Pick the row for the a
 
 **Manual dispatch (Claude or opencode, path A):** GitHub → **Actions** → **bkit-cloud** → **Run workflow** → pick `phase` (`ship` / `debug` / `design` / `plan` / `build`) + `issue`. This is the on-demand / smoke-test entry point for `design` / `plan` / `build`; `ship` / `debug` normally fire from CI. The dispatched `/bkit-auto` orchestrator routes to the matching phase skill, which reads its brief from the GitHub issue (MCP).
 
-**`@claude` mention launch (Claude, path E — base requirement for `cloud=claude`):** Run `/install-github-app` (Claude Code CLI) once to install the official Claude GitHub App on your repo. This is required: `bkit-cloud.yml` grants `id-token: write` and `claude-code-action@v1` authenticates as the App via OIDC — without the App installed the action fails at boot with an OIDC error. After installation, comment `@claude /bkit-plan` (or any phase) on a GitHub issue / PR to launch it from the tracker. This is **additive**: the App's generated `claude.yml` triggers on mention events while `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch`, so the two coexist without conflict. The App also gives the runner its GitHub identity for the `mcp__github__*` surface. Use `bkit install --auto=claude` (not bare `--cloud`) to install the cloud integration; `cloud=claude` requires `tracker=github`.
+**`@claude` mention launch (Claude, path D — base requirement for `cloud=claude`):** Run `/install-github-app` (Claude Code CLI) once to install the official Claude GitHub App on your repo. This is required: `bkit-cloud.yml` grants `id-token: write` and `claude-code-action@v1` authenticates as the App via OIDC — without the App installed the action fails at boot with an OIDC error. After installation, comment `@claude /bkit-plan` (or any phase) on a GitHub issue / PR to launch it from the tracker. This is **additive**: the App's generated `claude.yml` triggers on mention events while `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch`, so the two coexist without conflict. The App also gives the runner its GitHub identity for the `mcp__github__*` surface. Use `bkit install --auto=claude` (not bare `--cloud`) to install the cloud integration; `cloud=claude` requires `tracker=github`.
 
 ## What lives where (orient first)
 
@@ -54,8 +54,8 @@ Both clouds run Ubuntu 24.04 (4 vCPU / 16 GB RAM / 30 GB disk class). Pre-instal
 <!-- prettier-ignore -->
 | Pre-installed | Claude Code on the web | Cursor Background Agents (after bkit Dockerfile) |
 | --- | --- | --- |
-| Node | 20 + 22 | 20 (matches `.nvmrc` + CI; bump in lockstep) |
-| Package manager | pnpm + bun (latest) | pnpm `10.33.0` (corepack-pinned) |
+| Node | 20 + 22 | 24 (matches `.nvmrc` + CI; bump in lockstep) |
+| Package manager | pnpm + bun (latest) | pnpm `10.34.1` (corepack-pinned) |
 | Python | Yes + ruff | Yes (system `python3` only) |
 | Databases | Postgres 16, Redis 7 | Not installed (add to Dockerfile if needed) |
 | Docker | Yes (host engine) | N/A — we are inside Docker |
@@ -246,7 +246,7 @@ Everything sits **in the repo** under `.cursor/`. bkit ships canonical content f
 <!-- prettier-ignore -->
 | File | Role | bkit ownership |
 | --- | --- | --- |
-| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 22 + pnpm `10.33.0` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
+| `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 + pnpm `10.34.1` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
 | `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
@@ -381,7 +381,7 @@ Flip **both** org and repo before the first router run, otherwise `actions/check
 | Secret | Job | Why | Scope |
 | --- | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | `claude` | `claude-code-action@v1` authenticates against Anthropic. | API key with Claude Code access. |
-| `OPENCODE_PROVIDER_KEY` | `opencode` | Mapped to `NVIDIA_API_KEY` so the `.opencode/opencode.json` `${VAR}` reference resolves (nvidia is the only cloud-capable provider). | Provider API key (NVIDIA NIM). |
+| `OPENCODE_PROVIDER_KEY` | `opencode` | Fanned out to every cloud provider's env var name (`NVIDIA_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider is installed. | Provider API key for whichever provider you configured. |
 
 Each job is independently gated on its own secret. Set only `ANTHROPIC_API_KEY` → only the claude job runs. Set only `OPENCODE_PROVIDER_KEY` → only the opencode job runs. Set both → both jobs run (additive coexistence). **No `LINEAR_API_KEY`** — `bkit-cloud.yml` is GitHub-tracker only for both jobs. The workflow grants `id-token: write` per-job for claude only (opencode does not use OIDC).
 

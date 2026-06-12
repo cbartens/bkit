@@ -367,4 +367,89 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     expect(fs.existsSync(agentFile), "bkit-prefix agent mirror should be deleted").toBe(false);
     expect(fs.existsSync(cmdFile), "bkit-prefix command mirror should be deleted").toBe(false);
   });
+
+  it("targeted uninstall does NOT cross-delete other hosts' bkit-prefix mirrors (#255 P0-1)", async () => {
+    // Seed bkit-prefix mirrors for all three hosts.
+    const seedMirror = (host: string, agentsDir: string, cmdsDir: string) => {
+      const a = path.join(tmpDir, host, agentsDir);
+      const c = path.join(tmpDir, host, cmdsDir);
+      fs.mkdirSync(a, { recursive: true });
+      fs.mkdirSync(c, { recursive: true });
+      const agentFile = path.join(a, "bkit-build-plan-execute.md");
+      const cmdFile = path.join(c, "bkit-build.md");
+      fs.writeFileSync(agentFile, "# bkit agent", "utf-8");
+      fs.writeFileSync(cmdFile, "# bkit command", "utf-8");
+      return { agentFile, cmdFile };
+    };
+    const claude = seedMirror(".claude", "agents", "commands");
+    const cursor = seedMirror(".cursor", "agents", "commands");
+    const opencode = seedMirror(".opencode", "agents", "commands");
+
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "4.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    // Targeted uninstall of opencode only — claude + cursor mirrors must survive.
+    await runUninstall(["opencode"], makeCtx());
+
+    expect(fs.existsSync(opencode.agentFile), "opencode mirror should be deleted").toBe(false);
+    expect(fs.existsSync(opencode.cmdFile), "opencode mirror should be deleted").toBe(false);
+    expect(fs.existsSync(claude.agentFile), ".claude mirror must survive opencode uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(claude.cmdFile), ".claude mirror must survive opencode uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(cursor.agentFile), ".cursor mirror must survive opencode uninstall").toBe(
+      true,
+    );
+
+    // Now targeted uninstall of claude only — cursor must still survive.
+    await runUninstall(["claude"], makeCtx());
+
+    expect(fs.existsSync(claude.agentFile), ".claude mirror should be deleted").toBe(false);
+    expect(fs.existsSync(claude.cmdFile), ".claude mirror should be deleted").toBe(false);
+    expect(fs.existsSync(cursor.agentFile), ".cursor mirror must survive claude uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(cursor.cmdFile), ".cursor mirror must survive claude uninstall").toBe(
+      true,
+    );
+  });
+
+  it("deletes a bkit-seeded markdown husk (AGENTS.md reduced to a lone H1) (#255 P2-15)", async () => {
+    // AGENTS.md exactly as bkit seeds it: `# AGENTS.md` H1 OUTSIDE the bkit block.
+    const agentsMd = path.join(tmpDir, "AGENTS.md");
+    fs.writeFileSync(
+      agentsMd,
+      "# AGENTS.md\n\n<!-- bkit:start -->\n\n**Read in full:** `.agents/rules.md`.\n\n<!-- bkit:end -->\n",
+      "utf-8",
+    );
+
+    await runUninstall(["core"], makeCtx());
+
+    expect(
+      fs.existsSync(agentsMd),
+      "a pure-bkit AGENTS.md must be deleted, not left as a `# AGENTS.md` husk",
+    ).toBe(false);
+  });
+
+  it("preserves a consumer-customised AGENTS.md (content outside the bkit block survives)", async () => {
+    const agentsMd = path.join(tmpDir, "AGENTS.md");
+    fs.writeFileSync(
+      agentsMd,
+      "# AGENTS.md\n\n<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n\n## My team rules\n\nDo the thing.\n",
+      "utf-8",
+    );
+
+    await runUninstall(["core"], makeCtx());
+
+    expect(fs.existsSync(agentsMd), "consumer-customised AGENTS.md must be preserved").toBe(true);
+    const after = fs.readFileSync(agentsMd, "utf-8");
+    expect(after).toContain("## My team rules");
+    expect(after).not.toContain("bkit content");
+  });
 });

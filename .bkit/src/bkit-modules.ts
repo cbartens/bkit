@@ -13,6 +13,8 @@ import {
   writeTier2,
   writeTier3,
   writeTier2JsonContained,
+  deepContains,
+  deepMergeJson,
   migrateLegacyBkitEnvelope,
   ensurePackageJsonScripts,
   ensurePackageJsonDevDeps,
@@ -569,7 +571,9 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
   {
     const src = getPromptsRoot();
     const dest = ".opencode/agents";
-    ensureDir(dest);
+    // dryRun-gated so `bkit check` stays read-only — installFile/removeOrphans below are
+    // already dryRun-guarded, so the dir is only needed for a real write (#255 #8).
+    if (!dryRun) ensureDir(dest);
     const files = listMdFiles(src, BKIT_PREFIX);
     const sourceSet = new Set(files);
 
@@ -600,7 +604,8 @@ export function renderOpencodeAgentsCommands(ctx: ModuleContext): string[] {
   {
     const src = getWorkflowsRoot();
     const dest = ".opencode/commands";
-    ensureDir(dest);
+    // dryRun-gated (see .opencode/agents above) — keep `bkit check` read-only (#255 #8).
+    if (!dryRun) ensureDir(dest);
     const files = listMdFiles(src, BKIT_PREFIX);
     const sourceSet = new Set(files);
 
@@ -1411,6 +1416,87 @@ export function renderOpencodeJson(
   }
 }
 
+/**
+ * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template:
+ * prune stale bkit-owned provider blocks, then deep-merge the template in.
+ *
+ * The plain Tier-2 deep-merge (writeTier2JsonContained) keeps the consumer's existing
+ * `provider.<x>` block because the new template has no key to override it — so switching
+ * provider (e.g. nvidia -> zen, which is managed-auth and ships NO provider block) leaves a
+ * stale `{env:NVIDIA_API_KEY}` provider behind. Here we delete any provider key bkit itself
+ * could have seeded (a key in OPENCODE_PROVIDER_DEFAULTS) that is not the current provider,
+ * leaving consumer-added providers (keys outside that set) untouched. (#255 P2-9)
+ *
+ * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
+ * deepContains, else merge) with the pre-merge prune folded in, so dry-run and real runs
+ * compute the identical writeset.
+ */
+function reconcileOpencodeJson(
+  renderedTemplate: string,
+  relDst: string,
+  currentProvider: string,
+  dryRun: boolean,
+  ws: WriteSet,
+): void {
+  const template = JSON.parse(renderedTemplate) as Record<string, JsonValue>;
+
+  if (!fs.existsSync(relDst)) {
+    // First install — write template as-is.
+    if (!dryRun) {
+      ensureDir(path.dirname(relDst));
+      fs.writeFileSync(relDst, JSON.stringify(template, null, 2) + "\n", "utf-8");
+    }
+    ws.writes.push({ path: relDst, action: "write" });
+    return;
+  }
+
+  // Parse into a sentinel and validate AFTER the catch — keeping the throw out of the catch
+  // body (matches the codebase's parse-or-sentinel idiom; a throw inside catch obscures the
+  // original error). Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
+  let existing: Record<string, JsonValue> | null = null;
+  try {
+    existing = JSON.parse(fs.readFileSync(relDst, "utf-8")) as Record<string, JsonValue>;
+  } catch {
+    existing = null;
+  }
+  if (existing === null) {
+    throw new Error(
+      `[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`,
+    );
+  }
+
+  // Prune stale bkit-owned provider blocks (keep the current provider + any consumer-added ones).
+  let pruned = false;
+  const providerObj = existing.provider;
+  if (providerObj !== null && typeof providerObj === "object" && !Array.isArray(providerObj)) {
+    const pObj = providerObj as Record<string, JsonValue>;
+    for (const key of Object.keys(pObj)) {
+      if (key !== currentProvider && OPENCODE_PROVIDER_DEFAULTS[key] !== undefined) {
+        delete pObj[key];
+        pruned = true;
+      }
+    }
+    // Managed-auth switch (zen) leaves no bkit provider — drop an emptied provider object.
+    if (Object.keys(pObj).length === 0) {
+      delete existing.provider;
+      pruned = true;
+    }
+  }
+
+  // Idempotent no-op only when nothing was pruned AND the template is already contained.
+  if (!pruned && deepContains(template as JsonValue, existing as JsonValue).ok) {
+    return;
+  }
+
+  const merged = deepMergeJson(existing as JsonValue, template as JsonValue);
+  const mergedStr = JSON.stringify(merged, null, 2) + "\n";
+  if (mergedStr === fs.readFileSync(relDst, "utf-8")) return; // idempotent guard
+  if (!dryRun) {
+    fs.writeFileSync(relDst, mergedStr, "utf-8");
+  }
+  ws.writes.push({ path: relDst, action: "update" });
+}
+
 const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -1447,33 +1533,13 @@ export function runOpencodeModule(ctx: ModuleContext): void {
     const jsonSrc = path.join(opencodeTplDir, "opencode.json");
     const jsonDst = ".opencode/opencode.json";
     if (fs.existsSync(jsonSrc)) {
-      // Render the template with tracker-filtered mcp + provider config
+      // Render the template with tracker-filtered mcp + provider config, then reconcile it into
+      // the consumer file. reconcileOpencodeJson prunes a stale prior provider block before the
+      // deep-merge (so a provider switch doesn't leave an orphan `{env:VAR}` block) and computes
+      // an identical writeset for dry-run vs real runs — no `.bkit-staging` scratch file. (#255 P2-9)
       const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
-      // Write a rendered temp file for writeTier2JsonContained to compare against
-      const tmpSrc = path.join(process.cwd(), ".bkit-staging", "opencode-json-rendered.json");
-      ensureDir(path.dirname(tmpSrc));
-      if (!dryRun) {
-        fs.writeFileSync(tmpSrc, rendered, "utf-8");
-      }
       const prevLen = ws.writes.length;
-      if (dryRun) {
-        // In dry-run, just check if the current destination differs from rendered
-        if (!fs.existsSync(jsonDst) || fs.readFileSync(jsonDst, "utf-8") !== rendered) {
-          ws.writes.push({ path: jsonDst, action: "write" });
-        }
-      } else {
-        writeTier2JsonContained(tmpSrc, jsonDst, dryRun, ws);
-        // Clean up temp
-        try {
-          fs.rmSync(tmpSrc, { force: true });
-          const stagingDir = path.dirname(tmpSrc);
-          if (fs.existsSync(stagingDir) && fs.readdirSync(stagingDir).length === 0) {
-            fs.rmdirSync(stagingDir);
-          }
-        } catch {
-          // non-fatal cleanup
-        }
-      }
+      reconcileOpencodeJson(rendered, jsonDst, provider, dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
       }
@@ -1486,7 +1552,9 @@ export function runOpencodeModule(ctx: ModuleContext): void {
     const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
     const pluginDst = ".opencode/plugin/gateguard.js";
     if (fs.existsSync(pluginSrc)) {
-      ensureDir(path.dirname(pluginDst));
+      // dryRun-gated — writeTier1 honours dryRun, so the dir is only needed for a real
+      // write; keeps `bkit check` read-only when gateguard's parent dir is absent (#255 #8).
+      if (!dryRun) ensureDir(path.dirname(pluginDst));
       const prevLen = ws.writes.length;
       writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
       if (ws.writes.length > prevLen) {
@@ -1862,7 +1930,15 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
  * - "linear"  → keep only the `linear` mcpServers entry.
  * - "none"    → empty mcpServers object (tracker not wired).
  */
-function buildMcpJson(templatePath: string, tracker: IssueTracker): string {
+/**
+ * Render the tracker-filtered `.mcp.json` / `.cursor/mcp.json` content: keep only the selected
+ * tracker's `mcpServers` entry (none → empty map). Token-free, so the output is the exact bytes
+ * install seeds. Exported because the `bkit upgrade` template walk MUST render these the same way
+ * (as a `contentOverride`, like bkit-cloud.yml #138 / opencode.json #245) — otherwise it compares
+ * the RAW (all-tracker) template against the filtered on-disk seed and reports a false conflict on
+ * every same-version run (#255 P3). Genuine consumer drift still differs from this and conflicts.
+ */
+export function buildMcpJson(templatePath: string, tracker: IssueTracker): string {
   const template = JSON.parse(fs.readFileSync(templatePath, "utf-8")) as {
     mcpServers?: Record<string, unknown>;
   };
@@ -2787,7 +2863,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
         "REQUIRED ONE-TIME SETUP:\n" +
         "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your provider API key (NVIDIA NIM key). The workflow maps this one secret to the provider env var name (`NVIDIA_API_KEY`) so the `.opencode/opencode.json` `${VAR}` reference resolves correctly.\n" +
+        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
         "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
         "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
         "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +

@@ -207,6 +207,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
   let opencodeProvider: string | null = null;
 
   for (const arg of args) {
+    // `--help` / `-h` after a verb (e.g. `bkit install --help`) prints usage instead of
+    // erroring with "Unknown flag: --help" — many users expect subcommand help. (#255 P3)
+    if (arg === "--help" || arg === "-h") {
+      verb = "help";
+      break;
+    }
     if (arg.startsWith("--")) {
       const flag = arg.slice(2);
 
@@ -231,7 +237,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
       if (flag === "auto") {
         if (verb !== "uninstall") {
           console.error(
-            `[bkit] --auto requires an explicit variant: --auto=claude or --auto=cursor. Run \`bkit help\` for usage.`,
+            `[bkit] --auto requires an explicit variant: --auto=claude, --auto=cursor, or --auto=opencode. Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -416,10 +422,12 @@ Usage:
                                  on any conflict).
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = full removal — ALL modules incl. opt-in add-ons
-                                 (renovate/dependabot/cloud/opencode) + core, so no bkit
-                                 footprint remains. Target with the same module flags as
-                                 install (e.g. uninstall --tooling); a targeted uninstall
-                                 leaves core untouched.
+                                 (renovate/dependabot/cloud/opencode) + core. Consumer-modified
+                                 files, the docs/ payload, and generated artefacts
+                                 (.bkit/advisories.md, .bkit/friction.md) are preserved (use
+                                 --nuke to force-remove manifest-listed files). Target with the
+                                 same module flags as install (e.g. uninstall --tooling); a
+                                 targeted uninstall leaves core untouched.
   bkit doctor                   Read-only preflight + post-install advisory replay.
                                  Diagnose token surfaces and config drift. Exits 0.
   bkit status                   Read-only host/provider status. Reports current host+provider
@@ -449,10 +457,12 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Dependency updater (opt-in, mutually exclusive — both open PRs against
                   the same packages). renovate is phase-gated against the default branch;
                   dependabot is a first-party GitHub feature (no App / phase gate).
-  --auto=<claude|cursor>
+  --auto=<claude|cursor|opencode>
                   Cloud-agent (auto-dispatch) integration (opt-in). --auto=claude needs
                   tracker=github + ANTHROPIC_API_KEY + the Claude GitHub App; --auto=cursor
-                  needs tracker=linear. Bare --auto is accepted on uninstall only.
+                  needs tracker=linear; --auto=opencode needs tracker=github + a remote
+                  opencode provider (OPENCODE_PROVIDER_KEY). Bare --auto is accepted on
+                  uninstall only.
 
 Cross-cutting / modifiers:
   --tracker=<name>      Wire issue tracker integration. Values: github, linear, none

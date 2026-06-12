@@ -193,7 +193,7 @@ GateGuard is a pre-edit advisory hook. On the first touch of a file per session 
 | Host | Implementation | File | Registration |
 | --- | --- | --- | --- |
 | Claude Code | `gateguard.cjs` (CJS) | `.claude/hooks/gateguard.cjs` | `.claude/settings.json` → `hooks.PreToolUse` on `Edit\|Write\|MultiEdit` |
-| opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugins` array (opencode plugin spec) |
+| opencode | `gateguard.js` (ESM) | `.opencode/plugin/gateguard.js` | `.opencode/opencode.json` → `plugin` array (opencode plugin spec — the key is `plugin`, singular; `plugins` is silently ignored and disables GateGuard) |
 | Cursor | **not supported** | n/a | Cursor has SessionStart/Stop + post-hoc `afterFileEdit` but no pre-edit event that injects model-visible context — faithful port impossible |
 
 **Modes (env):** unset → advisory _[default]_; `BKIT_GATEGUARD=off` → disabled; `BKIT_GATEGUARD=deny` → deny the first touch per file (checklist as the reason), then allow the retry. `BKIT_ALLOW_CONFIG_EDIT=1` suppresses the gate-config advisory.
@@ -254,7 +254,7 @@ Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and
 | Secrets | Env vars in Claude app (plaintext; rotate PATs) | Cursor Cloud env vars (Settings → Background Agents → Environment Variables) |
 | Linear preflight | `.claude/hooks/preflight.sh` (SessionStart, non-blocking — uses `additionalContext` HARD STOP) | `.cursor/hooks/preflight.sh` (`sessionStart`, `failClosed: true`, blocks on non-zero) |
 
-**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.33.0 (corepack-pinned), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing-across-repos pattern.
+**Install behaviour:** template drops; project-specific tokens substituted at install. Both clouds aligned via bkit on: vale 3.9.1, pnpm 10.34.1 (corepack-pinned), gh CLI. See `.bkit/cloud.md` for paste-in recipe + sharing-across-repos pattern.
 
 ---
 

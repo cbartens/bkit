@@ -669,6 +669,45 @@ describe("deepMergeJson", () => {
   it("(6) null base with object override: override wins wholesale", () => {
     expect(deepMergeJson(null, { a: 1 })).toEqual({ a: 1 });
   });
+
+  it("(7) template (override) key order wins for order-significant maps (#255 P2-10)", () => {
+    // Consumer file with a STALE ordering: force-with-lease allow placed BEFORE the force deny.
+    const base: JsonValue = {
+      permission: {
+        bash: {
+          "git push --force-with-lease*": "allow",
+          "*": "allow",
+          "git push --force*": "deny",
+        },
+      },
+    };
+    // Template with the CORRECT last-match-wins order: force-with-lease allow placed LAST.
+    const override: JsonValue = {
+      permission: {
+        bash: {
+          "*": "allow",
+          "git push --force*": "deny",
+          "git push --force-with-lease*": "allow",
+        },
+      },
+    };
+    const result = deepMergeJson(base, override) as Record<string, JsonValue>;
+    const bash = (result.permission as Record<string, JsonValue>).bash as Record<string, JsonValue>;
+    const keys = Object.keys(bash);
+    // Template order wins → force-with-lease allow lands AFTER the force deny (so under
+    // opencode's last-match-wins it is NOT denied).
+    expect(keys.indexOf("git push --force-with-lease*")).toBeGreaterThan(
+      keys.indexOf("git push --force*"),
+    );
+  });
+
+  it("(8) template keys first (template order), consumer-only keys appended", () => {
+    const base: JsonValue = { a: 1, consumerOnly: 2, b: 3 };
+    const override: JsonValue = { b: 30, a: 10 };
+    const result = deepMergeJson(base, override) as Record<string, JsonValue>;
+    expect(result).toEqual({ a: 10, b: 30, consumerOnly: 2 });
+    expect(Object.keys(result)).toEqual(["b", "a", "consumerOnly"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

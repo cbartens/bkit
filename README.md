@@ -76,7 +76,7 @@ Please install the latest `@cbartens/bkit` in this repo.
 bkit is distributed via the **GitHub Packages npm registry** (`https://npm.pkg.github.com`). Add to a consumer repo:
 
 ```bash
-pnpm add -D @cbartens/bkit@^2.0.0
+pnpm add -D @cbartens/bkit@^4.0.0
 ```
 
 ### Adding a new consumer — checklist
@@ -121,7 +121,7 @@ pnpm exec bkit check
 
 **Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--opencode=<provider>` `--tooling`. `--tooling` is the interdependent `ci + lint + git-hooks` bundle. Core is implicit on every install — there is no `--core`/`--full`/`--ci`/`--lint`/`--git-hooks` flag.
 
-**Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (the additive opencode execution host — `ollama-local`, `nvidia`). These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
+**Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (the additive opencode execution host — `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`). These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 
 > **⚠️ Always run `pnpm exec bkit upgrade` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.bkit/version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
 
@@ -200,7 +200,7 @@ In this example, `hooks.SessionStart` is the bkit-declared scope (from the templ
 
 - Consumer keys outside the template tree survive every `bkit install` byte-identically.
 - `bkit install` uses `deepContains(template, consumer)` to check that every template leaf is present. On drift, it deep-merges template-wins — consumer-only siblings are preserved.
-- `bkit check` surfaces a `tier2-json-drift` advisory when `deepContains` fails; exits 0 so the consumer can review before next install.
+- `bkit check` surfaces a `tier2-json-drift` advisory when `deepContains` fails and **exits 1** (the CI drift gate); it writes nothing, so the consumer reviews and re-runs `bkit install` to reconverge.
 - `.cursor/hooks.json` uses the Cursor v1 keyed-object schema: `{"version": 1, "hooks": {"sessionStart": [...], "sessionStop": [...]}}`.
 
 ## Consumer CI auth
@@ -288,7 +288,7 @@ bkit checks preconditions and known advisory patterns before touching any file. 
 | Severity | When |
 | --- | --- |
 | Blocker | `package.json` absent or unparseable JSON |
-| Blocker | `--core` requested but `.git/` absent |
+| Blocker | core install requested but `.git/` absent (not a git repository) |
 | Advisory | `.husky/pre-commit` or `pre-push` exists without bkit markers |
 | Advisory | `.prettierignore` exists without bkit markers |
 | Advisory | `lint:prose` script lacks the write-good guard (`[ -d .vale/styles/write-good ]`) |
@@ -306,7 +306,7 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 <!-- prettier-ignore -->
 | `id` | When |
 | --- | --- |
-| `gh-bkit-token-missing-shell` | `GH_BKIT_TOKEN` not set in shell |
+| `gh-bkit-token-unset-shell` / `gh-bkit-token-empty-shell` | `GH_BKIT_TOKEN` unset (or set but empty) in shell |
 | `npmrc-missing-gh-packages` | `.npmrc` exists but lacks registry/auth lines |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
@@ -325,7 +325,7 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 
 Phase 1 and Phase 3 findings are merged and deduplicated by `id` (Phase 3 wins on conflict — re-detection is more accurate post-write). If zero findings, no banner is printed.
 
-**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). Exits 1 if any Tier-1/Tier-2 drift is detected; does not write any files. See `docs/knowledge.md` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
+**`bkit check` (dry-run)** runs Phase 1 and Phase 3 (read-only) — same advisory set as `bkit install` minus the writes (v2.2.3+). It writes nothing and **exits 1 when any managed-file write would occur** in an installed module — a Tier-2 JSON deep-containment or markered-block drift, or a whole-file byte-equal mismatch — or when the rendered prompts/workflows carry a stale managed-version marker (#256). The gate covers the **installed** module set ({core, claude, cursor, ci, lint, git-hooks} plus **opencode**, each detected by sentinel files). opencode is gated (#255 #8): `.opencode/opencode.json` (provider block + tracker-filtered mcp + permission sandbox) and `gateguard.js` drift fail `check` — the render inputs fall back to the installed provider (`package.json` `bkit.opencodeProvider`, the only signal for managed-auth `zen`) and recorded tracker, so a clean install across providers checks green (no false drift). The remaining **opt-in** modules (renovate/dependabot/cloud) are NOT drift-gated, and the host agent/command mirrors are untracked force-overwrites that surface as the `bkit-rendered-prompts-stale` blocker rather than in the writeset. See `docs/knowledge.md` KN-4 for the original design (Phase 3 read-only semantics now enforced via read-only detector paths, not by skipping Phase 3).
 
 **`PreflightFinding` shape** — the stable contract for downstream tooling:
 
@@ -422,12 +422,16 @@ pnpm exec bkit uninstall --nuke --yes
 | Format | Behaviour |
 | --- | --- |
 | `fully-managed` | Always deleted (bkit owns 100% of the file). |
-| `markered-text` | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains. |
+| `markered-text` | bkit block stripped; consumer content above/below preserved. File deleted if only whitespace remains — or, for a bkit-seeded markdown file (`AGENTS.md`/`CLAUDE.md`), if only its `# Title` heading husk remains. |
 | `byte-equal-text` | Deleted only if current hash matches the hash recorded at install time. Consumer modifications → preserved. |
 
 ### Idempotency
 
 Running `bkit uninstall` twice is safe — subsequent runs skip absent files and produce zero writes.
+
+### What a full uninstall preserves
+
+A bare uninstall removes bkit-managed files and strips bkit-managed blocks, but is **not** a guaranteed zero-footprint wipe. It deliberately leaves: the `docs/` reference payload (consumer-editable, often customised); any file the consumer has modified (Tier-3 hash mismatch → preserved); and generated artefacts that are not manifest-tracked (`.bkit/advisories.md`, `.bkit/friction.md`). Use `--nuke` to force-remove every manifest-listed bkit file regardless of consumer modifications; the generated artefacts and `docs/` are still yours to delete by hand.
 
 ## Phase 3 exit-1 and recovery
 
@@ -484,13 +488,13 @@ BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
 
 This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.
 
-## Transactional install
+## Install staging directory
 
-`bkit install` writes to a `.bkit-staging/<module>/` staging directory per module. Staged files are atomically renamed to their consumer destination only after ALL modules complete successfully.
+`bkit install` renders derived files (e.g. `.opencode/opencode.json`) into a `.bkit-staging/` scratch directory before merging them into their consumer destinations. The scratch directory is cleaned up after every run — on success and on failure alike — so it never persists in a committed consumer repo state.
 
-**Mid-failure guarantee:** If install crashes or is interrupted after some modules complete but before all commit, the staging directory is discarded (`discardAllStaging`). Consumer files are left byte-identical to pre-install state — no partial writes.
+**Not a cross-module transaction.** Modules write directly to their destinations, so `bkit install` is not atomic across modules: if a run fails partway (e.g. a hand-broken `.claude/settings.json` makes a JSON merge throw), files written by earlier modules remain and `.bkit/version` is not pinned. The error is surfaced, not swallowed.
 
-**Rollback:** On uninstall or install failure, `.bkit-staging/` is always cleaned up. The staging root never persists in a committed consumer repo state.
+**Recovery is re-run.** `bkit install` is idempotent — fix the offending file and re-run to complete the install. `bkit uninstall` removes whatever was written.
 
 ## Documentation
 
