@@ -29,7 +29,7 @@ No server, no database, no network service. bkit is a build-time / developer-exp
 cbartens/bkit (this repo)
 ├── .bkit/src/              # TypeScript source for the bkit CLI
 │   ├── bkit-install.ts     # entry point (main); orchestrates phases 1–3 + staging primitives
-│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | uninstall | upgrade | help)
+│   ├── bkit-cli.ts         # CLI verb + module-flag parsing (install | check | doctor | status | uninstall | upgrade | help)
 │   ├── bkit-preflight.ts   # Phase 1 — read-only blocker + advisory detectors
 │   ├── bkit-modules.ts     # Phase 2 — module dispatcher (MODULE_REGISTRY)
 │   ├── bkit-postinstall.ts # Phase 3 — post-install re-detection + checklist formatter
@@ -41,7 +41,9 @@ cbartens/bkit (this repo)
 │   ├── bkit-upgrade.ts     # `bkit upgrade` diff engine + canonicalHashes drift detection
 │   ├── bkit-bkitignore.ts  # `.bkitignore` parser (picomatch globs + per-key opt-in)
 │   ├── bkit-package-json.ts # stripManagedKeys (manifest-driven package.json cleanup)
-│   └── bkit-status.ts      # status.jsonl schema + invariant validator
+│   ├── bkit-paths.ts       # Single resolver seam — getTemplatesRoot / getPkgRoot / isDogfood
+│   ├── bkit-trackers.ts    # Tracker-provider substitution engine (github / linear / none)
+│   └── bkit-status.ts      # status.jsonl workflow-log contract + fold reducer + invariant validator (the `bkit status` verb lives in bkit-install.ts)
 ├── dist/                   # Compiled output (committed; published in tarball)
 ├── .bkit/workflows/      # Workflow markdown files (bkit-design, plan, build, debug, ship)
 ├── .bkit/prompts/        # Subagent prompt files
@@ -78,11 +80,12 @@ pnpm bkit install [--module-flags] [--auto-revert]
 
 CLI verbs:
 
-- `pnpm bkit install` — runs all three phases.
+- `pnpm bkit install` — runs all three phases. Requires ≥1 module flag (v4.0.0+); bare `bkit install` errors.
 - `pnpm bkit check` — Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 on any Tier-1/Tier-2 drift without writes.
 - `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exits 0.
+- `pnpm bkit status` (v4.0.0+) — read-only; prints each installed host (claude / cursor / opencode) and its configured provider.
 - `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
-- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict).
+- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict). Module-scoped to installed modules (v4.0.0+).
 
 ## Consumer Integration Model
 
@@ -110,6 +113,9 @@ Workflow/prompt SOURCES are NOT shipped into the consumer `.agents/`; they live 
 
 - `.claude/commands/` + `.claude/agents/` — byte-identical copies of `.bkit/workflows/` and `.bkit/prompts/`
 - `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed copies for Cursor compatibility
+- `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`)
+
+Every rendered agent/command file carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install`/`upgrade` (v4.0.0+). `bkit check` hard-fails with `bkit-rendered-prompts-stale` when a marker drifts from the installed version.
 
 ## Distribution
 

@@ -365,3 +365,23 @@
 - **Supersedes:** the `gemini` provider named in DE-27 § Decision (descoped; the realized set is the six named OpenAI-compatible providers + zen). DE-27 retained as history.
 - **Source:** agent
 - **Related:** #245 (closed), DE-27 (opencode host shipped), commits `82036ad`/`12f4c49`/`a348faa`/`895ddf2`, `docs/knowledge.md` KN-40, `docs/completed.md` (opencode provider expansion + zen gateway), `.bkit/src/{bkit-cli,bkit-install,bkit-modules}.ts`, `.bkit/{prompts,providers}.md`.
+
+## DE-29: #252/#253 — v4.0.0 CLI surface redesign; `bkit install` requires ≥1 module flag (2026-06-12)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** Breaking CLI redesign shipped as v4.0.0. (1) **`bkit install` requires ≥1 explicit module flag** — bare `bkit install` exits 1 with a usage hint; replaces the old implicit-all default. Valid flags: `--claude`, `--cursor`, `--opencode=<provider>`, `--tooling` (collapsed bundle of `--ci`/`--lint`/`--git-hooks`), plus opt-in `--dependency=<renovate|dependabot>` and `--auto=<claude|cursor|opencode>`. Core is still implicit. (2) **Dropped flags** (all error with a migration hint): `--full`, `--core`, `--ci`, `--lint`, `--git-hooks`, bare `--renovate`/`--dependabot` (use `--dependency=<name>`), `--cloud` (use `--auto=`); `--non-interactive` renamed to `--auto-apply`. (3) **`CLAUDE.md` ownership** moved from the `core` module to the `--claude` module (consumers without `--claude` no longer receive it). (4) **Tracker switching is free** — `bkit install --force` for tracker switches dropped; constraint is advisory only. (5) **`bkit status`** added as a new read-only verb reporting installed hosts and providers. (6) **`bkit upgrade` is module-scoped** to the modules recorded in `bkit.installedModules` (does not re-write modules the consumer never installed).
+- **Why:** A bare `bkit install` installing everything was a footgun for partial installs — consumers that want only Claude Code got Cursor hooks they didn't request. The collapsed `--tooling` flag simplifies the surface. Requiring an explicit `--claude` flag to receive `CLAUDE.md` matches the additive-host model: each host module owns its own agent-launcher file. Dropping `--force` for tracker switches reflects the tracker-pluggability work (#39) where switching is now lossless and always safe.
+- **Discarded:** (1) Keep bare `bkit install` installing everything — silent full-overwrite footgun for new consumers. (2) Keep `--ci`/`--lint`/`--git-hooks` as distinct flags — tooling is always installed as a unit in practice; three flags > one bundle adds friction with no consumer-facing granularity benefit.
+- **Source:** agent
+- **Related:** #252, #253, `.bkit/src/bkit-cli.ts` (MODULE_FLAGS, parseArgs), `.bkit/src/bkit-install.ts` (≥1-flag guard, `--auto-apply`), DE-27 (opencode additive host)
+
+## DE-30: #256 — Managed-version marker in rendered prompts/workflows; `bkit-rendered-prompts-stale` blocker (2026-06-12)
+
+- **Category:** agentic
+- **Status:** active
+- **Decision:** `bkit install` and `bkit upgrade` stamp a `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`line into every rendered agent/command file across`.claude/`, `.cursor/`, and `.opencode/`. `bkit check`(Phase 3) detects any file whose embedded version differs from the currently installed bkit version and hard-fails with the`bkit-rendered-prompts-stale` blocker (exit 1). Consumers running an older rendered set against a newer bkit binary are caught before a push reaches CI.
+- **Why:** Prior to v4.0.0 a consumer could silently run stale rendered files (e.g. workflows from v3 against a v4 binary that changed the wire protocol). The marker makes the installed version explicit in every file, and `bkit check` closes the gap between "version bumped in `package.json`" and "rendered files actually regenerated". The marker is placed at the top of every fully-managed file and is idempotent (one marker per file, overwritten on every re-render).
+- **Discarded:** (1) SHA-based stale detection — SHA changes on any edit; version-tagged is more human-readable and only changes on bkit version bumps. (2) `.bkit-version` pinnedVersion check only — does not catch files that were not re-rendered after a version bump (the marker lives in the file itself, so any un-regenerated file fails regardless of whether the consumer's `.bkit-version` was updated).
+- **Source:** agent
+- **Related:** #256, commit `377ada3`, `.bkit/src/bkit-version.ts` (MANAGED_MARKER_TOKEN, MANAGED_MARKER_LINE_RE), `.bkit/src/bkit-postinstall.ts` (bkit-rendered-prompts-stale detector), `.bkit/src/bkit-install.integration.test.ts` (Scenario: exits 1 on stale marker)

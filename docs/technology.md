@@ -19,7 +19,7 @@
 | Technology | Version | Usage |
 | --- | --- | --- |
 | Node.js | `>=20` (engines field) | Runtime for all CLI scripts |
-| TypeScript | `^5.4` | Source language for `.bkit/src/*.ts` |
+| TypeScript | `^6.0.0` | Source language for `.bkit/src/*.ts` |
 | ESM | `"type": "module"` in `package.json` | All scripts are native ESM modules |
 | `tsx` | `^4.19` | Used by integration tests to spawn `bkit` without a pre-build step |
 
@@ -28,7 +28,7 @@
 <!-- prettier-ignore -->
 | Technology | Version | Usage |
 | --- | --- | --- |
-| pnpm | `10.33.0` (`packageManager` field — single SoT) | Monorepo / consumer package management |
+| pnpm | `10.34.1` (`packageManager` field — single SoT) | Monorepo / consumer package management |
 | GitHub Packages npm registry | `npm.pkg.github.com` | Distribution target for `@cbartens/bkit` (see `docs/decisions.md` DE-3) |
 
 ## Build & Output
@@ -39,12 +39,25 @@
 | `tsc` (TypeScript compiler) | `tsconfig.json` | Compiles `.bkit/src/*.ts` → `dist/*.js`; committed `dist/` is the published artifact |
 | `check:dist` npm script | CI step 6 | Rebuilds and `git diff --exit-code dist/` — fails if committed `dist/` is stale |
 
+## Execution Hosts
+
+bkit renders agent payload for three IDE/agent-host runtimes. Hosts are additive — `--claude` and `--cursor` are always-on; opencode is opt-in.
+
+<!-- prettier-ignore -->
+| Host | Install flag | Notes |
+| --- | --- | --- |
+| Claude Code (`.claude/`) | always-on (no flag) | Anthropic first-party agent CLI; `CLAUDE.md` owned by `--claude` module |
+| Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
+| opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen` |
+
+OpenAI-compatible providers (all except `zen`) use the npm `@ai-sdk/openai-compatible` driver. `zen` is an opencode-native gateway authenticated via `opencode auth login` (managed auth, no `{env:KEY}` block). Per-agent model pins live in `.bkit/prompts.md` § Models, one column per provider.
+
 ## Testing
 
 <!-- prettier-ignore -->
 | Technology | Version | Usage |
 | --- | --- | --- |
-| Vitest | `^2.1` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner |
+| Vitest | `^4.1.7` | Unit (`*.test.ts`) and integration (`*.integration.test.ts`) test runner |
 | Real-filesystem fixtures | `os.tmpdir()` scratch dirs | Integration tests spawn `bkit` against temporary consumer directories — no mock `fs` |
 
 See `docs/testing.md` for tier boundaries, CI execution order, and spawning patterns.

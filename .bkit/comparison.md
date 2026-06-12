@@ -126,7 +126,7 @@ Orchestrator-only steps in ship: regression guard, the merge itself, switch-to-d
 
 Benchmark: Antonio Gulli's _Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems_. Gulli is a Google engineering director, and the book reads as a practitioner catalogue of agentic-AI patterns. The table below maps every one of its 21 named patterns plus its cross-cutting Context Engineering discipline against what bkit does.
 
-Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to code-shipping), 3 intentionally not applicable. None of the foundational patterns are missing.
+Of 22 patterns assessed: 12 fully implemented, 8 partial (deliberately scoped to code-shipping), 2 intentionally not applicable. None of the foundational patterns are missing.
 
 <!-- prettier-ignore -->
 | Pattern (Gulli) | bkit status | Where / note |
@@ -161,7 +161,8 @@ Of 22 patterns assessed: 12 fully implemented, 7 partial (deliberately scoped to
 - **Resume-from-state as the single source of truth.** `status.jsonl` makes every run inspectable and restartable; the book treats this only obliquely under memory.
 - **Human-in-the-loop as non-negotiable.** Hard stops after design / plan / ship; the book treats HITL as one option among many.
 - **Explicit per-agent model pins.** Immune to session-default drift.
-- **Provider-portable execution.** Because the model pins are per-agent, `bkit install --opencode=<provider>` adds an opencode host alongside the always-on Claude/Cursor hosts — the harness is unchanged; only the inference backend moves. The same five-phase, gated, parallel pipeline runs on Ollama (local) or NVIDIA NIM. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Provider- and host-portable execution.** Because the model pins are per-agent, `bkit install --opencode=<provider>` adds an opencode host alongside the always-on Claude/Cursor hosts — the harness is unchanged; only the inference backend moves. The same five-phase, gated, parallel pipeline runs on any of seven providers (local Ollama, NVIDIA NIM, Groq, Cerebras, OpenRouter, cloud Ollama, and opencode's managed zen gateway), each shipping curated per-agent pins. Models mirror the Claude tier by default, with chain-of-thought reasoners swapped in for the convergent-reasoning agents (debug/risk). See `.bkit/providers.md` § Hosts + Providers.
+- **Cross-host/provider continuity.** A run's state lives in `status.jsonl`, the plan/design docs under `docs/plans/`, and the tracker issue — not in any vendor's session — and every host renders from the same `.bkit/` source, so a phase (or a resumed run) can move to a different IDE or provider mid-feature with identical gates, hooks, and per-agent pins: exhaust a Claude weekly limit or a free-tier quota partway through and continue on another host with no re-setup. Single-vendor frameworks tie a run to the session it started in.
 
 ### Known gaps, scoped as opportunities
 
@@ -194,7 +195,7 @@ Benchmark: `affaan-m/everything-claude-code` (ECC), a multi-IDE Claude-Code fram
 | Install provenance stamping | Adopted | `.bkit/version` records the source commit for upgrade and repair diffs. |
 | Catalog-parity check | Adopted | A test asserts every prompt and workflow file is documented in its index. |
 | Component-façade installer | Deferred | A `--with` / `--without` selective layer over the existing module system. |
-| Single canonical source → mirror install | Already does, stronger | One `.bkit/` source regenerates `.claude` and `.cursor`; ECC hand-maintains 11 trees. |
+| Single canonical source → mirror install | Already does, stronger | One `.bkit/` source regenerates `.claude`, `.cursor`, and `.opencode`; ECC hand-maintains 11 trees. |
 | Concurrency lock | Already does | Single-feature lock file; ECC has none. |
 
 ### Adopted from ECC
