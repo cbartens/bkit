@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
 import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
-import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
+import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
 import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
@@ -324,10 +324,33 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
 // (installFile does not touch ws), matching the install path exactly. Each returns
 // the consumer-relative dest paths it wrote (for the upgrade summary).
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Managed-version stamping (#256). The marker shape (stampManagedVersion +
+// regexes) is the single source of truth in bkit-version.ts so the renderer and
+// the `bkit check` detector can never drift. Here we only resolve WHICH version
+// to stamp: ctx.version (set by install/upgrade) with a package-root fallback.
+// ---------------------------------------------------------------------------
+/**
+ * Best-effort read of the installing bkit version from the package root's
+ * package.json. Mirrors getInstallingVersion in bkit-install.ts; duplicated here
+ * (not imported) to avoid a modules → install dependency cycle. Returns "0.0.0"
+ * when unreadable — the same non-fatal fallback the install side uses.
+ */
+export function readInstallingVersion() {
+    try {
+        const pkgPath = path.join(getPkgRoot(), "package.json");
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        return pkg.version ?? "0.0.0";
+    }
+    catch {
+        return "0.0.0";
+    }
+}
 export function renderClaudeAgentsCommands(ctx) {
     const { dryRun, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
     const written = [];
     const pairs = [
         [getWorkflowsRoot(), ".claude/commands"],
@@ -338,10 +361,10 @@ export function renderClaudeAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            // Resolve tracker blocks for workflow files; prompts are byte-identical.
-            const transform = dest === ".claude/commands"
-                ? (c) => substituteWorkflow(c, issueTracker).output
-                : null;
+            // Resolve tracker blocks for workflow files; prompts are byte-identical. The
+            // managed-version marker is stamped LAST so it lands after any frontmatter the
+            // transform produced (#256).
+            const transform = (c) => stampManagedVersion(dest === ".claude/commands" ? substituteWorkflow(c, issueTracker).output : c, version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
                 written.push(path.join(dest, f));
@@ -357,8 +380,9 @@ export function renderCursorAgentsCommands(ctx) {
     const { dryRun, modelLookup, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
     const written = [];
-    // Commands: tracker block resolution → T1 → T2
+    // Commands: tracker block resolution → T1 → T2 → managed-version stamp (last, #256)
     {
         const src = getWorkflowsRoot();
         const dest = ".cursor/commands";
@@ -366,7 +390,7 @@ export function renderCursorAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
+            const transform = (c) => stampManagedVersion(applyT2(applyT1(substituteWorkflow(c, issueTracker).output)), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
                 written.push(path.join(dest, f));
@@ -384,7 +408,7 @@ export function renderCursorAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyT3(c, modelLookup);
+            const transform = (c) => stampManagedVersion(applyT3(c, modelLookup), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
                 written.push(path.join(dest, f));
@@ -400,8 +424,9 @@ export function renderOpencodeAgentsCommands(ctx) {
     const { dryRun, opencodeModelLookup, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
     const written = [];
-    // --- Agents: applyOpencodeAgent ---
+    // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
     {
         const src = getPromptsRoot();
         const dest = ".opencode/agents";
@@ -409,7 +434,7 @@ export function renderOpencodeAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyOpencodeAgent(c, opencodeModelLookup);
+            const transform = (c) => stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
                 written.push(path.join(dest, f));
@@ -438,7 +463,7 @@ export function renderOpencodeAgentsCommands(ctx) {
         const files = listMdFiles(src, BKIT_PREFIX);
         const sourceSet = new Set(files);
         for (const f of files) {
-            const transform = (c) => applyOpencodeCommand(substituteWorkflow(c, issueTracker).output);
+            const transform = (c) => stampManagedVersion(applyOpencodeCommand(substituteWorkflow(c, issueTracker).output), version);
             if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
                 console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
                 written.push(path.join(dest, f));

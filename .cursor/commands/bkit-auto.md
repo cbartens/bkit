@@ -1,3 +1,5 @@
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Auto
 
 **Role:** Orchestrator — phase-routed auto-dispatcher.

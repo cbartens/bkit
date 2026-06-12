@@ -1,3 +1,5 @@
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Auto
 
 **Role:** Orchestrator — phase-routed auto-dispatcher.
@@ -18,9 +20,11 @@
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
 
+
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
 > - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
+
 
 > - **Timeouts:** **If** workflow or subagent run > 600 seconds → **Failure Path**.
 
@@ -67,7 +71,7 @@
    ```
    Assert `RUN_ID` non-empty. **Else** → **Failure Path**.
 10. Extract `ISSUE_ID` from PR body metadata (preferred) or `FID` slug (fallback):
-
+     
     Read PR body via `mcp__github__pull_request_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", pull_number: {PR_NUMBER} })` → parse marker below → extract `ISSUE_ID` + `FID`:
 
     ```html
@@ -112,6 +116,7 @@
      **If** `{PHASE}` matches none of above → **Failure Path**.
 
 ### 🔒 Gate 2 — Dispatch
+
 
 - [ ] Issue comment attempted (`Step 2` section)
 - [ ] The phase skill matching `{PHASE}` was invoked with the correct argument (`{FID}` for ship/debug, `{ISSUE_ID}` for design/plan/build)

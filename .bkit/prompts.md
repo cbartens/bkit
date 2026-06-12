@@ -33,6 +33,7 @@
   - Section content is **freeform, multi-finding, or multi-paragraph** (prose, prioritised lists, per-item findings, tables) → its own heading + bracketed instruction: `## Section\n\n[Instructions describing what goes here; initially set to `PENDING`.]`
   - Mixed sections (some short fields + some freeform) → split into sub-headings (H3) under one H2; each sub-heading follows the rule above.
 - **Output Lens line:** Parallel-sibling outputs carry one `Lens:` line directly under the H1 (deliverable name) to identify the lens that generated the artifact. Pattern: `Lens: {Name} — {comma-separated qualifiers}.` or compact `Lens: {field list}.` Single-line, no blank inside, blank line before next heading.
+- **Managed-version marker (#256):** Rendered agents carry an injected `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`comment after the frontmatter (one blank line below it), stamped at`bkit install`/`upgrade`render time by`stampManagedVersion`— NOT present in sources. NEVER add a version line to a source prompt; it is stamped automatically per release.`bkit check` hard-fails (`bkit-rendered-prompts-stale` blocker) when a rendered marker drifts from the installed version, so consumers cannot silently run outdated prompts.
 
 ## Frontmatter Conventions
 

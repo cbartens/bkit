@@ -13,6 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior security engineer auditing auth, secrets, validation, and data exposure.
 **Scope:** As specified by input or session prompt.

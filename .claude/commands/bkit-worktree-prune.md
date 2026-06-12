@@ -1,6 +1,7 @@
 ---
 description: "Worktree Prune — Clean up one or all agent worktrees after sync"
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Worktree Prune (Utility Command)
 

@@ -1,3 +1,5 @@
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Worktree Prune (Utility Command)
 
 **Usage:** `/bkit-worktree-prune [FID]`
