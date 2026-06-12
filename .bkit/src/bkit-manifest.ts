@@ -47,6 +47,7 @@ export type ModuleName =
   | "core"
   | "claude"
   | "cursor"
+  | "opencode"
   | "ci"
   | "lint"
   | "git-hooks"
@@ -89,8 +90,8 @@ export function parseIssueTracker(value: unknown): IssueTracker | null {
 
 /**
  * Dependency-update tool chosen by the consumer (opt-in, mutually exclusive).
- * - `renovate`   — `bkit install --renovate` (recommended).
- * - `dependabot` — `bkit install --dependabot` (alternative).
+ * - `renovate`   — `bkit install --dependency=renovate` (recommended).
+ * - `dependabot` — `bkit install --dependency=dependabot` (alternative).
  * - `none`       — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.depUpdater` by the owning module so the
@@ -115,21 +116,24 @@ export function parseDepUpdater(value: unknown): DepUpdater | null {
 
 /**
  * Cloud-agent automation chosen by the consumer (opt-in).
- * - `claude`  — `bkit install --cloud=claude` installed `.github/workflows/bkit-cloud.yml`
+ * - `claude`  — `bkit install --auto=claude` installed `.github/workflows/bkit-cloud.yml`
  *               + `.claude/hooks/cloud-bootstrap.sh`. Requires `tracker=github`.
- * - `cursor`  — `bkit install --cloud=cursor` installed `.cursor/Dockerfile`
+ * - `cursor`  — `bkit install --auto=cursor` installed `.cursor/Dockerfile`
  *               + `.cursor/environment.json`. Requires `tracker=linear`.
+ * - `opencode` — `bkit install --auto=opencode` installed `.github/workflows/bkit-cloud.yml`
+ *               (same file as claude; both jobs coexist, runtime-gated by secret presence).
+ *               Requires `tracker=github` + local opencode host (`bkit install --opencode=<provider>`).
  * - `none`    — explicit opt-out; silences the post-install nudge advisory.
  *
  * Recorded in `package.json` `bkit.cloudAgents`. Like `depUpdater`, file presence
- * (`bkit-cloud.yml` for claude; `.cursor/Dockerfile` for cursor) is the authoritative
+ * (`bkit-cloud.yml` for github-host variants; `.cursor/Dockerfile` for cursor) is the authoritative
  * "active" signal; the package.json field only distinguishes a deliberate opt-out from
  * an undecided install.
  *
  * DECISION-C (AMENDED 2026-05-27): single self-describing field (mirrors `bkit.issueTracker`).
  * Back-compat: legacy `"enabled"` is mapped to `"claude"` by `parseCloudAgents`.
  */
-export const CLOUD_MODES = ["claude", "cursor", "none"] as const;
+export const CLOUD_MODES = ["claude", "cursor", "opencode", "none"] as const;
 export type CloudAgents = (typeof CLOUD_MODES)[number];
 
 /** Default when consumer manifest has no `bkit.cloudAgents` field (undecided). */
@@ -151,7 +155,8 @@ export function parseCloudAgents(value: unknown): CloudAgents | null {
 
 const CORE_MANIFEST: ManifestEntry[] = [
   { path: "AGENTS.md", format: "markered-text", module: "core" },
-  { path: "CLAUDE.md", format: "markered-text", module: "core" },
+  // CLAUDE.md moved core → claude (#252) — see CLAUDE_MANIFEST. AGENTS.md (the
+  // cross-host dispatch router) stays core; CLAUDE.md is a Claude-Code-only redirect.
   { path: ".gitignore", format: "markered-text", module: "core" },
   // Append-only ledger union-merge rules live in a managed block; consumers may add
   // their own attributes outside the block, so this is markered-text (not whole-file).
@@ -162,14 +167,18 @@ const CORE_MANIFEST: ManifestEntry[] = [
   // force-overwritten mirrors (writeTier1) so a consumer can read them in-repo. Whole
   // file is bkit-owned → byte-equal-text, NOT seedOrPrint (refreshed every install).
   { path: ".bkit/cloud.md", format: "byte-equal-text", module: "core" },
-  { path: ".bkit/IDEs.md", format: "byte-equal-text", module: "core" },
-  { path: ".bkit/prompts.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/providers.md", format: "byte-equal-text", module: "core" },
+  { path: ".bkit/prompts.md", format: "markered-text", module: "core" },
   { path: ".bkit/trackers.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/workflows.md", format: "byte-equal-text", module: "core" },
   { path: ".bkit/README.md", format: "byte-equal-text", module: "core" },
 ];
 
 const CLAUDE_MANIFEST: ManifestEntry[] = [
+  // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude,
+  // so `uninstall --claude` removes it and a non-claude install/uninstall leaves it).
+  // Emitted by runClaudeModule (a root file, outside the .claude/ dir walk).
+  { path: "CLAUDE.md", format: "markered-text", module: "claude" },
   { path: ".claude/settings.json", format: "json", module: "claude" },
   { path: ".claude/hooks/preflight.sh", format: "markered-text", module: "claude" },
   // GateGuard advisory PreToolUse hook — fully bkit-owned Node script (no consumer
@@ -183,6 +192,10 @@ const CLAUDE_MANIFEST: ManifestEntry[] = [
   { path: ".mcp.json", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".bkit/.env.example", format: "byte-equal-text", module: "claude", seedOrPrint: true },
   { path: ".envrc", format: "byte-equal-text", module: "claude", seedOrPrint: true },
+  // Note: .bkit/scripts/bkit-mode.sh was removed in #245 (opencode host ships as additive
+  // provider-agnostic host via `bkit install --opencode=<provider>`; the ccr router lane
+  // and `bkit mode` surface are retired). Consumer copies are detected on upgrade and an
+  // advisory is emitted advising deletion (see runClaudeModule's bkit-mode.sh drift check).
   // Mirrors from .agents/ — managed dynamically; not listed individually here
   // because the exact set depends on the bkit-prefix prompt/workflow files at
   // install time. The uninstall logic handles these via the BKIT_PREFIX filter.
@@ -198,6 +211,31 @@ const CURSOR_MANIFEST: ManifestEntry[] = [
   // by Cursor's cloud infra (not in-repo hooks), and are inert for local Cursor use.
   { path: ".cursor/mcp.json", format: "byte-equal-text", module: "cursor", seedOrPrint: true },
   // Mirrors from .agents/ — managed dynamically; not listed individually.
+];
+
+// opencode is opt-in via `bkit install --opencode=<provider>` — additive alongside
+// always-on claude/cursor. Agent and command mirrors are managed dynamically (like
+// claude/cursor); listed entries cover the static config + plugin files.
+//
+// opencode.json is Tier-2 deep-contained (writeTier2JsonContained) — it is
+// ownership-mixed: consumers add their own provider keys, model lists, and mcp entries,
+// so bkit must reconverge only the bkit-managed keys on upgrade (KN-17). Seed-or-print
+// (Tier-3) would silently abandon bkit's managed keys on consumer-modified files.
+//
+// gateguard.js is byte-equal-text (writeTier1 force-overwrite) — consumers configure
+// via env vars, not by editing; fully bkit-owned like .claude/hooks/gateguard.cjs.
+//
+// Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
+// Spike initially observed singular; official docs are plural — plural is correct.
+export const OPENCODE_MANIFEST: ManifestEntry[] = [
+  // opencode.json — Tier-2 json (deep-contained, ownership-mixed, reconverged on upgrade).
+  // writeTier2JsonContained throws on malformed destination (KN-19 guard).
+  { path: ".opencode/opencode.json", format: "json", module: "opencode" },
+  // gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite; consumers use env vars).
+  { path: ".opencode/plugin/gateguard.js", format: "byte-equal-text", module: "opencode" },
+  // Agent and command mirrors are managed dynamically (not listed individually here —
+  // the exact set depends on the bkit-prefix prompt/workflow files at install time).
+  // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
 ];
 
 const CI_MANIFEST: ManifestEntry[] = [
@@ -218,10 +256,16 @@ const CI_MANIFEST: ManifestEntry[] = [
 // ships ZERO cloud footprint. The module is split by variant (DECISION-D):
 //
 //   cloud=claude (tracker=github):
-//   - bkit-cloud.yml         — phase-routed GitHub Action; requires ANTHROPIC_API_KEY +
-//                              Claude GitHub App + Actions write perms.
-//   - cloud-bootstrap.sh     — Claude Code on the web SessionStart install hook
+//   - bkit-cloud.yml        — phase-routed GitHub Action; carries BOTH claude + opencode jobs,
+//                              runtime-gated by secret presence. Requires ANTHROPIC_API_KEY +
+//                              Claude GitHub App + Actions write perms (for claude job).
+//   - cloud-bootstrap.sh    — Claude Code on the web SessionStart install hook
 //                              (no-op unless CLAUDE_CODE_REMOTE=true).
+//
+//   cloud=opencode (tracker=github):
+//   - bkit-cloud.yml        — same file as cloud=claude; the opencode job runs when
+//                              OPENCODE_PROVIDER_KEY is set. Requires local opencode host
+//                              (`bkit install --opencode=<provider>`). No OIDC.
 //
 //   cloud=cursor (tracker=linear):
 //   - .cursor/Dockerfile     — Cursor Background Agent container toolchain.
@@ -233,6 +277,11 @@ const CI_MANIFEST: ManifestEntry[] = [
 export const CLOUD_MANIFEST_CLAUDE: ManifestEntry[] = [
   { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
   { path: ".claude/hooks/cloud-bootstrap.sh", format: "markered-text", module: "cloud" },
+];
+
+// opencode cloud variant ships the same bkit-cloud.yml (both jobs coexist, runtime-gated).
+export const CLOUD_MANIFEST_OPENCODE: ManifestEntry[] = [
+  { path: ".github/workflows/bkit-cloud.yml", format: "byte-equal-text", module: "cloud" },
 ];
 
 export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
@@ -250,30 +299,57 @@ export const CLOUD_MANIFEST_CURSOR: ManifestEntry[] = [
 // physically absent on an install of the other variant, so removing absent files is a no-op.
 // DECISION-D states the split exists for install EMISSION (variant-correct write), not for
 // variant-correct uninstall listing — union removal is the correct uninstall behaviour.
-const CLOUD_MANIFEST: ManifestEntry[] = [...CLOUD_MANIFEST_CLAUDE, ...CLOUD_MANIFEST_CURSOR];
+// bkit-cloud.yml appears in both CLOUD_MANIFEST_CLAUDE and CLOUD_MANIFEST_OPENCODE; the
+// duplicate is deduplicated here so uninstall only attempts one removal.
+const CLOUD_MANIFEST: ManifestEntry[] = [
+  ...CLOUD_MANIFEST_CLAUDE,
+  // CLOUD_MANIFEST_OPENCODE shares bkit-cloud.yml with claude; skip duplicate workflow entry.
+  ...CLOUD_MANIFEST_CURSOR,
+];
 
-// Renovate is opt-in via `bkit install --renovate` — phase-gated against the
+// Renovate is opt-in via `bkit install --dependency=renovate` — phase-gated against the
 // default branch. NOT included in --full. See issue #123 follow-up.
 const RENOVATE_MANIFEST: ManifestEntry[] = [
   { path: ".github/renovate.json5", format: "byte-equal-text", module: "renovate" },
+  // .github/renovate-local.json5 — consumer-owned overrides, seeded once (create-if-absent)
+  // and deliberately unmanaged: it has NO template file, so the template-walking check/upgrade
+  // collector never sees it (its whole purpose is to diverge from the seed). Listed here ONLY
+  // so uninstall reclaims it — hash-guarded (removed while still byte-equal to the seed,
+  // preserved once customised), unconditional on --nuke (#255 P1-7).
+  {
+    path: ".github/renovate-local.json5",
+    format: "byte-equal-text",
+    module: "renovate",
+    seedOrPrint: true,
+  },
 ];
 
-// Dependabot is opt-in via `bkit install --dependabot` — first-party GitHub
+// Dependabot is opt-in via `bkit install --dependency=dependabot` — first-party GitHub
 // feature, no App install required. Mutually exclusive with --renovate. NOT
 // included in --full. See issue #109 (origin) + #123 follow-up. dependabot.yml
 // is Tier 3 (seed-or-print) because consumers commonly tune the npm section
 // per their monorepo shape; the helper script is Tier 1 (canonical).
 const DEPENDABOT_MANIFEST: ManifestEntry[] = [
   { path: ".github/dependabot.yml", format: "byte-equal-text", module: "dependabot" },
-  { path: "scripts/ci/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
+  { path: ".bkit/scripts/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
 ];
 
 const LINT_MANIFEST: ManifestEntry[] = [
   { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: ".prettierignore", format: "markered-text", module: "lint" },
-  // .vale/styles/House/ — fully managed as a directory; individual files
-  // are enumerated at uninstall time.
+  // .lintstagedrc.json — Tier 3 seed-or-print (consumer may customise; pairs with the
+  // lint-staged call in the pre-commit hook). Hash-guarded delete on uninstall: removed
+  // when still byte-equal to the seed, preserved once the consumer edits it (#255 P1-7).
+  { path: ".lintstagedrc.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
+  // .vale/styles/House/*.yml — Tier 1 (fully managed, bkit-owned, byte-identical to the
+  // template; force-overwritten every install). Enumerated explicitly so uninstall removes
+  // them and install records their hashes (byteEqualPaths is manifest-derived). Keep in sync
+  // with .bkit/templates/.vale/styles/House/ — a parity test guards against drift (#255 P1-7).
+  { path: ".vale/styles/House/Filler.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/Hedging.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/LLMSlop.yml", format: "byte-equal-text", module: "lint" },
+  { path: ".vale/styles/House/Verbose.yml", format: "byte-equal-text", module: "lint" },
   {
     path: "package.json",
     format: "markered-text",
@@ -284,7 +360,7 @@ const LINT_MANIFEST: ManifestEntry[] = [
         "lint:prose":
           'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
         "lint:slop": "slop-scan scan .",
-        "slop:delta": "bash scripts/tooling/slop-delta.sh",
+        "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
       },
       devDependencies: {
         prettier: "^3.5.3",
@@ -321,6 +397,7 @@ const MODULE_MANIFESTS: Record<ModuleName, ManifestEntry[]> = {
   core: CORE_MANIFEST,
   claude: CLAUDE_MANIFEST,
   cursor: CURSOR_MANIFEST,
+  opencode: OPENCODE_MANIFEST,
   ci: CI_MANIFEST,
   lint: LINT_MANIFEST,
   "git-hooks": GIT_HOOKS_MANIFEST,

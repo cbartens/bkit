@@ -95,8 +95,8 @@ export function detectNotGitRepo(cwd, modules) {
     return {
         id: "not-git-repo",
         severity: "blocker",
-        detect: "--core requested but .git/ directory not found — this is not a git repository.",
-        action: "Run `git init` to initialise a git repo, then re-run. Or omit `--core` if you don't need bkit's git-hooks module.",
+        detect: "core install requested but .git/ directory not found — this is not a git repository.",
+        action: "Run `git init` to initialise a git repo, then re-run. bkit installs into a git repository — its git-hooks module and managed .gitignore/.gitattributes blocks require one (core is implicit; there is no --core flag to omit).",
     };
 }
 // ---------------------------------------------------------------------------
@@ -184,8 +184,8 @@ export function detectBkitVersionPinStale(cwd) {
     return {
         id: "bkit-version-pin-stale",
         severity: "advisory",
-        detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .bkit/version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run \`pnpm bkit install\`.`,
-        action: "Run `pnpm bkit install --full` to resync the .agents payload + version pin, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
+        detect: `node_modules/@cbartens/bkit version (${installedVersion}) is newer than .bkit/version (${onDiskVersion}). Consumer ran \`pnpm add -D @cbartens/bkit@${installedVersion}\` but did not re-run the bkit installer.`,
+        action: "Run `pnpm bkit upgrade` to resync the .agents payload + version pin across everything you have installed, then commit the result. `pnpm add` does not run the bkit installer — bkit's payload must be re-synced after every `@cbartens/bkit` version bump.",
     };
 }
 // ---------------------------------------------------------------------------

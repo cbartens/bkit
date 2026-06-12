@@ -63,11 +63,9 @@
   },
 
   // Respect ignore paths from .gitignore + add common monorepo cruft.
-  // `.agents/templates/**` and `.agents/skills/**` are bkit-owned mirrors written
-  // into the consumer working tree by `bkit install`/`bkit upgrade` (not consumer
-  // source). Their workflow SHAs, Cursor Dockerfile, and vendored skill manifests
-  // are refreshed by bkit, NOT consumer Renovate — scanning them only produces
-  // onboarding noise (and an unauthable `@cbartens/bkit` lookup). See issue #132.
+  // `.bkit/templates/**` and `.agents/skills/**` are bkit-owned files NOT managed
+  // by consumer Renovate — scanning them only produces onboarding noise (and an
+  // unauthable `@cbartens/bkit` lookup). See issue #132.
   // `bkit-cloud.yml` is bkit-owned too and tag-pinned by design (new SHAs arrive
   // via `bkit install`). It MUST be ignored here, not merely fenced by the
   // packageRule below: `enabled: false` suppresses version bumps but the
@@ -78,7 +76,7 @@
     "**/node_modules/**",
     "**/dist/**",
     "**/build/**",
-    ".agents/templates/**",
+    ".bkit/templates/**",
     ".agents/skills/**",
     ".github/workflows/bkit-cloud.yml",
   ],
@@ -141,7 +139,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor", "patch"],
       matchDepTypes: ["devDependencies"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -150,7 +148,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["patch"],
       matchDepTypes: ["dependencies"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       automergeType: "pr",
       platformAutomerge: true,
@@ -159,7 +157,7 @@
       matchManagers: ["npm"],
       matchUpdateTypes: ["minor"],
       matchDepTypes: ["dependencies"],
-      groupName: "bkit: renovate minor dependencies",
+      groupName: "minor dependencies",
       // Minor prod bumps ship new behavior to users — review manually.
       // Explicit (not just absent) so the policy is greppable and can't be
       // silently flipped true by an earlier automerge rule.
@@ -181,14 +179,14 @@
     {
       matchPackagePatterns: ["^@types/"],
       matchUpdateTypes: ["minor", "patch"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
     {
       matchPackagePatterns: ["^eslint", "^@eslint/", "^@typescript-eslint/"],
       matchUpdateTypes: ["minor", "patch"],
-      groupName: "bkit: renovate non-major dependencies",
+      groupName: "non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
@@ -203,19 +201,19 @@
     {
       matchPackagePatterns: ["^@tanstack/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major tanstack",
+      groupName: "major tanstack",
       automerge: false,
     },
     {
       matchPackagePatterns: ["^vitest", "^@vitest/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major vitest",
+      groupName: "major vitest",
       automerge: false,
     },
     {
       matchPackagePatterns: ["^@playwright/"],
       matchUpdateTypes: ["major"],
-      groupName: "bkit: renovate major playwright",
+      groupName: "major playwright",
       automerge: false,
     },
 
@@ -226,7 +224,7 @@
     // ─────────────────────────────────────────────────────────────────────
     {
       matchManagers: ["github-actions"],
-      groupName: "bkit: renovate github-actions",
+      groupName: "github-actions",
       // Pin to SHA + tag comment; Renovate maintains the tag comment.
       pinDigests: true,
       // Reviewed manually — a workflow action bump can change CI behavior.

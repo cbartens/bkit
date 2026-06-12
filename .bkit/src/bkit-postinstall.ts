@@ -24,7 +24,8 @@ import {
   DEFAULT_CLOUD_AGENTS,
   type CloudAgents,
 } from "./bkit-manifest.js";
-import { readBkitVersion } from "./bkit-version.js";
+import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
+import { getPkgRoot } from "./bkit-paths.js";
 
 export type { PreflightFinding };
 
@@ -145,7 +146,7 @@ export function detectMainBranchProtection(): TokenPresence {
 
 /**
  * Detect whether the repo's default GitHub Actions workflow permissions let the
- * bkit-cloud workflow push status commits and open/merge PRs. Reads
+ * bkit-auto workflow push status commits and open/merge PRs. Reads
  * `repos/{owner}/{repo}/actions/permissions/workflow`:
  *   - default_workflow_permissions: "read" | "write"
  *   - can_approve_pull_request_reviews: boolean
@@ -293,7 +294,7 @@ export function detectBkitCloudYmlAlwaysTrueGate(cwd: string): PreflightFinding 
   // Broken construct: an `if:` block scalar (`|` / `>`) whose first content line is ${{.
   if (!/^\s*if:\s*[|>][^\n]*\n\s*\$\{\{/m.test(content)) return null;
   return {
-    id: "bkit-cloud-yml-always-true-gate",
+    id: "bkit-auto-yml-always-true-gate",
     severity: "advisory",
     detect:
       ".github/workflows/bkit-cloud.yml writes its auto-route `if:` gate as a `|` block scalar wrapping ${{ }} — GitHub Actions evaluates this to a non-empty string (always true), so the free-tier `bkit [auto route]` gate never fires and the job runs on every triggering event.",
@@ -338,6 +339,203 @@ export function detectCiYmlMissingActionlint(cwd: string): PreflightFinding | nu
       '          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"\n' +
       '          bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP"\n' +
       '          "$RUNNER_TEMP/actionlint" -color',
+  };
+}
+
+/**
+ * Detect drift of the consumer's `bkit-tests-check` capstone from bkit's canonical
+ * CI contract. ci.yml is Tier-3 seed-or-print (consumer-owned, freely edited) — bkit
+ * never rewrites it, so over time a copy can silently lose a load-bearing invariant and
+ * reintroduce a bug bkit already fixed (e.g. the concurrency-cancel that killed a
+ * push-only @live canary). WARNING-ONLY presence check: flags the ABSENCE of a known-good
+ * fragment, never "differs from canonical" (which would be all false-positives — the file
+ * is meant to be edited). Fires only when the consumer opted into the capstone scaffold
+ * (bkit-managed markers + a bkit-tests-check job).
+ */
+export function detectCiYmlCapstoneContractDrift(cwd: string): PreflightFinding | null {
+  const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
+  if (!fs.existsSync(ciPath)) return null;
+  const content = fs.readFileSync(ciPath, "utf-8");
+  if (!/^\s*# bkit:start\b/m.test(content)) return null; // consumer-owned, not bkit-managed
+  if (!content.includes("bkit-tests-check")) return null; // capstone scaffold not in use
+
+  const missing: string[] = [];
+
+  // 1. Capstone must run on !cancelled() (NOT always()) — else a concurrency-cancel
+  //    stamps a bogus failure on the required check and blocks release PRs.
+  if (!content.includes("!cancelled()")) {
+    missing.push(
+      "the capstone `if: ${{ !cancelled() }}` guard — without it a concurrency-cancel stamps a bogus failure on the required check (use `!cancelled()`, never `always()`).",
+    );
+  }
+
+  // 2. Concurrency must cancel PR runs ONLY — never push/main runs (those carry the
+  //    push-only @live canary and are observed by downstream workflow_run triggers).
+  if (/concurrency:/.test(content) && /cancel-in-progress:\s*true\b/.test(content)) {
+    missing.push(
+      "PR-only concurrency cancellation — `cancel-in-progress: true` cancels push/main runs too (kills the push-only @live canary / release CI). Gate it: `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`.",
+    );
+  }
+
+  // 3. Non-hollow capstone: it must assert tiers actually executed >0 tests, not just
+  //    that the job exited 0 (passWithNoTests / no-CI-home / all-skipIf are green-with-zero).
+  if (
+    !/_ran\b/.test(content) &&
+    !/_count\b/.test(content) &&
+    !/executed\s*\d*\s*tests?/i.test(content)
+  ) {
+    missing.push(
+      'an executed-count assertion (non-hollow gate) — the capstone should assert each planned tier ran >0 tests (e.g. a `*_ran` job output), else passWithNoTests / a tagged suite with no CI home / all-skipIf tests pass vacuously. See docs/testing.md § "Validated means executed".',
+    );
+  }
+
+  if (missing.length === 0) return null;
+  return {
+    id: "ci-yml-capstone-contract-drift",
+    severity: "advisory",
+    detect:
+      `.github/workflows/ci.yml (bkit-managed) has a bkit-tests-check capstone missing ${missing.length} ` +
+      "load-bearing invariant(s) from bkit's canonical CI contract. ci.yml is yours to own, so bkit can't rewrite it — this is a heads-up, not a hard failure.",
+    action:
+      "Consider restoring these to keep `green == validated` (see the FULL CI SCAFFOLD REFERENCE in the bkit ci.yml template):\n\n" +
+      missing.map((m) => "  - " + m).join("\n"),
+  };
+}
+
+// Tag-gated tiers invoked via a per-package script: a tagged test whose owning package
+// declares no matching script is silently skipped by `turbo run <script>` (exits 0) —
+// the tag is dead and the tier ghost-greens. Suffix-based tiers (integration via
+// *.integration.test.ts) are covered by the ci.yml template's own missing-script warning.
+const TAG_SCRIPT_HOMES: ReadonlyArray<{ tag: string; script: string }> = [
+  { tag: "@live", script: "test:live" },
+  { tag: "@smoke", script: "test:smoke" },
+];
+
+const HOME_WALK_SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  ".next",
+  "coverage",
+  ".turbo",
+  "playwright-report",
+  "test-results",
+  ".vercel",
+]);
+
+function walkRepoForHomeCheck(
+  dir: string,
+  testFiles: string[],
+  packageJsons: string[],
+  depth = 0,
+): void {
+  if (depth > 8) return;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    // Unreadable directory (permissions / not-a-dir race): skip this subtree. Surfaced
+    // under BKIT_DEBUG so the skip is diagnosable rather than silently swallowed.
+    if (process.env.BKIT_DEBUG)
+      console.error(`[bkit] home-check skipped ${dir}: ${(err as Error).message}`);
+    return;
+  }
+  for (const e of entries) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (HOME_WALK_SKIP_DIRS.has(e.name)) continue;
+      walkRepoForHomeCheck(full, testFiles, packageJsons, depth + 1);
+    } else if (e.name === "package.json") {
+      packageJsons.push(full);
+    } else if (/\.(test|spec)\.[cm]?tsx?$/.test(e.name)) {
+      testFiles.push(full);
+    }
+  }
+}
+
+/**
+ * Detect `@live` / `@smoke`-tagged tests whose owning package declares no matching
+ * `test:live` / `test:smoke` script — they have "no CI home": `turbo run test:live`
+ * skips a package with no such script and exits 0, so the tagged tests never run and the
+ * live/smoke tier reports green having executed nothing (ghost-green, the #483 class).
+ *
+ * Stack/convention-safe: only flags a tag when the convention is ACTIVE in the repo (at
+ * least one package declares the script) — so it is a silent no-op for repos that don't
+ * use the live-testing convention, and for incidental `@live` string matches. WARNING-only;
+ * the capstone's `run_live => live_ran > 0` assertion is the runtime backstop, this catches
+ * it earlier (install / pre-push).
+ */
+export function detectTaggedTestsWithoutCiHome(cwd: string): PreflightFinding | null {
+  const testFiles: string[] = [];
+  const packageJsons: string[] = [];
+  walkRepoForHomeCheck(cwd, testFiles, packageJsons);
+  if (testFiles.length === 0 || packageJsons.length === 0) return null;
+
+  // pkgPath -> scripts object; and the set of every script name declared anywhere.
+  const pkgScripts = new Map<string, Record<string, unknown>>();
+  const declaredScripts = new Set<string>();
+  for (const pj of packageJsons) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(pj, "utf-8")) as Record<string, unknown>;
+      const scripts = (parsed.scripts as Record<string, unknown>) ?? {};
+      pkgScripts.set(pj, scripts);
+      for (const name of Object.keys(scripts)) declaredScripts.add(name);
+    } catch {
+      pkgScripts.set(pj, {});
+    }
+  }
+
+  const nearestPkg = (fileDir: string): string | null => {
+    let dir = fileDir;
+    for (;;) {
+      const pj = path.join(dir, "package.json");
+      if (pkgScripts.has(pj)) return pj;
+      const parent = path.dirname(dir);
+      if (parent === dir || dir === cwd) return pkgScripts.has(pj) ? pj : null;
+      dir = parent;
+    }
+  };
+
+  const homeless = new Map<string, Set<string>>(); // tag -> set of "pkgdir (needs `script`)"
+  for (const file of testFiles) {
+    let text: string;
+    try {
+      text = fs.readFileSync(file, "utf-8");
+    } catch {
+      continue;
+    }
+    for (const { tag, script } of TAG_SCRIPT_HOMES) {
+      if (!declaredScripts.has(script)) continue; // convention not active for this tag
+      if (!text.includes(tag)) continue;
+      const pj = nearestPkg(path.dirname(file));
+      if (!pj) continue;
+      if (typeof pkgScripts.get(pj)?.[script] !== "string") {
+        const rel = path.relative(cwd, path.dirname(pj)) || ".";
+        if (!homeless.has(tag)) homeless.set(tag, new Set());
+        homeless.get(tag)?.add(rel);
+      }
+    }
+  }
+
+  if (homeless.size === 0) return null;
+  const lines: string[] = [];
+  for (const { tag, script } of TAG_SCRIPT_HOMES) {
+    const pkgs = homeless.get(tag);
+    if (pkgs && pkgs.size > 0) {
+      lines.push(
+        `  ${tag} (run by \`turbo run ${script}\`) → add \`${script}\` to: ${[...pkgs].sort().join(", ")}`,
+      );
+    }
+  }
+  return {
+    id: "tagged-tests-no-ci-home",
+    severity: "advisory",
+    detect:
+      "Found `@live`/`@smoke`-tagged tests in package(s) that declare no matching `test:live`/`test:smoke` script. `turbo run test:live` skips a package with no such script and exits 0 — the tagged tests never run, and the tier reports green having executed nothing (ghost-green / 'no CI home').",
+    action:
+      "Give each tagged suite a CI home — add the matching script to the package's package.json so the live/smoke tier actually invokes it:\n\n" +
+      lines.join("\n") +
+      '\n\nExample: `"test:live": "vitest run --project live"` (or your runner\'s tag filter). The bkit-tests-check capstone\'s `run_live => live_ran > 0` assertion is the runtime backstop; this catches it earlier.',
   };
 }
 
@@ -494,7 +692,7 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-check",
     file: ".github/workflows/ci.yml",
     description:
-      "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `scripts/ci/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
+      "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
   },
 ];
 
@@ -724,7 +922,7 @@ export function detectGhaFloatingTags(cwd: string): PreflightFinding | null {
     action:
       "Replace each `@vN[.N.N]` with a 40-character commit SHA and a `# vN.N.N` comment, e.g.:\n\n" +
       "    - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1\n\n" +
-      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
+      "Look up SHAs with `git ls-remote https://github.com/<org>/<repo>.git 'refs/tags/v*' | tail -3`. Apply to ALL workflow files that run with elevated permissions (`packages: write`, `id-token: write`). Optionally pair with `.github/renovate.json5` (opt-in via `bkit install --dependency=renovate`) so SHA pins refresh on upstream releases and CVE disclosures — Renovate handles the github-actions ecosystem with `pinDigests: true` and groups all action bumps into one weekly PR.",
   };
 }
 
@@ -1068,7 +1266,7 @@ function readConsumerDepUpdater(cwd: string): DepUpdater {
 /**
  * Emit a dependency-updater setup advisory (parity with the tracker advisory).
  * Renovate and Dependabot are both opt-in (mutually exclusive); neither ships
- * with `--full`. This nudges consumers to make the choice post-install.
+ * with a default install. This nudges consumers to make the choice post-install.
  *
  * Resolution order (file presence is authoritative, package.json field is the
  * "deliberate opt-out" escape hatch):
@@ -1093,7 +1291,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       detect:
         "Dependency updates: Renovate is the active updater (`.github/renovate.json5` present).",
       action:
-        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
+        "If you have not yet installed the Renovate GitHub App, run `pnpm bkit install --dependency=renovate` again once the config is on your default branch — it prints the App-install URL + activation checklist (Phase B). See `docs/deployments.md` § GitHub Actions pinning.",
     };
   }
 
@@ -1104,7 +1302,7 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       detect:
         "Dependency updates: Dependabot is the active updater (`.github/dependabot.yml` present).",
       action:
-        "If you have not yet enabled the repo-level Dependabot state, run `bash scripts/ci/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
+        "If you have not yet enabled the repo-level Dependabot state, run `bash .bkit/scripts/bkit-set-dependabot.sh` (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main). See `docs/deployments.md` § GitHub Actions pinning.",
     };
   }
 
@@ -1123,8 +1321,8 @@ export function buildDepUpdaterSetupAdvisory(cwd: string): PreflightFinding | nu
       "Dependency updates: no updater configured. `.github/workflows/` exists but neither Renovate nor Dependabot is set up — SHA-pinned actions never refresh and npm bumps fall through the cracks.",
     action:
       "Optional post-install decision — pick one (mutually exclusive):\n\n" +
-      "  - `pnpm bkit install --renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
-      "  - `pnpm bkit install --dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
+      "  - `pnpm bkit install --dependency=renovate` (recommended) — monorepo-aware, grouped PRs, lockfile maintenance, `osvVulnerabilityAlerts`. Requires a one-time GitHub App install (phase-gated; see `docs/deployments.md` § GitHub Actions pinning).\n" +
+      "  - `pnpm bkit install --dependency=dependabot` — first-party GitHub, no App install, no third-party trust surface. Ships `.github/dependabot.yml` + a repo-state helper script.\n\n" +
       'To opt out and silence this advisory, set `bkit.depUpdater` to `"none"` in package.json.',
   };
 }
@@ -1175,8 +1373,8 @@ function hasExplicitCloudAgentsField(cwd: string): boolean {
 /**
  * Emit a cloud-agents setup advisory (parity with the tracker / dep-updater
  * advisories). Post-CI auto-routing (`bkit-cloud.yml`) is opt-in via
- * `bkit install --cloud=claude`; it does NOT ship with `--full`. This nudges consumers
- * to make the choice post-install.
+ * `bkit install --auto=claude`; it does NOT ship with a default install. This nudges
+ * consumers to make the choice post-install.
  *
  * Also performs the cloud=claude config-consistency assertion (T1.8): when
  * `bkit.cloudAgents === "claude"` but the installed `bkit-cloud.yml` lacks
@@ -1209,7 +1407,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
           detect:
             "`bkit.cloudAgents` is `claude` but `.github/workflows/bkit-cloud.yml` lacks `id-token: write`. `claude-code-action@v1` will fail at boot with an OIDC error.",
           action:
-            "Re-run `pnpm bkit install --cloud=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
+            "Re-run `pnpm bkit install --auto=claude --tracker=github` to regenerate the workflow with `id-token: write` and the App-auth framing. Also verify the Claude GitHub App is installed (`/install-github-app`). See bkit's `cloud.md` § Post-CI auto-routing.",
         };
       }
     }
@@ -1219,7 +1417,7 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
       severity: "advisory",
       detect:
         "Cloud agents: post-CI auto-routing is active (`.github/workflows/bkit-cloud.yml` present). The Claude GitHub App is required — run `/install-github-app` (Claude Code CLI) once if not already done.",
-      action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-cloud-setup\` advisory (emitted by \`bkit install --cloud=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
+      action: `The workflow requires: \`ANTHROPIC_API_KEY\` repo secret, the Claude GitHub App (\`/install-github-app\`), and GitHub Actions write permissions (org AND repo). See the \`bkit-auto-setup\` advisory (emitted by \`bkit install --auto=claude\`) and bkit's \`cloud.md\` § Post-CI auto-routing for the full checklist.`,
     };
   }
 
@@ -1237,15 +1435,15 @@ export function buildCloudSetupAdvisory(cwd: string): PreflightFinding | null {
     detect:
       "Cloud agents: post-CI auto-routing is not configured. `.github/workflows/` exists but no `bkit-cloud.yml` — CI pass/fail does not auto-dispatch bkit-ship / bkit-debug.",
     action:
-      "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --cloud=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --cloud=cursor --tracker=linear`.\n\n" +
-      "Prerequisites for `cloud=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
+      "Optional post-install decision. For a GitHub-tracker repo: `pnpm bkit install --auto=claude --tracker=github`. For a Linear-tracker repo: `pnpm bkit install --auto=cursor --tracker=linear`.\n\n" +
+      "Prerequisites for `--auto=claude`: `ANTHROPIC_API_KEY` repo secret + Claude GitHub App (`/install-github-app`) + GitHub Actions write permissions.\n\n" +
       'To opt out and silence this advisory, set `bkit.cloudAgents` to `"none"` in package.json.',
   };
 }
 
 /**
  * Build the consolidated "three locations to sync secrets" advisory. Fires when
- * the consumer's repo has the bkit-cloud workflow installed OR a
+ * the consumer's repo has the bkit-auto workflow installed OR a
  * .claude/ or .cursor/ install present — both indicate cloud-side agent use,
  * which means the same three secrets need to be set in three places (GitHub
  * Actions, Cursor Settings online, Claude app web).
@@ -1283,7 +1481,7 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
     detect: `The secrets used by bkit's cloud integration (${secretList}) must also be set in the relevant cloud dashboards. Bkit cannot verify dashboard state — surface the checklist so you don't ship a half-configured cloud setup.`,
     action:
       "Set each secret in the required locations:\n\n" +
-      "1. **GitHub Actions** (used by the bkit-cloud workflow and consumer workflows):\n" +
+      "1. **GitHub Actions** (used by the bkit-auto workflow and consumer workflows):\n" +
       ghSetLines +
       "2. **Cursor Background Agents** (used by Cursor's cloud agent runner): open `https://cursor.com/settings` → Background Agents → Environment Variables. Add each secret as a NAME=VALUE pair. Cursor reads `.cursor/Dockerfile` + `.cursor/environment.json` from the repo but env vars come from this dashboard only.\n\n" +
       "3. **Claude Code (web)** (used by Claude.ai's cloud agent runner): open `https://claude.ai/code` → Settings → Setup → Environment Variables. Add each secret. Claude reads its setup script from the dashboard, NOT from the repo, so changes here do not require a commit.\n\n" +
@@ -1294,7 +1492,7 @@ export function buildCloudDashboardsAdvisory(cwd: string): PreflightFinding | nu
 }
 
 /**
- * Detect whether the GitHub Actions secrets the bkit-cloud workflow needs are set.
+ * Detect whether the GitHub Actions secrets the bkit-auto workflow needs are set.
  * Only fires when `.github/workflows/bkit-cloud.yml` exists. `ANTHROPIC_API_KEY` is
  * always required (claude-code-action) for the cloud=claude path. The workflow is
  * GitHub-tracker only — no `LINEAR_API_KEY` dependency. Returns one finding per
@@ -1585,6 +1783,92 @@ export function readChangelogVersionDelta(version: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// detectRenderedPromptsStale (#256) — rendered prompts/workflows version gate
+// ---------------------------------------------------------------------------
+
+/** Rendered agent + command mirror dirs that carry the managed-version marker. */
+const RENDERED_MIRROR_DIRS = [
+  ".claude/agents",
+  ".claude/commands",
+  ".cursor/agents",
+  ".cursor/commands",
+  ".opencode/agents",
+  ".opencode/commands",
+];
+
+/**
+ * Best-effort read of the installing bkit version from the package root.
+ * Mirrors getInstallingVersion (bkit-install.ts) / readInstallingVersion
+ * (bkit-modules.ts); kept local to avoid a postinstall → install/modules import.
+ */
+function readPkgVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")) as {
+      version?: string;
+    };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+/**
+ * Blocker: a rendered prompt/workflow (.claude / .cursor / .opencode agents +
+ * commands) carries a managed-version marker that differs from the installing
+ * bkit version — i.e. the consumer is running prompts/workflows generated by a
+ * different bkit, or hand-edited a managed mirror and dropped the marker.
+ *
+ * Phase-3 placement is deliberate (#256):
+ *   - In `bkit check` (dry-run) the host renders do NOT write, so on-disk markers
+ *     keep their stale value → this fires → check exits 1 (the hard gate).
+ *   - In real `install` / `upgrade` the re-stamp write lands in Phase 2, BEFORE
+ *     this runs, so the markers are fresh → no blocker. This avoids the
+ *     chicken-and-egg where the gate would abort the very install that fixes it.
+ *   - `bkit doctor` replays Phase 3 read-only → surfaces it without exiting.
+ *
+ * Guards:
+ *   - `installingVersion` "0.0.0"/empty (dev tree without a readable package.json)
+ *     → return null (cannot meaningfully compare; never a false blocker).
+ *   - No rendered files scanned → return null (nothing installed to check).
+ *
+ * `installingVersion` is injected for testability; defaults to the package root.
+ */
+export function detectRenderedPromptsStale(
+  cwd: string,
+  installingVersion: string = readPkgVersion(),
+): PreflightFinding | null {
+  if (!installingVersion || installingVersion === "0.0.0") return null;
+
+  const stale: string[] = [];
+  let scanned = 0;
+  for (const rel of RENDERED_MIRROR_DIRS) {
+    const dir = path.join(cwd, rel);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".md") || !f.startsWith("bkit-")) continue;
+      scanned++;
+      const content = fs.readFileSync(path.join(dir, f), "utf-8");
+      const found = content.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+      if (found !== installingVersion) {
+        stale.push(`${rel}/${f}${found ? ` (v${found})` : " (no marker)"}`);
+      }
+    }
+  }
+
+  if (scanned === 0 || stale.length === 0) return null;
+
+  const examples = stale.slice(0, 5).join(", ");
+  const more = stale.length > 5 ? ` (+${stale.length - 5} more)` : "";
+  return {
+    id: "bkit-rendered-prompts-stale",
+    severity: "blocker",
+    detect: `${stale.length} of ${scanned} rendered prompt/workflow mirror file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.`,
+    action:
+      "Re-render every prompt/workflow at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the .claude/.cursor/.opencode agents + commands are bkit-managed mirrors and must be regenerated after every version bump. Never hand-edit them; edits to a mirror drop the version marker and fail this gate.",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 
@@ -1607,6 +1891,12 @@ export function runPostInstallCheck(
   cwd: string = process.cwd(),
 ): PreflightFinding[] {
   const phase3: PreflightFinding[] = [];
+
+  // Rendered prompts/workflows version gate (#256) — blocker in `bkit check` when a
+  // mirror's managed-version marker drifts from the installed version. No-op in real
+  // install/upgrade (markers were just re-stamped in Phase 2).
+  const renderedStale = detectRenderedPromptsStale(cwd);
+  if (renderedStale) phase3.push(renderedStale);
 
   // Shell token
   const shellStatus = detectShellToken();
@@ -1724,10 +2014,10 @@ export function runPostInstallCheck(
   // pushes / mis-targeted PRs are rejected before the workflow runs), main
   // needs branch protection restricting merges to PRs from dev.
   const protectionStatus = detectMainBranchProtection();
-  const protectionScript = path.join(cwd, "scripts", "ci", "bkit-protect-main.sh");
+  const protectionScript = path.join(cwd, ".bkit", "scripts", "bkit-protect-main.sh");
   const hasProtectionScript = fs.existsSync(protectionScript);
   const scriptHint = hasProtectionScript
-    ? "\n\nQuick path: bkit ships `scripts/ci/bkit-protect-main.sh` — run `bash scripts/ci/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
+    ? "\n\nQuick path: bkit ships `.bkit/scripts/bkit-protect-main.sh` — run `bash .bkit/scripts/bkit-protect-main.sh --dry-run` to preview the policy, then drop `--dry-run` to apply. It requires the `bkit-tests-check` capstone (so the required check means 'validated', not just 'tests job did not fail') and pre-flights that a `bkit-tests-check` job exists in `.github/workflows/ci.yml` before requiring it — if you are still on the single-job starter, set REQUIRED_JOB=bkit-tests in the script first."
     : "";
   if (protectionStatus === "missing") {
     phase3.push({
@@ -1767,10 +2057,10 @@ export function runPostInstallCheck(
   const cloudSetup = buildCloudSetupAdvisory(cwd);
   if (cloudSetup) phase3.push(cloudSetup);
 
-  // bkit-cloud workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
+  // bkit-auto workflow requires ANTHROPIC_API_KEY + LINEAR_API_KEY secrets.
   for (const f of detectCiRouterSecrets(cwd)) phase3.push(f);
 
-  // bkit-cloud workflow also needs repo Actions write permissions + PR-creation
+  // bkit-auto workflow also needs repo Actions write permissions + PR-creation
   // allowance, else `actions/checkout` and `gh pr create` 403. Detectable at the
   // repo level via the Actions API; org-level policy can still override.
   if (fs.existsSync(path.join(cwd, ".github", "workflows", "bkit-cloud.yml"))) {
@@ -1810,6 +2100,15 @@ export function runPostInstallCheck(
   // ci.yml missing actionlint (GHA-aware lint; yaml.safe_load is not sufficient).
   const ciActionlint = detectCiYmlMissingActionlint(cwd);
   if (ciActionlint) phase3.push(ciActionlint);
+
+  // ci.yml capstone drifted from canonical contract (warning-only presence checks).
+  const capstoneDrift = detectCiYmlCapstoneContractDrift(cwd);
+  if (capstoneDrift) phase3.push(capstoneDrift);
+
+  // @live/@smoke-tagged tests whose owning package declares no test:live/test:smoke
+  // script — "no CI home", the #483 ghost-green class.
+  const taggedNoHome = detectTaggedTestsWithoutCiHome(cwd);
+  if (taggedNoHome) phase3.push(taggedNoHome);
 
   // bkit-stub sentinels in shipped templates — one advisory per still-commented stub.
   for (const stub of detectBkitStubs(cwd)) phase3.push(stub);

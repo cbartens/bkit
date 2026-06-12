@@ -145,7 +145,7 @@ Composition guidance:
 - Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
-- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `scripts/ci/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
+- The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
 ## GitHub Actions pinning
 
@@ -157,7 +157,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
 ```
 
-**Pair with an updater.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`. The shipped config:
+**Pair with an updater.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`. The shipped config:
 
 - Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
 - Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
@@ -169,14 +169,14 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 
 **Exemption — `bkit-cloud.yml`:** The bkit-canonical `bkit-cloud.yml` uses floating major-version tags (e.g. `actions/checkout@v4`, `anthropics/claude-code-action@v1`) rather than SHA pins. The `ignorePaths` entry above keeps consumer-side Renovate out of this file entirely. New SHAs/versions arrive via `bkit install` when consumers bump the bkit package, not via consumer Renovate. SHA-pinning applies to your own CI workflows (`ci.yml` and any custom workflows), not to `bkit-cloud.yml`.
 
-**Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
+**Renovate activation (phase-gated).** Renovate is opt-in via `pnpm bkit install --dependency=renovate`. The Renovate App's first scan reads the default branch — installing the App before the config reaches `main` produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`). bkit-install enforces the order via a two-phase flow:
 
 1. **Phase A** (first run, config not yet on `origin/<default-branch>`): writes `.github/renovate.json5` to the working tree and prints a prompt to commit, open a PR to your integration branch, and merge through to the default branch. Do NOT install the Renovate App yet.
 2. **Phase B** (re-run after merge to default branch): bkit detects the file on `origin/<default-branch>` and prints the App install URL https://github.com/apps/renovate (Mend Community Cloud, one-click, free — no `gh api` equivalent) plus the activation checklist (verify onboarding PR base branch, disable Dependabot version updates, merge onboarding PR). Within ~5 minutes of install, Renovate opens its onboarding PR; merge it and the first batch of grouped update PRs follows on the next scheduled run.
 
 > **Why Renovate over Dependabot:** Renovate is monorepo-aware (one PR per dependency group, not one per package), supports lockfile maintenance, scopes bumps per file via `matchFileNames`, and respects `baseBranches` natively — no equivalent of Dependabot's silent-inert behaviour when the config sits anywhere other than the default branch. Renovate is Apache-2.0 OSS; the Mend Community Cloud App is a free hosted instance, self-hostable via `renovatebot/github-action` if you ever want to drop the Mend dependency.
 
-(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — `bkit-cloud` will not dispatch on them by design. See `security.md` § Supply-Chain.)
+(Security invariant: Renovate PRs run with a restricted `GITHUB_TOKEN` and no access to `secrets.ANTHROPIC_API_KEY` / `secrets.LINEAR_API_KEY` — `bkit-auto` will not dispatch on them by design. See `security.md` § Supply-Chain.)
 
 ### Renovate read-auth for the private package
 
@@ -189,7 +189,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 
 Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps no longer read `encrypted` secrets from repo config — only dashboard secrets (the path above). The `encrypted` route is self-hosted only.
 
-This is part of Phase B activation; `pnpm bkit install --renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
+This is part of Phase B activation; `pnpm bkit install --dependency=renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
 
 ### Customizing Renovate (renovate-local.json5)
 
@@ -201,7 +201,7 @@ This is part of Phase B activation; `pnpm bkit install --renovate` prints it in 
 - ✅ **Set keys bkit leaves unset** — notably `enabled: false` to fence a package. bkit never sets `enabled: true` on a matching rule, so a fence here holds.
 - ❌ **NOT override a key bkit sets explicitly** (e.g. `automerge`, `groupName`) — bkit's inline rule wins for those.
 
-**Grouping and auto-merge are intentionally bkit-enforced, not tunable.** The single `bkit: renovate non-major dependencies` group and its `automerge: true` are a _correctness_ property — they prevent the lockfile rebase cascade described under § GitHub Actions pinning — not a default you adjust per-repo. Per the precedence rule above, `renovate-local.json5` cannot re-split the group or turn its auto-merge off. If you need a different posture: fence a specific package you would rather bump by hand with `enabled: false` (below); or, if your policy is _review every dependency and auto-merge nothing_, install the Dependabot module instead (`pnpm bkit install --dependabot`, § below) — it opens one PR per package and never auto-merges.
+**Grouping and auto-merge are intentionally bkit-enforced, not tunable.** The single `bkit: renovate non-major dependencies` group and its `automerge: true` are a _correctness_ property — they prevent the lockfile rebase cascade described under § GitHub Actions pinning — not a default you adjust per-repo. Per the precedence rule above, `renovate-local.json5` cannot re-split the group or turn its auto-merge off. If you need a different posture: fence a specific package you would rather bump by hand with `enabled: false` (below); or, if your policy is _review every dependency and auto-merge nothing_, install the Dependabot module instead (`pnpm bkit install --dependency=dependabot`, § below) — it opens one PR per package and never auto-merges.
 
 **Canonical use case — fence a `pnpm.overrides`-pinned package.** If you pin a package in root `pnpm.overrides` (e.g. to stop cross-package version skew), Renovate's hosted lockfile regeneration does **not** reconcile against `pnpm.overrides`: it rewrites the locked version on an eligible bump while leaving your override in place, producing an inconsistent `pnpm-lock.yaml` that fails CI's `pnpm install --frozen-lockfile` (`ERR_PNPM_OUTDATED_LOCKFILE … doesn't satisfy range`). Fence the pinned package so Renovate leaves it alone:
 
@@ -218,7 +218,7 @@ This is part of Phase B activation; `pnpm bkit install --renovate` prints it in 
 
 ### Dependabot alternative (opt-in, mutually exclusive with Renovate)
 
-If you have specific reasons to prefer Dependabot — first-party GitHub feature, no third-party App install, no Mend dependency in the trust surface, no Phase A/B race — bkit ships a Dependabot module as an alternative. Run `pnpm bkit install --dependabot` (NOT `--renovate`; the two are mutually exclusive and bkit will refuse to install both).
+If you have specific reasons to prefer Dependabot — first-party GitHub feature, no third-party App install, no Mend dependency in the trust surface, no Phase A/B race — bkit ships a Dependabot module as an alternative. Run `pnpm bkit install --dependency=dependabot` (NOT `--renovate`; the two are mutually exclusive and bkit will refuse to install both).
 
 Trade-offs to accept if you pick this path:
 
@@ -227,13 +227,13 @@ Trade-offs to accept if you pick this path:
 - **No lockfile maintenance** — Renovate's weekly `lockFileMaintenance` job refreshes transitive deps; Dependabot has no equivalent.
 - **No `osvVulnerabilityAlerts: true` analogue in the config** — CVE-driven PRs come from GitHub's security advisory pipeline (enabled via the helper script's `automated-security-fixes` toggle, not the YAML).
 
-The bkit-shipped `scripts/ci/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
+The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level setup that `.github/dependabot.yml` alone does not (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy). Run once after install:
 
-    bash scripts/ci/bkit-set-dependabot.sh        # apply (idempotent)
-    bash scripts/ci/bkit-set-dependabot.sh --dry-run    # preview
-    bash scripts/ci/bkit-set-dependabot.sh --print      # inspect current state
+    bash .bkit/scripts/bkit-set-dependabot.sh        # apply (idempotent)
+    bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
+    bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
 
-The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependabot`. See issue #109 for the original design.
+The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`. See issue #109 for the original design.
 
 ### Manual CVE handling (when an alert fires)
 
@@ -366,7 +366,24 @@ bkit's installer runs in three phases:
 2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
 3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. In `bkit check` (v2.2.3+), Phase 3 runs in read-only mode — same advisory set as install, no writes. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 
-`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict).
+`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict). `bkit upgrade` ALSO re-renders the bkit-managed OUTPUT that lives outside `.bkit/templates/` (#251) — host agents/commands (source-rendered from `.bkit/prompts` + `.bkit/workflows`) and the `.bkit/*.md` canonical docs (`runBkitDocs`) — for every host the consumer has installed (detected by each host's `agents/` dir, so an opt-in host is never force-created). These are bkit-owned, force-overwritten output, so a version bump delivers new prompts/agents/commands/docs without a follow-up `bkit install`; `.bkit/prompts.md` is markered, so its managed block refreshes while consumer overrides below `bkit:end` are block-merge-preserved.
+
+### `bkit-cloud.yml` — dual-job cloud-agent lane (#245)
+
+`bkit install --auto=…` ships a single `.github/workflows/bkit-cloud.yml` (renamed from `bkit-auto.yml`, #245) carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
+
+<!-- prettier-ignore -->
+| Job | Dispatch | Gated on | LLM secret |
+| --- | --- | --- | --- |
+| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App, #141) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
+| `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
+
+**Rules:**
+
+- **Secret-gated, never branch-gated.** Each job no-ops (does not fail) when its key is absent — set only the secret(s) for the cloud agent(s) you want active. Both keys present = both jobs act on the same event; serialise via the shared `concurrency.group` (still keyed `bkit-auto-${{ inputs.issue || …head_branch }}`).
+- **`--auto=opencode` requires `tracker=github` AND a remote provider.** The install precondition hard-errors when the configured `.opencode/` provider is `ollama-local` (or any local/keyless provider): the GitHub runner has no local Ollama server, so the opencode job could never reach the model. Use a remote provider (nvidia) for the cloud lane.
+- **Single fanned-out provider key.** `OPENCODE_PROVIDER_KEY` is exported under the env-var name the committed `opencode.json` references (the configured provider's `envVar`) so the job resolves regardless of which remote provider is installed; ANTHROPIC_API_KEY is absent in the opencode job (no Claude identity leak). GHA-injection hardened — `PHASE`/`ARG` pass via `env:` + shell-var refs, `ARG` validated against `^[0-9A-Za-z.*/-]+$` (KN-37).
+- **Renovate exemption** (`bkit-cloud.yml` in `ignorePaths`) and the **`bkit [auto route]` free-tier gate** are unchanged by the rename — see § GitHub Actions pinning and the commit-tag taxonomy above.
 
 ### Consumer CI auth — env-var pattern (canonical)
 

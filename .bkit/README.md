@@ -1,6 +1,6 @@
 # bkit — Agent Workflow System
 
-**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`.
+**bkit** wires Claude Code (and Cursor) into a five-phase tracker-integrated development cycle: `/bkit-design` → `/bkit-plan` → `/bkit-build` → `/bkit-debug` → `/bkit-ship`. Hosts are additive: `.claude/` + `.cursor/` always render (direct Anthropic); `bkit install --opencode=<provider>` adds an opencode host for non-Anthropic backends — seven providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama` (cloud), and `zen` (opencode-native gateway, managed auth) — same harness, only the inference backend changes (see `.bkit/providers.md` § Hosts + Providers).
 
 This README covers what bkit does, how to install it, and what env / tracker setup it expects. Workflow internals live in `.bkit/workflows.md`; subagent metadata (effort, model, tool surface, `maxTurns`) lives in `.bkit/prompts.md`.
 
@@ -124,7 +124,7 @@ Three **parent labels** (`branch`, `model`, `repo`) — sub-labels under each se
 | `model` | `claude-opus-4-8-thinking-high`, `composer-2.5`, `gpt-5.5-high`, `gpt-5.3-codex-high`, … | Cursor model the orchestrator runs on |
 | `repo` | `<owner>/<consumer-repo>` | repo the agent operates in |
 
-Per-agent (subagent) model assignments live in `.bkit/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/IDEs.md` § Cursor model catalog.
+Per-agent (subagent) model assignments live in `.bkit/prompts.md` § Models; Cursor Cloud Agent reads each subagent file's frontmatter `model:` directly. The Linear `model:*` sub-labels only set the **orchestrator-session** model. Keep them in sync with `.bkit/providers.md` § Cursor model catalog.
 
 For full Linear ↔ Cursor integration setup (webhook routing, dashboard env vars, parent-label families), see Linear's official integration docs: <https://linear.app/docs/cursor>.
 
@@ -183,9 +183,9 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.cursor/commands/bkit-*.md` | cursor | `.bkit/workflows/` (T1+T2 transforms) | Host pass — always overwrite |
 | `.cursor/agents/bkit-*.md` | cursor | `.bkit/prompts/` (T3 transforms) | Host pass — always overwrite |
 | `.github/workflows/ci.yml` | ci | `.bkit/templates/.github/workflows/ci.yml` | Tier 3 (seed-or-print); tokens substituted on first write |
-| `.github/renovate.json5` | renovate | `.bkit/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --renovate`** — NOT included in `--full`. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. See issue #123 for rationale. |
-| `.github/dependabot.yml` | dependabot | `.bkit/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependabot`** — NOT included in `--full`. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. See issue #109 (origin) + #123 follow-up. |
-| `scripts/ci/bkit-set-dependabot.sh` | dependabot | `.bkit/templates/scripts/ci/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependabot`. |
+| `.github/renovate.json5` | renovate | `.bkit/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=renovate`** — not part of a default install. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. See issue #123 for rationale. |
+| `.github/dependabot.yml` | dependabot | `.bkit/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=dependabot`** — not part of a default install. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. See issue #109 (origin) + #123 follow-up. |
+| `.bkit/scripts/bkit-set-dependabot.sh` | dependabot | `.bkit/templates/.bkit/scripts/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependency=dependabot`. |
 | `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
 | `.vale.ini` | lint | `.bkit/templates/.vale.ini` | Tier 2 hash-comment |
 | `.vale/styles/House/**` | lint | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed) |
@@ -202,11 +202,11 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 
 ### Optional post-install decisions (tracker + dependency updater + cloud agents)
 
-Three capabilities are **opt-in** and excluded from `--full`: the **issue tracker** (`--tracker=github|linear`), the **dependency updater** (`--renovate` or `--dependabot`, mutually exclusive), and **cloud agents** (`--cloud`, ships the phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — so `--full` ships zero cloud footprint). A default install wires none; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); setting any to `"none"` silences its nudge. The cloud router is split out because it is inert without `ANTHROPIC_API_KEY` + `LINEAR_API_KEY` secrets + GHA write permissions + (Cursor half) a dashboard trigger, and it depends on the opt-in tracker (see issue #119). Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
+Three capabilities are **opt-in** and excluded from a default install: the **issue tracker** (`--tracker=github|linear`), the **dependency updater** (`--dependency=renovate` or `--dependency=dependabot`, mutually exclusive), and **cloud agents** (`--auto=claude|cursor|opencode`, ships the phase-routed `bkit-cloud.yml` + cloud env scaffolding — `cloud-bootstrap.sh`, Cursor `Dockerfile`/`environment.json` — so a default install ships zero cloud footprint). A default install wires none; the post-install advisory banner emits `tracker-setup-none` / `dep-updater-none` / `cloud-router-none` to nudge the consumer to choose once. Choices persist in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`); setting any to `"none"` silences its nudge. The cloud router is split out because each job is inert without its model-auth secret (`ANTHROPIC_API_KEY` for the claude job, `OPENCODE_PROVIDER_KEY` for the opencode job) + GHA write permissions + (Cursor half) a dashboard trigger, and it depends on the opt-in GitHub tracker (see issue #119). Full consumer-facing rationale and the decide/silence flow live in the root `README.md` § Optional post-install decisions. bkit-repo itself dogfoods neither updater by default — opt in explicitly when testing.
 
 ### dogfood rule — updater PRs against workflows (only if you opt in)
 
-bkit dogfoods its own templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. An updater (Renovate/Dependabot) scans only the actual workflow path (`.github/workflows/`), not the template path. This dance applies ONLY if bkit-repo has opted into an updater (`bkit install --renovate` / `--dependabot`) — by default it ships neither. When an updater PR opens against bkit's own workflows:
+bkit dogfoods its own templates: `.bkit/templates/.github/workflows/*.yml` (canonical) and `.github/workflows/*.yml` (bkit's own copy) must stay byte-equal where they overlap. An updater (Renovate/Dependabot) scans only the actual workflow path (`.github/workflows/`), not the template path. This dance applies ONLY if bkit-repo has opted into an updater (`bkit install --dependency=renovate` / `--dependency=dependabot`) — by default it ships neither. When an updater PR opens against bkit's own workflows:
 
 1. Before merging, manually edit the matching `.bkit/templates/.github/workflows/*.yml` file with the same SHA bump (one `Edit` call per file).
 2. Run `pnpm test` (the `bkit-templates.content.test.ts` snapshot will regenerate via `pnpm vitest run .bkit/src/bkit-templates.content.test.ts -u` if the ci.yml shape changed; commit the updated snapshot).
@@ -294,7 +294,8 @@ The installed skill list lives in `.agents/skills.md`. Skills in `.agents/skills
 | `.bkit/prompts.md` | Per-subagent description, effort tier, model, `maxTurns` |
 | `.agents/docs.md` | Document index and phase-matrix (what to read per phase) |
 | `.agents/skills.md` | Installed skills registry |
-| `.bkit/IDEs.md` | Claude vs Cursor differences and transform rules |
+| `.bkit/providers.md` | Host differences (Claude/Cursor/opencode), transform rules, additive install, provider model IDs |
+| `.bkit/comparison.md` | Pipeline reference + comparison to agentic design patterns / peer frameworks (repo-local, not seeded) |
 | `.bkit/friction.md` | Friction log — orchestrator-observed recovery moments |
 | `.bkit/workflows/` | Canonical slash-command source (regenerated into `.{claude,cursor}/commands/`) |
 | `.bkit/prompts/` | Canonical subagent source (regenerated into `.{claude,cursor}/agents/`) |

@@ -2,11 +2,22 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { parseArgs, printUsage, OPTIN_MODULES } from "./bkit-cli.js";
+import {
+  parseArgs,
+  printUsage,
+  OPTIN_MODULES,
+  OPENCODE_PROVIDERS,
+  type ModuleFlag,
+  type CloudVariant,
+} from "./bkit-cli.js";
 import {
   dispatchModules,
   getPkgRoot,
   renderCloudWorkflow,
+  renderOpencodeJson,
+  buildMcpJson,
+  renderManagedOutputs,
+  opencodeProviderId,
   type ModuleContext,
 } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
@@ -39,9 +50,17 @@ import {
 // ---------------------------------------------------------------------------
 // Staging helpers (P4.T1 / P4.T2)
 //
-// Transactional install: each module writes into `.bkit-staging/<module>/`
-// first. `commitStaging` atomically renames the staging dir to the real
-// destination when ALL modules succeed. `discardStaging` cleans up on failure.
+// `.bkit-staging/` is a per-run SCRATCH area: modules render derived files there
+// (e.g. opencode.json) before comparing/merging into the consumer destination.
+// runInstall Phase 2 cleans it up after every dispatch — success or failure —
+// via `finally { discardAllStaging() }`.
+//
+// NOTE: `commitStaging` / `discardStaging` / `initStagingDir` are atomic-rename
+// PRIMITIVES retained for a future true per-module transactional path. They are
+// NOT on the current install path: dispatch writes module files directly to their
+// destinations and is NOT atomic across modules. A mid-dispatch failure can leave
+// earlier modules' files written (and `.bkit/version` unpinned); `bkit install`
+// is idempotent, so re-running completes a partial install. (#255 P1-5)
 //
 // Design contract (BAR-142 §A4):
 //   - Staging path: `.bkit-staging/<module>/` relative to cwd.
@@ -49,11 +68,6 @@ import {
 //   - commitStaging: move each staged file → real destination (fs.renameSync).
 //     Falls back to copy+delete if cross-device rename throws EXDEV.
 //   - discardStaging: fs.rmSync(stagingDir, { recursive: true, force: true }).
-//
-// Callers:
-//   - bkit-modules.ts dispatchModules wraps each module fn with commit/discard
-//     so a crash inside any module discards that module's staging dir and all
-//     prior modules' staging dirs that have not yet been committed.
 // ---------------------------------------------------------------------------
 
 /** Staging root dir — all staging work lives under this path (relative to cwd). */
@@ -153,10 +167,18 @@ const BKIT_PREFIX = "bkit-";
 // so log scanners can tell which verb actually ran.
 let LOG_PREFIX = "[bkit-install]";
 
-export type Host = "claude" | "cursor";
+export type Host = "claude" | "cursor" | "opencode";
 
-// Parse .bkit/prompts.md § Models table → Map<name, cursorModel>
-export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, columnValue>.
+ * columnHeader is the column header label to extract (e.g. "Cursor model", "opencode model").
+ * The function is header-addressed: it finds the column by name, never by position.
+ * Hard-fails (process.exit(1)) if the section or column header is not found.
+ */
+export function parseModelLookupForColumn(
+  subagentsMdPath: string,
+  columnHeader: string,
+): Map<string, string> {
   const content = fs.readFileSync(subagentsMdPath, "utf-8");
   const map = new Map<string, string>();
 
@@ -168,6 +190,7 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
 
   const lines = content.slice(modelsIdx).split("\n");
   let inTable = false;
+  let columnIndex = -1;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -176,23 +199,313 @@ export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
       continue;
     }
     inTable = true;
-    if (trimmed.includes("---") || trimmed.toLowerCase().includes("cursor model")) continue;
 
     const cols = trimmed
       .split("|")
       .map((c) => c.trim())
       .filter(Boolean);
-    if (cols.length < 2) continue;
+
+    // Header row: find the column index for our target header
+    if (columnIndex === -1) {
+      // Check if this is the header row by looking for the target column
+      const lowerCols = cols.map((c) => c.toLowerCase().replace(/`/g, ""));
+      const targetLower = columnHeader.toLowerCase().replace(/`/g, "");
+      const idx = lowerCols.findIndex((c) => c === targetLower);
+      if (idx !== -1) {
+        columnIndex = idx;
+      }
+      // Also skip separator rows (all --- cells)
+      if (trimmed.includes("---")) continue;
+      continue;
+    }
+
+    // Separator row
+    if (trimmed.includes("---")) continue;
+
+    if (cols.length <= columnIndex) continue;
 
     const nameMatch = cols[0].match(/^`([^`]+)`$/);
     if (!nameMatch) continue;
     // Strip optional backtick wrapping from model value (table cells may use `model-name`)
-    const modelRaw = cols[1];
+    const modelRaw = cols[columnIndex];
     const modelClean = modelRaw.replace(/^`|`$/g, "");
     map.set(nameMatch[1], modelClean);
   }
 
+  if (columnIndex === -1) {
+    console.error(
+      `${LOG_PREFIX} Could not find column "${columnHeader}" in ## Models table in ${subagentsMdPath}`,
+    );
+    process.exit(1);
+  }
+
   return map;
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, cursorModel>.
+ * Header-addressed: finds the "Cursor model" column by header name.
+ * Preserved for backward compatibility — delegates to parseModelLookupForColumn.
+ */
+export function parseModelLookup(subagentsMdPath: string): Map<string, string> {
+  return parseModelLookupForColumn(subagentsMdPath, "Cursor");
+}
+
+/**
+ * Like parseModelLookupForColumn but returns null instead of exiting when the
+ * column header is absent — used for optional per-provider opencode columns.
+ */
+function tryParseModelLookupForColumn(
+  subagentsMdPath: string,
+  columnHeader: string,
+): Map<string, string> | null {
+  const content = fs.readFileSync(subagentsMdPath, "utf-8");
+  const modelsIdx = content.indexOf("## Models");
+  if (modelsIdx === -1) return null;
+  // The header row is the first table line in the § Models section (the row
+  // immediately above the `| --- | ... |` separator).
+  const sectionLines = content.slice(modelsIdx).split("\n");
+  let headerLine: string | undefined;
+  for (let i = 0; i < sectionLines.length; i++) {
+    const t = sectionLines[i]!.trim();
+    if (!t.startsWith("|")) continue;
+    const next = (sectionLines[i + 1] ?? "").trim();
+    if (next.startsWith("|") && /^[|\s:-]+$/.test(next)) {
+      headerLine = t;
+      break;
+    }
+  }
+  if (!headerLine) return null;
+  const headers = headerLine
+    .split("|")
+    .map((c) => c.trim().toLowerCase().replace(/`/g, ""))
+    .filter(Boolean);
+  if (!headers.includes(columnHeader.toLowerCase())) return null;
+  return parseModelLookupForColumn(subagentsMdPath, columnHeader);
+}
+
+// Map an opencode provider key → its human-friendly prompts.md § Models column header.
+// The table uses display headers ("Ollama (Local)", "Nvidia"); the install flag uses
+// provider keys ("ollama-local", "nvidia"). Providers absent here have no curated column.
+const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
+  "ollama-local": "Ollama (Local)",
+  nvidia: "Nvidia",
+  groq: "Groq",
+  cerebras: "Cerebras",
+  openrouter: "OpenRouter",
+  ollama: "Ollama (Cloud)",
+  // zen (opencode-native gateway): the bkit key is `zen` but the column header is "Zen" and
+  // the cells are opencode-side ids (opencode/<id>), matching the gateway's reference format.
+  zen: "Zen",
+};
+
+/**
+ * Build the per-agent opencode model lookup for the selected provider.
+ * Source of truth = prompts.md § Models, which carries one curated column per
+ * provider ("Ollama (Local)", "Nvidia"). Providers without a column fall back to a
+ * single documented default (consumer tunes after install). Header-addressed.
+ */
+export function buildOpencodeModelLookup(
+  subagentsMdPath: string,
+  provider: string,
+): Map<string, string> {
+  const header = OPENCODE_PROVIDER_COLUMN[provider];
+  const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
+  if (curated) return curated;
+  // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
+  // openrouter, ollama, zen) ship a curated prompts.md column and never reach here (#245
+  // Phase 2 cloud providers 2026-06-11; Phase 3 zen 2026-06-12). This path is the safety net
+  // for a FUTURE allowlisted provider added before its column lands — every agent gets a
+  // prefix-correct sentinel the consumer replaces with a real model id (see providers.md
+  // § Models for the live-probe recipe). The prefix is the opencode-side provider id (the
+  // gateway key → opencode for zen), not necessarily the bkit key.
+  const names =
+    tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
+    parseModelLookupForColumn(subagentsMdPath, "Claude");
+  const bare = "set-model-id";
+  const prefix = opencodeProviderId(provider);
+  const out = new Map<string, string>();
+  for (const name of names.keys()) out.set(name, `${prefix}/${bare}`);
+  return out;
+}
+
+/**
+ * Parse the consumer-owned `## Model Overrides` table (below the `bkit:end` marker)
+ * from an installed prompts.md. Rows are `| Prompt | Provider | Model |`. Best-effort:
+ * returns [] when the file, the marker, the section, or the rows are absent.
+ * Only the region after `bkit:end` is read — the bkit-managed block is never an override.
+ */
+export function parseModelOverrides(
+  promptsMdPath: string,
+): Array<{ prompt: string; provider: string; model: string }> {
+  if (!fs.existsSync(promptsMdPath)) return [];
+  const content = fs.readFileSync(promptsMdPath, "utf-8");
+  const endIdx = content.indexOf("<!-- bkit:end -->");
+  const region = endIdx === -1 ? "" : content.slice(endIdx);
+  const ovIdx = region.indexOf("## Model Overrides");
+  if (ovIdx === -1) return [];
+  const out: Array<{ prompt: string; provider: string; model: string }> = [];
+  let inTable = false;
+  for (const line of region.slice(ovIdx).split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("|")) {
+      if (inTable) break;
+      continue;
+    }
+    inTable = true;
+    const cells = t
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((s) => s.trim().replace(/^`|`$/g, ""));
+    if (cells.length < 3) continue;
+    const [prompt, provider, model] = cells;
+    if (!prompt || !provider || !model) continue;
+    if (prompt.toLowerCase() === "prompt") continue; // header row
+    if (/^-+$/.test(prompt)) continue; // separator row
+    out.push({ prompt, provider, model });
+  }
+  return out;
+}
+
+/**
+ * Merge consumer overrides (from `overridesPath`, an installed prompts.md) into a
+ * per-agent model `lookup` for one host/provider key. Mutates `lookup` in place;
+ * only rows whose Provider matches `providerKey` and whose Prompt is a known agent win.
+ */
+export function applyModelOverrides(
+  lookup: Map<string, string>,
+  providerKey: string,
+  overridesPath: string,
+): void {
+  for (const o of parseModelOverrides(overridesPath)) {
+    if (o.provider.toLowerCase() === providerKey.toLowerCase() && lookup.has(o.prompt)) {
+      lookup.set(o.prompt, o.model);
+    }
+  }
+}
+
+/**
+ * Parse .bkit/prompts.md § Models table → Map<name, opencodeModel> for ollama-local.
+ * Back-compat shim — delegates to buildOpencodeModelLookup with the default provider.
+ */
+export function parseOpencodeModelLookup(subagentsMdPath: string): Map<string, string> {
+  return buildOpencodeModelLookup(subagentsMdPath, "ollama-local");
+}
+
+// Effort → reasoningEffort mapping for opencode frontmatter.
+// Claude's effort knob (low/medium/high/xhigh/max) maps to opencode's reasoningEffort.
+const EFFORT_TO_REASONING_EFFORT: Record<string, string> = {
+  low: "none",
+  medium: "low",
+  high: "medium",
+  xhigh: "high",
+  max: "max",
+};
+
+// Fields in Claude frontmatter that are opencode-incompatible and must be dropped.
+const CLAUDE_ONLY_FIELDS = new Set(["permissionMode", "maxTurns", "is_background", "readonly"]);
+
+/**
+ * Convert a Claude `tools:` frontmatter block (a YAML array of capitalized tool names,
+ * e.g. `- Read`/`- Write`) into opencode's `AgentConfig.tools` shape: an object map of
+ * lowercase tool names → true (`tools:\n  read: true`). opencode REJECTS the array form
+ * ("tools: Expected object | undefined, got [...]"), and its tool names are lowercase.
+ * Returns "" when there are no tools (field omitted — also valid per the schema).
+ */
+export function opencodeToolsBlock(toolsBlock: string | null): string {
+  if (!toolsBlock) return "";
+  const names: string[] = [];
+  for (const m of toolsBlock.matchAll(/^[ \t]*-[ \t]*([A-Za-z][\w-]*)/gm)) names.push(m[1]);
+  if (names.length === 0) {
+    // Fallback: inline array form `tools: [Read, Write]`.
+    const inline = toolsBlock.match(/\[([^\]]*)\]/);
+    if (inline) {
+      for (const t of inline[1].split(",")) {
+        const n = t.trim().replace(/['"]/g, "");
+        if (n) names.push(n);
+      }
+    }
+  }
+  if (names.length === 0) return "";
+  let out = "tools:\n";
+  for (const n of names) out += `  ${n.toLowerCase()}: true\n`;
+  return out;
+}
+
+/**
+ * OC1: opencode agent frontmatter rewrite.
+ * Emits: mode, name, description, model, tools (Claude array → opencode object map),
+ * reasoningEffort (from effort). Drops: Claude-only fields (permissionMode, maxTurns,
+ * is_background, readonly) and the original effort field (replaced by reasoningEffort).
+ * Hard-fails with non-zero exit if model lookup missing for name.
+ */
+export function applyOpencodeAgent(
+  content: string,
+  opencodeModelLookup: Map<string, string>,
+): string {
+  const fmMatch = content.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)/);
+  if (!fmMatch) return content;
+
+  const fmBlock = fmMatch[2];
+  const afterFm = content.slice(fmMatch[0].length);
+  const parsed = parseFrontmatter(fmBlock);
+
+  const name = parsed.get("name") ?? "";
+  if (!name) {
+    console.error(`${LOG_PREFIX} Subagent frontmatter missing 'name' field`);
+    process.exit(1);
+  }
+
+  const opencodeModel = opencodeModelLookup.get(name);
+  if (!opencodeModel) {
+    console.error(`${LOG_PREFIX} Missing opencode model lookup for ${name}`);
+    process.exit(1);
+  }
+
+  const description = parsed.get("description") ?? "";
+  const effort = parsed.get("effort");
+  const toolsBlock = extractFrontmatterField(fmBlock, "tools");
+
+  let newFm = "---\n";
+  newFm += `mode: subagent\n`;
+  newFm += `name: ${name}\n`;
+  if (description.includes("\n")) {
+    const indented = description.split("\n").join("\n  ");
+    newFm += `description: |\n  ${indented}\n`;
+  } else {
+    newFm += `description: ${description}\n`;
+  }
+  newFm += `model: ${opencodeModel}\n`;
+  newFm += opencodeToolsBlock(toolsBlock);
+  if (effort) {
+    const reasoningEffort = EFFORT_TO_REASONING_EFFORT[effort];
+    if (reasoningEffort) {
+      newFm += `reasoningEffort: ${reasoningEffort}\n`;
+    }
+  }
+  newFm += "---\n";
+
+  return newFm + afterFm;
+}
+
+/**
+ * OC2: opencode command rewrite.
+ * - Strips leading YAML frontmatter block (same as T1).
+ * - Rewrites invocation spelling for opencode:
+ *   - `Agent` tool → `Task` tool (subagent invocations)
+ *   - `Skill` tool → `Task` tool (slash-command invocations)
+ *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ */
+export function applyOpencodeCommand(content: string): string {
+  // Step 1: strip frontmatter (same as T1)
+  const stripped = content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").replace(/^\n+/, "");
+  // Step 2: rewrite invocations (same as T2)
+  let result = stripped.replace(/`Agent` tool/g, "`Task` tool");
+  result = result.replace(/using `Agent` tool/g, "using `Task` tool");
+  result = result.replace(/`Skill` tool/g, "`Task` tool");
+  result = result.replace(/using `Skill` tool/g, "using `Task` tool");
+  result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  return result;
 }
 
 // T1: Strip leading YAML frontmatter block from command files for Cursor
@@ -641,7 +954,7 @@ const RELOCATED_AGENTS_FILES = [
   "workflows.md",
   "cloud.md",
   "prompts.md",
-  "IDEs.md",
+  "providers.md",
 ] as const;
 
 // Files that moved from `.agents/` to a consumer-side `.bkit/` directory and
@@ -794,19 +1107,240 @@ function getInstallingVersion(): string {
       return pkg.version ?? "0.0.0";
     }
   } catch {
-    // best-effort
+    return "0.0.0"; // best-effort: unreadable/garbled package.json
   }
   return "0.0.0";
 }
 
-async function main() {
-  const { verb, modules, uninstallFlags, upgradeFlags, tracker, cloudVariant, force } = parseArgs(
-    process.argv.slice(2),
+/**
+ * `bkit status` — read-only host/provider status.
+ * Reports current host+provider sampled from .opencode/opencode.json,
+ * .claude/, and .cursor/ presence. Writes nothing.
+ */
+function runStatus(cwd: string, logPrefix: string): void {
+  console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
+  console.log(`${logPrefix} Working directory: ${cwd}`);
+
+  // --- claude host ---
+  const claudeDir = path.join(cwd, ".claude");
+  const claudePresent = fs.existsSync(claudeDir);
+  const claudeSettingsPath = path.join(claudeDir, "settings.json");
+  let claudeModel = "claude (default)";
+  if (claudePresent && fs.existsSync(claudeSettingsPath)) {
+    try {
+      const settings = JSON.parse(fs.readFileSync(claudeSettingsPath, "utf-8")) as {
+        model?: string;
+      };
+      if (settings.model) claudeModel = settings.model;
+    } catch {
+      // best-effort
+    }
+  }
+  console.log(
+    `${logPrefix} claude:  ${claudePresent ? "INSTALLED" : "absent"}  (provider: anthropic / ${claudeModel})`,
   );
+
+  // --- cursor host ---
+  const cursorDir = path.join(cwd, ".cursor");
+  const cursorPresent = fs.existsSync(cursorDir);
+  console.log(`${logPrefix} cursor:  ${cursorPresent ? "INSTALLED" : "absent"}`);
+
+  // --- opencode host ---
+  const opencodeDir = path.join(cwd, ".opencode");
+  const opencodePresent = fs.existsSync(opencodeDir);
+  // Provider is the bkit provider key — resolved manifest-first (detectOpencodeProvider),
+  // which also covers managed-auth gateways (zen) whose opencode.json has no provider block.
+  let opencodeProvider = detectOpencodeProvider(cwd) ?? "unknown";
+  let opencodeModel = "unknown";
+  const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+  if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
+        model?: string;
+        models?: Record<string, unknown>;
+      };
+      if (cfg.model) opencodeModel = cfg.model;
+      // Fallback: look for non-empty models map
+      if (opencodeModel === "unknown" && cfg.models) {
+        const modelKeys = Object.keys(cfg.models);
+        if (modelKeys.length > 0) opencodeModel = `${modelKeys.length} model(s) configured`;
+      }
+    } catch {
+      opencodeModel = "parse-error";
+    }
+  }
+  const opencodeStatus = opencodePresent
+    ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+    : "absent (run: bkit install --opencode=<provider>)";
+  console.log(`${logPrefix} opencode: ${opencodeStatus}`);
+
+  // --- summary ---
+  const installedHosts = [
+    claudePresent ? "claude" : null,
+    cursorPresent ? "cursor" : null,
+    opencodePresent ? "opencode" : null,
+  ].filter(Boolean);
+  console.log(
+    `${logPrefix} Installed hosts: ${installedHosts.length > 0 ? installedHosts.join(", ") : "none"}`,
+  );
+}
+
+/**
+ * Detect which host modules a consumer has installed, by the presence of each host's
+ * source-rendered agents directory. Used by `bkit upgrade` to re-render (#251) only the
+ * hosts the consumer actually opted into — never force-creating an opencode/cursor tree.
+ */
+function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
+  const mods = new Set<ModuleFlag>();
+  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
+  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
+  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
+  return mods;
+}
+
+/**
+ * Installed-module set, detected by sentinel-file presence. Always core, plus the installed
+ * subset of {claude, cursor, opencode, ci, lint, git-hooks}. Two callers:
+ *   - `bkit check` (#252 Step 3) — scopes the drift gate, so a `--cursor`-only repo no longer
+ *     reports `.claude/**` as drift, and a `--claude`-only repo is not flagged for ci.yml/.vale.ini.
+ *   - `bkit upgrade` — scopes the template walk, so upgrade does NOT force-create files for a
+ *     module the consumer never installed (the install↔upgrade divergence: upgrade used to seed
+ *     ci/lint/git-hooks/cursor files for a claude-only consumer, which `check` then flagged).
+ *
+ * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
+ * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
+ * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
+ * + the package.json tracker resolution), so an nvidia/zen/… consumer is checked against its own
+ * config — not the ollama-local default — and the dry-run path is read-only (installFile /
+ * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
+ * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
+ */
+function detectInstalledModules(cwd: string): Set<ModuleFlag> {
+  const mods = new Set<ModuleFlag>(["core"]);
+  if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
+  if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
+  if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
+  if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml"))) mods.add("ci");
+  if (
+    fs.existsSync(path.join(cwd, ".vale.ini")) ||
+    fs.existsSync(path.join(cwd, "slop-scan.config.json"))
+  ) {
+    mods.add("lint");
+  }
+  if (
+    fs.existsSync(path.join(cwd, ".husky", "pre-commit")) ||
+    fs.existsSync(path.join(cwd, ".husky", "pre-push"))
+  ) {
+    mods.add("git-hooks");
+  }
+  return mods;
+}
+
+/**
+ * Render a resolved module set back into valid new-surface CLI flags (#252) for
+ * recovery-hint text. Skips core (implicit), collapses ci/lint/git-hooks → --tooling,
+ * and maps opt-ins to their value-flag spellings.
+ */
+function modulesToCliFlags(
+  mods: Set<ModuleFlag>,
+  opencodeProvider: string | null,
+  cloudVariant: CloudVariant | null,
+): string {
+  const out: string[] = [];
+  if (mods.has("claude")) out.push("--claude");
+  if (mods.has("cursor")) out.push("--cursor");
+  if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
+  if (mods.has("ci") || mods.has("lint") || mods.has("git-hooks")) out.push("--tooling");
+  if (mods.has("renovate")) out.push("--dependency=renovate");
+  if (mods.has("dependabot")) out.push("--dependency=dependabot");
+  if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
+  return out.join(" ");
+}
+
+/**
+ * Detect the bkit opencode provider key a consumer installed.
+ *
+ * Resolution order:
+ *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
+ *     This is the ONLY signal for managed-auth gateways (zen) whose opencode.json carries no
+ *     custom provider block; without it upgrade would re-render zen as the ollama-local default.
+ *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
+ *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
+ *  3. null — caller falls back to the install default so the model lookup still resolves.
+ *
+ * The manifest value is validated against the allowlist so a hand-edited package.json cannot
+ * smuggle an unsupported provider into the render path.
+ */
+function detectOpencodeProvider(cwd: string): string | null {
+  const pkgPath = path.join(cwd, "package.json");
+  if (fs.existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+        bkit?: { opencodeProvider?: unknown };
+      };
+      const stored = pkg.bkit?.opencodeProvider;
+      if (
+        typeof stored === "string" &&
+        (OPENCODE_PROVIDERS as readonly string[]).includes(stored)
+      ) {
+        return stored;
+      }
+    } catch {
+      // unparseable package.json — fall through to opencode.json detection
+    }
+  }
+  const jsonPath = path.join(cwd, ".opencode", "opencode.json");
+  if (!fs.existsSync(jsonPath)) return null;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as {
+      provider?: Record<string, unknown>;
+    };
+    if (cfg.provider && typeof cfg.provider === "object") {
+      return Object.keys(cfg.provider)[0] ?? null;
+    }
+  } catch {
+    return null; // unparseable opencode.json — fall back to the default provider
+  }
+  return null;
+}
+
+async function main() {
+  const {
+    verb,
+    modules,
+    moduleFlags,
+    uninstallFlags,
+    upgradeFlags,
+    tracker,
+    cloudVariant,
+    opencodeProvider,
+  } = parseArgs(process.argv.slice(2));
 
   if (verb === "help") {
     printUsage();
     return;
+  }
+
+  // #252 Step 2 — install requires ≥1 module flag (bare install errors; replaces the
+  // old implicit empty→full). `--tracker` / `--auto-revert` are modifiers and do not
+  // count. moduleFlags holds only the explicitly-named modules (core is implicit).
+  if (verb === "install" && moduleFlags.size === 0) {
+    console.error(
+      "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
+        "--claude, --cursor, --opencode=<provider>, --tooling (plus opt-ins " +
+        "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage.",
+    );
+    process.exit(1);
+  }
+
+  // #252 Step 3 / S4 — check/upgrade take NO module flags; they operate on everything
+  // already installed. A stray module flag is a hard error pointing to the no-flag form.
+  if ((verb === "check" || verb === "upgrade") && moduleFlags.size > 0) {
+    console.error(
+      `[bkit] \`bkit ${verb}\` takes no module flags — it operates on everything already ` +
+        `installed. Re-run as \`bkit ${verb}\` (no module flags). Run \`bkit help\` for usage.`,
+    );
+    process.exit(1);
   }
 
   if (verb === "doctor") {
@@ -832,6 +1366,124 @@ async function main() {
       version: getInstallingVersion(),
       logPrefix: LOG_PREFIX,
     });
+
+    // opencode host diagnostics: report required tools and cred presence per provider.
+    // Never echoes key values — only reports present/absent.
+    const opencodeDir = path.join(process.cwd(), ".opencode");
+    const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+    if (fs.existsSync(opencodeDir) || modules.has("opencode")) {
+      console.log(`${LOG_PREFIX} --- opencode host diagnostics ---`);
+      // Check opencode binary
+      const { spawnSync: spawnSyncLocal } = await import("node:child_process");
+      const whichResult = spawnSyncLocal("which", ["opencode"], { encoding: "utf-8" });
+      const opencodeInstalled = whichResult.status === 0 && whichResult.stdout.trim().length > 0;
+      console.log(
+        `${LOG_PREFIX} opencode binary: ${opencodeInstalled ? "FOUND (" + whichResult.stdout.trim() + ")" : "NOT FOUND (install opencode first)"}`,
+      );
+
+      // Resolve provider: manifest-first (detectOpencodeProvider) so managed-auth gateways
+      // (zen — no provider block in opencode.json) are still detected; the `--opencode=`
+      // flag, if given this run, overrides.
+      let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
+      if (opencodeProvider) detectedProvider = opencodeProvider;
+
+      // Per-provider cred check (present/absent only — no value echoed).
+      // Remote providers each name one API key; ollama-local is local (no key). Any
+      // remote provider absent here falls back to `${PROVIDER}_API_KEY` (see below).
+      const PROVIDER_KEYS: Record<string, string[]> = {
+        nvidia: ["NVIDIA_API_KEY"],
+        groq: ["GROQ_API_KEY"],
+        cerebras: ["CEREBRAS_API_KEY"],
+        openrouter: ["OPENROUTER_API_KEY"],
+        ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
+        // ollama-local: local server, no API key required
+      };
+      // Local-only providers that use no remote API key
+      const LOCAL_PROVIDERS = new Set(["ollama-local"]);
+      // Managed-auth gateways (zen): no API key env var — opencode holds the credential
+      // (`opencode auth login`). The doctor check is "is opencode logged in for this gateway",
+      // not "is $KEY set". Best-effort: parse `opencode auth list` for the `opencode` provider.
+      const MANAGED_AUTH_PROVIDERS = new Set(["zen"]);
+      if (detectedProvider && MANAGED_AUTH_PROVIDERS.has(detectedProvider)) {
+        let authState = "UNKNOWN — run `opencode auth login` if not already authenticated";
+        if (opencodeInstalled) {
+          const authResult = spawnSyncLocal("opencode", ["auth", "list"], { encoding: "utf-8" });
+          if (authResult.status === 0 && typeof authResult.stdout === "string") {
+            // The gateway shows up as the built-in `opencode` provider entry in `auth list`.
+            // The output header always names the auth.json path (…/opencode/auth.json), so a
+            // naive substring match false-positives — exclude the header/path line, then look
+            // for an `opencode` credential entry among the remaining lines.
+            const stripAnsi = (s: string) => s.replace(/\[[0-9;]*m/g, "");
+            const loggedIn = stripAnsi(authResult.stdout)
+              .split("\n")
+              .filter((l) => !/auth\.json|Credentials|Environment/i.test(l))
+              .some((l) => /\bopencode\b/i.test(l));
+            authState = loggedIn ? "LOGGED IN" : "NOT LOGGED IN (run `opencode auth login`)";
+          }
+        }
+        console.log(
+          `${LOG_PREFIX} zen (opencode gateway): opencode-managed auth — no API key env var. Auth: ${authState}`,
+        );
+      } else if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
+        const keys = PROVIDER_KEYS[detectedProvider] ?? [
+          `${detectedProvider.toUpperCase()}_API_KEY`,
+        ];
+        for (const key of keys) {
+          const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
+          console.log(
+            `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
+          );
+        }
+      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
+        console.log(
+          `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
+        );
+        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+        if (!maxLoaded) {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
+          );
+        } else if (maxLoaded !== "1") {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
+          );
+        } else {
+          console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+        }
+        console.log(
+          `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
+        );
+        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+        // model, parallel requests give no speedup and split the KV cache (more memory).
+        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+        if (!numParallel) {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
+          );
+        } else if (numParallel !== "1") {
+          console.log(
+            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
+          );
+        } else {
+          console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+        }
+      } else if (!detectedProvider) {
+        console.log(
+          `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
+        );
+      }
+    }
+
+    return;
+  }
+
+  if (verb === "status") {
+    LOG_PREFIX = "[bkit-status]";
+    runStatus(process.cwd(), LOG_PREFIX);
     return;
   }
 
@@ -883,6 +1535,15 @@ async function main() {
       for (const entry of getModuleManifest(mod as ModuleName)) optInPaths.add(entry.path);
     }
 
+    // Host/tooling modules (claude, cursor, ci, lint, git-hooks) must ALSO not be force-created
+    // by upgrade — post-#252 each is separately installable, so a `--claude`-only consumer must
+    // not get cursor/ci/lint/git-hooks files seeded on upgrade (which `check` then flags for the
+    // package.json scripts the template walk never injects — the install↔upgrade divergence). We
+    // gate them on sentinel-detected installation, exactly like `bkit check` scopes its drift
+    // gate. core + unmanaged files (docs/*.md, no manifest entry) always upgrade; the opt-in
+    // modules keep their dest-presence gating just below.
+    const installedModules = detectInstalledModules(process.cwd());
+
     // Tracker-conditional cloud workflow (#138): resolve the consumer's tracker so upgrade
     // renders bkit-cloud.yml the same way install does (byte-identical, no drift fight).
     const CLOUD_WORKFLOW_RELPATH = path.join(".github", "workflows", "bkit-cloud.yml");
@@ -896,6 +1557,22 @@ async function main() {
     } catch {
       // package.json absent/unparseable — default tracker
     }
+
+    // opencode.json is provider/tracker-templated on install (renderOpencodeJson resolves the
+    // `@@OPENCODE_*@@` sentinels). Like bkit-cloud.yml it MUST be rendered the same way on
+    // upgrade — otherwise the json deep-merge injects the raw sentinel keys into the
+    // consumer's config (#245). Detect the installed provider so the render matches install.
+    const OPENCODE_JSON_RELPATH = path.join(".opencode", "opencode.json");
+    const upgradeOpencodeProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+
+    // .mcp.json / .cursor/mcp.json are seeded tracker-FILTERED on install (buildMcpJson keeps only
+    // the selected tracker's mcpServers entry). The raw templates carry BOTH trackers, so without
+    // rendering them the same way here the upgrade walk compares the all-tracker template against
+    // the filtered on-disk seed → a false seed-or-print conflict on every same-version run (#255
+    // P3). Token-free, so the override is byte-identical to what install wrote — genuine consumer
+    // drift still differs and surfaces as a real conflict. (Same fix shape as bkit-cloud.yml #138.)
+    const MCP_ROOT_RELPATH = ".mcp.json";
+    const CURSOR_MCP_RELPATH = path.join(".cursor", "mcp.json");
 
     const candidates: UpgradeCandidate[] = [];
     if (fs.existsSync(tplRoot)) {
@@ -913,13 +1590,29 @@ async function main() {
               continue;
             }
             const entry = entryByPath.get(relPath);
+            // Skip host/tooling-module files when that module is not installed — upgrade updates
+            // only what the consumer opted into, never force-creating a new module. opt-ins are
+            // handled by the dest-presence check above; core + entry-less files always pass.
+            const ownerModule = entry?.module;
+            if (
+              ownerModule &&
+              ownerModule !== "core" &&
+              !optInPaths.has(relPath) &&
+              !installedModules.has(ownerModule)
+            ) {
+              continue;
+            }
             // bkit-cloud.yml is rendered tracker-conditional on install (#138) — the raw
             // template carries `@@CLOUD_TRACKER_*@@` sentinels. Render it the same way here
             // so upgrade emits byte-identical output (install/upgrade can never disagree).
             const contentOverride =
               relPath === CLOUD_WORKFLOW_RELPATH
                 ? renderCloudWorkflow(fs.readFileSync(entAbs, "utf-8"), upgradeTracker)
-                : undefined;
+                : relPath === OPENCODE_JSON_RELPATH
+                  ? renderOpencodeJson(entAbs, upgradeTracker, upgradeOpencodeProvider)
+                  : relPath === MCP_ROOT_RELPATH || relPath === CURSOR_MCP_RELPATH
+                    ? buildMcpJson(entAbs, upgradeTracker)
+                    : undefined;
             candidates.push({
               relPath,
               templatePath: entAbs,
@@ -933,6 +1626,28 @@ async function main() {
       collectTemplates(tplRoot, "");
     }
 
+    // Upgrade orphan: bkit-auto.yml was renamed to bkit-cloud.yml (#245).
+    // Only remove when bkit-cloud.yml is already present or being installed in this run —
+    // otherwise a plain `bkit install` (no --cloud flag) would silently delete the old
+    // cloud workflow without seeding the replacement.
+    const oldAutoWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-auto.yml");
+    const newCloudWorkflow = path.join(process.cwd(), ".github", "workflows", "bkit-cloud.yml");
+    const cloudWillBeInstalled = candidates.some(
+      (c) => c.relPath === path.join(".github", "workflows", "bkit-cloud.yml"),
+    );
+    if (
+      fs.existsSync(oldAutoWorkflow) &&
+      (fs.existsSync(newCloudWorkflow) || cloudWillBeInstalled)
+    ) {
+      const tag = upgradeFlags.dryRun ? "[dry-run] " : "";
+      console.log(
+        `${LOG_PREFIX} ${tag}upgrade: removing orphan .github/workflows/bkit-auto.yml (renamed to bkit-cloud.yml)`,
+      );
+      if (!upgradeFlags.dryRun) {
+        fs.rmSync(oldAutoWorkflow, { force: true });
+      }
+    }
+
     // Markered-text templates managed on upgrade are token-free, but resolve real
     // tokens when possible so any future token-bearing block stays correct.
     const tokens = await resolveTokens(process.cwd()).catch(() => undefined);
@@ -944,24 +1659,94 @@ async function main() {
       tokens,
     });
 
+    // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
+    // bkit-managed OUTPUT files install also produces but that are NOT templates — host
+    // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
+    // `.bkit/*.md` canonical docs (runBkitDocs). These are bkit-owned, force-overwritten
+    // output; without this a version bump ships new config but stale prompts/agents/
+    // commands/docs (a consumer would have to re-run `bkit install` to get them). Only the
+    // hosts the consumer installed are re-rendered (detected by their agents dir) so upgrade
+    // never force-creates an opt-in host. `.bkit/prompts.md` is markered → runBkitDocs
+    // block-merges it: managed block refreshed, consumer `## Model Overrides` below bkit:end
+    // preserved. Docs stay single-source PACKAGE-side (#204/#219) — never relocated to templates/.
+    const renderModules = detectInstalledHostModules(process.cwd());
+    const renderProvider = detectOpencodeProvider(process.cwd()) ?? "ollama-local";
+    // Build the model lookups the SAME way the install dispatch does: DEFAULTS from the
+    // package's .bkit/prompts.md § Models, consumer overrides from the consumer's installed
+    // .bkit/prompts.md `## Model Overrides` (per-agent, per-provider, preserved across upgrades).
+    let renderModelLookup: Map<string, string> = new Map();
+    let renderOpencodeModelLookup: Map<string, string> = new Map();
+    const pkgPromptsMd = path.join(getBkitDocsRoot(), "prompts.md");
+    const consumerPromptsMd = path.join(process.cwd(), ".bkit", "prompts.md");
+    if (fs.existsSync(pkgPromptsMd)) {
+      try {
+        renderModelLookup = parseModelLookup(pkgPromptsMd);
+      } catch {
+        // Not fatal — the cursor render fails per-file if a model is missing
+      }
+      applyModelOverrides(renderModelLookup, "cursor", consumerPromptsMd);
+      if (renderModules.has("opencode")) {
+        try {
+          renderOpencodeModelLookup = buildOpencodeModelLookup(pkgPromptsMd, renderProvider);
+        } catch {
+          // Not fatal — the opencode render fails per-file if a model is missing
+        }
+        applyModelOverrides(renderOpencodeModelLookup, renderProvider, consumerPromptsMd);
+      }
+    }
+    const renderWs: WriteSet = { writes: [] };
+    const renderCtx: ModuleContext = {
+      dryRun: upgradeFlags.dryRun,
+      tokens: tokens ?? { NODE_VERSION: "", DEFAULT_BRANCH: "", PROJECT_NAME: "", REPO_SLUG: "" },
+      modelLookup: renderModelLookup,
+      opencodeModelLookup: renderOpencodeModelLookup,
+      opencodeProvider: renderProvider,
+      advisories: [],
+      ws: renderWs,
+      logPrefix: LOG_PREFIX,
+      postDispatch: [],
+      issueTracker: upgradeTracker,
+      cloudVariant: null,
+      // Re-stamp every rendered agent + command at the version we are upgrading TO (#256),
+      // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
+      version: getInstallingVersion(),
+    };
+    const rendered = renderManagedOutputs(renderModules, renderCtx);
+
     // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
     // to the version we just upgraded TO — otherwise a clean upgrade leaves the pin
     // stale and the next `bkit check` wants to write it (1 write → exit 1), failing
     // the CI drift gate (#129 §3). Called unconditionally (non-dry-run) so the pin
-    // bumps even when every file was a no-op skip.
+    // bumps even when every file was a no-op skip. The re-rendered `.bkit/*.md` docs ARE
+    // in canonicalHashes (install records them via runBkitDocs → ws), so feed their writes
+    // in too — keeping install/upgrade `.bkit/version` parity. Agent/command writes are
+    // intentionally untracked (installFile), matching install — they never enter canonicalHashes.
     if (!upgradeFlags.dryRun) {
       const pkgVersion = JSON.parse(
         fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"),
       ).version as string;
-      updateCanonicalHashesAfterUpgrade(result, {
-        dryRun: false,
-        cwd: process.cwd(),
-        pinnedVersion: pkgVersion,
-      });
+      const renderedDocPaths = renderWs.writes.map((w) =>
+        path.relative(
+          process.cwd(),
+          path.isAbsolute(w.path) ? w.path : path.resolve(process.cwd(), w.path),
+        ),
+      );
+      updateCanonicalHashesAfterUpgrade(
+        {
+          updated: [...result.updated, ...renderedDocPaths],
+          skipped: result.skipped,
+          conflicts: result.conflicts,
+        },
+        {
+          dryRun: false,
+          cwd: process.cwd(),
+          pinnedVersion: pkgVersion,
+        },
+      );
     }
 
     console.log(
-      `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}`,
+      `${LOG_PREFIX} Done. updated: ${result.updated.length}, skipped: ${result.skipped.length}, conflicts: ${result.conflicts.length}, re-rendered: ${rendered.length}`,
     );
 
     // Non-interactive mode: exit non-zero on conflicts
@@ -1005,9 +1790,29 @@ async function main() {
 
   if (dryRun) console.log(`${LOG_PREFIX} Running in check (dry-run) mode`);
 
+  // #252 Step 3 — `bkit check` scopes drift detection to what is INSTALLED (detected by
+  // sentinel files), not to a fixed full set. Otherwise a single-host repo would falsely
+  // report the absent host's files as drift. `install` keeps its explicit resolved set.
+  const effectiveModules = verb === "check" ? detectInstalledModules(process.cwd()) : modules;
+
+  // #255 #8 — RENDER-input provider resolution. `bkit check` takes no `--opencode=` flag, so
+  // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
+  // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
+  // the opencode drift check render with the consumer's real provider instead of the
+  // ollama-local default — otherwise an nvidia/groq/zen/… consumer reports false drift. On
+  // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
+  // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
+  // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
+  // leaks into what we record. (Tracker is already resolved from package.json below, so the
+  // opencode mcp block — which is tracker-dependent — already renders correctly on check.)
+  const renderOpencodeProvider = opencodeProvider ?? detectOpencodeProvider(process.cwd());
+
   // --- Phase 1: Preflight (read-only, before any writes) ---
   // Must run BEFORE resolveTokens to short-circuit cleanly on blockers.
-  const { blockers, advisories: preflightAdvisories } = runPreflight(modules, process.cwd());
+  const { blockers, advisories: preflightAdvisories } = runPreflight(
+    effectiveModules,
+    process.cwd(),
+  );
   if (blockers.length > 0) {
     console.log(`${LOG_PREFIX} Preflight blockers detected — aborting.`);
     const blockerBanner = formatChecklist(blockers);
@@ -1022,18 +1827,31 @@ async function main() {
   });
 
   // Parse model lookup (needed for cursor transforms).
-  // Source: PACKAGE's .bkit/prompts.md (bkit-authoring data, package-only).
-  // prompts.md is no longer copied into consumers, so the package copy is the
-  // sole source. Reading from the package guarantees the lookup matches the
-  // prompt files about to be installed and avoids a mid-install hard-fail in
-  // applyT3 ("Missing model lookup for <name>").
+  // DEFAULTS come from the PACKAGE's .bkit/prompts.md § Models (authoritative, matches the
+  // prompt files about to be installed — avoids a mid-install hard-fail in applyT3).
+  // OVERRIDES come from the CONSUMER's installed .bkit/prompts.md `## Model Overrides`
+  // section (below `bkit:end`) — per-agent, per-provider, preserved across upgrades.
   let modelLookup: Map<string, string> = new Map();
+  let opencodeModelLookup: Map<string, string> = new Map();
   const promptsMdPath = path.join(getBkitDocsRoot(), "prompts.md");
+  const consumerPromptsMdPath = path.join(process.cwd(), ".bkit", "prompts.md");
   if (fs.existsSync(promptsMdPath)) {
     try {
       modelLookup = parseModelLookup(promptsMdPath);
     } catch {
       // Not fatal — cursor module will fail per-file if a model is missing
+    }
+    // Consumer overrides merge after the base parse — parseModelOverrides is internally
+    // guarded (returns [] when the file/section is absent), so it needs no catch here.
+    applyModelOverrides(modelLookup, "cursor", consumerPromptsMdPath);
+    if (effectiveModules.has("opencode")) {
+      const provider = renderOpencodeProvider ?? "ollama-local";
+      try {
+        opencodeModelLookup = buildOpencodeModelLookup(promptsMdPath, provider);
+      } catch {
+        // Not fatal — opencode module will fail per-file if a model is missing
+      }
+      applyModelOverrides(opencodeModelLookup, provider, consumerPromptsMdPath);
     }
   }
 
@@ -1044,8 +1862,10 @@ async function main() {
 
   // Resolve issueTracker: --tracker= flag overrides; else read bkit.issueTracker from consumer
   // package.json; else default to "none".
+  // #252 S2-A: tracker switching is FREE — a `--tracker=` value always applies, whether
+  // first-set or a re-set of an already-recorded tracker. The old switch guard (and its
+  // `--force` override) was dropped along with install `--force`.
   let issueTracker: IssueTracker = DEFAULT_ISSUE_TRACKER;
-  let recordedIssueTracker: IssueTracker | null = null; // the value already stored in package.json
   {
     const consumerPkgPath = path.join(process.cwd(), "package.json");
     if (fs.existsSync(consumerPkgPath)) {
@@ -1056,63 +1876,87 @@ async function main() {
         >;
         const bkitField = pkg.bkit as Record<string, unknown> | undefined;
         const stored = parseIssueTracker(bkitField?.issueTracker);
-        if (stored !== null) {
-          issueTracker = stored;
-          recordedIssueTracker = stored;
-        }
+        if (stored !== null) issueTracker = stored;
       } catch {
         // non-fatal — keep default
       }
     }
-    if (tracker !== null) {
-      // Tracker-switch hard-block: if a tracker is already recorded and differs from the
-      // requested one, require --force to override (FINAL SCOPE decision 4).
-      // First-set (no recorded tracker) is always free.
-      if (
-        recordedIssueTracker !== null &&
-        recordedIssueTracker !== "none" &&
-        recordedIssueTracker !== tracker &&
-        !force
-      ) {
-        console.error(
-          `[bkit] Tracker is already set to "${recordedIssueTracker}" in package.json. ` +
-            `Switching to "${tracker}" requires --force. ` +
-            `Re-run with --force to override: bkit install --tracker=${tracker} --force`,
-        );
-        process.exit(1);
-      }
-      issueTracker = tracker;
-    }
+    if (tracker !== null) issueTracker = tracker;
   }
 
   // Symmetric cloud/tracker constraint (FINAL SCOPE decision 3/4):
-  // cloud=claude requires tracker=github; cloud=cursor requires tracker=linear.
+  // cloud=claude and cloud=opencode both require tracker=github (both render bkit-cloud.yml).
+  // cloud=cursor requires tracker=linear.
   // Mismatch is a hard error — checked BEFORE any package.json write so no state
   // is recorded on mismatch ("no files written on hard error" invariant).
   if (cloudVariant !== null && modules.has("cloud")) {
-    const requiredTracker: IssueTracker = cloudVariant === "claude" ? "github" : "linear";
+    const requiredTracker: IssueTracker = cloudVariant === "cursor" ? "linear" : "github";
     if (issueTracker !== requiredTracker) {
       console.error(
-        `[bkit] --cloud=${cloudVariant} requires tracker=${requiredTracker}, ` +
+        `[bkit] --auto=${cloudVariant} requires tracker=${requiredTracker}, ` +
           `but the resolved tracker is "${issueTracker}". ` +
           (issueTracker === DEFAULT_ISSUE_TRACKER || issueTracker === "none"
-            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --cloud=${cloudVariant}`
-            : `Use the matching cloud variant or reconfigure the tracker with --force.`),
+            ? `Set the tracker first: bkit install --tracker=${requiredTracker} --auto=${cloudVariant}`
+            : `Re-run with the matching tracker: bkit install --tracker=${requiredTracker} --auto=${cloudVariant} (tracker switching is free).`),
       );
       process.exit(1);
     }
+    // auto=opencode additionally requires the local opencode host to be installed first
+    // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
+    if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
+      console.error(
+        `[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
+          `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia)\n` +
+          `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
+      );
+      process.exit(1);
+    }
+    // Warn (non-fatal) when the detected provider is local-only (ollama-local) — the cloud runner
+    // has no local model server, so the cloud job will fail at runtime.
+    if (cloudVariant === "opencode") {
+      const ocJsonPath = path.join(process.cwd(), ".opencode", "opencode.json");
+      if (fs.existsSync(ocJsonPath)) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(ocJsonPath, "utf-8")) as {
+            provider?: Record<string, unknown>;
+          };
+          const detectedId =
+            cfg.provider && typeof cfg.provider === "object"
+              ? (Object.keys(cfg.provider)[0] ?? null)
+              : null;
+          const LOCAL_ONLY_PROVIDERS = new Set(["ollama-local"]);
+          if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
+            console.warn(
+              `[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
+                `The cloud opencode job requires a remote provider with an API key — ` +
+                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`,
+            );
+          }
+        } catch {
+          // best-effort
+        }
+      }
+    }
   }
 
-  // Persist tracker to consumer package.json AFTER all hard-error gates pass.
-  // This preserves the "no files written on mismatch" invariant.
-  if (tracker !== null) {
+  // Persist bkit manifest fields to consumer package.json AFTER all hard-error gates pass.
+  // This preserves the "no files written on mismatch" invariant. Two fields are recorded:
+  //   - issueTracker: when a `--tracker=` value was given this run.
+  //   - opencodeProvider: when an `--opencode=<provider>` value was given this run. This is
+  //     the authoritative provider record detectOpencodeProvider reads on upgrade — REQUIRED
+  //     for managed-auth gateways (zen), whose opencode.json carries no provider block to
+  //     detect from. Both are merged in one read-modify-write to avoid double-writing.
+  const persistTracker = tracker !== null;
+  const persistProvider = opencodeProvider !== null && effectiveModules.has("opencode");
+  if ((persistTracker || persistProvider) && !dryRun) {
     const consumerPkgPath2 = path.join(process.cwd(), "package.json");
-    if (fs.existsSync(consumerPkgPath2) && !dryRun) {
+    if (fs.existsSync(consumerPkgPath2)) {
       try {
         const raw = fs.readFileSync(consumerPkgPath2, "utf-8");
         const pkg = JSON.parse(raw) as Record<string, unknown>;
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
-        bkit.issueTracker = tracker;
+        if (persistTracker) bkit.issueTracker = tracker;
+        if (persistProvider) bkit.opencodeProvider = opencodeProvider;
         pkg.bkit = bkit;
         const indentMatch = raw.match(/\n([ \t]+)"/);
         const indent = indentMatch ? indentMatch[1] : "  ";
@@ -1122,7 +1966,14 @@ async function main() {
           JSON.stringify(pkg, null, indent) + trailingNewline,
           "utf-8",
         );
-        console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+        if (persistTracker) {
+          console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
+        }
+        if (persistProvider) {
+          console.log(
+            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" in package.json`,
+          );
+        }
       } catch {
         // non-fatal
       }
@@ -1133,16 +1984,32 @@ async function main() {
     dryRun,
     tokens,
     modelLookup,
+    opencodeModelLookup,
+    opencodeProvider: renderOpencodeProvider,
     advisories,
     ws,
     logPrefix: LOG_PREFIX,
     postDispatch,
     issueTracker,
     cloudVariant,
+    // Stamped into every rendered agent + command as the managed-version marker (#256).
+    version: getInstallingVersion(),
   };
 
   // --- Phase 2: Install (current behaviour — dispatch modules) ---
-  dispatchModules(modules, ctx);
+  // check dispatches the detected installed set; install dispatches the resolved set.
+  //
+  // `.bkit-staging/` is a per-run scratch area for rendered files (e.g. opencode.json) — NOT a
+  // cross-module commit/rollback transaction. Module fns write directly to their consumer
+  // destinations, so a mid-dispatch failure can leave files already written (postDispatch — the
+  // `.bkit/version` pin — does not run). We surface the error rather than swallow it, and always
+  // clean up the scratch dir. `bkit install` is idempotent, so re-running completes a partial
+  // install. (#255 P1-5 — see README § Install staging directory.)
+  try {
+    dispatchModules(effectiveModules, ctx);
+  } finally {
+    discardAllStaging();
+  }
 
   const totalWrites = ws.writes.length;
 
@@ -1165,10 +2032,10 @@ async function main() {
       const deltaHeader = readChangelogVersionDelta(pkg.version ?? "");
       if (deltaHeader) console.log(deltaHeader);
     }
-  } catch {
-    // Non-fatal — changelog header is informational
+  } catch (err) {
+    void err; // Non-fatal — changelog header is informational
   }
-  const postFindings = runPostInstallCheck(ctx.advisories, ws, modules, process.cwd());
+  const postFindings = runPostInstallCheck(ctx.advisories, ws, effectiveModules, process.cwd());
   const banner = formatChecklist(postFindings);
   if (banner) console.log(banner);
   writeAdvisoriesArtifact(postFindings, {
@@ -1179,9 +2046,23 @@ async function main() {
   });
 
   // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
+  // Host agent/command mirrors are untracked force-overwrites, so a stale
+  // managed-version marker never shows up in ws.writes — it surfaces as the
+  // bkit-rendered-prompts-stale Phase-3 blocker instead. Treat that blocker as
+  // drift here so `bkit check` hard-fails on outdated rendered prompts/workflows
+  // (#256). Other Phase-3 blockers keep their historical install-only semantics.
   if (dryRun) {
-    if (totalWrites > 0) {
-      console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
+    const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale");
+    if (totalWrites > 0 || renderedStale) {
+      if (totalWrites > 0) {
+        console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
+      }
+      if (renderedStale) {
+        console.error(
+          `${LOG_PREFIX} check: rendered prompts/workflows are stale (managed-version marker drift) — ` +
+            `see the bkit-rendered-prompts-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
+        );
+      }
       process.exit(1);
     }
     return;
@@ -1192,8 +2073,8 @@ async function main() {
   // Advisory findings are informational only and do NOT exit-1.
   const phase3Blockers = postFindings.filter((f) => f.severity === "blocker");
   if (phase3Blockers.length > 0) {
-    const moduleFlags = [...modules].map((m) => `--${m}`).join(" ");
-    const recoveryLine = `pnpm bkit uninstall ${moduleFlags} && <fix the issue> && pnpm bkit install ${moduleFlags}`;
+    const recoveryFlags = modulesToCliFlags(effectiveModules, opencodeProvider, cloudVariant);
+    const recoveryLine = `pnpm bkit uninstall ${recoveryFlags} && <fix the issue> && pnpm bkit install ${recoveryFlags}`;
     console.error(
       `${LOG_PREFIX} ${phase3Blockers.length} Phase 3 blocker(s) detected. Recovery:\n  ${recoveryLine}`,
     );
@@ -1212,7 +2093,7 @@ async function main() {
         stripPackage: false,
         logPrefix: "[bkit-uninstall]",
       };
-      await runUninstall([...modules] as ModuleName[], uninstallCtx);
+      await runUninstall([...effectiveModules] as ModuleName[], uninstallCtx);
       console.log(`${LOG_PREFIX} --auto-revert: uninstall complete. Exiting 1.`);
     }
     process.exit(1);

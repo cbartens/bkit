@@ -5,7 +5,12 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { applyTokens, resolveTokens } from "./bkit-tokens";
 import { writeTier3, type WriteSet } from "./bkit-tiers";
-import { extractFullManagedBlock, extractManagedBlock, parseModelLookup } from "./bkit-install";
+import {
+  extractFullManagedBlock,
+  extractManagedBlock,
+  parseModelLookup,
+  parseOpencodeModelLookup,
+} from "./bkit-install";
 import type { PreflightFinding } from "./bkit-preflight";
 import {
   runCoreModule,
@@ -17,6 +22,9 @@ import {
   runRenovateModule,
   runDependabotModule,
   runCloudModule,
+  runOpencodeModule,
+  renderOpencodeJson,
+  opencodeProviderId,
   renderCloudWorkflow,
   dispatchModules,
   type ModuleContext,
@@ -88,7 +96,14 @@ describe("bkit canonical docs pass (runBkitDocs, #218)", () => {
     import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
     "..",
   );
-  const DOCS = ["cloud.md", "IDEs.md", "prompts.md", "trackers.md", "workflows.md", "README.md"];
+  const DOCS = [
+    "cloud.md",
+    "providers.md",
+    "prompts.md",
+    "trackers.md",
+    "workflows.md",
+    "README.md",
+  ];
 
   it("force-overwrites the six package .bkit/*.md docs into the consumer's .bkit/, byte-equal", () => {
     const ctx = makeCtx();
@@ -466,7 +481,7 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
     const phaseA = ctx.advisories.find((a) => a.id === "renovate-phase-a-pr-to-default-branch");
     expect(phaseA).toBeDefined();
     expect(phaseA!.action).toMatch(/Phase A/);
-    expect(phaseA!.action).toMatch(/pnpm bkit install --renovate/);
+    expect(phaseA!.action).toMatch(/pnpm bkit install --dependency=renovate/);
     // Must NOT print the App-install URL in Phase A.
     expect(phaseA!.action).not.toMatch(/github\.com\/apps\/renovate/);
     // Phase A (not only Phase B) must carry the renovate-local override guidance:
@@ -635,13 +650,13 @@ describe("runRenovateModule — opt-in, phase-gated against the default branch",
 // ---------------------------------------------------------------------------
 
 describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () => {
-  it("writes .github/dependabot.yml + scripts/ci/bkit-set-dependabot.sh and emits setup advisory", () => {
+  it("writes .github/dependabot.yml + .bkit/scripts/bkit-set-dependabot.sh and emits setup advisory", () => {
     const ws = makeWriteSet();
     const ctx = makeCtx({ ws });
     runDependabotModule(ctx);
 
     const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
-    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptPath = path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh");
     expect(fs.existsSync(ymlPath)).toBe(true);
     expect(fs.existsSync(scriptPath)).toBe(true);
     // Helper script must be executable.
@@ -650,7 +665,7 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
 
     const advisory = ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state");
     expect(advisory).toBeDefined();
-    expect(advisory!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+    expect(advisory!.action).toMatch(/bash .bkit\/scripts\/bkit-set-dependabot\.sh/);
   });
 
   it("refuses to install when .github/renovate.json5 is present (mutually exclusive)", () => {
@@ -663,7 +678,7 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
 
     // No dependabot files should be written
     const ymlPath = path.join(tmpDir, ".github", "dependabot.yml");
-    const scriptPath = path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptPath = path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh");
     expect(fs.existsSync(ymlPath)).toBe(false);
     expect(fs.existsSync(scriptPath)).toBe(false);
 
@@ -679,7 +694,9 @@ describe("runDependabotModule — opt-in, mutually exclusive with Renovate", () 
     runDependabotModule(ctx);
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
     expect(ctx.advisories.find((a) => a.id === "dependabot-setup-repo-state")).toBeDefined();
   });
 
@@ -731,7 +748,9 @@ describe("runRenovateModule — depUpdater persistence", () => {
     dispatchModules(new Set(["core", "ci"]), ctx);
 
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
   });
 });
 
@@ -769,6 +788,33 @@ describe("runCloudModule — opt-in cloud agents (post-CI auto-routing)", () => 
     expect(advisory!.action).toMatch(/bkit:auto/);
     // The env-scaffolding customisation advisory is emitted for cloud=claude too.
     expect(ctx.advisories.find((a) => a.id === "cloud-env-customize")).toBeDefined();
+  });
+
+  it("cloud=opencode: writes bkit-cloud.yml and emits bkit-cloud-setup advisory (no bootstrap.sh)", () => {
+    const ws = makeWriteSet();
+    const ctx = makeCtx({ ws, cloudVariant: "opencode", issueTracker: "github" });
+    runCloudModule(ctx);
+
+    // cloud=opencode ships: bkit-cloud.yml only (no bootstrap.sh, no cursor files)
+    expect(fs.existsSync(path.join(tmpDir, routerRel))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, bootstrapRel))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, dockerRel))).toBe(false);
+
+    const advisory = ctx.advisories.find((a) => a.id === "bkit-cloud-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/OPENCODE_PROVIDER_KEY/);
+    expect(advisory!.action).toMatch(/opencode\/opencode\.json/);
+    expect(advisory!.action).not.toMatch(/ANTHROPIC_API_KEY/);
+    expect(advisory!.action).not.toMatch(/bkit-auto\.yml/);
+  });
+
+  it("cloud=opencode: persists bkit.cloudAgents = 'opencode' to package.json", () => {
+    const ws = makeWriteSet();
+    runCloudModule(makeCtx({ ws, cloudVariant: "opencode", issueTracker: "github" }));
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
+      bkit?: { cloudAgents?: string };
+    };
+    expect(pkg.bkit?.cloudAgents).toBe("opencode");
   });
 
   it("cloud=cursor: writes .cursor/Dockerfile + environment.json and emits bkit-cloud-setup advisory", () => {
@@ -912,8 +958,8 @@ describe("renderCloudWorkflow — GitHub-only render (Linear branch removed)", (
 // impossible via expressions alone for slugged FIDs (bkit-build.md:146 convention).
 //
 // Chosen design (Option iii): serialise WITHIN each surface separately:
-//   - dispatch path  keys on inputs.issue          (bkit-cloud-141)
-//   - CI-completion  keys on head_branch            (bkit-cloud-feat/141-cloud-app)
+//   - dispatch path  keys on inputs.issue          (bkit-auto-141)
+//   - CI-completion  keys on head_branch            (bkit-auto-feat/141-cloud-app)
 // Cross-boundary dispatch-vs-auto-ship race is handled by the orchestrator stale-run
 // guard + status.json lock, not the concurrency key.
 // ---------------------------------------------------------------------------
@@ -931,7 +977,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     // Dispatch surface: group expression must use inputs.issue so concurrent dispatched
     // runs for the same issue cancel each other.
     expect(out).toMatch(/group:.*inputs\.issue/);
-    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-cloud-"));
+    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-auto-"));
     expect(groupLine).toBeDefined();
     expect(groupLine).toContain("inputs.issue");
     // No invalid replace() call — remove() is not a GHA expression function.
@@ -945,7 +991,7 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     // A real slugged FID like feat/141-cloud-app must key on the full branch — not a
     // stripped token — because replace() cannot reduce '141-cloud-app' to '141'.
     expect(out).toMatch(/group:.*github\.event\.workflow_run\.head_branch/);
-    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-cloud-"));
+    const groupLine = out.split("\n").find((l) => l.includes("group: bkit-auto-"));
     expect(groupLine).toBeDefined();
     expect(groupLine).toContain("github.event.workflow_run.head_branch");
     // No replace() — the prior STANDARD attempt's replace() was invalid for slugged FIDs.
@@ -957,9 +1003,9 @@ describe("T3.1 — concurrency.group intra-surface serialisation (D3 race preven
     // replace('feat/141-cloud-app', 'feat/', '') = '141-cloud-app' != '141'
     // The two tokens are intentionally different across surfaces; each surface uses its
     // own payload identity. Cross-boundary serialisation is the orchestrator's concern.
-    const dispatchGroup = `bkit-cloud-141`;
+    const dispatchGroup = `bkit-auto-141`;
     const ciBranch = "feat/141-cloud-app";
-    const ciGroup = `bkit-cloud-${ciBranch}`; // full branch, no replace()
+    const ciGroup = `bkit-auto-${ciBranch}`; // full branch, no replace()
     expect(dispatchGroup).not.toBe(ciGroup); // different by design
     // Neither path uses a replace() that would produce an incorrect result.
     const stripped = ciBranch.replace("feat/", "");
@@ -1006,11 +1052,11 @@ describe("T2.7 — two-tier CI gate positive assertions (GAP-3)", () => {
     expect(out).toContain(
       "contains(github.event.workflow_run.head_commit.message, 'bkit [auto route]')",
     );
-    // The dispatch step must exist and fire when skip != 'true'.
-    expect(out).toContain("if: steps.ctx.outputs.skip != 'true'");
-    // The dispatch step must invoke the /bkit-cloud orchestrator.
+    // The dispatch step must exist and fire when skip != 'true' (compound condition includes gate check).
+    expect(out).toContain("steps.ctx.outputs.skip != 'true'");
+    // The dispatch step must invoke the /bkit-auto orchestrator.
     expect(out).toContain(
-      'prompt: "/bkit-cloud ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"',
+      'prompt: "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"',
     );
   });
 
@@ -2200,5 +2246,394 @@ describe("Challenge Finding 2 — claude.yml author_association allow-list regre
     expect(yml).toMatch(
       /contains\(fromJSON\([^)]*\),\s*github\.event\.(comment|review|issue\.user)\.author_association\)/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runOpencodeModule — opt-in opencode host (Task 2.2 "Done when")
+// ---------------------------------------------------------------------------
+
+describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
+  // Resolve the real opencode model lookup from prompts.md (same source used at install time)
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const EXPECTED_AGENT_COUNT = CATALOG_MODEL_LOOKUP.size;
+
+  function makeOpencodeCtx(overrides: Partial<ModuleContext> = {}): ModuleContext {
+    return {
+      dryRun: false,
+      tokens: {
+        NODE_VERSION: "22",
+        DEFAULT_BRANCH: "main",
+        PROJECT_NAME: "test-project",
+        REPO_SLUG: "acme/test-project",
+      },
+      modelLookup: CATALOG_MODEL_LOOKUP,
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      opencodeProvider: "ollama-local",
+      advisories: [],
+      ws: makeWriteSet(),
+      logPrefix: "[bkit-install]",
+      postDispatch: [],
+      issueTracker: "none",
+      ...overrides,
+    };
+  }
+
+  it("clean install writes .opencode/agents/*.md (one per catalog agent)", () => {
+    // Note: agent files are written via installFile (not tier-writers), so they do NOT
+    // appear in ws.writes — same pattern as claude/cursor modules. Assert disk presence instead.
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    expect(EXPECTED_AGENT_COUNT).toBeGreaterThan(0);
+
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    expect(fs.existsSync(agentDir)).toBe(true);
+    const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
+    expect(agentFiles.length).toBe(EXPECTED_AGENT_COUNT);
+
+    // Verify agent files have opencode frontmatter
+    for (const f of agentFiles) {
+      const content = fs.readFileSync(path.join(agentDir, f), "utf-8");
+      expect(content).toMatch(/^---\n/);
+      expect(content).toContain("mode: subagent");
+      expect(content).toContain("model:");
+    }
+  });
+
+  it("clean install writes .opencode/commands/*.md (one per bkit workflow)", () => {
+    // Note: command files are written via installFile (not tier-writers) — not in ws.writes.
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
+    expect(fs.existsSync(commandDir)).toBe(true);
+    const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+    expect(commandFiles.length).toBeGreaterThan(0);
+
+    // Command files exist on disk
+    for (const f of commandFiles) {
+      expect(fs.existsSync(path.join(commandDir, f))).toBe(true);
+    }
+  });
+
+  it("clean install writes .opencode/opencode.json", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const jsonWrite = ws.writes.find((w) =>
+      w.path.endsWith(path.join(".opencode", "opencode.json")),
+    );
+    expect(jsonWrite).toBeDefined();
+
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as Record<string, unknown>;
+    // Must have permission + plugin blocks (no plaintext key material)
+    expect(parsed).toHaveProperty("permission");
+    expect(parsed).toHaveProperty("plugin");
+    // No plaintext API key — provider key must be an env-var reference
+    const jsonStr = JSON.stringify(parsed);
+    expect(jsonStr).not.toMatch(/sk-[a-zA-Z0-9]{20,}/); // no raw API key
+  });
+
+  it("clean install writes .opencode/plugin/gateguard.js", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws });
+    runOpencodeModule(ctx);
+
+    const pluginWrite = ws.writes.find((w) =>
+      w.path.endsWith(path.join(".opencode", "plugin", "gateguard.js")),
+    );
+    expect(pluginWrite).toBeDefined();
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
+  });
+
+  // #255 P2-9 — a provider switch must not leave a stale bkit provider block behind.
+  it("provider switch nvidia → zen (managed-auth) prunes the stale nvidia block", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    let parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
+    expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
+
+    // zen is managed-auth → its rendered template ships NO provider block.
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
+    parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "stale nvidia provider must be pruned").toBeUndefined();
+    // No orphan {env:NVIDIA_API_KEY} reference requiring a now-irrelevant secret.
+    expect(fs.readFileSync(jsonPath, "utf-8")).not.toContain("NVIDIA_API_KEY");
+  });
+
+  it("provider switch nvidia → groq prunes the old keyed provider and seeds the new one", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.groq, "new provider present").toBeDefined();
+    expect(parsed.provider?.nvidia, "old provider pruned").toBeUndefined();
+  });
+
+  it("preserves a consumer-added provider block across a bkit provider switch", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    // Consumer adds their own provider under a key bkit never seeds.
+    const doc = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    (doc.provider as Record<string, unknown>)["my-custom"] = {
+      npm: "@acme/driver",
+      name: "my-custom",
+      options: {},
+    };
+    fs.writeFileSync(jsonPath, JSON.stringify(doc, null, 2) + "\n", "utf-8");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.["my-custom"], "consumer provider preserved").toBeDefined();
+    expect(parsed.provider?.nvidia, "stale bkit provider pruned").toBeUndefined();
+    expect(parsed.provider?.groq, "new bkit provider present").toBeDefined();
+  });
+
+  it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "nvidia" });
+    runOpencodeModule(ctx);
+
+    const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.detect).toMatch(/opencode host installed/);
+    // Advisory names the provider key env var
+    expect(advisory!.action).toMatch(/NVIDIA_API_KEY/);
+    // Advisory references bkit doctor/status
+    expect(advisory!.action).toMatch(/bkit doctor/);
+    expect(advisory!.action).toMatch(/bkit status/);
+    // No plaintext API key echoed in advisory
+    expect(advisory!.action).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
+  });
+
+  it("ollama-local advisory does NOT mention an API key (Ollama is local, no key needed)", () => {
+    const ctx = makeOpencodeCtx({ opencodeProvider: "ollama-local" });
+    runOpencodeModule(ctx);
+
+    const advisory = ctx.advisories.find((a) => a.id === "opencode-setup");
+    expect(advisory).toBeDefined();
+    expect(advisory!.action).toMatch(/Ollama runs locally/);
+    expect(advisory!.action).not.toMatch(/OLLAMA_API_KEY/);
+  });
+
+  it("dry-run: no agent/command .md files written to disk, advisory still emitted", () => {
+    const ws = makeWriteSet();
+    const ctx = makeOpencodeCtx({ ws, dryRun: true });
+    runOpencodeModule(ctx);
+
+    // In dry-run: agent and command .md files must NOT exist on disk
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
+    // Dirs may be created by ensureDir, but no .md files should be written
+    if (fs.existsSync(agentDir)) {
+      const agentFiles = fs.readdirSync(agentDir).filter((f) => f.endsWith(".md"));
+      expect(agentFiles).toHaveLength(0);
+    }
+    if (fs.existsSync(commandDir)) {
+      const commandFiles = fs.readdirSync(commandDir).filter((f) => f.endsWith(".md"));
+      expect(commandFiles).toHaveLength(0);
+    }
+    // opencode.json and gateguard.js must not exist on disk
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(false);
+    // Advisory still fired
+    expect(ctx.advisories.find((a) => a.id === "opencode-setup")).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// runOpencodeModule — transactional-staging zero-footprint (KN-12, Task 2.2)
+// ---------------------------------------------------------------------------
+
+describe("runOpencodeModule — staging zero-footprint on failure (KN-12, Task 2.2)", () => {
+  const PROMPTS_MD = path.resolve(
+    import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    "prompts.md",
+  );
+  const OPENCODE_MODEL_LOOKUP = parseOpencodeModelLookup(PROMPTS_MD);
+  const CATALOG_MODEL_LOOKUP = parseModelLookup(PROMPTS_MD);
+
+  it("zero .opencode/ footprint before runOpencodeModule is called", () => {
+    // Before any opencode install: .opencode/ must not exist in a fresh consumer dir
+    expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(false);
+  });
+
+  it("after a successful install, .opencode/ exists; uninstalling leaves zero footprint", () => {
+    const ws = makeWriteSet();
+    const ctx = {
+      dryRun: false,
+      tokens: {
+        NODE_VERSION: "22",
+        DEFAULT_BRANCH: "main",
+        PROJECT_NAME: "test-project",
+        REPO_SLUG: "acme/test-project",
+      },
+      modelLookup: CATALOG_MODEL_LOOKUP,
+      opencodeModelLookup: OPENCODE_MODEL_LOOKUP,
+      opencodeProvider: "ollama-local",
+      advisories: [] as PreflightFinding[],
+      ws,
+      logPrefix: "[bkit-install]",
+      postDispatch: [] as Array<() => void>,
+      issueTracker: "none" as const,
+    };
+
+    runOpencodeModule(ctx);
+    expect(fs.existsSync(path.join(tmpDir, ".opencode"))).toBe(true);
+
+    // Simulate surgical removal: delete all .opencode/ bkit-prefix agent/command files
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const commandDir = path.join(tmpDir, ".opencode", "commands");
+    const pluginDir = path.join(tmpDir, ".opencode", "plugin");
+
+    if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true });
+    if (fs.existsSync(commandDir)) fs.rmSync(commandDir, { recursive: true });
+    if (fs.existsSync(pluginDir)) fs.rmSync(pluginDir, { recursive: true });
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    if (fs.existsSync(jsonPath)) fs.rmSync(jsonPath);
+
+    // After removal, agent/command/plugin dirs and json are gone
+    expect(fs.existsSync(path.join(tmpDir, ".opencode", "opencode.json"))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// renderOpencodeJson — provider block must match opencode's custom-provider schema
+// (regression guard for #245: a stray `"api": "openai"` field makes opencode reject
+// the whole config, and env keys must use {env:VAR}, never shell ${VAR}.)
+// ---------------------------------------------------------------------------
+describe("opencodeProviderId — bkit key → opencode-side provider id", () => {
+  it("passes through custom providers (key === opencode id)", () => {
+    for (const key of ["ollama-local", "nvidia", "groq", "cerebras", "openrouter", "ollama"]) {
+      expect(opencodeProviderId(key)).toBe(key);
+    }
+  });
+
+  it("maps the zen key to the opencode gateway id 'opencode' (#245 Phase 3)", () => {
+    expect(opencodeProviderId("zen")).toBe("opencode");
+  });
+
+  it("passes through an unknown key unchanged (defensive)", () => {
+    expect(opencodeProviderId("acme")).toBe("acme");
+  });
+});
+
+describe("renderOpencodeJson — opencode custom-provider format", () => {
+  const TEMPLATE = path.resolve(".bkit/templates/.opencode/opencode.json");
+
+  it("nvidia (remote): npm driver, custom-provider shape, apiKey via {env:VAR}", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const block = parsed.provider?.nvidia;
+    expect(block).toBeTruthy();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("https://integrate.api.nvidia.com/v1");
+    expect(block.options.apiKey).toBe("{env:NVIDIA_API_KEY}");
+    // No shell-style interpolation in the provider block (opencode reads {env:VAR}).
+    expect(JSON.stringify(block)).not.toContain("${");
+  });
+
+  it("github MCP: type 'remote' (not 'http') + {env:} header — opencode schema valid", () => {
+    // type "http" is valid for Claude/Cursor but NOT in opencode's enum (["local","remote"]);
+    // its presence makes opencode reject the whole config. Regression guard for #245.
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const gh = parsed.mcp?.github;
+    expect(gh.type).toBe("remote");
+    expect(gh.headers.Authorization).toBe("Bearer {env:GH_TOKEN}");
+    expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
+    expect(JSON.stringify(parsed.mcp)).not.toContain("${");
+  });
+
+  it("linear MCP: type 'remote' (not 'http')", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "linear", "nvidia"));
+    expect(parsed.mcp?.linear?.type).toBe("remote");
+  });
+
+  it("uses the 'plugin' key (singular), not 'plugins' (opencode schema)", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+    expect(parsed.plugins).toBeUndefined();
+  });
+
+  it("permission: opencode tool-keyed map (not Claude {rules:[...]}), force-push gated", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
+    const perm = parsed.permission;
+    expect(perm.rules).toBeUndefined(); // the Claude-style array that opencode rejects
+    expect(perm.edit).toBe("allow");
+    expect(perm.task).toBe("allow");
+    expect(typeof perm.bash).toBe("object");
+    expect(perm.bash["git push --force*"]).toBe("deny");
+    expect(perm.bash["git push --force-with-lease*"]).toBe("allow");
+    expect(perm.bash["rm -rf /*"]).toBe("deny");
+    expect(perm.bash["chmod -R 777 /*"]).toBe("deny");
+    expect(perm.bash["sudo *"]).toBe("ask");
+    // #255 P1-3: destructive-git + delete commands gated to parity with the Claude host
+    // (.claude/settings.json ask-list). opencode is the lowest-alignment host, so this
+    // surface must NOT be weaker than the Claude peer it ships alongside.
+    for (const cmd of [
+      "git reset --hard*",
+      "git clean -fd*",
+      "git filter-branch*",
+      "git checkout -- .*",
+      "git restore .*",
+      "git stash drop*",
+      "git rebase -i*",
+      "gh repo delete*",
+      "gh pr close*",
+      "gh release delete*",
+      "vercel rm*",
+      "supabase db reset*",
+    ]) {
+      expect(perm.bash[cmd], `${cmd} must be gated 'ask'`).toBe("ask");
+    }
+    // last-match-wins: the --force-with-lease allow MUST come after the --force deny,
+    // else force-with-lease (which matches "git push --force*") would be denied.
+    const keys = Object.keys(perm.bash);
+    expect(keys.indexOf("git push --force-with-lease*")).toBeGreaterThan(
+      keys.indexOf("git push --force*"),
+    );
+  });
+
+  it("ollama-local (local): npm driver, NO apiKey (keyless local server)", () => {
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "ollama-local"));
+    const block = parsed.provider?.["ollama-local"];
+    expect(block).toBeTruthy();
+    expect(block.api).toBeUndefined();
+    expect(block.npm).toBe("@ai-sdk/openai-compatible");
+    expect(block.options.baseURL).toBe("http://localhost:11434/v1");
+    expect(block.options.apiKey).toBeUndefined();
+  });
+
+  it("zen (#245 Phase 3): managed auth — NO custom provider block at all", () => {
+    // zen is a first-class built-in opencode provider authenticated via `opencode auth login`,
+    // not a {env:KEY} block. renderOpencodeJson must emit no `provider` key (a stray custom
+    // block — npm/baseURL/apiKey — would be wrong and could shadow the built-in gateway).
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zen"));
+    expect(parsed.provider).toBeUndefined();
+    // The rest of the managed surface still renders normally.
+    expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
+    expect(parsed.mcp?.github?.type).toBe("remote");
+    expect(parsed.permission?.edit).toBe("allow");
+    // No leaked sentinels.
+    expect(JSON.stringify(parsed)).not.toContain("@@OPENCODE");
   });
 });

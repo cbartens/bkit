@@ -98,3 +98,11 @@
 - **Suggested fix:** Plan/design/build close + summary steps that push a branch should run `pnpm format:check` (or a `prettier --write` over `docs/plans/{YYYYMM}/logs/{FID}/`) BEFORE `git push`, not rely on per-commit lint-staged. Alternatively make lint-staged + format:check share one resolved prettier invocation so `--write` is guaranteed to satisfy `--check`.
 - **Recovery:** `npx prettier --write` on the two flagged files → `pnpm format:check` clean → committed `chore(203-...): prettier-fix plan docs` → push succeeded.
 - **Status:** RECOVERED
+
+## [2026-06-10] Build #245 plan-1 spike blocked — opencode not installed
+
+- **Workflow:** build
+- **Step:** 5 — Plan Execute (sub-plan 1/5)
+- **Issue:** `build-plan-execute-1-log.md` returned PENDING verdict. Root cause: plan-1 is an empirical spike requiring (a) opencode CLI binary (not found on PATH), (b) a real provider endpoint (Ollama or NVIDIA), and (c) human confirmation of Gate 1 checkboxes (both unchecked). Agent cannot complete the spike without these preconditions.
+- **Recovery:** Install opencode (`npm i -g opencode` or equivalent), start a provider (Ollama with model pulled, or set NVIDIA_API_KEY), check both Gate 1 human-confirmation boxes in `plan-1.md`, then re-run `/bkit-build #245`.
+- **Status:** Failure Path triggered; handover written.

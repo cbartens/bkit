@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "3.4.2",
+  "version": "4.0.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -18,6 +18,7 @@
     "!.bkit/src/__snapshots__",
     "!.bkit/.env",
     "!.bkit/.env.example",
+    "!.bkit/scripts",
     "!.bkit/version",
     "!.bkit/advisories.md",
     "!.bkit/friction.md"
@@ -45,7 +46,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
-    "slop:delta": "bash scripts/tooling/slop-delta.sh",
+    "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     "lint:workflows": "bash -c 'if command -v actionlint >/dev/null 2>&1; then actionlint; else echo \"[bkit] actionlint missing — skipping workflow lint (install actionlint to enable)\"; fi'",
     "lint:prose": "bash -c 'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then FILES=$(find .agents -maxdepth 1 -name \"*.md\"; find .bkit -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/workflows .bkit/prompts -name \"*.md\" 2>/dev/null; find docs -maxdepth 1 -name \"*.md\" 2>/dev/null; find .bkit/templates/docs -name \"*.md\" 2>/dev/null; find . -maxdepth 1 -name \"*.md\"); vale $FILES; else echo \"[bkit] vale missing or .vale/styles/write-good not synced — skipping (run `vale sync` to enable)\"; fi'",
     "prepare": "husky"
@@ -77,7 +78,7 @@
   "bkit": {
     "issueTracker": "github",
     "depUpdater": "renovate",
-    "cloudAgents": "enabled",
+    "cloudAgents": "claude",
     "githubProject": false
   }
 }

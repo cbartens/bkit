@@ -166,7 +166,7 @@ describe("real workflow sources", () => {
     "bkit-debug",
     "bkit-design",
     "bkit-plan",
-    "bkit-cloud",
+    "bkit-auto",
   ];
 
   for (const wf of workflows) {

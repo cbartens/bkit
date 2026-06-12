@@ -151,6 +151,88 @@ describe("bkit doctor — integration", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// bkit status — write-zero assertion (Task 4.1)
+// ---------------------------------------------------------------------------
+
+describe("bkit status — integration", () => {
+  it("exits 0 and prints [bkit-status] prefix", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(
+      result.status,
+      `status crashed (exit ${result.status}):\n${result.stdout}\n${result.stderr}`,
+    ).toBe(0);
+    expect(result.stdout).toContain("[bkit-status]");
+  });
+
+  it("writes zero files (purely read-only — write-set assertion)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const filesBefore = listFilesRecursive(tmpDir);
+
+    spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    const filesAfter = listFilesRecursive(tmpDir);
+    const newFiles = filesAfter.filter((f) => !filesBefore.includes(f));
+
+    // status must write ZERO files — strictly read-only.
+    expect(newFiles).toEqual([]);
+  });
+
+  it("reports installed hosts (at minimum claude and cursor on a fresh consumer)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Seed a consumer with .claude and .cursor directories
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, ".cursor"), { recursive: true });
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("claude");
+    expect(result.stdout).toContain("cursor");
+  });
+
+  it("reports opencode as absent when .opencode/ does not exist", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMinimalConsumer(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("absent");
+  });
+});
+
 function listFilesRecursive(dir: string): string[] {
   const out: string[] = [];
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -343,5 +425,150 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
     const combined = result.stdout + result.stderr;
     expect(combined).toContain("mcp-env-missing-dotenv");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// bkit doctor — Ollama memory-safety check (read-only; never mutates server env)
+// These vars govern the Ollama SERVER daemon, not opencode.json — doctor only inspects.
+// ---------------------------------------------------------------------------
+
+describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
+  function seedOpencodeLocal(dir: string): void {
+    seedMinimalConsumer(dir);
+    fs.mkdirSync(path.join(dir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ".opencode", "opencode.json"),
+      JSON.stringify({
+        provider: {
+          "ollama-local": {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Ollama (Local)",
+            options: { baseURL: "http://localhost:11434/v1" },
+          },
+        },
+      }),
+      "utf-8",
+    );
+  }
+
+  it("warns to set =1 when OLLAMA_MAX_LOADED_MODELS is unset", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const { OLLAMA_MAX_LOADED_MODELS: _drop, ...envNoMax } = process.env;
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...envNoMax, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: not set/);
+    expect(combined).toMatch(/recommend =1/);
+  });
+
+  it("reports memory-safe when OLLAMA_MAX_LOADED_MODELS=1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "1" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 1 \(memory-safe\)/);
+  });
+
+  it("warns when OLLAMA_MAX_LOADED_MODELS > 1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_MAX_LOADED_MODELS: "3" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS: 3/);
+    expect(combined).toMatch(/swap thrash/);
+  });
+
+  it("warns to set OLLAMA_NUM_PARALLEL=1 when unset (serializes subagent fan-out)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const { OLLAMA_NUM_PARALLEL: _drop, ...envNoParallel } = process.env;
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...envNoParallel, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: not set/);
+    expect(combined).toMatch(/serializes workflow subagent fan-out/);
+  });
+
+  it("reports serialized when OLLAMA_NUM_PARALLEL=1", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedOpencodeLocal(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token", OLLAMA_NUM_PARALLEL: "1" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/OLLAMA_NUM_PARALLEL: 1 \(subagent fan-out serialized\)/);
+  });
+
+  it("does NOT emit Ollama memory-safety checks for a remote provider (nvidia)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({
+        provider: {
+          nvidia: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "NVIDIA NIM",
+            options: {
+              baseURL: "https://integrate.api.nvidia.com/v1",
+              apiKey: "{env:NVIDIA_API_KEY}",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    // NUM_PARALLEL / MAX_LOADED_MODELS guidance is ollama-local only — must NOT appear for nvidia
+    expect(combined).not.toMatch(/OLLAMA_NUM_PARALLEL/);
+    expect(combined).not.toMatch(/OLLAMA_MAX_LOADED_MODELS/);
   });
 });

@@ -304,7 +304,7 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
   );
 
   function runBkitUpgrade() {
-    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--non-interactive"], {
+    return spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--auto-apply"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
@@ -327,7 +327,9 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     // Opt-in files were never written (skipped at candidate collection).
     expect(fs.existsSync(path.join(tmpDir, ".github", "renovate.json5"))).toBe(false);
     expect(fs.existsSync(path.join(tmpDir, ".github", "dependabot.yml"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "scripts", "ci", "bkit-set-dependabot.sh"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-set-dependabot.sh"))).toBe(
+      false,
+    );
     // Non-opt-in managed files DID get created — proving the walk ran (not a no-op).
     expect(fs.existsSync(path.join(tmpDir, ".gitignore"))).toBe(true);
     expect(result.status).toBe(0);
@@ -377,5 +379,186 @@ describe("issue #129 §5 — upgrade does not force-create opt-in module files",
     expect(after).toContain("Custom Vitest + Playwright suite.");
     // bkit block was updated to the shipped template (not whole-file-overwritten).
     expect(after).not.toContain("stale bkit guidance to be replaced");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #255 P3 — tracker-filtered .mcp.json / .cursor/mcp.json must not false-conflict
+//
+// .mcp.json and .cursor/mcp.json are seeded tracker-FILTERED on install (only the selected
+// tracker's mcpServers entry). The upgrade walk now renders them the same way (buildMcpJson
+// contentOverride, like bkit-cloud.yml #138 / opencode.json #245) — so a same-version run with
+// an unmodified seed is byte-identical → skipped, NOT a spurious seed-or-print conflict.
+// Drift detection on a real template change is unaffected (proven below).
+// ---------------------------------------------------------------------------
+
+describe("#255 P3 — same-version upgrade does not false-conflict tracker-filtered mcp.json", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("present, unmodified .mcp.json + .cursor/mcp.json → same-version upgrade exits 0, no conflict", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    const install = runCli(["install", "--claude", "--cursor", "--tracker=github"]);
+    expect(install.status).toBe(0);
+    const mcpBefore = fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8");
+    const cursorMcpBefore = fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8");
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    const out = `${upgrade.stdout ?? ""}${upgrade.stderr ?? ""}`;
+    // Same-version, untouched seeds → clean exit, zero conflicts (the #255 P3 bug was exit 1 here).
+    expect(upgrade.status).toBe(0);
+    expect(out).not.toContain("conflict: .mcp.json");
+    expect(out).not.toContain("conflict: .cursor/mcp.json");
+    // Consumer-owned seeds left byte-identical (upgrade never rewrote them).
+    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(mcpBefore);
+    expect(fs.readFileSync(path.join(tmpDir, ".cursor", "mcp.json"), "utf-8")).toBe(
+      cursorMcpBefore,
+    );
+  });
+
+  it("CHANGED .mcp.json template + consumer-modified seed → still conflicts (drift detection intact)", () => {
+    // A consumer edited their seeded .mcp.json.
+    const consumerMcp =
+      JSON.stringify(
+        { mcpServers: { github: { type: "http", url: "https://CONSUMER-EDITED.example/mcp/" } } },
+        null,
+        2,
+      ) + "\n";
+    fs.writeFileSync(path.join(tmpDir, ".mcp.json"), consumerMcp, "utf-8");
+
+    // What bkit recorded as the canonical baseline at the previous install.
+    const oldBaseline =
+      JSON.stringify(
+        { mcpServers: { github: { type: "http", url: "https://api.githubcopilot.com/mcp/" } } },
+        null,
+        2,
+      ) + "\n";
+    writeVersionFile({ ".mcp.json": sha256(oldBaseline) });
+
+    // A NEW bkit version ships a changed .mcp.json — passed as the tracker-rendered override
+    // (this is what the install-side collectTemplates produces via buildMcpJson).
+    const newRendered =
+      JSON.stringify(
+        {
+          mcpServers: {
+            github: {
+              type: "http",
+              url: "https://api.githubcopilot.com/mcp/",
+              headers: { "X-MCP-Toolsets": "context,issues" },
+            },
+          },
+        },
+        null,
+        2,
+      ) + "\n";
+
+    const result = runUpgrade(
+      [
+        {
+          relPath: ".mcp.json",
+          templatePath: path.join(tmpDir, ".unused-template"),
+          seedOrPrint: true,
+          contentOverride: newRendered,
+        },
+      ],
+      { nonInteractive: true, dryRun: false, cwd: tmpDir },
+    );
+
+    // Template genuinely changed AND consumer drifted → real conflict, not a silent overwrite.
+    expect(result.conflicts.map((c) => c.relPath)).toContain(".mcp.json");
+    // Consumer's edit preserved (never clobbered).
+    expect(fs.readFileSync(path.join(tmpDir, ".mcp.json"), "utf-8")).toBe(consumerMcp);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #255 follow-up — upgrade must not force-create uninstalled host/tooling modules
+//
+// Post-#252 claude/cursor/ci/lint/git-hooks are each separately installable. The upgrade
+// template walk used to seed EVERY non-opt-in template, so a `--claude`-only consumer got
+// cursor/ci/lint/git-hooks FILES on upgrade — but not the matching package.json scripts the
+// install modules inject — and `bkit check` then flagged that as drift (install↔upgrade
+// divergence). The walk is now gated on sentinel-detected installation.
+// ---------------------------------------------------------------------------
+
+describe("#255 follow-up — upgrade does not force-create uninstalled host/tooling modules", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("claude-only install → upgrade seeds no cursor/ci/lint/git-hooks files, and check stays clean", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    expect(runCli(["install", "--claude", "--tracker=github"]).status).toBe(0);
+    // claude files present; uninstalled-module sentinels absent after a claude-only install.
+    expect(fs.existsSync(path.join(tmpDir, ".mcp.json"))).toBe(true);
+    const uninstalledModuleFiles = [
+      ".cursor/mcp.json",
+      ".cursor/settings.json",
+      ".github/workflows/ci.yml",
+      ".vale.ini",
+      ".husky/pre-commit",
+    ];
+    for (const f of uninstalledModuleFiles) {
+      expect(fs.existsSync(path.join(tmpDir, f))).toBe(false);
+    }
+
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status).toBe(0);
+
+    // Upgrade did NOT force-create files for modules the consumer never installed.
+    for (const f of uninstalledModuleFiles) {
+      expect(fs.existsSync(path.join(tmpDir, f))).toBe(false);
+    }
+    // The walk still ran for installed modules + core (proves it isn't a blanket no-op).
+    expect(fs.existsSync(path.join(tmpDir, ".gitignore"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".mcp.json"))).toBe(true);
+
+    // No install↔upgrade divergence: check is clean after the upgrade.
+    const check = runCli(["check"]);
+    expect(check.status).toBe(0);
+    expect(check.stdout).toContain("0 write(s) would occur");
   });
 });

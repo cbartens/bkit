@@ -100,7 +100,21 @@ function _stripScope(consumer, template) {
  */
 export function buildDecisionTable(modules, ctx) {
     const moduleList = modules instanceof Set
-        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m))
+        ? [...modules].filter((m) => 
+        // Include the opt-in add-ons (renovate/dependabot/cloud) too — a Set caller passing
+        // them must not have them silently dropped (zero-footprint trap). (#255 P3)
+        [
+            "core",
+            "claude",
+            "cursor",
+            "ci",
+            "lint",
+            "git-hooks",
+            "opencode",
+            "renovate",
+            "dependabot",
+            "cloud",
+        ].includes(m))
         : modules;
     const entries = getInstallManifest(moduleList);
     // Read tier3Hashes from .bkit-version
@@ -183,7 +197,7 @@ export function buildDecisionTable(modules, ctx) {
                     table.push({
                         file: entry.path,
                         decision: "skip-tier3-unknown",
-                        reason: "byte-equal-text: no recorded hash (install pre-dates v0.7.x) — preserve",
+                        reason: "byte-equal-text: no recorded install-time hash — preserve (consumer may have modified it)",
                         format: "byte-equal-text",
                     });
                 }
@@ -256,7 +270,21 @@ export async function runUninstall(modules, ctx) {
         dryRun: ctx.dryRun,
     };
     const moduleList = modules instanceof Set
-        ? [...modules].filter((m) => ["core", "claude", "cursor", "ci", "lint", "git-hooks"].includes(m))
+        ? [...modules].filter((m) => 
+        // Include the opt-in add-ons (renovate/dependabot/cloud) too — a Set caller passing
+        // them must not have them silently dropped (zero-footprint trap). (#255 P3)
+        [
+            "core",
+            "claude",
+            "cursor",
+            "ci",
+            "lint",
+            "git-hooks",
+            "opencode",
+            "renovate",
+            "dependabot",
+            "cloud",
+        ].includes(m))
         : modules;
     // Nuke confirmation
     if (ctx.nuke && !ctx.yes && !ctx.dryRun) {
@@ -341,8 +369,18 @@ export async function runUninstall(modules, ctx) {
                             const content = fs.readFileSync(absPath, "utf-8");
                             const style = detectMarkerStyle(content) ?? "html-comment";
                             const stripped = stripManagedBlock(content, style);
-                            if (stripped.trim().length === 0) {
-                                // File is now empty → delete it
+                            // A bkit-seeded markdown file (AGENTS.md, CLAUDE.md) keeps its `# Title` H1
+                            // OUTSIDE the bkit block, so a plain strip leaves a content-free husk like
+                            // `# AGENTS.md\n` rather than deleting the file. Treat a markdown file reduced to
+                            // a lone ATX heading (its only non-blank line) as a husk and delete it. Scoped to
+                            // .md/.mdc so shell/gitignore residue (a lone `# comment`) is never affected, and a
+                            // multi-line residual (e.g. prompts.md's consumer `## Model Overrides`) is preserved.
+                            // (#255 P2-15)
+                            const nonBlank = stripped.split("\n").filter((l) => l.trim().length > 0);
+                            const isMarkdown = /\.mdc?$/.test(summary.file);
+                            const isLoneHeadingHusk = isMarkdown && nonBlank.length === 1 && /^#{1,6}\s+\S/.test(nonBlank[0].trim());
+                            if (stripped.trim().length === 0 || isLoneHeadingHusk) {
+                                // File is now empty (or a bkit-seeded heading husk) → delete it
                                 fs.rmSync(absPath, { force: true });
                                 result.deleted.push(summary.file);
                                 console.log(`${ctx.logPrefix} delete (empty after strip): ${summary.file}`);
@@ -384,9 +422,18 @@ export async function runUninstall(modules, ctx) {
         }
     }
     // Clean up .agents/ bkit-prefix mirror files
-    // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, etc.)
+    // (.claude/commands/bkit-*.md, .claude/agents/bkit-*.md, .opencode/agents/bkit-*.md, etc.)
     if (!ctx.dryRun) {
-        const mirrorDirs = [".claude/commands", ".claude/agents", ".cursor/commands", ".cursor/agents"];
+        const mirrorDirs = [
+            // Each host's mirror dirs are gated on its own module so a targeted
+            // uninstall (e.g. --tooling / --dependency / --auto) leaves other hosts
+            // untouched — symmetric with install. A bare/full uninstall populates
+            // moduleList with every host, so all mirrors are still swept then.
+            ...(moduleList.includes("claude") ? [".claude/commands", ".claude/agents"] : []),
+            ...(moduleList.includes("cursor") ? [".cursor/commands", ".cursor/agents"] : []),
+            // opencode mirrors (plural dir names per opencode.ai/docs)
+            ...(moduleList.includes("opencode") ? [".opencode/agents", ".opencode/commands"] : []),
+        ];
         for (const dir of mirrorDirs) {
             const absDir = path.join(ctx.cwd, dir);
             if (!fs.existsSync(absDir))

@@ -26,19 +26,19 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 > - **Subagents:** Invoke using `@name` with `Agent` tool. Orchestrator provides context; subagent executes and writes directly. **PROHIBITED:** Inlining subagent steps or producing output directly (same artifact) is NOT compliance.
 > - **Tools:** Verify every return, do NOT assume success.
 > - **Worktree:** Setup `cd`s into `.worktrees/{FID}`; cwd persists across subsequent Bash calls. **If** step ever finds `pwd` outside worktree → **Failure Path**.
-> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, `git push --force` (any flavour). Pre `git push`: assert `{BRANCH}` non-empty.
+> - **Git:** Orchestrator commits right after every subgent return; subagents do NOT commit. NEVER stage `.DS_Store`, `*.log`, editor swaps, `node_modules/`; NEVER use `--no-verify`. Destructive git **PROHIBITED:** `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean`, `git rebase -i`, `git stash drop`, bare `git push --force`, and ANY force-push to `dev`/`main`. **ALLOWED** as the Step 2 rebase companion: `git push --force-with-lease` to the personal `feat/{FID}`/`fix/{FID}` branch ONLY (the Step 2 `git rebase origin/dev` rewrites SHAs, so a plain push is non-fast-forward; mirrors `rules.md` § Force push). Pre `git push`: assert `{BRANCH}` non-empty; never force-push a shared branch.
 
 <!-- bkit:tracker github start -->
 
 > - **Tracker:** GitHub Issues via MCP server `github` (configured in `.mcp.json` `mcpServers.github`). Tool names: `mcp__github__issue_read` (methods: `get`, `get_comments`, `get_labels`), `mcp__github__issue_write` (methods: `create`, `update`), `mcp__github__add_issue_comment`, `mcp__github__list_issues`, `mcp__github__projects_write` (methods `add_project_item` / `update_project_item`), `mcp__github__projects_list` (method `list_project_items`) — projects tools require the `projects` toolset enabled in `.mcp.json` (`X-MCP-Toolsets`) + `package.json` `bkit.githubProject` config; absent either → board status sync silently skipped. All writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__github__add_issue_comment`. NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. Comment ID tracking NOT required.
 
 <!-- bkit:tracker github end -->
 <!-- bkit:tracker linear start -->
 
 > - **Tracker:** Linear via MCP server `linear` (configured in `.mcp.json` `mcpServers.linear`). Tool names: `mcp__linear__get_issue`, `mcp__linear__save_issue`, `mcp__linear__save_comment`, `mcp__linear__list_comments`, `mcp__linear__list_issues`. All `save_*` writes best-effort; NEVER gate. **If** failure → retry once after 5s, then continue.
-> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-cloud trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
+> - **Labels:** Phase labels `bkit:design`, `bkit:plan`, `bkit:build`, `bkit:debug`, `bkit:ship`, `bkit:merged` (mutually exclusive — drop old phase before adding new). Additive labels: `bkit:auto` (bkit-auto trigger gate), `bkit:failed` (Failure Path), `bkit:debug` (Debug workflow active, additive — phase label persists).
 > - **Comments:** NEW comment per workflow step via `mcp__linear__save_comment` (with `issueId`, no `id` — creates new comment). NEVER edit, paraphrase, summarise, truncate, deduplicate, or reorder prior content. No edit-in-place.
 
 <!-- bkit:tracker linear end -->
@@ -94,7 +94,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): debug aborted bkit [skip build] bkit [skip ci]"`.
-10. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)` — if push fails, do not claim success on the tracker.
+10. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — if push fails, do not claim success on the tracker.
 11. <!-- bkit:tracker github start -->
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     <!-- bkit:tracker github end -->
@@ -183,7 +183,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 8. Decide `DEBUG_MODE`:
    - Default `DEBUG_MODE` = NORMAL.
    - **If** `DEBUG_ATTEMPT` >= `MAX_DEBUG_ATTEMPT` **or** `[soak]` in session prompt → `DEBUG_MODE` = SOAK.
-   - On resume, `DEBUG_MODE` = SOAK if any `debug-soak` step is recorded for the current `DEBUG_ATTEMPT` (a prior mid-run switch is sticky); else per the rule above.
+   - On resume, **if** any `debug-failure-soak` step is recorded for the current `DEBUG_ATTEMPT` → `DEBUG_MODE` = SOAK.
 9. **If** existing `docs/plans/{YYYYMM}/{FID}-plan.md` → reuse `FID` and `docs/plans/{YYYYMM}/logs/{FID}/`.
 10. **If** NO `FID` → create `FID` from `{ISSUE_ID}` + kebab from title, no stopwords, <=3 tokens, lowercase; one `FID` for all artifacts once set.
     <!-- bkit:tracker github start -->
@@ -698,21 +698,21 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 **Run only if** `DEBUG_MODE` = SOAK.
 
 1. Increment `SOAK_ATTEMPT` + 1.
-2. **Subagent:** Invoke `@bkit-debug-soak` using `Agent` tool:
+2. **Subagent:** Invoke `@bkit-debug-failure-soak` using `Agent` tool:
    Context: You are a subagent in the Debug phase. Switch into working directory `cd "{WORKTREE_PATH}"` → verify with `pwd` → use for all subsequent file operations.
-   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-soak-*-log.md`.
+   Read: `docs/plans/{YYYYMM}/logs/{FID}/status.jsonl`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-input-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-context-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-diagnose-*.md`, glob `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-*-log.md`.
    Update: Source files.
-   Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-soak-{NORMAL_ATTEMPT}-log.md`.
+   Create: `docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-{NORMAL_ATTEMPT}-log.md`.
 3. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
-4. Read `debug-soak-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `SOAK_VERDICT`.
+4. Read `debug-failure-soak-{NORMAL_ATTEMPT}-log.md` until `<!-- verdict:end -->` → extract `Verdict` as `SOAK_VERDICT`.
 5. Update status and commit:
    ```bash
    STATUS="$(git rev-parse --show-toplevel)/docs/plans/{YYYYMM}/logs/{FID}/status.jsonl"
    PARENT_SHA=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SOAK_VERDICT" --argjson a "$NORMAL_ATTEMPT" --argjson sa "$SOAK_ATTEMPT" \
-     '{type:"step-done", workflow:"debug", step:"debug-soak", status:"DONE", verdict:$v, attempt:$a, soakAttempt:$sa, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-soak-'"${NORMAL_ATTEMPT}"'-log.md"]}' \
+     '{type:"step-done", workflow:"debug", step:"debug-failure-soak", status:"DONE", verdict:$v, attempt:$a, soakAttempt:$sa, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-'"${NORMAL_ATTEMPT}"'-log.md"]}' \
      >> "$STATUS"
-   FIX_DESC=$(grep -m1 '^DONE' "docs/plans/{YYYYMM}/logs/{FID}/debug-soak-${NORMAL_ATTEMPT}-log.md" 2>/dev/null \
+   FIX_DESC=$(grep -m1 '^DONE' "docs/plans/{YYYYMM}/logs/{FID}/debug-failure-soak-${NORMAL_ATTEMPT}-log.md" 2>/dev/null \
      | sed -E 's/^DONE[^:]*: //; s/ — .*$//' \
      | tr -d '\r\n`"\\' \
      | sed -E 's/[[:space:]]+$//' \
@@ -738,12 +738,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 ### 🔒 Gate 7 — Failure Remediate Soak
 
 - [ ] Soak iteration counter incremented (`SOAK_ATTEMPT` + 1, bounded by `MAX_SOAK_ATTEMPT`)
-- [ ] Subagent invoked (`@bkit-debug-soak`, one accumulating context reading prior soak logs, no inline work)
-- [ ] Artifact written (`debug-soak-{NORMAL_ATTEMPT}-log.md`, non-empty)
+- [ ] Subagent invoked (`@bkit-debug-failure-soak`, one accumulating context reading prior soak logs, no inline work)
+- [ ] Artifact written (`debug-failure-soak-{NORMAL_ATTEMPT}-log.md`, non-empty)
 - [ ] Source files modified
 - [ ] Verdict extracted and valid (`SOAK_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Fix committed as `fix({FID}): soak {description}`
-- [ ] Workflow status updated (step `debug-soak` recorded with `parentSha`, `verdict`, `soakAttempt`)
+- [ ] Workflow status updated (step `debug-failure-soak` recorded with `parentSha`, `verdict`, `soakAttempt`)
 <!-- bkit:tracker true start -->
 - [ ] Issue comment attempted (`Step 7` section)
 <!-- bkit:tracker true end -->
@@ -772,7 +772,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      esac
    fi
    ```
-3. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+3. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
 4. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -817,7 +817,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    git add -A && git commit --allow-empty -m "chore({FID}): summary${VERBOSE_SUFFIX}"
    ```
-5. Assert `{BRANCH}` non-empty. `git push origin $(git branch --show-current)`.
+5. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
 6. <!-- bkit:tracker github start -->
    `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    <!-- bkit:tracker github end -->
@@ -898,7 +898,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
-   git push origin "$(git branch --show-current)"
+   B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
 4. Capture branch state:
    ```bash
@@ -946,15 +946,15 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
      echo "HEAD-Subject Assertion FAILED: create-pr HEAD message contains a CI-suppressing token." >&2; exit 1
    fi
-   git push origin "$(git branch --show-current)"
+   B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
    ```
 10. <!-- bkit:tracker github start -->
 
-    No issue-state change.
+    No issue changes.
     <!-- bkit:tracker github end -->
     <!-- bkit:tracker linear start -->
 
-    Hand-off state for design/plan/build/debug close → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review", labels: [{LABELS}] })` (`{LABELS}` unchanged — phase label preserved).
+    Update state ONLY; do NOT change labels → `mcp__linear__save_issue({ id: "{ISSUE_ID}", state: "In Review" })`.
     <!-- bkit:tracker linear end -->
     <!-- bkit:tracker github start -->
 
@@ -1037,7 +1037,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
 <!-- bkit:tracker true start -->
-- [ ] Issue update attempted (phase label `bkit:debug` preserved, status/state `In Review`)
+- [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
 - [ ] Issue comment attempted (`Step 10` section)

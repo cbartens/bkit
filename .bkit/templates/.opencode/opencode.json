@@ -1,0 +1,55 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "task": "allow",
+    "bash": {
+      "*": "allow",
+      "sudo *": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
+      "brew install*": "ask",
+      "pnpm publish*": "ask",
+      "npm publish*": "ask",
+      "bun publish*": "ask",
+      "git reset --hard*": "ask",
+      "git clean -fd*": "ask",
+      "git filter-branch*": "ask",
+      "git checkout -- .*": "ask",
+      "git restore .*": "ask",
+      "git stash drop*": "ask",
+      "git rebase -i*": "ask",
+      "gh repo delete*": "ask",
+      "gh pr close*": "ask",
+      "gh release delete*": "ask",
+      "vercel rm*": "ask",
+      "vercel remove*": "ask",
+      "supabase db reset*": "ask",
+      "supabase projects delete*": "ask",
+      "chmod -R 777 /*": "deny",
+      "rm -rf /*": "deny",
+      "rm -rf ~/*": "deny",
+      "rm -rf $HOME/*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push --force-with-lease*": "allow"
+    }
+  },
+  "mcp": {
+    "@@OPENCODE_TRACKER_MCP@@": {}
+  },
+  "plugin": [".opencode/plugin/gateguard.js"],
+  "provider": {
+    "@@OPENCODE_PROVIDER_KEY@@": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "@@OPENCODE_PROVIDER_KEY@@",
+      "options": {
+        "baseURL": "@@OPENCODE_PROVIDER_BASE_URL@@",
+        "apiKey": "{env:@@OPENCODE_PROVIDER_ENV_VAR@@}"
+      }
+    }
+  }
+}

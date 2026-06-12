@@ -6,6 +6,33 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.0.0] — 2026-06-11
+
+CLI surface redesign ([#252](https://github.com/cbartens/bkit/issues/252)) — a **breaking change** to `bkit install`. The implicit `install → --full` default is gone: the host/module axis is now explicit and required, the granular tooling flags collapse to one `--tooling` bundle, and the deprecated flag aliases are removed. Internal module identities (`ci`/`lint`/`git-hooks`/`renovate`/`dependabot`/`cloud`) and the install dispatch engine are unchanged — the change lives in the parse + ownership layers. The shipped CI gate (`bkit check`, run bare) is unaffected.
+
+### Added
+
+- **Managed-version marker on every rendered prompt/workflow ([#256](https://github.com/cbartens/bkit/issues/256)).** `bkit install` / `bkit upgrade` now stamp an inert `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`comment into every rendered agent + command across`.claude/`, `.cursor/`, and `.opencode/`(after the frontmatter, one blank line below; at file top for cursor/opencode commands whose frontmatter is stripped). The marker is injected at render time — the`.bkit/prompts/_`and`.bkit/workflows/_`sources stay version-agnostic, so there are no per-release template edits.`bkit check`now **hard-fails** (new`bkit-rendered-prompts-stale`blocker) when any rendered marker drifts from the installed bkit version, so a consumer who bumps`@cbartens/bkit`without re-rendering — or hand-edits a managed mirror — can never silently run outdated prompts/workflows. Recovery:`pnpm bkit upgrade`(or re-run`bkit install`) re-stamps everything.
+
+### Changed (breaking)
+
+- **`bkit install` now requires at least one module flag — a bare `bkit install` errors.** Name what to install: `--claude`, `--cursor`, `--opencode=<provider>`, `--tooling` (plus the opt-ins `--dependency=<renovate|dependabot>`, `--auto=<claude|cursor>`). Hosts compose: `bkit install --claude --cursor --opencode=nvidia`. Core (the stack-agnostic foundation: `AGENTS.md`, `.agents/`, `.gitignore`/`.gitattributes`, `docs/`, `.bkit/*.md`, `.bkit/version`) is **implicit** on every install — there is no `--core` flag.
+- **`--ci` / `--lint` / `--git-hooks` collapse to a single `--tooling` flag** (the interdependent bundle: husky hooks run vale/slop; CI runs lint+check). Symmetric across install ↔ uninstall; `--keep-tooling` is unchanged.
+- **`bkit check` and `bkit upgrade` take no module flags** — both operate on everything already installed. `check` now scopes drift detection to the installed host/tooling set (a `--cursor`-only repo no longer reports `.claude/**` as drift). A stray module flag is a hard error pointing to the no-flag form. `bkit upgrade` gains `--auto-apply` (renamed from `--non-interactive`).
+- **`CLAUDE.md` ownership moved from core → the `claude` module.** It is a Claude-Code-only root redirect to `.agents/rules.md` — the exact analog of Cursor's `.cursor/rules/00-shared-rules.mdc` (which ships with `--cursor`). `bkit install --claude` ships it; a `--cursor`-only install ships none; `bkit uninstall --claude` removes it. `AGENTS.md` (the cross-host dispatch router) stays core.
+- **Tracker switching is now free.** Install `--force` (the tracker-switch override) is dropped; a `--tracker=` value always applies, first-set or re-set. `--force` remains an uninstall flag (force-delete consumer-modified Tier-3 files).
+
+### Removed
+
+- **Dropped flags (now rejected as `Unknown flag`):** `--full`, `--core`, `--ci`, `--lint`, `--git-hooks`, the bare `--renovate` / `--dependabot` aliases (use `--dependency=<name>`), `--cloud` / `--cloud=<variant>` (use `--auto` / `--auto=<variant>`), and install `--force`. `--non-interactive` is renamed to `--auto-apply`.
+
+### Notes
+
+- **Legacy `CLAUDE.md` orphan:** a pre-4.0 `--cursor`-only consumer that carries a core-written `CLAUDE.md` keeps it as a harmless orphan after upgrade — core no longer manages it and (no claude) nothing re-manages it. It is a 2-line redirect; delete it manually if unwanted.
+- Hand-written consumer scripts that called `bkit install --full` / `--ci` / `--renovate` / `--cloud=…` now error — update them to the new spellings above. Shipped consumer CI is safe (it runs bare `bkit check`).
+
+---
+
 ## [3.4.2] — 2026-06-08
 
 Adds a template-reference pointer to every advisory surface so agents acting on findings can immediately locate the canonical bkit-managed files without spelunking `node_modules`.

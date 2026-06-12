@@ -63,7 +63,7 @@
 - **Category:** integrations
 - **Symptom:** A newly added integration config (`renovate.json5`, `dependabot.yml`, a branch-protection-scoped check, etc.) appears inert, or the App's onboarding PR opens against the wrong base branch / ungrouped / with a redundant root config — because the file was committed on a feature or integration branch but not yet merged to the default branch.
 - **Root cause:** GitHub Apps and most CI integrations resolve their configuration from the repository's DEFAULT branch at install/scan time, not from the branch where the file was committed. bkit consumers gate the default branch to PRs-from-integration-branch-only, so the config must travel through to the default branch before the integration can see it. Activating the App first makes it scan a branch that has no config yet.
-- **Fix or rule:** Land the config on the default branch FIRST (merge it through your integration branch → default), THEN install/activate the App. `bkit install --renovate` enforces this with a two-phase flow: Phase A writes the file and prompts you to merge it to the default branch; Phase B (re-run after the merge) detects it on the remote default branch, then prints the App install URL + activation checklist. The same ordering applies to Dependabot and any default-branch-scoped integration. See `deployments.md` § GitHub Actions pinning. **Renovate-specific:** the default-branch read applies to _ongoing_ config edits too, not just first activation — an edit to `renovate.json5` on `dev` is invisible until merged to `main`. bkit ships `useBaseBranchConfig: "merge"` so dev-side edits are honored for dev-targeted runs, but that option is itself read from `main` and needs one bootstrap merge to `main` before it takes effect.
+- **Fix or rule:** Land the config on the default branch FIRST (merge it through your integration branch → default), THEN install/activate the App. `bkit install --dependency=renovate` enforces this with a two-phase flow: Phase A writes the file and prompts you to merge it to the default branch; Phase B (re-run after the merge) detects it on the remote default branch, then prints the App install URL + activation checklist. The same ordering applies to Dependabot and any default-branch-scoped integration. See `deployments.md` § GitHub Actions pinning. **Renovate-specific:** the default-branch read applies to _ongoing_ config edits too, not just first activation — an edit to `renovate.json5` on `dev` is invisible until merged to `main`. bkit ships `useBaseBranchConfig: "merge"` so dev-side edits are honored for dev-targeted runs, but that option is itself read from `main` and needs one bootstrap merge to `main` before it takes effect.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
@@ -137,7 +137,7 @@
 - **Category:** infra
 - **Symptom:** OpenSSF Scorecard flags floating action major-version refs (e.g. `actions/checkout@v4`) in publishing workflows. A compromised upstream action or malicious tag re-point executes attacker code in a job with `packages: write` on `GITHUB_TOKEN`.
 - **Root cause:** `@v4` resolves to whichever commit the upstream `v4` tag points to at run time. Tag re-pointing is possible for any action maintainer and is the primary supply-chain vector.
-- **Fix or rule:** Pin `uses:` to a full 40-character commit SHA with a `# vX.Y.Z` comment. Use `git ls-remote https://github.com/<org>/<action>.git 'refs/tags/vX.Y.Z'` to get the tag SHA. Re-pin manually, or automatically if you opt into an updater: `bkit install --renovate` (the shipped `renovate.json5` runs `github-actions` weekly with `pinDigests: true`) or `bkit install --dependabot`. Both are opt-in (mutually exclusive); bkit does not ship either by default. Apply to ALL jobs with elevated permissions (`packages: write`, `id-token: write`, etc.).
+- **Fix or rule:** Pin `uses:` to a full 40-character commit SHA with a `# vX.Y.Z` comment. Use `git ls-remote https://github.com/<org>/<action>.git 'refs/tags/vX.Y.Z'` to get the tag SHA. Re-pin manually, or automatically if you opt into an updater: `bkit install --dependency=renovate` (the shipped `renovate.json5` runs `github-actions` weekly with `pinDigests: true`) or `bkit install --dependabot`. Both are opt-in (mutually exclusive); bkit does not ship either by default. Apply to ALL jobs with elevated permissions (`packages: write`, `id-token: write`, etc.).
 - **Type:** pattern
 - **Confidence:** high
 - **Severity:** normal
@@ -524,3 +524,104 @@
 - **Severity:** medium (spurious local pre-push FAIL for any consumer with build artifacts in the tree; the consumer-side ignore unblocks immediately; never ships bad code)
 - **Source:** consumer dogfood feedback
 - **Related:** #226, `scripts/tooling/slop-delta.sh`, `slop-scan.config.json`
+
+## KN-33: `installFile`-based agent/command writes are NOT recorded in `ws.writes` — parity tests must use disk presence, not writeset, for these paths (2026-06-10)
+
+- **Symptom:** A test asserting `ws.writes.filter(w => w.path.includes(".opencode/agent"))` returns zero entries even after a successful `runOpencodeModule` install. Same issue for `.claude/agents`, `.cursor/agents`, `.claude/commands`, `.cursor/commands`.
+- **Root cause:** `installFile()` in `bkit-modules.ts` does not push to `ctx.ws.writes` — it returns a boolean (written/skipped) and the caller logs to console. Only the tier-writer functions (`writeTier1`, `writeTier2JsonContained`, `writeTier3`) record to `ws.writes`. The WriteSet is for tier-managed, reconverged files (JSON configs, byte-equal scripts, markered-text blocks), not the dynamic agent/command mirror dirs.
+- **Fix or rule:** When testing agent/command file count or content after a module install: assert `fs.readdirSync(dir).filter(f => f.endsWith('.md'))` on the destination dir, NOT `ws.writes`. The dry-run parity test (`bkit-dry-run-parity.integration.test.ts`) correctly covers only tier-writer paths (opencode.json + gateguard.js for the opencode module). Agent/command dry-run correctness is exercised by checking no `.md` files exist on disk after dry-run dispatch.
+- **Type:** trap
+- **Confidence:** high (reproduced in test authoring for opencode module, consistent with claude/cursor module behaviour)
+- **Severity:** low (test authoring trap only — does not affect production behaviour)
+- **Source:** #245 sub-plan 2 gap-remediate
+
+## KN-34: opencode spec churn — pin the probed version, not a naive next-digit bump (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading opencode or updating `opencode.json`, agents fail to launch or plugin API calls are rejected with schema errors.
+- **Root cause:** opencode's plugin spec, frontmatter fields (`reasoningEffort`, provider config shape), and command-file syntax change between releases without a stable semver contract. Naively bumping a version number or copying from release notes produces configs that may never have existed in the actual binary.
+- **Fix or rule:** Probe the installed opencode binary for its supported field names and plugin API shape before updating `opencode.json`. Read `.opencode/opencode.json` against the opencode docs for the version that `opencode --version` reports. When in doubt, copy from a fresh `opencode init` output with that version, not from examples in issues or READMEs that may lag the release.
+- **Type:** gotcha
+- **Confidence:** medium (observed during #245 spike; spec drift confirmed across minor releases)
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-modules.ts` (applyOpencodeAgent transform), spike-verdict.md
+
+## KN-35: GateGuard subagent-exemption mechanism differs between Claude and opencode (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** On Claude, GateGuard's subagent-exemption (skip advisory when `agent_id` is present) fires correctly. On opencode, the equivalent exemption may not fire — GateGuard runs against every file edit including sub-agent dispatches.
+- **Root cause:** Claude's PreToolUse hook payload includes `agent_id` when the hook fires inside a subagent context; `gateguard.cjs` reads this field to suppress the advisory. opencode's plugin API provides a different event payload shape — the field name (if any) that indicates subagent context is not the same as Claude's. The opencode plugin (`gateguard.js`) must use the opencode-specific mechanism, which may not be present in all plugin API versions.
+- **Fix or rule:** Validate the opencode plugin's subagent-detection against the installed opencode version's plugin API spec before relying on it. If the opencode API lacks a reliable subagent indicator, gate the advisory behind a more conservative heuristic (e.g. trust file count per session as a proxy). Do not assume parity with Claude's payload shape.
+- **Type:** gotcha
+- **Confidence:** medium (identified from spec review; not yet empirically verified post-spike)
+- **Severity:** low (advisory suppression failure = extra noise, not a functional regression)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.opencode/plugin/gateguard.js`, `.claude/hooks/gateguard.cjs`
+
+## KN-36: Tier-3 seed-or-print upgrade-reach gap — deleting `bkit-mode.sh` does NOT reach seeded consumer copies (2026-06-10)
+
+- **Category:** agentic
+- **Symptom:** After upgrading bkit to a version that no longer ships `.bkit/scripts/bkit-mode.sh`, every prior consumer still has the file on disk. The upgrade silently leaves the orphan in place. Worse, the file's shell-function shim (`bkit()`) is still sourced from `~/.zshrc` / `~/.bashrc`, causing a broken `source` error in every new terminal after the file is eventually deleted.
+- **Root cause:** `.bkit/scripts/bkit-mode.sh` was Tier-3 seed-or-print. Tier-3 files are written once when absent; on upgrade, bkit checks if the template still exists and skips if the template is gone. There is no deletion step — the consumer copy is abandoned without notice (mirrors KN-17 for `bkit-mode.sh`).
+- **Fix or rule:** Any Tier-3 file that is retired must be paired with an upgrade-migration drift-detect advisory in `runClaudeModule` (or the owning module) that: (1) detects the orphan on disk, (2) emits an advisory telling the consumer to delete the file, (3) explicitly names the shell-rc source line to remove (if applicable), and (4) points at the replacement workflow. Implemented for `bkit-mode.sh` in `bkit-modules.ts` via the `bkit-mode-sh-deletion-required` advisory. Also: the `CORE_TEMPLATE_PATH_EXCLUDE` and `PAYLOAD_SKIP_BKIT_SCRIPTS` sets must remove the entry to avoid the `installFile` short-circuit guard from hiding the advisory path.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical (broken `source` call in every new shell = user-visible error)
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, KN-17, `.bkit/src/bkit-modules.ts` (bkit-mode-sh-deletion-required advisory), DE-27
+
+## KN-37: GHA workflow injection — never expand context outputs inside `run:` shell strings (2026-06-10)
+
+- **Category:** security
+- **Symptom:** `opencode run "/bkit-auto ${{ steps.ctx.outputs.phase }} ${{ steps.ctx.outputs.arg }}"` expands before the shell runs; a crafted issue number (e.g. `"; malicious-cmd"`) becomes a shell argument.
+- **Root cause:** GitHub Actions expressions (`${{ }}`) are string-interpolated into YAML by the runner before bash executes — they bypass shell quoting. Any step that accepts free-text inputs (workflow_dispatch `type: string`, PR titles, issue numbers) is a sink.
+- **Fix or rule:** Pass dynamic values via `env:` entries (e.g. `BKIT_PHASE`, `BKIT_ARG`) and reference via `$VAR` in the `run:` body. Combine with an allowlist regex guard on the env var before use. Implemented in `.bkit/templates/.github/workflows/bkit-cloud.yml` opencode job (#245 Fix 1 + Fix 2).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/templates/.github/workflows/bkit-cloud.yml`
+
+## KN-38: Orphan-cleanup must be gated on replacement presence (2026-06-10)
+
+- **Category:** infra
+- **Symptom:** `bkit install` (no `--cloud` flag) runs the upgrade-orphan block that deletes `bkit-auto.yml` without installing `bkit-cloud.yml`, leaving the consumer with no cloud workflow at all.
+- **Root cause:** The delete guard only checked `fs.existsSync(oldAutoWorkflow)`, not whether the replacement was arriving in the same run.
+- **Fix or rule:** Gate orphan deletion on `fs.existsSync(newCloudWorkflow) || candidates.some(c => c.relPath === "...bkit-cloud.yml")`. Implemented in `bkit-install.ts` (#245 Fix 4).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, `.bkit/src/bkit-install.ts`
+
+## KN-39: CI tool downloads flake on transient CDN blips — retry one-shot fetches, loop subcommand fetches (2026-06-11)
+
+- **Category:** infra
+- **Symptom:** `bkit-tests` goes red on a transient network/CDN hiccup while downloading a CI tool (vale tarball, actionlint binary, opencode installer) — a one-off failure with no code cause; a re-run is green.
+- **Root cause:** A one-shot `curl` with no retry dies on the first blip. For a fetch buried inside a tool subcommand (`vale sync` pulling styles) or a third-party installer script (`download-actionlint.bash` fetching the binary), there is no curl flag to harden — the bare invocation has no retry at all.
+- **Fix or rule:** One-shot `curl` → add `--retry 3 --retry-all-errors` (needs curl ≥ 7.71; ubuntu-latest 8.x and the Debian Dockerfile base are clear). Fetch inside a subcommand / 3rd-party script → wrap in a 3× retry-loop that `exit 1`s loudly after the last attempt (never a bare loop that swallows a persistent outage). Applied to `ci.yml`, `.cursor/Dockerfile`, `bkit-cloud.yml` (own + template) and the `cloud.md` setup script. Do NOT "simplify" the loops back to a single call.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #236, `.github/workflows/ci.yml`, `.bkit/templates/.cursor/Dockerfile`
+
+## KN-40: opencode zen gateway model IDs come from the live `/zen/v1/models`, not `/docs/zen` (2026-06-12)
+
+- **Category:** agentic
+- **Symptom:** Pinning zen (opencode-native gateway) models from the `https://opencode.ai/docs/zen` page would ship a non-existent id — the docs listed `qwen3.7-plus`/`qwen3.7-max`, but the live `https://opencode.ai/zen/v1/models` endpoint only had `qwen3.6-plus`. A pinned `opencode/qwen3.7-plus` fails at runtime.
+- **Root cause:** The docs page runs ahead of the deployed gateway. Same class as the Cursor model-ID lesson — probe the live API, never trust the stored/docs format.
+- **Fix or rule:** Always curate zen pins from `curl https://opencode.ai/zen/v1/models` (public, no auth; returns bare ids that opencode references as `opencode/<id>`), never the docs page. zen is managed-auth (`opencode auth login`) so bkit holds no key — the per-model agent-loop tool-call smoke is deferred to the consumer's login; document pins as **existence-validated** until then (a step above placeholders, honest about the unmet smoke).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** #245, DE-28, `.bkit/prompts.md` § Models (Zen column), `.bkit/providers.md` § Models, Cursor-live-API analog (#205).

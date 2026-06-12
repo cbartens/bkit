@@ -7,10 +7,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
-import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
-import { readBkitVersion, writeBkitVersion, hashFile } from "./bkit-version.js";
+import { writeTier1, writeTier2, writeTier3, writeTier2JsonContained, deepContains, deepMergeJson, migrateLegacyBkitEnvelope, ensurePackageJsonScripts, ensurePackageJsonDevDeps, } from "./bkit-tiers.js";
+import { readBkitVersion, writeBkitVersion, hashFile, stampManagedVersion, } from "./bkit-version.js";
 import { applyTokens } from "./bkit-tokens.js";
-import { runPayload, applyT1, applyT2, applyT3, remapTemplateDest } from "./bkit-install.js";
+import { runPayload, applyT1, applyT2, applyT3, applyOpencodeAgent, applyOpencodeCommand, remapTemplateDest, } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot, getWorkflowsRoot, getPromptsRoot, getBkitDocsRoot, } from "./bkit-paths.js";
 import { getInstallManifest, DEFAULT_ISSUE_TRACKER, } from "./bkit-manifest.js";
 import { substituteWorkflow } from "./bkit-trackers.js";
@@ -111,16 +111,21 @@ const CORE_TEMPLATE_DIRS = new Set(["docs", ".agents", ".bkit", "scripts"]);
 // Top-level template files (non-directory) that belong to core.
 // `gitignore` is stored dot-less (npm strips a literal `.gitignore`); `.gitattributes`
 // is stored with its dot (npm does not strip it) — see remapTemplateDest / NPM_STRIP_REMAP.
-const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "CLAUDE.md", "gitignore", ".gitattributes"]);
+// CLAUDE.md is NOT here (#252): it moved to the `claude` module (a Claude-Code-only root
+// redirect, the analog of Cursor's .cursor/rules/00-shared-rules.mdc) — runClaudeModule
+// emits it. AGENTS.md (cross-host dispatch router) stays core.
+const CORE_TEMPLATE_FILES = new Set(["AGENTS.md", "gitignore", ".gitattributes"]);
 // Files inside .agents/ subtemplate dir that are Tier 3 (seed-or-print) and are
 // owned by other modules — skip in the core Tier 2 templates pass to avoid
 // double-recording them in the WriteSet. These are written by their owning module.
 const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
-// Files that live under a core-owned template dir (e.g. `scripts/`) but are
-// actually owned by an OPT-IN module — skip in the core pass so they ship ONLY
-// when the consumer opts into that module, never on default `--full` install.
-// `bkit-set-dependabot.sh` ships via `bkit install --dependabot` only.
-const CORE_TEMPLATE_PATH_EXCLUDE = new Set([path.join("scripts", "ci", "bkit-set-dependabot.sh")]);
+// Files that live under a core-owned template dir (e.g. `.bkit/scripts/`) but are
+// NOT shipped by the plain core pass — skip them there so the right owner writes them:
+//   - `.bkit/scripts/bkit-set-dependabot.sh` ships via `bkit install --dependency=dependabot` only.
+// Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
+const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
+    path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
+]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
     ".github",
@@ -130,6 +135,7 @@ const NON_CORE_TEMPLATE_DIRS = new Set([
     ".prettierignore",
     ".cursor",
     ".claude",
+    ".opencode",
 ]);
 // ---------------------------------------------------------------------------
 // guardTemplatesRoot — fail-loud guard for the resolved templates root.
@@ -246,11 +252,14 @@ const COPY_EXCLUDE = new Set([
     // file already written by payload copy in live mode, skips its own write,
     // and dry-run vs install writesets diverge. Tier 3 owns this file.
     ".env.example",
+    // bkit-mode.sh was removed in #245 (opencode replaces the ccr router lane); this
+    // entry is kept as a guard to prevent any future accidental re-addition.
+    "bkit-mode.sh",
 ]);
 // Top-level `.agents/` files that bkit force-overwrites on install (copyAdditive's
 // default skip-if-exists is wrong for canonical bkit-owned content).
 //
-// Currently EMPTY: the former members (prompts.md, workflows.md, IDEs.md, cloud.md)
+// Currently EMPTY: the former members (prompts.md, workflows.md, providers.md, cloud.md)
 // are bkit-authoring docs / engine data that live package-side under `.bkit/` and
 // are read directly from there at runtime (getBkitDocsRoot). They are no longer
 // `.agents/` files at all, so there is nothing to force-overwrite HERE. Their
@@ -268,7 +277,7 @@ export const CANONICAL_OVERWRITE_RELPATHS = new Set([]);
 // artifact and `friction.md` is a consumer-owned seed — neither belongs here.)
 export const BKIT_CANONICAL_DOCS = [
     "cloud.md",
-    "IDEs.md",
+    "providers.md",
     "prompts.md",
     "trackers.md",
     "workflows.md",
@@ -281,6 +290,10 @@ export const BKIT_CANONICAL_DOCS = [
 export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
     const tag = dryRun ? "[dry-run] " : "";
     const docsRoot = getBkitDocsRoot();
+    // Per-doc write strategy from the manifest: markered-text docs (e.g. prompts.md,
+    // which carries the consumer-owned `## Model Overrides` section below `bkit:end`)
+    // are block-merged so consumer content survives; the rest are force-overwritten.
+    const formatByPath = new Map(getInstallManifest().map((e) => [e.path, e.format]));
     for (const name of BKIT_CANONICAL_DOCS) {
         const srcPath = path.join(docsRoot, name);
         // Defensive: a partial/corrupt package may be missing a doc — skip rather than
@@ -289,11 +302,226 @@ export function runBkitDocs(dryRun, tokens, ws, logPrefix) {
             continue;
         const dstPath = path.join(".bkit", name);
         const prevLen = ws.writes.length;
-        writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+        if (formatByPath.get(path.join(".bkit", name)) === "markered-text") {
+            writeTier2(srcPath, dstPath, tokens, "html-comment", dryRun, ws);
+        }
+        else {
+            writeTier1(srcPath, dstPath, tokens, dryRun, ws);
+        }
         if (ws.writes.length > prevLen) {
             console.log(`${logPrefix} ${tag}core: ${dstPath}`);
         }
     }
+}
+// ---------------------------------------------------------------------------
+// Source-rendered host outputs — agents (.agents/prompts source) and commands
+// (.bkit/workflows source). Extracted from the host module functions so BOTH
+// `bkit install` (via the modules) AND `bkit upgrade` (via renderManagedOutputs)
+// render them identically — a single source of truth that can never diverge.
+//
+// These are bkit-OWNED output files: force-overwritten (installFile), never
+// drift-detected, never consumer config. They are NOT recorded in canonicalHashes
+// (installFile does not touch ws), matching the install path exactly. Each returns
+// the consumer-relative dest paths it wrote (for the upgrade summary).
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Managed-version stamping (#256). The marker shape (stampManagedVersion +
+// regexes) is the single source of truth in bkit-version.ts so the renderer and
+// the `bkit check` detector can never drift. Here we only resolve WHICH version
+// to stamp: ctx.version (set by install/upgrade) with a package-root fallback.
+// ---------------------------------------------------------------------------
+/**
+ * Best-effort read of the installing bkit version from the package root's
+ * package.json. Mirrors getInstallingVersion in bkit-install.ts; duplicated here
+ * (not imported) to avoid a modules → install dependency cycle. Returns "0.0.0"
+ * when unreadable — the same non-fatal fallback the install side uses.
+ */
+export function readInstallingVersion() {
+    try {
+        const pkgPath = path.join(getPkgRoot(), "package.json");
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        return pkg.version ?? "0.0.0";
+    }
+    catch {
+        return "0.0.0";
+    }
+}
+export function renderClaudeAgentsCommands(ctx) {
+    const { dryRun, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
+    const written = [];
+    const pairs = [
+        [getWorkflowsRoot(), ".claude/commands"],
+        [getPromptsRoot(), ".claude/agents"],
+    ];
+    for (const [src, dest] of pairs) {
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            // Resolve tracker blocks for workflow files; prompts are byte-identical. The
+            // managed-version marker is stamped LAST so it lands after any frontmatter the
+            // transform produced (#256).
+            const transform = (c) => stampManagedVersion(dest === ".claude/commands" ? substituteWorkflow(c, issueTracker).output : c, version);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    return written;
+}
+export function renderCursorAgentsCommands(ctx) {
+    const { dryRun, modelLookup, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
+    const written = [];
+    // Commands: tracker block resolution → T1 → T2 → managed-version stamp (last, #256)
+    {
+        const src = getWorkflowsRoot();
+        const dest = ".cursor/commands";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => stampManagedVersion(applyT2(applyT1(substituteWorkflow(c, issueTracker).output)), version);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    // Agents: T3
+    {
+        const src = getPromptsRoot();
+        const dest = ".cursor/agents";
+        ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => stampManagedVersion(applyT3(c, modelLookup), version);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
+            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
+        }
+    }
+    return written;
+}
+export function renderOpencodeAgentsCommands(ctx) {
+    const { dryRun, opencodeModelLookup, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const version = ctx.version ?? readInstallingVersion();
+    const written = [];
+    // --- Agents: applyOpencodeAgent → managed-version stamp (last, #256) ---
+    {
+        const src = getPromptsRoot();
+        const dest = ".opencode/agents";
+        // dryRun-gated so `bkit check` stays read-only — installFile/removeOrphans below are
+        // already dryRun-guarded, so the dir is only needed for a real write (#255 #8).
+        if (!dryRun)
+            ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => stampManagedVersion(applyOpencodeAgent(c, opencodeModelLookup), version);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        // Remove orphan agent files (bkit-prefix only, no allowlist gate needed — .opencode/agents
+        // is a dynamic mirror dir like .claude/agents and .cursor/agents)
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    // --- Commands: tracker substitution + applyOpencodeCommand ---
+    {
+        const src = getWorkflowsRoot();
+        const dest = ".opencode/commands";
+        // dryRun-gated (see .opencode/agents above) — keep `bkit check` read-only (#255 #8).
+        if (!dryRun)
+            ensureDir(dest);
+        const files = listMdFiles(src, BKIT_PREFIX);
+        const sourceSet = new Set(files);
+        for (const f of files) {
+            const transform = (c) => stampManagedVersion(applyOpencodeCommand(substituteWorkflow(c, issueTracker).output), version);
+            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
+                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+                written.push(path.join(dest, f));
+            }
+        }
+        if (!dryRun && fs.existsSync(dest)) {
+            for (const f of fs.readdirSync(dest)) {
+                if (!f.endsWith(".md"))
+                    continue;
+                if (!f.startsWith(BKIT_PREFIX))
+                    continue;
+                if (!sourceSet.has(f)) {
+                    fs.rmSync(path.join(dest, f));
+                    console.log(`${logPrefix} delete orphan: ${path.join(dest, f)}`);
+                }
+            }
+        }
+    }
+    return written;
+}
+// ---------------------------------------------------------------------------
+// renderManagedOutputs — re-render the bkit-managed OUTPUT files that the
+// `bkit upgrade` template walk (runUpgrade over .bkit/templates/) does NOT cover
+// (#251): host agents/commands (source-rendered) and the `.bkit/*.md` canonical
+// docs (runBkitDocs). All are bkit-owned, not consumer config, so a version bump
+// must refresh them. `.bkit/prompts.md` is markered → runBkitDocs block-merges it
+// (managed block refreshed, consumer `## Model Overrides` below bkit:end preserved).
+//
+// CRITICAL (#204/#219): docs stay single-source PACKAGE-side and are mirrored from
+// getBkitDocsRoot() — they are NEVER relocated into .bkit/templates/.
+//
+// Doc writes land in ctx.ws (runBkitDocs uses the tier writers) so the caller can
+// refresh their canonicalHashes; agent/command writes are intentionally NOT
+// ws-tracked (installFile), matching install — they never enter canonicalHashes.
+// `modules` should contain only hosts the consumer actually has installed.
+// Returns every consumer-relative path written (for the upgrade summary).
+// ---------------------------------------------------------------------------
+export function renderManagedOutputs(modules, ctx) {
+    const written = [];
+    // Canonical .bkit/*.md docs — always (core is always present once installed).
+    const docsBefore = ctx.ws.writes.length;
+    runBkitDocs(ctx.dryRun, ctx.tokens, ctx.ws, ctx.logPrefix);
+    for (let i = docsBefore; i < ctx.ws.writes.length; i++) {
+        written.push(String(ctx.ws.writes[i].path));
+    }
+    // Host agents/commands — only for hosts the consumer has installed.
+    if (modules.has("claude"))
+        written.push(...renderClaudeAgentsCommands(ctx));
+    if (modules.has("cursor"))
+        written.push(...renderCursorAgentsCommands(ctx));
+    if (modules.has("opencode"))
+        written.push(...renderOpencodeAgentsCommands(ctx));
+    return written;
 }
 function copyAdditive(src, dst, dryRun, log, relRoot) {
     let writes = 0;
@@ -476,7 +704,7 @@ export function runCoreModule(ctx) {
                 "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
                 "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
-                "`pnpm bkit install --full` to seed them all. Existing scripts are preserved\n" +
+                "`pnpm bkit install --tooling` to seed them all. Existing scripts are preserved\n" +
                 "(consumer values always win).",
         });
     }
@@ -489,25 +717,25 @@ export function runClaudeModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    const pairs = [
-        [getWorkflowsRoot(), ".claude/commands"],
-        [getPromptsRoot(), ".claude/agents"],
-    ];
-    for (const [src, dest] of pairs) {
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            // Resolve tracker blocks for workflow files; prompts are byte-identical.
-            const transform = dest === ".claude/commands"
-                ? (c) => substituteWorkflow(c, issueTracker).output
-                : null;
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
+    // Source-rendered agents/commands (.claude/agents from .bkit/prompts, .claude/commands
+    // from .bkit/workflows). Extracted to renderClaudeAgentsCommands so `bkit upgrade`
+    // re-renders them identically (#251) — bkit-owned output, force-overwritten.
+    renderClaudeAgentsCommands(ctx);
+    // Root CLAUDE.md — Claude-Code redirect to .agents/rules.md (#252: moved core → claude).
+    // It is a ROOT file (not under .claude/), so the .claude/ template walk does not cover it
+    // and core no longer emits it — the claude module writes it here. Tier-2 markered-text
+    // (writeTier2 html-comment), byte-identical to the prior core emit, so dogfood/upgrade
+    // stay no-op. The matching canonicalHashes entry is recorded by core's postDispatch from
+    // ws (which aggregates every module's writes), so version-pin bookkeeping is unchanged.
+    {
+        const src = path.join(getTemplatesRoot(), "CLAUDE.md");
+        const dst = "CLAUDE.md";
+        if (fs.existsSync(src)) {
+            const prevLen = ws.writes.length;
+            writeTier2(src, dst, tokens, "html-comment", dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}claude: ${dst}`);
             }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
         }
     }
     const claudeTemplates = path.join(getTemplatesRoot(), ".claude");
@@ -629,48 +857,43 @@ export function runClaudeModule(ctx) {
             }
         }
     }
+    // Task 6.3 — bkit-mode.sh deletion advisory (upgrade-migration drift detection).
+    // .bkit/scripts/bkit-mode.sh was a Tier-3 seed-or-print file (consumers edit it;
+    // upgrade never overwrites). Every prior consumer keeps a copy on disk even after
+    // upgrading to a bkit version that no longer ships the template. Detect the orphan
+    // and advise deletion — the opencode host (additive, via `bkit install --opencode=<provider>`)
+    // is the replacement; the `bkit mode` surface and ccr router are retired.
+    //
+    // The advisory explicitly names the shell-rc source line removal step because
+    // bkit-mode.sh installed a bkit() shell-function shim via `source .../bkit-mode.sh`
+    // in ~/.zshrc/~/.bashrc. Deleting the file without removing the source line leaves
+    // a broken source call that errors on every new shell.
+    {
+        const modeDst = ".bkit/scripts/bkit-mode.sh";
+        if (fs.existsSync(modeDst)) {
+            advisories.push({
+                id: "bkit-mode-sh-deletion-required",
+                severity: "advisory",
+                detect: ".bkit/scripts/bkit-mode.sh is present but is no longer managed by bkit. The `bkit mode` surface and the ccr router it depended on have been retired. Keeping this file creates a broken shell-rc source call on every new terminal.",
+                action: "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
+                    "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
+                    "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama-local` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
+                    "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
+            });
+        }
+    }
 }
 // ---------------------------------------------------------------------------
 // runCursorModule — T1/T2/T3 transforms from .agents/ → .cursor/
 // ---------------------------------------------------------------------------
 export function runCursorModule(ctx) {
-    const { dryRun, tokens, modelLookup, advisories, ws, logPrefix } = ctx;
+    const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
-    // Commands: tracker block resolution → T1 → T2
-    {
-        const src = getWorkflowsRoot();
-        const dest = ".cursor/commands";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyT2(applyT1(substituteWorkflow(c, issueTracker).output));
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
-        }
-    }
-    // Agents: T3
-    {
-        const src = getPromptsRoot();
-        const dest = ".cursor/agents";
-        ensureDir(dest);
-        const files = listMdFiles(src, BKIT_PREFIX);
-        const sourceSet = new Set(files);
-        for (const f of files) {
-            const transform = (c) => applyT3(c, modelLookup);
-            if (installFile(path.join(src, f), path.join(dest, f), transform, dryRun)) {
-                console.log(`${logPrefix} ${tag}write: ${path.join(dest, f)}`);
-            }
-        }
-        for (const f of removeOrphans(dest, sourceSet, dryRun, BKIT_PREFIX)) {
-            console.log(`${logPrefix} ${tag}delete orphan: ${path.join(dest, f)}`);
-        }
-    }
+    // Source-rendered agents/commands (.cursor/agents T3 from .bkit/prompts, .cursor/commands
+    // T1/T2 from .bkit/workflows). Extracted to renderCursorAgentsCommands so `bkit upgrade`
+    // re-renders them identically (#251) — bkit-owned output, force-overwritten.
+    renderCursorAgentsCommands(ctx);
     // Tier 2 JSON (contained) — deep-containment: hooks.json
     // Phase 1: run migrateLegacyBkitEnvelope to strip __bkit__ before writing.
     const cursorTemplates = path.join(getTemplatesRoot(), ".cursor");
@@ -772,6 +995,345 @@ export function runCursorModule(ctx) {
     }
 }
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
+// ---------------------------------------------------------------------------
+// runOpencodeModule — opencode provider-agnostic host (opt-in via --opencode=<provider>)
+//
+// Additive alongside always-on claude/cursor: .opencode/agents/*.md (via applyOpencodeAgent),
+// .opencode/commands/*.md (via applyOpencodeCommand + tracker substitution),
+// .opencode/opencode.json (Tier-2 deep-contained), .opencode/plugin/gateguard.js (Tier-1).
+//
+// Dir names: .opencode/agents/ and .opencode/commands/ (plural) per opencode.ai/docs.
+// Spike initially observed singular; official docs are plural — plural is correct.
+//   .opencode/plugin/   (singular, not plugins/)
+//
+// Provider config is seeded into opencode.json; consumers tune model IDs and provider
+// keys after install. opencode.json is Tier-2 deep-contained (ownership-mixed) so bkit
+// reconverges its keys on upgrade without clobbering consumer additions (KN-17).
+// ---------------------------------------------------------------------------
+// Per-provider provider key name + base URL + env var suggestions.
+// These are sane defaults; consumers tune after install.
+// npmPackage: set for custom OpenAI-compatible providers that use npm-based AI SDK driver.
+const OPENCODE_PROVIDER_DEFAULTS = {
+    "ollama-local": {
+        envVar: "OLLAMA_HOST",
+        baseURL: "http://localhost:11434/v1",
+        apiPlaceholder: "",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Ollama (Local)",
+    },
+    nvidia: {
+        envVar: "NVIDIA_API_KEY",
+        baseURL: "https://integrate.api.nvidia.com/v1",
+        // opencode custom providers use the npm driver (NOT an "api" field, which is invalid
+        // and makes opencode reject the whole config) and read keys via {env:VAR} — never
+        // shell ${VAR}. See https://opencode.ai/docs/config + /docs/providers.
+        apiPlaceholder: "{env:NVIDIA_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "NVIDIA NIM",
+    },
+    // Free-tier fast cloud — same OpenAI-compatible driver as nvidia, different endpoint/key.
+    groq: {
+        envVar: "GROQ_API_KEY",
+        baseURL: "https://api.groq.com/openai/v1",
+        apiPlaceholder: "{env:GROQ_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Groq",
+    },
+    cerebras: {
+        envVar: "CEREBRAS_API_KEY",
+        baseURL: "https://api.cerebras.ai/v1",
+        apiPlaceholder: "{env:CEREBRAS_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Cerebras",
+    },
+    // Aggregator — one key, every model (incl :free variants). Re-added as a named, pinned
+    // provider (NOT the any-endpoint fallback #245 removed).
+    openrouter: {
+        envVar: "OPENROUTER_API_KEY",
+        baseURL: "https://openrouter.ai/api/v1",
+        apiPlaceholder: "{env:OPENROUTER_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "OpenRouter",
+    },
+    // Cloud-hosted Ollama (ollama.com) — DISTINCT key from `ollama-local` (localhost, no API
+    // key). Matches opencode's own naming where built-in `ollama` = the cloud service.
+    ollama: {
+        envVar: "OLLAMA_API_KEY",
+        baseURL: "https://ollama.com/v1",
+        apiPlaceholder: "{env:OLLAMA_API_KEY}",
+        npmPackage: "@ai-sdk/openai-compatible",
+        displayName: "Ollama (Cloud)",
+    },
+    // opencode-native gateway. First-class built-in opencode provider (id "opencode";
+    // models opencode/<id>). Auth is opencode-managed (`opencode auth login`) — there is no
+    // env key and no baseURL to seed, so renderOpencodeJson emits NO custom provider block
+    // (managedAuth). Curated prompts.md column is deferred until the catalog is probed under
+    // a live login (#245 Phase 3); installs fall back to the opencode/set-model-id sentinel.
+    zen: {
+        envVar: "",
+        baseURL: "",
+        apiPlaceholder: "",
+        managedAuth: true,
+        providerId: "opencode",
+        displayName: "Zen",
+    },
+};
+/**
+ * The opencode-side provider id for a bkit provider key. Equal to the key for every custom
+ * provider (groq → groq); differs only for managed-auth gateways whose opencode id is fixed
+ * (zen → opencode). Model ids are `<providerId>/<model>`. Unknown keys pass through unchanged.
+ */
+export function opencodeProviderId(providerKey) {
+    return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
+}
+// Sentinel values used in the opencode.json template for tracker-filtered mcp injection.
+const OPENCODE_TRACKER_MCP_SENTINEL = '"@@OPENCODE_TRACKER_MCP@@": {}';
+const OPENCODE_PROVIDER_KEY_SENTINEL = "@@OPENCODE_PROVIDER_KEY@@";
+const OPENCODE_PROVIDER_ENV_VAR_SENTINEL = "@@OPENCODE_PROVIDER_ENV_VAR@@";
+const OPENCODE_PROVIDER_BASE_URL_SENTINEL = "@@OPENCODE_PROVIDER_BASE_URL@@";
+/**
+ * Render the opencode.json template with tracker-filtered mcp + provider config.
+ * Resolves the @@OPENCODE_TRACKER_MCP@@ sentinel into the correct mcpServers entry
+ * and fills in provider-specific fields.
+ */
+export function renderOpencodeJson(templatePath, tracker, provider) {
+    const raw = fs.readFileSync(templatePath, "utf-8");
+    // Strict allowlist: provider is gated to OPENCODE_PROVIDERS at the CLI, so it is always
+    // a known key here. Fall back to the local default (never a synthesized placeholder URL)
+    // for any unexpected id rather than emitting a non-working endpoint.
+    const providerDefaults = OPENCODE_PROVIDER_DEFAULTS[provider] ?? OPENCODE_PROVIDER_DEFAULTS["ollama-local"];
+    // Resolve tracker MCP entry
+    // opencode's MCP schema differs from Claude/Cursor: remote servers use type "remote"
+    // (NOT "http" — not in opencode's enum, which makes the whole config invalid) and read
+    // secrets via {env:VAR} (NOT shell ${VAR}). See https://opencode.ai/config.json.
+    let mcpEntry;
+    if (tracker === "github") {
+        mcpEntry =
+            '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+    }
+    else if (tracker === "linear") {
+        mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
+    }
+    else {
+        mcpEntry = "";
+    }
+    let rendered = raw.replace(OPENCODE_TRACKER_MCP_SENTINEL, mcpEntry);
+    rendered = rendered.replace(OPENCODE_PROVIDER_KEY_SENTINEL, provider);
+    rendered = rendered.replace(OPENCODE_PROVIDER_ENV_VAR_SENTINEL, providerDefaults.envVar);
+    rendered = rendered.replace(OPENCODE_PROVIDER_BASE_URL_SENTINEL, providerDefaults.baseURL);
+    // Parse + re-serialize to normalise JSON (removes empty mcp entry if tracker=none)
+    try {
+        const parsed = JSON.parse(rendered);
+        // Clean up empty mcp object when tracker=none
+        const mcp = parsed.mcp;
+        if (mcp && Object.keys(mcp).length === 0) {
+            delete parsed.mcp;
+        }
+        // Managed-auth gateways (zen): the provider is built into opencode and authenticated via
+        // `opencode auth login`, so there is NO custom provider block to seed — drop it entirely.
+        // Models are referenced as opencode/<id>; opencode resolves the built-in provider itself.
+        if (providerDefaults.managedAuth) {
+            delete parsed.provider;
+            return JSON.stringify(parsed, null, 2) + "\n";
+        }
+        // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
+        // block with the npm-driver format: { npm, name, options: { baseURL } }
+        if (providerDefaults.npmPackage) {
+            // Remote providers (nvidia) carry an apiKey as {env:VAR}; local (ollama-local) has
+            // an empty placeholder → no apiKey field. opencode rejects an unknown "api" field,
+            // so the block is rebuilt to the npm-driver shape only.
+            const options = { baseURL: providerDefaults.baseURL };
+            if (providerDefaults.apiPlaceholder)
+                options.apiKey = providerDefaults.apiPlaceholder;
+            parsed.provider = {
+                [provider]: {
+                    npm: providerDefaults.npmPackage,
+                    name: providerDefaults.displayName ?? provider,
+                    options,
+                },
+            };
+        }
+        return JSON.stringify(parsed, null, 2) + "\n";
+    }
+    catch {
+        return rendered;
+    }
+}
+/**
+ * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template:
+ * prune stale bkit-owned provider blocks, then deep-merge the template in.
+ *
+ * The plain Tier-2 deep-merge (writeTier2JsonContained) keeps the consumer's existing
+ * `provider.<x>` block because the new template has no key to override it — so switching
+ * provider (e.g. nvidia -> zen, which is managed-auth and ships NO provider block) leaves a
+ * stale `{env:NVIDIA_API_KEY}` provider behind. Here we delete any provider key bkit itself
+ * could have seeded (a key in OPENCODE_PROVIDER_DEFAULTS) that is not the current provider,
+ * leaving consumer-added providers (keys outside that set) untouched. (#255 P2-9)
+ *
+ * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
+ * deepContains, else merge) with the pre-merge prune folded in, so dry-run and real runs
+ * compute the identical writeset.
+ */
+function reconcileOpencodeJson(renderedTemplate, relDst, currentProvider, dryRun, ws) {
+    const template = JSON.parse(renderedTemplate);
+    if (!fs.existsSync(relDst)) {
+        // First install — write template as-is.
+        if (!dryRun) {
+            ensureDir(path.dirname(relDst));
+            fs.writeFileSync(relDst, JSON.stringify(template, null, 2) + "\n", "utf-8");
+        }
+        ws.writes.push({ path: relDst, action: "write" });
+        return;
+    }
+    // Parse into a sentinel and validate AFTER the catch — keeping the throw out of the catch
+    // body (matches the codebase's parse-or-sentinel idiom; a throw inside catch obscures the
+    // original error). Malformed consumer JSON is a hard stop: refuse to merge, require a fix.
+    let existing = null;
+    try {
+        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
+    }
+    catch {
+        existing = null;
+    }
+    if (existing === null) {
+        throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
+    }
+    // Prune stale bkit-owned provider blocks (keep the current provider + any consumer-added ones).
+    let pruned = false;
+    const providerObj = existing.provider;
+    if (providerObj !== null && typeof providerObj === "object" && !Array.isArray(providerObj)) {
+        const pObj = providerObj;
+        for (const key of Object.keys(pObj)) {
+            if (key !== currentProvider && OPENCODE_PROVIDER_DEFAULTS[key] !== undefined) {
+                delete pObj[key];
+                pruned = true;
+            }
+        }
+        // Managed-auth switch (zen) leaves no bkit provider — drop an emptied provider object.
+        if (Object.keys(pObj).length === 0) {
+            delete existing.provider;
+            pruned = true;
+        }
+    }
+    // Idempotent no-op only when nothing was pruned AND the template is already contained.
+    if (!pruned && deepContains(template, existing).ok) {
+        return;
+    }
+    const merged = deepMergeJson(existing, template);
+    const mergedStr = JSON.stringify(merged, null, 2) + "\n";
+    if (mergedStr === fs.readFileSync(relDst, "utf-8"))
+        return; // idempotent guard
+    if (!dryRun) {
+        fs.writeFileSync(relDst, mergedStr, "utf-8");
+    }
+    ws.writes.push({ path: relDst, action: "update" });
+}
+const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
+
+INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
+
+  Open .opencode/opencode.json. Compare against the bkit reference below.
+  bkit owns: the \`permission\` block, the \`plugin\` array, and the \`mcp\` entries
+  it seeded. You own: any additional \`provider\` entries, model lists, and custom mcp servers.
+
+  Required merge actions:
+  1. Ensure the \`permission\` block contains the bkit reference entries.
+  2. Ensure the \`plugin\` array includes ".opencode/plugin/gateguard.js".
+  3. Preserve your provider configuration and any custom mcp servers.
+
+  --- begin bkit reference .opencode/opencode.json ---
+{{TEMPLATE_CONTENT}}
+  --- end bkit reference .opencode/opencode.json ---
+`;
+export function runOpencodeModule(ctx) {
+    const { dryRun, advisories, ws, logPrefix } = ctx;
+    const tag = dryRun ? "[dry-run] " : "";
+    const issueTracker = ctx.issueTracker ?? DEFAULT_ISSUE_TRACKER;
+    const provider = ctx.opencodeProvider ?? "ollama-local";
+    // Source-rendered agents/commands (.opencode/agents + .opencode/commands). Extracted to
+    // renderOpencodeAgentsCommands so `bkit upgrade` re-renders them identically (#251) —
+    // bkit-owned output, force-overwritten.
+    renderOpencodeAgentsCommands(ctx);
+    // --- opencode.json — Tier-2 deep-contained (reconverged on upgrade) ---
+    {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        const jsonDst = ".opencode/opencode.json";
+        if (fs.existsSync(jsonSrc)) {
+            // Render the template with tracker-filtered mcp + provider config, then reconcile it into
+            // the consumer file. reconcileOpencodeJson prunes a stale prior provider block before the
+            // deep-merge (so a provider switch doesn't leave an orphan `{env:VAR}` block) and computes
+            // an identical writeset for dry-run vs real runs — no `.bkit-staging` scratch file. (#255 P2-9)
+            const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
+            const prevLen = ws.writes.length;
+            reconcileOpencodeJson(rendered, jsonDst, provider, dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
+            }
+        }
+    }
+    // --- gateguard.js — Tier-1 byte-equal-text (bkit-owned, force-overwrite) ---
+    {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const pluginSrc = path.join(opencodeTplDir, "plugin", "gateguard.js");
+        const pluginDst = ".opencode/plugin/gateguard.js";
+        if (fs.existsSync(pluginSrc)) {
+            // dryRun-gated — writeTier1 honours dryRun, so the dir is only needed for a real
+            // write; keeps `bkit check` read-only when gateguard's parent dir is absent (#255 #8).
+            if (!dryRun)
+                ensureDir(path.dirname(pluginDst));
+            const prevLen = ws.writes.length;
+            writeTier1(pluginSrc, pluginDst, ctx.tokens, dryRun, ws);
+            if (ws.writes.length > prevLen) {
+                console.log(`${logPrefix} ${tag}opencode: ${pluginDst}`);
+            }
+        }
+    }
+    // opencode post-install advisory — provider key + launch + model-ID lookup pointer.
+    advisories.push({
+        id: "opencode-setup",
+        severity: "advisory",
+        detect: `opencode host installed (provider: ${provider}). The opencode CLI and your provider credentials are required before running agents.`,
+        action: `opencode setup for provider "${provider}":\n\n` +
+            (() => {
+                const pd = OPENCODE_PROVIDER_DEFAULTS[provider];
+                if (!pd) {
+                    return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
+                        `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
+                }
+                // Managed-auth gateway (zen) → opencode holds the credential; no API key, no baseURL.
+                // Checked BEFORE the empty-apiPlaceholder branch (zen also has an empty apiPlaceholder
+                // but is NOT a local Ollama server).
+                if (pd.managedAuth) {
+                    return (`  1. zen is the opencode-native gateway — auth is opencode-managed, no API key.\n` +
+                        `  2. Log in once: \`opencode auth login\` (opencode.ai sign-in). Models are referenced as opencode/<id>.\n`);
+                }
+                // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
+                // the npm driver, so npmPackage no longer discriminates local vs remote — an empty
+                // apiPlaceholder (no API key) is the local marker (ollama-local only).
+                if (!pd.apiPlaceholder) {
+                    return (`  1. Ollama runs locally — no API key needed.\n` +
+                        `  2. Ensure Ollama is running: \`ollama serve\` (default: http://localhost:11434).\n` +
+                        `  3. Pull the seeded model: \`ollama pull qwen3-coder:30b\` (bkit pins all opencode agents to one model — see .bkit/prompts.md § Models).\n` +
+                        `  4. Verify the tag matches what you pulled: \`ollama list\` (a config/disk mismatch makes calls silently fail).\n` +
+                        `  5. Memory-safe SERVER config (esp. laptops / fanless machines): keep ONE model resident.\n` +
+                        `     opencode (CLI or desktop app) is only an HTTP client to Ollama at localhost:11434 — it never launches or configures the server, so these settings are INDEPENDENT of which opencode surface you use. They are Ollama SERVER env vars (govern the \`ollama serve\` daemon / Ollama.app) and do NOT go in opencode.json. Where to set them:\n` +
+                        `       - macOS (Ollama.app): run \`launchctl setenv OLLAMA_MAX_LOADED_MODELS 1\`, \`launchctl setenv OLLAMA_NUM_PARALLEL 1\`, and \`launchctl setenv OLLAMA_KEEP_ALIVE 2m\`, then quit + reopen Ollama. (Re-run after reboot, or add to a login script — launchctl values are not persistent across restarts.)\n` +
+                        `       - Terminal \`ollama serve\`: add \`export OLLAMA_MAX_LOADED_MODELS=1\`, \`export OLLAMA_NUM_PARALLEL=1\`, and \`export OLLAMA_KEEP_ALIVE=2m\` to ~/.zshrc (or ~/.bashrc), then restart the server.\n` +
+                        `       - Linux (systemd): \`systemctl edit ollama.service\` → under [Service] add \`Environment="OLLAMA_MAX_LOADED_MODELS=1"\`, \`Environment="OLLAMA_NUM_PARALLEL=1"\`, and \`Environment="OLLAMA_KEEP_ALIVE=2m"\` → \`systemctl daemon-reload && systemctl restart ollama\`.\n` +
+                        `     MAX_LOADED_MODELS=1 = never hold 2+ models (avoids swap thrash on model switch); NUM_PARALLEL=1 = serialize bkit's concurrent subagent fan-out (one local model gives no parallel speedup, and >1 splits the KV cache → more memory); KEEP_ALIVE=2m = unload sooner after idle. These are Ollama-local only — remote providers (nvidia) ignore them.\n` +
+                        `  6. Cap context per request: set \`OLLAMA_CONTEXT_LENGTH\` (server env, same locations as above; e.g. 16384) or num_ctx in a Modelfile — KV cache scales linearly with it. \`bkit doctor\` reports the current MAX_LOADED_MODELS / NUM_PARALLEL / KEEP_ALIVE values.\n`);
+                }
+                return (`  1. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
+                    `     ${pd.envVar}=<your-api-key>\n` +
+                    `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
+            })() +
+            `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
+            `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zen) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. zen pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your \`opencode auth login\`.\n` +
+            `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
+    });
+}
 // ---------------------------------------------------------------------------
 // AI-actionable Tier 3 merge instructions
 //
@@ -1048,6 +1610,8 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 {{TEMPLATE_CONTENT}}
   --- end bkit reference .envrc ---
 `;
+// Note: BKIT_MODE_MERGE_INSTRUCTIONS was removed — .bkit/scripts/bkit-mode.sh is no
+// longer shipped by bkit (retired with the ccr router and `bkit mode` surface in #245).
 const MCP_ROOT_MERGE_INSTRUCTIONS = `[bkit] .mcp.json exists — bkit will not overwrite. Review the reference defaults and merge if needed.
 
 INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc.):
@@ -1065,7 +1629,15 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
  * - "linear"  → keep only the `linear` mcpServers entry.
  * - "none"    → empty mcpServers object (tracker not wired).
  */
-function buildMcpJson(templatePath, tracker) {
+/**
+ * Render the tracker-filtered `.mcp.json` / `.cursor/mcp.json` content: keep only the selected
+ * tracker's `mcpServers` entry (none → empty map). Token-free, so the output is the exact bytes
+ * install seeds. Exported because the `bkit upgrade` template walk MUST render these the same way
+ * (as a `contentOverride`, like bkit-cloud.yml #138 / opencode.json #245) — otherwise it compares
+ * the RAW (all-tracker) template against the filtered on-disk seed and reports a false conflict on
+ * every same-version run (#255 P3). Genuine consumer drift still differs from this and conflicts.
+ */
+export function buildMcpJson(templatePath, tracker) {
     const template = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
     const all = template.mcpServers ?? {};
     const filtered = {};
@@ -1177,15 +1749,15 @@ export function runCiModule(ctx) {
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
     }
-    // bkit-cloud.yml is no longer shipped by `--ci`. Post-CI auto-routing is
-    // now opt-in via `bkit install --cloud` (see `runCloudModule` below). The
-    // router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
+    // bkit-cloud.yml is no longer shipped by the ci module (`--tooling`). Post-CI
+    // auto-routing is now opt-in via `bkit install --auto=<variant>` (see `runCloudModule`
+    // below). The router is inert without ANTHROPIC_API_KEY + LINEAR_API_KEY secrets, GitHub
     // Actions write permissions, and (Cursor half) a dashboard trigger — and it
     // depends on the issue tracker, which is itself opt-in. Shipping it on every
-    // `--full` / `--ci` install wired an autonomous router to a tracker that may
+    // tooling install wired an autonomous router to a tracker that may
     // not be configured. See issue #119 ("Managed Cloud Agents").
-    // renovate.json5 is no longer shipped by `--ci`. Renovate is now opt-in via
-    // `bkit install --renovate` (phase-gated). See `runRenovateModule` below
+    // renovate.json5 is no longer shipped by the ci module (`--tooling`). Renovate is opt-in via
+    // `bkit install --dependency=renovate` (phase-gated). See `runRenovateModule` below
     // and issue #123 follow-up for rationale (Renovate App's first scan reads
     // the default branch, so the file must reach `main` before App install —
     // default install can't sequence that).
@@ -1203,7 +1775,7 @@ export function runCiModule(ctx) {
             id: "ci-package-json-missing",
             severity: "advisory",
             detect: "package.json not found — cannot ensure `typecheck` script.",
-            action: "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --ci` after creating package.json.",
+            action: "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --tooling` after creating package.json.",
         });
     }
     else if (ciScripts.malformed) {
@@ -1312,8 +1884,8 @@ export function runLintModule(ctx) {
             console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
         }
     }
-    // Note: scripts/tooling/slop-delta.sh (the `slop:delta` gate helper) ships via the core
-    // templates pass (scripts/ is a core template dir), like scripts/ci/bkit-protect-main.sh —
+    // Note: .bkit/scripts/bkit-slop-delta.sh (the `slop:delta` gate helper) ships via the core
+    // templates pass (.bkit/ is a core template dir), like .bkit/scripts/bkit-protect-main.sh —
     // no per-module copy needed; the core pass preserves its +x bit.
     // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
     // expect actually exist in package.json. Add-if-missing; consumer values win.
@@ -1328,7 +1900,7 @@ export function runLintModule(ctx) {
         'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
         "lint:slop": "slop-scan scan .",
         // The enforcing slop gate (lint:slop above is an advisory scan that never fails).
-        "slop:delta": "bash scripts/tooling/slop-delta.sh",
+        "slop:delta": "bash .bkit/scripts/bkit-slop-delta.sh",
     }, dryRun, ws);
     if (lintScripts.added.length > 0) {
         console.log(`${logPrefix} ${tag}lint: package.json scripts added [${lintScripts.added.join(", ")}]`);
@@ -1466,7 +2038,7 @@ export function runGitHooksModule(ctx) {
 // ---------------------------------------------------------------------------
 //
 // Renovate is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --renovate` and runs a two-phase flow gated on whether the
+// `bkit install --dependency=renovate` and runs a two-phase flow gated on whether the
 // config has reached the remote default branch:
 //
 //   Phase A — file NOT yet on origin/<DEFAULT_BRANCH>:
@@ -1575,10 +2147,10 @@ export function runRenovateModule(ctx) {
             detect: "`.github/dependabot.yml` is present — Renovate and Dependabot are mutually exclusive (running both opens competing PRs against the same packages). Refusing to install Renovate.",
             action: "Choose one:\n\n" +
                 "  A. Switch to Renovate (recommended):\n" +
-                "     1. `git rm .github/dependabot.yml` (also `git rm scripts/ci/bkit-set-dependabot.sh` if present).\n" +
+                "     1. `git rm .github/dependabot.yml` (also `git rm .bkit/scripts/bkit-set-dependabot.sh` if present).\n" +
                 "     2. GitHub UI → Settings → Code security → Dependabot version updates → Disable. Leave Dependabot ALERTS on.\n" +
-                "     3. Re-run `pnpm bkit install --renovate`.\n\n" +
-                "  B. Keep Dependabot: skip `--renovate`; run `pnpm bkit install --dependabot` to keep using bkit's Dependabot module.",
+                "     3. Re-run `pnpm bkit install --dependency=renovate`.\n\n" +
+                "  B. Keep Dependabot: skip renovate; run `pnpm bkit install --dependency=dependabot` to keep using bkit's Dependabot module.",
         });
         return;
     }
@@ -1617,7 +2189,7 @@ export function runRenovateModule(ctx) {
             action: "Phase A — land the config on the default branch BEFORE installing the Renovate App:\n\n" +
                 "  1. Commit BOTH `.github/renovate.json5` AND `.github/renovate-local.json5` (the consumer-owned overrides file renovate.json5 pulls in via `extends`). Renovate raises a config error if the `extends` target is missing, so they must travel together.\n" +
                 `  2. Open a PR to your integration branch and merge it through to \`${defaultBranch}\`.\n` +
-                `  3. Re-run \`pnpm bkit install --renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
+                `  3. Re-run \`pnpm bkit install --dependency=renovate\` once the files are on \`origin/${defaultBranch}\`. The command will detect it and print the App-install URL (Phase B).\n\n` +
                 "Do NOT install the Renovate App yet — that's Phase B. Installing it now produces a broken onboarding PR (wrong base branch, ungrouped, redundant root `renovate.json`).\n\n" +
                 RENOVATE_CUSTOMIZE_NOTE,
         });
@@ -1645,7 +2217,7 @@ export function runRenovateModule(ctx) {
 // ---------------------------------------------------------------------------
 //
 // Dependabot is NOT shipped by default install (--full). It's opt-in via
-// `bkit install --dependabot` and is mutually exclusive with `--renovate`.
+// `bkit install --dependency=dependabot` and is mutually exclusive with `--renovate`.
 //
 // Unlike Renovate, Dependabot is first-party GitHub and does NOT have an
 // App-install race condition — the `dependabot.yml` file is read directly
@@ -1668,18 +2240,18 @@ export function runDependabotModule(ctx) {
                 "  A. Switch to Dependabot:\n" +
                 "     1. `git rm .github/renovate.json5`.\n" +
                 "     2. Uninstall the Renovate GitHub App at https://github.com/settings/installations → Renovate → Configure → Uninstall.\n" +
-                "     3. Re-run `pnpm bkit install --dependabot`.\n\n" +
-                "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip `--dependabot`; the existing Renovate setup stays.",
+                "     3. Re-run `pnpm bkit install --dependency=dependabot`.\n\n" +
+                "  B. Keep Renovate (recommended — see docs/deployments.md § GitHub Actions pinning): skip dependabot; the existing Renovate setup stays.",
         });
         return;
     }
     // Write Tier 1: dependabot.yml + bkit-set-dependabot.sh.
     const ymlSrc = path.join(getTemplatesRoot(), ".github", "dependabot.yml");
-    const scriptSrc = path.join(getTemplatesRoot(), "scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptSrc = path.join(getTemplatesRoot(), ".bkit", "scripts", "bkit-set-dependabot.sh");
     if (!fs.existsSync(ymlSrc) || !fs.existsSync(scriptSrc))
         return;
     const ymlDst = path.join(".github", "dependabot.yml");
-    const scriptDst = path.join("scripts", "ci", "bkit-set-dependabot.sh");
+    const scriptDst = path.join(".bkit", "scripts", "bkit-set-dependabot.sh");
     const prevLen = ws.writes.length;
     writeTier1(ymlSrc, ymlDst, tokens, dryRun, ws);
     if (ws.writes.length > prevLen) {
@@ -1704,9 +2276,9 @@ export function runDependabotModule(ctx) {
     advisories.push({
         id: "dependabot-setup-repo-state",
         severity: "advisory",
-        detect: "`.github/dependabot.yml` and `scripts/ci/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
+        detect: "`.github/dependabot.yml` and `.bkit/scripts/bkit-set-dependabot.sh` are now installed. Dependabot version updates need repo-level state (auto-fixes-enabled, vulnerability-alerts) that the YAML file alone does not set.",
         action: "One-shot repo-level setup (idempotent — safe to re-run):\n\n" +
-            "    bash scripts/ci/bkit-set-dependabot.sh\n\n" +
+            "    bash .bkit/scripts/bkit-set-dependabot.sh\n\n" +
             "The script uses `gh api` to enable Dependabot security updates, vulnerability alerts, and the never-auto-merge-on-main policy. Re-run any time the policy needs sanity-checking; use `--dry-run` to preview, `--print` to inspect current state.\n\n" +
             "After commit + merge through to your default branch, Dependabot will start opening PRs on the next scheduled poll (per `schedule:` in dependabot.yml — default weekly).",
     });
@@ -1715,7 +2287,7 @@ export function runDependabotModule(ctx) {
 // runCloudModule — opt-in cloud-agent integration (issue #119, "Managed Cloud Agents")
 // ---------------------------------------------------------------------------
 //
-// NOT shipped by default install (--full) — opt-in via `bkit install --cloud=<variant>`,
+// NOT shipped by a default install — opt-in via `bkit install --auto=<variant>`,
 // so a default install ships ZERO cloud footprint. Variant-split (DECISION-C/D):
 //
 //   cloud=claude (tracker=github):
@@ -1731,11 +2303,11 @@ export function runDependabotModule(ctx) {
 //
 // Variant constraints are enforced in bkit-install.ts before dispatch (tracker mismatch
 // = hard error). The context's cloudVariant carries the chosen variant.
-// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude
-// requires tracker=github; the Linear cloud path is Cursor-native via cloud=cursor).
-// The tracker parameter is accepted for interface stability but not branched on —
-// any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty (should be none
-// after T1.1, but this guard prevents accidental sentinel leakage).
+// Render the bkit-cloud.yml template. The template is GitHub-only (cloud=claude and
+// cloud=opencode both require tracker=github; the Linear cloud path is Cursor-native
+// via cloud=cursor). The tracker parameter is accepted for interface stability but not
+// branched on — any remaining @@CLOUD_TRACKER_*@@ sentinels are resolved to empty
+// (should be none after T1.1, but this guard prevents accidental sentinel leakage).
 export function renderCloudWorkflow(raw, _tracker) {
     return raw
         .replace(/@@CLOUD_TRACKER_MCP@@/g, () => "mcp__github__*")
@@ -1752,7 +2324,7 @@ export function runCloudModule(ctx) {
     if (variant === "claude") {
         // --- cloud=claude: GitHub-tracker path ---
         // 1. Phase-routed workflow — `.github/workflows/bkit-cloud.yml` (Tier 1 canonical).
-        // GitHub-only; id-token: write grants the OIDC token for Claude GitHub App auth.
+        // Carries both claude + opencode jobs; claude job requires id-token: write for OIDC App auth.
         const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
         if (!fs.existsSync(workflowSrc))
             return;
@@ -1790,7 +2362,7 @@ export function runCloudModule(ctx) {
         advisories.push({
             id: "bkit-cloud-setup",
             severity: "advisory",
-            detect: "`.github/workflows/bkit-cloud.yml` is in place (Claude cloud half of the phase-routed cloud workflow). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The Claude GitHub App is required for `claude-code-action@v1` to authenticate via OIDC.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
                 "  - Run `/install-github-app` (Claude Code CLI) to install the Claude GitHub App on your repo. This is required — `claude-code-action@v1` authenticates as the App via OIDC (`id-token: write`); without the App it fails at boot with an OIDC error.\n" +
@@ -1799,7 +2371,7 @@ export function runCloudModule(ctx) {
                 "  - Do NOT add `GH_BKIT_TOKEN` to this workflow — it is package-install scoped and has no access to the consumer repo. Repo git/gh ops use the auto-provided `github.token` via the workflow's `permissions:` block.\n" +
                 "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
                 "OPTIONAL (manual phase launch): after `/install-github-app`, comment `@claude /bkit-plan` (or any phase) on a GitHub issue/PR to launch it from the tracker UI. The App's generated `claude.yml` triggers on mention events; `bkit-cloud.yml` triggers on CI completion + `workflow_dispatch` — the two coexist.\n\n" +
-                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-cloud` orchestrator (mirrored to `.claude/commands/bkit-cloud.md` on each `pnpm bkit install`).",
+                "Both the CI-driven path and the `@claude` mention path invoke the same `/bkit-auto` orchestrator (mirrored to `.claude/commands/bkit-auto.md` on each `pnpm bkit install`).",
         });
         // Advisory — cloud env scaffolding (Claude half).
         advisories.push({
@@ -1817,9 +2389,46 @@ export function runCloudModule(ctx) {
                 "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
         });
     }
+    else if (variant === "opencode") {
+        // --- cloud=opencode: GitHub-tracker path (same bkit-cloud.yml, no OIDC) ---
+        // 3. Phase-routed workflow — same bkit-cloud.yml as cloud=claude.
+        // The opencode job is already in the file; no separate template needed.
+        const workflowSrc = path.join(templates, ".github", "workflows", "bkit-cloud.yml");
+        if (!fs.existsSync(workflowSrc))
+            return;
+        const workflowDst = path.join(".github", "workflows", "bkit-cloud.yml");
+        {
+            const rendered = applyTokens(renderCloudWorkflow(fs.readFileSync(workflowSrc, "utf-8"), "github"), tokens);
+            const current = fs.existsSync(workflowDst) ? fs.readFileSync(workflowDst, "utf-8") : null;
+            if (current !== rendered) {
+                ws.writes.push({ path: workflowDst, action: "write" });
+                if (!dryRun) {
+                    ensureDir(path.dirname(workflowDst));
+                    fs.writeFileSync(workflowDst, rendered, "utf-8");
+                }
+                console.log(`${logPrefix} ${tag}cloud: ${workflowDst}`);
+            }
+        }
+        // Record the variant.
+        setConsumerBkitField("cloudAgents", "opencode", dryRun);
+        // Advisory — cloud=opencode setup checklist.
+        advisories.push({
+            id: "bkit-cloud-setup",
+            severity: "advisory",
+            detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
+            action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
+                "REQUIRED ONE-TIME SETUP:\n" +
+                "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
+                "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
+                "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
+                "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
+                "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
+                "REACTIVE HANDLER (separate, consumer self-installed): the stock `/oc` comment handler (`opencode github install`) is NOT managed by bkit — install it once per repo independently. It mirrors the `@claude`/`claude.yml` stance. `bkit-cloud.yml` handles the CI-driven + `workflow_dispatch` path only.",
+        });
+    }
     else {
         // --- cloud=cursor: Linear-tracker path ---
-        // 3. Cursor Background Agent Dockerfile — Tier 2 markered.
+        // 4. Cursor Background Agent Dockerfile — Tier 2 markered.
         {
             const src = path.join(templates, ".cursor", "Dockerfile");
             const dst = ".cursor/Dockerfile";
@@ -1831,7 +2440,7 @@ export function runCloudModule(ctx) {
                 }
             }
         }
-        // 4. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
+        // 5. Cursor Background Agent env config — Tier 3 seed-or-print (fully consumer-owned).
         {
             const src = path.join(templates, ".cursor", "environment.json");
             const dst = ".cursor/environment.json";
@@ -1857,7 +2466,7 @@ export function runCloudModule(ctx) {
                 "IN CURSOR DASHBOARD:\n" +
                 "  - Cursor → Cloud Agents dashboard → Triggers → + Add trigger.\n" +
                 "  - Event: CI workflow completion. Branch filter: `feat/**`.\n" +
-                "  - Prompt (paste literally, no edits): `/bkit-cloud $CI_STATUS $PR_NUMBER`.\n" +
+                "  - Prompt (paste literally, no edits): `/bkit-auto $CI_STATUS $PR_NUMBER`.\n" +
                 "  - Allowed concurrency: latest-supersedes.\n" +
                 "  - Set `LINEAR_API_KEY` in Cursor → Settings → Background Agents → Environment Variables.\n" +
                 "  - Label the issue `bkit:auto` in Linear before pushing the build commit.\n\n" +
@@ -1885,6 +2494,7 @@ export const MODULE_REGISTRY = {
     core: runCoreModule,
     claude: runClaudeModule,
     cursor: runCursorModule,
+    opencode: runOpencodeModule,
     ci: runCiModule,
     lint: runLintModule,
     "git-hooks": runGitHooksModule,
@@ -1898,6 +2508,7 @@ export const MODULE_DISPATCH_ORDER = [
     "core",
     "claude",
     "cursor",
+    "opencode",
     "ci",
     "lint",
     "git-hooks",

@@ -29,12 +29,15 @@ import {
   detectGhaFloatingTags,
   detectBkitCloudYmlAlwaysTrueGate,
   detectCiYmlMissingActionlint,
+  detectCiYmlCapstoneContractDrift,
+  detectTaggedTestsWithoutCiHome,
   detectRunLevelsNotComposed,
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
+  detectRenderedPromptsStale,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -42,6 +45,7 @@ import {
   renderAdvisoriesMarkdown,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
+import { stampManagedVersion } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -1111,7 +1115,7 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-dependabot");
-    expect(result!.action).toMatch(/bash scripts\/ci\/bkit-set-dependabot\.sh/);
+    expect(result!.action).toMatch(/bash .bkit\/scripts\/bkit-set-dependabot\.sh/);
   });
 
   it("nudges (dep-updater-none) when workflows exist but neither config is present", () => {
@@ -1119,8 +1123,8 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-none");
-    expect(result!.action).toMatch(/pnpm bkit install --renovate/);
-    expect(result!.action).toMatch(/pnpm bkit install --dependabot/);
+    expect(result!.action).toMatch(/pnpm bkit install --dependency=renovate/);
+    expect(result!.action).toMatch(/pnpm bkit install --dependency=dependabot/);
   });
 
   it("returns null when no workflows dir exists (nothing to update — no nudge)", () => {
@@ -1169,7 +1173,7 @@ describe("buildCloudSetupAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -1181,7 +1185,7 @@ describe("buildCloudSetupAdvisory", () => {
     const result = buildCloudSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("cloud-router-none");
-    expect(result!.action).toMatch(/pnpm bkit install --cloud/);
+    expect(result!.action).toMatch(/pnpm bkit install --auto=/);
   });
 
   it("returns null when no workflows dir exists (no CI to route on — no nudge)", () => {
@@ -1209,7 +1213,7 @@ describe("buildCloudSetupAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
@@ -1339,7 +1343,7 @@ describe("detectRunLevelsNotComposed", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectCiRouterSecrets", () => {
-  it("returns empty when bkit-cloud workflow is absent", () => {
+  it("returns empty when bkit-auto workflow is absent", () => {
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
   });
 
@@ -1353,7 +1357,7 @@ describe("detectCiRouterSecrets", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
     const findings = detectCiRouterSecrets(tmpDir);
@@ -1368,7 +1372,7 @@ describe("detectCiRouterSecrets", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     execSync.mockReturnValue(""); // gh secret list returns no secrets
     const findings = detectCiRouterSecrets(tmpDir);
@@ -1383,7 +1387,7 @@ describe("detectCiRouterSecrets", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     execSync.mockReturnValue("ANTHROPIC_API_KEY\nLINEAR_API_KEY\n");
     expect(detectCiRouterSecrets(tmpDir)).toEqual([]);
@@ -1399,11 +1403,11 @@ describe("buildCloudDashboardsAdvisory", () => {
     expect(buildCloudDashboardsAdvisory(tmpDir)).toBeNull();
   });
 
-  it("fires when bkit-cloud workflow exists", () => {
+  it("fires when bkit-auto workflow exists", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -1431,7 +1435,7 @@ describe("buildCloudDashboardsAdvisory", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "bkit-cloud.yml"),
-      "name: bkit-cloud\n",
+      "name: bkit-auto\n",
     );
     const result = buildCloudDashboardsAdvisory(tmpDir);
     expect(result).not.toBeNull();
@@ -1851,7 +1855,7 @@ describe("detectBkitCloudYmlAlwaysTrueGate", () => {
   it("fires on the always-true block-scalar `if:` gate", () => {
     writeCloud(BROKEN);
     const f = detectBkitCloudYmlAlwaysTrueGate(tmpDir);
-    expect(f?.id).toBe("bkit-cloud-yml-always-true-gate");
+    expect(f?.id).toBe("bkit-auto-yml-always-true-gate");
     expect(f?.severity).toBe("advisory");
   });
   it("returns null on the fixed folded expression (no ${{ }} wrapper)", () => {
@@ -1899,6 +1903,108 @@ describe("detectCiYmlMissingActionlint", () => {
 });
 
 // ---------------------------------------------------------------------------
+// detectCiYmlCapstoneContractDrift
+// ---------------------------------------------------------------------------
+
+describe("detectCiYmlCapstoneContractDrift", () => {
+  function writeCi(content: string) {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), content);
+  }
+  // A bkit-managed ci.yml whose capstone carries all three load-bearing invariants.
+  const GOOD =
+    "name: CI\n" +
+    "# bkit:start\n" +
+    "concurrency:\n" +
+    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n" +
+    "jobs:\n" +
+    "  bkit-tests-check:\n" +
+    "    if: ${{ !cancelled() }}\n" +
+    "    steps:\n" +
+    '      - run: test "$unit_ran" -gt 0\n';
+
+  it("returns null when ci.yml is absent", () => {
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when not bkit-managed (no markers)", () => {
+    writeCi("name: CI\njobs:\n  bkit-tests-check:\n    if: ${{ always() }}\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when there is no bkit-tests-check capstone", () => {
+    writeCi("name: CI\n# bkit:start\njobs:\n  bkit-tests:\n    steps: []\n");
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("returns null when all invariants are present", () => {
+    writeCi(GOOD);
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)).toBeNull();
+  });
+  it("fires when the capstone uses always() instead of !cancelled()", () => {
+    writeCi(GOOD.replace("${{ !cancelled() }}", "${{ always() }}"));
+    const f = detectCiYmlCapstoneContractDrift(tmpDir);
+    expect(f?.id).toBe("ci-yml-capstone-contract-drift");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("!cancelled()");
+  });
+  it("fires when concurrency cancels push runs (cancel-in-progress: true)", () => {
+    writeCi(
+      GOOD.replace(
+        "cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
+        "cancel-in-progress: true",
+      ),
+    );
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("PR-only");
+  });
+  it("fires when the capstone has no executed-count assertion", () => {
+    writeCi(GOOD.replace('      - run: test "$unit_ran" -gt 0\n', "      - run: echo ok\n"));
+    expect(detectCiYmlCapstoneContractDrift(tmpDir)?.action).toContain("executed-count");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectTaggedTestsWithoutCiHome
+// ---------------------------------------------------------------------------
+
+describe("detectTaggedTestsWithoutCiHome", () => {
+  function writePkg(relDir: string, scripts: Record<string, string>) {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "package.json"),
+      JSON.stringify({ name: relDir || "root", scripts }),
+    );
+  }
+  function writeTest(relPath: string, content: string) {
+    const full = path.join(tmpDir, relPath);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+
+  it("returns null when there are no test files", () => {
+    writePkg("", { "test:live": "vitest" });
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("returns null when @live appears but NO package declares test:live (convention inactive)", () => {
+    writePkg("", { test: "vitest" });
+    writeTest("packages/a/x.test.ts", 'it("@live works", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+  it("fires when a package has an @live test but no test:live while another package declares it", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" }); // convention active
+    writePkg("packages/utils", { test: "vitest" }); // no test:live
+    writeTest("packages/utils/u.test.ts", 'describe("@live", () => { it("x", () => {}); });');
+    const f = detectTaggedTestsWithoutCiHome(tmpDir);
+    expect(f?.id).toBe("tagged-tests-no-ci-home");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.action).toContain("packages/utils");
+  });
+  it("returns null when the @live test's package declares test:live", () => {
+    writePkg("packages/api", { "test:live": "vitest --project live" });
+    writeTest("packages/api/a.test.ts", 'it("@live", () => {});');
+    expect(detectTaggedTestsWithoutCiHome(tmpDir)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // detectWorkflowLintToolsMissing
 // ---------------------------------------------------------------------------
 
@@ -1926,5 +2032,82 @@ describe("detectWorkflowLintToolsMissing", () => {
     expect(f?.id).toBe("workflow-lint-tools-missing");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("actionlint");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRenderedPromptsStale (#256) — rendered prompts/workflows version gate
+// ---------------------------------------------------------------------------
+
+describe("detectRenderedPromptsStale", () => {
+  // Write a rendered mirror file carrying (or omitting) a managed-version marker.
+  function writeRendered(relDir: string, name: string, markerVersion: string | null): void {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    const base = "---\nname: bkit-x\n---\n\nbody\n";
+    fs.writeFileSync(
+      path.join(dir, name),
+      markerVersion ? stampManagedVersion(base, markerVersion) : base,
+      "utf-8",
+    );
+  }
+
+  it("returns null when every rendered marker matches the installing version", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    writeRendered(".claude/commands", "bkit-b.md", "4.0.0");
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("returns a blocker when a marker is older than the installing version", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.1.0");
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("bkit-rendered-prompts-stale");
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("4.1.0");
+    expect(f?.detect).toContain("bkit-a.md");
+  });
+
+  it("flags a managed mirror that has no marker at all (hand-edited / pre-feature)", () => {
+    writeRendered(".cursor/agents", "bkit-a.md", null);
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.id).toBe("bkit-rendered-prompts-stale");
+    expect(f?.detect).toContain("no marker");
+  });
+
+  it("scans all three providers' agent + command mirrors", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    writeRendered(".cursor/commands", "bkit-b.md", "3.0.0"); // stale
+    writeRendered(".opencode/agents", "bkit-c.md", "4.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f).not.toBeNull();
+    expect(f?.detect).toContain(".cursor/commands/bkit-b.md");
+    // The two fresh files are not named as stale.
+    expect(f?.detect).not.toContain("bkit-a.md");
+    expect(f?.detect).not.toContain("bkit-c.md");
+  });
+
+  it("ignores non-bkit and non-md files in the mirror dirs", () => {
+    const dir = path.join(tmpDir, ".claude/agents");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "README.txt"), "not managed", "utf-8");
+    fs.writeFileSync(path.join(dir, "consumer-agent.md"), "no marker, not bkit-", "utf-8");
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("returns null when nothing is rendered (no mirror dirs)", () => {
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "3.0.0");
+    expect(detectRenderedPromptsStale(tmpDir, "0.0.0")).toBeNull();
+    expect(detectRenderedPromptsStale(tmpDir, "")).toBeNull();
+  });
+
+  it("truncates the example list and reports the overflow count", () => {
+    for (let i = 0; i < 8; i++) writeRendered(".claude/agents", `bkit-${i}.md`, "3.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
   });
 });

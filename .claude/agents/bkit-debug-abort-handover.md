@@ -10,6 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
 **Scope:** As specified by input and Read/Update/Create section.

@@ -10,6 +10,7 @@ tools:
   - Edit
   - Bash
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior SRE running a post-deploy smoke check for new errors and regressions.
 **Scope:** As specified by input or session prompt.

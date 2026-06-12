@@ -239,7 +239,45 @@ export function runUpgrade(candidates: UpgradeCandidate[], options: UpgradeOptio
     if (blockMerge || format === "json") {
       const before = ws.writes.length;
       if (format === "json") {
-        writeTier2JsonContained(templatePath, absolutePath, options.dryRun, ws);
+        // `contentOverride` (e.g. the rendered opencode.json with `@@OPENCODE_*@@`
+        // sentinels resolved, #245) must win over the raw template — otherwise the
+        // deep-merge injects the raw sentinel keys into the consumer's config.
+        if (contentOverride !== undefined && options.dryRun) {
+          // Dry-run must NOT touch disk — mirror install's opencode.json dry-run path (no
+          // `.bkit-staging/` temp file). Compare the consumer dest against the rendered
+          // override directly. (#255 P2-11)
+          if (
+            !fs.existsSync(absolutePath) ||
+            fs.readFileSync(absolutePath, "utf-8") !== contentOverride
+          ) {
+            ws.writes.push({ path: absolutePath, action: "write" });
+          }
+        } else {
+          // writeTier2JsonContained reads from a path, so stage the override to a temp file.
+          let jsonSrc = templatePath;
+          let jsonTmp: string | null = null;
+          if (contentOverride !== undefined) {
+            jsonTmp = path.join(cwd, ".bkit-staging", "upgrade-json-rendered.json");
+            fs.mkdirSync(path.dirname(jsonTmp), { recursive: true });
+            fs.writeFileSync(jsonTmp, contentOverride, "utf-8");
+            jsonSrc = jsonTmp;
+          }
+          try {
+            writeTier2JsonContained(jsonSrc, absolutePath, options.dryRun, ws);
+          } finally {
+            if (jsonTmp) {
+              try {
+                fs.rmSync(jsonTmp, { force: true });
+                const stagingDir = path.dirname(jsonTmp);
+                if (fs.existsSync(stagingDir) && fs.readdirSync(stagingDir).length === 0) {
+                  fs.rmdirSync(stagingDir);
+                }
+              } catch {
+                // non-fatal staging cleanup
+              }
+            }
+          }
+        }
       } else {
         writeTier2(
           templatePath,

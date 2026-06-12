@@ -99,8 +99,9 @@
 ### bkit Repo Authoring
 
 - **Install source of truth:** Install engine lives in `.bkit/src/`; install payload lives in `.bkit/templates/`; mirror sources (`workflows`, `prompts`) and bkit-authoring docs live in `.bkit/`. bkit's own agent runtime lives in `.agents/` exactly as a consumer's does — never conflate the two.
-- **Canonical sources only:** ONLY edit `.bkit/workflows/*`, `.bkit/prompts/*`, and `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`.
-- **Install to mirror:** After editing `.bkit/workflows/*` or `.bkit/prompts/*` run `bkit install` to regenerate `.claude/` and `.cursor/` mirrors.
+- **Canonical sources only:** ONLY edit `.bkit/workflows/*`, `.bkit/prompts/*`, and `.agents/*`. NEVER edit `.claude/*`, `.cursor/*`, `.opencode/*`.
+- **Install to mirror:** After editing `.bkit/workflows/*` or `.bkit/prompts/*` run `bkit install` to regenerate `.claude/`, `.cursor/`, and `.opencode/` mirrors.
+- **Cross-provider parity:** ALL agent-facing changes (workflows, prompts, permissions, hooks, shell) MUST work under ALL providers; verify each, keep shell POSIX-portable.
 - **Template sync:** Edits inside `.agents/rules.md` bkit:start/end block must be mirrored to `.bkit/templates/.agents/rules.md` and vice versa.
 - **Workflow edits:** Any `.bkit/workflows/*.md` edits → ALWAYS follow `.bkit/workflows.md` § Workflow Authoring Rules.
 - **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/prompts.md` § Prompt Authoring Rules.

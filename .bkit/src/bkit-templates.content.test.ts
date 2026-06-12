@@ -165,7 +165,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // pnpm-lock.yaml, so several auto-merge PRs in the same window force a
     // serial rebase cascade. One group = one lockfile mutation = no cascade.
     expect(content).toMatch(
-      /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"bkit: renovate non-major dependencies"[\s\S]*?automerge:\s*true/,
+      /matchDepTypes:\s*\[\s*"devDependencies"\s*\][\s\S]*?groupName:\s*"non-major dependencies"[\s\S]*?automerge:\s*true/,
     );
     // Old per-type group names are gone — proof the four collapsed into one.
     expect(content).not.toMatch(/groupName:\s*"devDependencies \(non-major\)"/);

@@ -221,3 +221,235 @@ describe("surgical uninstall — heavy-customised consumer fixture", () => {
     expect(post).not.toContain("bkit-managed section");
   });
 });
+
+// ---------------------------------------------------------------------------
+// opencode uninstall — install → zero-drift → uninstall → zero footprint
+// P4.T7 — sub-plan-4 opencode round-trip
+// ---------------------------------------------------------------------------
+
+describe("opencode uninstall — zero footprint after uninstall", () => {
+  it("uninstall(opencode) deletes .opencode/plugin/gateguard.js when hash matches (byte-equal-text)", async () => {
+    // gateguard.js is byte-equal-text — deleted only when hash matches tier3Hashes.
+    const pluginPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    fs.mkdirSync(path.dirname(pluginPath), { recursive: true });
+    const pluginContent = "// bkit gateguard";
+    fs.writeFileSync(pluginPath, pluginContent, "utf-8");
+
+    // opencode.json (json format) — seed empty-ish content that fully contains template scope
+    // Use --force to ensure deletion regardless of hash (tests the delete path)
+    const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    fs.mkdirSync(path.dirname(opencodeJsonPath), { recursive: true });
+    fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
+
+    // Write tier3Hashes so the byte-equal-text file can be identified as bkit-owned
+    const { sha256: computeSha256 } = await import("./bkit-version");
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    const tier3Hashes: Record<string, string> = {
+      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
+    };
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    // Use --force to also delete byte-equal-text files regardless of hash check
+    await runUninstall(["opencode"], makeCtx({ force: true }));
+
+    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be force-deleted").toBe(
+      false,
+    );
+  });
+
+  it("uninstall(opencode) strips bkit-managed scope from opencode.json; deletes when empty after strip", async () => {
+    // opencode.json is format: json (deep-contained). After stripping bkit scope, if
+    // only consumer keys remain → preserved; if nothing remains → deleted.
+    // Use an empty consumer JSON ({}) so all bkit template keys are "not present" → strip = no-op → delete.
+    const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    fs.mkdirSync(path.dirname(opencodeJsonPath), { recursive: true });
+    fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
+
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    await runUninstall(["opencode"], makeCtx());
+
+    // {} → strip-json-scope → empty object → file deleted
+    expect(
+      fs.existsSync(opencodeJsonPath),
+      ".opencode/opencode.json should be deleted when empty after strip",
+    ).toBe(false);
+  });
+
+  it("uninstall(opencode) removes .opencode/agents/ and .opencode/commands/ bkit-prefix mirrors", async () => {
+    // Seed bkit-prefix agent and command mirrors
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const cmdDir = path.join(tmpDir, ".opencode", "commands");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(cmdDir, { recursive: true });
+    const agentFile = path.join(agentDir, "bkit-build-plan-execute.md");
+    const cmdFile = path.join(cmdDir, "bkit-build.md");
+    const consumerAgentFile = path.join(agentDir, "my-custom-agent.md");
+    fs.writeFileSync(agentFile, "# bkit agent", "utf-8");
+    fs.writeFileSync(cmdFile, "# bkit command", "utf-8");
+    fs.writeFileSync(consumerAgentFile, "# consumer agent", "utf-8");
+
+    // Also seed the static manifest files (empty so they don't interfere)
+    const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+    const pluginPath = path.join(tmpDir, ".opencode", "plugin", "gateguard.js");
+    fs.mkdirSync(path.dirname(pluginPath), { recursive: true });
+    fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
+    fs.writeFileSync(pluginPath, "// gateguard", "utf-8");
+
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    await runUninstall(["opencode"], makeCtx());
+
+    // bkit-prefix mirrors deleted
+    expect(fs.existsSync(agentFile), "bkit-prefix agent mirror should be deleted").toBe(false);
+    expect(fs.existsSync(cmdFile), "bkit-prefix command mirror should be deleted").toBe(false);
+    // Consumer-owned agent file preserved
+    expect(fs.existsSync(consumerAgentFile), "consumer agent file should be preserved").toBe(true);
+  });
+
+  it("opencode round-trip: zero footprint — no bkit-prefix .opencode/ files remain after uninstall", async () => {
+    // Simulate a full opencode install state: static files + bkit-prefix mirrors
+    const opencodeDir = path.join(tmpDir, ".opencode");
+    fs.mkdirSync(path.join(opencodeDir, "agents"), { recursive: true });
+    fs.mkdirSync(path.join(opencodeDir, "commands"), { recursive: true });
+    fs.mkdirSync(path.join(opencodeDir, "plugin"), { recursive: true });
+
+    // opencode.json (json format) — empty object → deleted after strip
+    const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
+    fs.writeFileSync(opencodeJsonPath, "{}", "utf-8");
+
+    // gateguard.js (byte-equal-text) — record hash so uninstall can delete
+    const { sha256: computeSha256 } = await import("./bkit-version");
+    const pluginContent = "// bkit gateguard plugin";
+    const pluginPath = path.join(opencodeDir, "plugin", "gateguard.js");
+    fs.writeFileSync(pluginPath, pluginContent, "utf-8");
+    const tier3Hashes: Record<string, string> = {
+      ".opencode/plugin/gateguard.js": computeSha256(pluginContent),
+    };
+
+    // bkit-prefix dynamic mirrors
+    const agentFile = path.join(opencodeDir, "agents", "bkit-build-plan-execute.md");
+    const cmdFile = path.join(opencodeDir, "commands", "bkit-build.md");
+    fs.writeFileSync(agentFile, "# agent", "utf-8");
+    fs.writeFileSync(cmdFile, "# cmd", "utf-8");
+
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    await runUninstall(["opencode"], makeCtx());
+
+    // Static manifest files gone
+    expect(fs.existsSync(opencodeJsonPath), ".opencode/opencode.json should be deleted").toBe(
+      false,
+    );
+    expect(fs.existsSync(pluginPath), ".opencode/plugin/gateguard.js should be deleted").toBe(
+      false,
+    );
+    // Dynamic mirrors gone
+    expect(fs.existsSync(agentFile), "bkit-prefix agent mirror should be deleted").toBe(false);
+    expect(fs.existsSync(cmdFile), "bkit-prefix command mirror should be deleted").toBe(false);
+  });
+
+  it("targeted uninstall does NOT cross-delete other hosts' bkit-prefix mirrors (#255 P0-1)", async () => {
+    // Seed bkit-prefix mirrors for all three hosts.
+    const seedMirror = (host: string, agentsDir: string, cmdsDir: string) => {
+      const a = path.join(tmpDir, host, agentsDir);
+      const c = path.join(tmpDir, host, cmdsDir);
+      fs.mkdirSync(a, { recursive: true });
+      fs.mkdirSync(c, { recursive: true });
+      const agentFile = path.join(a, "bkit-build-plan-execute.md");
+      const cmdFile = path.join(c, "bkit-build.md");
+      fs.writeFileSync(agentFile, "# bkit agent", "utf-8");
+      fs.writeFileSync(cmdFile, "# bkit command", "utf-8");
+      return { agentFile, cmdFile };
+    };
+    const claude = seedMirror(".claude", "agents", "commands");
+    const cursor = seedMirror(".cursor", "agents", "commands");
+    const opencode = seedMirror(".opencode", "agents", "commands");
+
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "4.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    // Targeted uninstall of opencode only — claude + cursor mirrors must survive.
+    await runUninstall(["opencode"], makeCtx());
+
+    expect(fs.existsSync(opencode.agentFile), "opencode mirror should be deleted").toBe(false);
+    expect(fs.existsSync(opencode.cmdFile), "opencode mirror should be deleted").toBe(false);
+    expect(fs.existsSync(claude.agentFile), ".claude mirror must survive opencode uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(claude.cmdFile), ".claude mirror must survive opencode uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(cursor.agentFile), ".cursor mirror must survive opencode uninstall").toBe(
+      true,
+    );
+
+    // Now targeted uninstall of claude only — cursor must still survive.
+    await runUninstall(["claude"], makeCtx());
+
+    expect(fs.existsSync(claude.agentFile), ".claude mirror should be deleted").toBe(false);
+    expect(fs.existsSync(claude.cmdFile), ".claude mirror should be deleted").toBe(false);
+    expect(fs.existsSync(cursor.agentFile), ".cursor mirror must survive claude uninstall").toBe(
+      true,
+    );
+    expect(fs.existsSync(cursor.cmdFile), ".cursor mirror must survive claude uninstall").toBe(
+      true,
+    );
+  });
+
+  it("deletes a bkit-seeded markdown husk (AGENTS.md reduced to a lone H1) (#255 P2-15)", async () => {
+    // AGENTS.md exactly as bkit seeds it: `# AGENTS.md` H1 OUTSIDE the bkit block.
+    const agentsMd = path.join(tmpDir, "AGENTS.md");
+    fs.writeFileSync(
+      agentsMd,
+      "# AGENTS.md\n\n<!-- bkit:start -->\n\n**Read in full:** `.agents/rules.md`.\n\n<!-- bkit:end -->\n",
+      "utf-8",
+    );
+
+    await runUninstall(["core"], makeCtx());
+
+    expect(
+      fs.existsSync(agentsMd),
+      "a pure-bkit AGENTS.md must be deleted, not left as a `# AGENTS.md` husk",
+    ).toBe(false);
+  });
+
+  it("preserves a consumer-customised AGENTS.md (content outside the bkit block survives)", async () => {
+    const agentsMd = path.join(tmpDir, "AGENTS.md");
+    fs.writeFileSync(
+      agentsMd,
+      "# AGENTS.md\n\n<!-- bkit:start -->\nbkit content\n<!-- bkit:end -->\n\n## My team rules\n\nDo the thing.\n",
+      "utf-8",
+    );
+
+    await runUninstall(["core"], makeCtx());
+
+    expect(fs.existsSync(agentsMd), "consumer-customised AGENTS.md must be preserved").toBe(true);
+    const after = fs.readFileSync(agentsMd, "utf-8");
+    expect(after).toContain("## My team rules");
+    expect(after).not.toContain("bkit content");
+  });
+});

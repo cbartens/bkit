@@ -1,0 +1,62 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": "allow",
+    "edit": "allow",
+    "grep": "allow",
+    "glob": "allow",
+    "task": "allow",
+    "bash": {
+      "*": "allow",
+      "sudo *": "ask",
+      "curl *": "ask",
+      "wget *": "ask",
+      "brew install*": "ask",
+      "pnpm publish*": "ask",
+      "npm publish*": "ask",
+      "bun publish*": "ask",
+      "git reset --hard*": "ask",
+      "git clean -fd*": "ask",
+      "git filter-branch*": "ask",
+      "git checkout -- .*": "ask",
+      "git restore .*": "ask",
+      "git stash drop*": "ask",
+      "git rebase -i*": "ask",
+      "gh repo delete*": "ask",
+      "gh pr close*": "ask",
+      "gh release delete*": "ask",
+      "vercel rm*": "ask",
+      "vercel remove*": "ask",
+      "supabase db reset*": "ask",
+      "supabase projects delete*": "ask",
+      "chmod -R 777 /*": "deny",
+      "rm -rf /*": "deny",
+      "rm -rf ~/*": "deny",
+      "rm -rf $HOME/*": "deny",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push --force-with-lease*": "allow"
+    }
+  },
+  "mcp": {
+    "github": {
+      "type": "remote",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headers": {
+        "Authorization": "Bearer {env:GH_TOKEN}",
+        "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
+      }
+    }
+  },
+  "plugin": [".opencode/plugin/gateguard.js"],
+  "provider": {
+    "nvidia": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NVIDIA NIM",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "{env:NVIDIA_API_KEY}"
+      }
+    }
+  }
+}
