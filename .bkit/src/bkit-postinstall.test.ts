@@ -37,6 +37,7 @@ import {
   buildDepUpdaterSetupAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
+  detectRenderedPromptsStale,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -44,6 +45,7 @@ import {
   renderAdvisoriesMarkdown,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
+import { stampManagedVersion } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -2030,5 +2032,82 @@ describe("detectWorkflowLintToolsMissing", () => {
     expect(f?.id).toBe("workflow-lint-tools-missing");
     expect(f?.severity).toBe("advisory");
     expect(f?.detect).toContain("actionlint");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectRenderedPromptsStale (#256) — rendered prompts/workflows version gate
+// ---------------------------------------------------------------------------
+
+describe("detectRenderedPromptsStale", () => {
+  // Write a rendered mirror file carrying (or omitting) a managed-version marker.
+  function writeRendered(relDir: string, name: string, markerVersion: string | null): void {
+    const dir = path.join(tmpDir, relDir);
+    fs.mkdirSync(dir, { recursive: true });
+    const base = "---\nname: bkit-x\n---\n\nbody\n";
+    fs.writeFileSync(
+      path.join(dir, name),
+      markerVersion ? stampManagedVersion(base, markerVersion) : base,
+      "utf-8",
+    );
+  }
+
+  it("returns null when every rendered marker matches the installing version", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    writeRendered(".claude/commands", "bkit-b.md", "4.0.0");
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("returns a blocker when a marker is older than the installing version", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.1.0");
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("bkit-rendered-prompts-stale");
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("4.1.0");
+    expect(f?.detect).toContain("bkit-a.md");
+  });
+
+  it("flags a managed mirror that has no marker at all (hand-edited / pre-feature)", () => {
+    writeRendered(".cursor/agents", "bkit-a.md", null);
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.id).toBe("bkit-rendered-prompts-stale");
+    expect(f?.detect).toContain("no marker");
+  });
+
+  it("scans all three providers' agent + command mirrors", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    writeRendered(".cursor/commands", "bkit-b.md", "3.0.0"); // stale
+    writeRendered(".opencode/agents", "bkit-c.md", "4.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f).not.toBeNull();
+    expect(f?.detect).toContain(".cursor/commands/bkit-b.md");
+    // The two fresh files are not named as stale.
+    expect(f?.detect).not.toContain("bkit-a.md");
+    expect(f?.detect).not.toContain("bkit-c.md");
+  });
+
+  it("ignores non-bkit and non-md files in the mirror dirs", () => {
+    const dir = path.join(tmpDir, ".claude/agents");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "README.txt"), "not managed", "utf-8");
+    fs.writeFileSync(path.join(dir, "consumer-agent.md"), "no marker, not bkit-", "utf-8");
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("returns null when nothing is rendered (no mirror dirs)", () => {
+    expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
+  });
+
+  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "3.0.0");
+    expect(detectRenderedPromptsStale(tmpDir, "0.0.0")).toBeNull();
+    expect(detectRenderedPromptsStale(tmpDir, "")).toBeNull();
+  });
+
+  it("truncates the example list and reports the overflow count", () => {
+    for (let i = 0; i < 8; i++) writeRendered(".claude/agents", `bkit-${i}.md`, "3.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
   });
 });

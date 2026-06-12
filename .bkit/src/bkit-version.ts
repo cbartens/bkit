@@ -233,3 +233,56 @@ export function shouldDeleteTier3(
 
   return current === recorded;
 }
+
+// ---------------------------------------------------------------------------
+// Managed-version marker (#256) — single source of truth for the marker shape
+// stamped into every rendered agent + command (.claude / .cursor / .opencode).
+//
+// Each rendered file self-declares the bkit version it was generated from via an
+// inert HTML comment placed after the frontmatter fence. `bkit-modules.ts` stamps
+// it at render time (stampManagedVersion); the `bkit check` Phase-3 gate in
+// `bkit-postinstall.ts` (detectRenderedPromptsStale) reads it back with
+// MANAGED_MARKER_VERSION_RE and hard-fails on drift, so consumers can never
+// silently run prompts/workflows from an older bkit.
+//
+// Lives here (version domain, node-builtins-only) so both the renderer and the
+// detector import ONE definition — the marker shape can never drift between the
+// side that writes it and the side that reads it. An HTML comment is inert under
+// the agent reader and every provider frontmatter parser, so it never breaks a
+// rendered template.
+// ---------------------------------------------------------------------------
+
+const MANAGED_MARKER_TOKEN = "bkit:managed v";
+// Matches a previously-stamped marker line (anchored at any line start) including
+// its trailing newline, so re-stamping replaces rather than appends (idempotent).
+export const MANAGED_MARKER_LINE_RE = /^<!-- bkit:managed v[^\n]*-->\n?/m;
+// Extracts the stamped version. `\S+` stops at the space before the em-dash,
+// capturing just the semver — used by the detector to compare against the
+// installing version.
+export const MANAGED_MARKER_VERSION_RE = /<!-- bkit:managed v(\S+)/;
+
+/** Build the managed-version marker comment for a given version. */
+export function managedVersionMarker(version: string): string {
+  return `<!-- ${MANAGED_MARKER_TOKEN}${version} — do NOT edit; run \`bkit upgrade\` to refresh -->`;
+}
+
+/**
+ * Insert (or replace) the managed-version marker immediately after the rendered
+ * file's frontmatter fence, always followed by exactly one blank line. Idempotent:
+ * any existing marker is stripped first and leading body blanks are collapsed, so
+ * stamping the same content twice yields identical bytes. Falls back to a top
+ * prepend when the content has no frontmatter (e.g. cursor/opencode commands whose
+ * transforms strip the frontmatter) — there too the marker is followed by a blank
+ * line so the body never butts up against it.
+ */
+export function stampManagedVersion(content: string, version: string): string {
+  const stripped = content.replace(MANAGED_MARKER_LINE_RE, "");
+  const marker = managedVersionMarker(version);
+  const fm = stripped.match(/^---\n[\s\S]*?\n---\n/);
+  if (fm) {
+    const cut = fm[0].length;
+    const body = stripped.slice(cut).replace(/^\n+/, "");
+    return stripped.slice(0, cut) + marker + "\n\n" + body;
+  }
+  return marker + "\n\n" + stripped.replace(/^\n+/, "");
+}

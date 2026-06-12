@@ -10,6 +10,10 @@ Format: `## [version] — YYYY-MM-DD`
 
 CLI surface redesign ([#252](https://github.com/cbartens/bkit/issues/252)) — a **breaking change** to `bkit install`. The implicit `install → --full` default is gone: the host/module axis is now explicit and required, the granular tooling flags collapse to one `--tooling` bundle, and the deprecated flag aliases are removed. Internal module identities (`ci`/`lint`/`git-hooks`/`renovate`/`dependabot`/`cloud`) and the install dispatch engine are unchanged — the change lives in the parse + ownership layers. The shipped CI gate (`bkit check`, run bare) is unaffected.
 
+### Added
+
+- **Managed-version marker on every rendered prompt/workflow ([#256](https://github.com/cbartens/bkit/issues/256)).** `bkit install` / `bkit upgrade` now stamp an inert `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`comment into every rendered agent + command across`.claude/`, `.cursor/`, and `.opencode/`(after the frontmatter, one blank line below; at file top for cursor/opencode commands whose frontmatter is stripped). The marker is injected at render time — the`.bkit/prompts/_`and`.bkit/workflows/_`sources stay version-agnostic, so there are no per-release template edits.`bkit check`now **hard-fails** (new`bkit-rendered-prompts-stale`blocker) when any rendered marker drifts from the installed bkit version, so a consumer who bumps`@cbartens/bkit`without re-rendering — or hand-edits a managed mirror — can never silently run outdated prompts/workflows. Recovery:`pnpm bkit upgrade`(or re-run`bkit install`) re-stamps everything.
+
 ### Changed (breaking)
 
 - **`bkit install` now requires at least one module flag — a bare `bkit install` errors.** Name what to install: `--claude`, `--cursor`, `--opencode=<provider>`, `--tooling` (plus the opt-ins `--dependency=<renovate|dependabot>`, `--auto=<claude|cursor>`). Hosts compose: `bkit install --claude --cursor --opencode=nvidia`. Core (the stack-agnostic foundation: `AGENTS.md`, `.agents/`, `.gitignore`/`.gitattributes`, `docs/`, `.bkit/*.md`, `.bkit/version`) is **implicit** on every install — there is no `--core` flag.

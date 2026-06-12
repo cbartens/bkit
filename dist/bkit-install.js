@@ -1463,6 +1463,9 @@ async function main() {
             postDispatch: [],
             issueTracker: upgradeTracker,
             cloudVariant: null,
+            // Re-stamp every rendered agent + command at the version we are upgrading TO (#256),
+            // so a clean upgrade refreshes the managed-version marker and `bkit check` stays green.
+            version: getInstallingVersion(),
         };
         const rendered = renderManagedOutputs(renderModules, renderCtx);
         // Refresh canonicalHashes (from resulting on-disk content) AND bump pinnedVersion
@@ -1694,6 +1697,8 @@ async function main() {
         postDispatch,
         issueTracker,
         cloudVariant,
+        // Stamped into every rendered agent + command as the managed-version marker (#256).
+        version: getInstallingVersion(),
     };
     // --- Phase 2: Install (current behaviour — dispatch modules) ---
     // check dispatches the detected installed set; install dispatches the resolved set.
@@ -1734,9 +1739,21 @@ async function main() {
         logPrefix: LOG_PREFIX,
     });
     // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
+    // Host agent/command mirrors are untracked force-overwrites, so a stale
+    // managed-version marker never shows up in ws.writes — it surfaces as the
+    // bkit-rendered-prompts-stale Phase-3 blocker instead. Treat that blocker as
+    // drift here so `bkit check` hard-fails on outdated rendered prompts/workflows
+    // (#256). Other Phase-3 blockers keep their historical install-only semantics.
     if (dryRun) {
-        if (totalWrites > 0) {
-            console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
+        const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale");
+        if (totalWrites > 0 || renderedStale) {
+            if (totalWrites > 0) {
+                console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
+            }
+            if (renderedStale) {
+                console.error(`${LOG_PREFIX} check: rendered prompts/workflows are stale (managed-version marker drift) — ` +
+                    `see the bkit-rendered-prompts-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`);
+            }
             process.exit(1);
         }
         return;

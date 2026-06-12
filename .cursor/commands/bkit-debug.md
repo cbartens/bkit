@@ -1,3 +1,5 @@
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Debug Feature (Workflow 4/6)
 
 **Role:** Orchestrator managing workflow with subagents.

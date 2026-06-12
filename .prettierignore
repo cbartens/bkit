@@ -5,9 +5,14 @@ dist/
 .agents/skills/
 # Canonical-overwrite content (CANONICAL_OVERWRITE_RELPATHS in bkit-modules.ts):
 # bkit force-overwrites these on every install, so consumer prettier must not
-# lint them. Width-sensitive rewrites would be reverted next install.
+# lint them. Width-sensitive rewrites would be reverted next install. The
+# .opencode agent + command mirrors are force-overwritten just like .claude /
+# .cursor (the managed-version marker and transform output are the source of
+# truth, not a prettier rewrite); opencode.json / plugin/ stay linted.
 .claude/
 .cursor/
+.opencode/agents/
+.opencode/commands/
 .github/
 .husky/_/
 *.tsbuildinfo

@@ -937,6 +937,52 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
 });
 
 // ---------------------------------------------------------------------------
+// Scenario: rendered prompts/workflows version gate (#256)
+// `bkit check` hard-fails (exit 1) when a rendered mirror's managed-version
+// marker is older than the installing bkit version — so a consumer can never
+// silently run outdated prompts/workflows.
+// ---------------------------------------------------------------------------
+
+describe("Scenario: bkit check fails on stale rendered prompt/workflow markers (#256)", () => {
+  it("exits 1 and names the bkit-rendered-prompts-stale blocker", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    // A claude agent mirror stamped with a deliberately old version (the installing
+    // version under tsx is the repo's package.json version, which is far newer).
+    fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
+      "---\nname: bkit-foo\n---\n<!-- bkit:managed v0.0.1 — do NOT edit; run `bkit upgrade` to refresh -->\n\nbody\n",
+    );
+
+    const bkitInstallPath = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "bkit-install.ts",
+    );
+    const tsxBin = path.resolve(
+      path.dirname(new URL(import.meta.url).pathname),
+      "../../node_modules/.bin/tsx",
+    );
+    if (!fs.existsSync(tsxBin)) return;
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 60_000,
+    });
+
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined, combined).toContain("bkit-rendered-prompts-stale");
+    expect(result.status, `expected exit 1, got ${result.status}:\n${combined}`).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Scenario: .bkit/.env.example + .envrc scaffolding (BAR-260 follow-up)
 // ---------------------------------------------------------------------------
 

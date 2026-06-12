@@ -1,3 +1,5 @@
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Build Feature (Workflow 3/6)
 
 **Role:** Orchestrator managing workflow with subagents.

@@ -12,6 +12,9 @@ import {
   hashFile,
   shouldDeleteTier3,
   isConsumerModified,
+  managedVersionMarker,
+  stampManagedVersion,
+  MANAGED_MARKER_VERSION_RE,
   type BkitVersion,
 } from "./bkit-version";
 
@@ -357,5 +360,70 @@ describe("P4.T4 — canonicalHashes backward-compat + isConsumerModified", () =>
     expect(isConsumerModified(".github/workflows/ci.yml", filePath, parsed!.canonicalHashes)).toBe(
       true,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Managed-version marker (#256) — stampManagedVersion / managedVersionMarker
+// ---------------------------------------------------------------------------
+
+describe("managedVersionMarker", () => {
+  it("builds an inert HTML comment carrying the version and the NOT-edit warning", () => {
+    const m = managedVersionMarker("4.0.0");
+    expect(m).toBe("<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->");
+    expect(m.startsWith("<!--")).toBe(true);
+    expect(m.endsWith("-->")).toBe(true);
+  });
+
+  it("round-trips through the extraction regex", () => {
+    expect(managedVersionMarker("4.0.0").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.0.0");
+    expect(managedVersionMarker("12.34.56").match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("12.34.56");
+  });
+});
+
+describe("stampManagedVersion", () => {
+  const FM = "---\nname: bkit-foo\nmodel: x\n---\n\n**Role:** hi\n";
+
+  it("inserts the marker immediately after the frontmatter fence", () => {
+    const out = stampManagedVersion(FM, "4.0.0");
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("---");
+    expect(lines[3]).toBe("---");
+    expect(lines[4]).toBe(managedVersionMarker("4.0.0"));
+  });
+
+  it("always leaves exactly one blank line below the marker (frontmatter case)", () => {
+    const out = stampManagedVersion(FM, "4.0.0");
+    expect(out).toMatch(/-->\n\n\S/);
+    // no double blank line
+    expect(out).not.toMatch(/-->\n\n\n/);
+  });
+
+  it("prepends the marker + blank line when there is no frontmatter (cursor/opencode command shape)", () => {
+    const out = stampManagedVersion("# Ship Feature\n\nbody\n", "4.0.0");
+    const lines = out.split("\n");
+    expect(lines[0]).toBe(managedVersionMarker("4.0.0"));
+    expect(lines[1]).toBe(""); // guaranteed blank line below the marker
+    expect(lines[2]).toBe("# Ship Feature");
+  });
+
+  it("is idempotent — stamping the same version twice yields identical bytes", () => {
+    const once = stampManagedVersion(FM, "4.0.0");
+    expect(stampManagedVersion(once, "4.0.0")).toBe(once);
+    const cmd = stampManagedVersion("# H\n\nbody\n", "4.0.0");
+    expect(stampManagedVersion(cmd, "4.0.0")).toBe(cmd);
+  });
+
+  it("replaces an existing marker on a version bump (never duplicates)", () => {
+    const v1 = stampManagedVersion(FM, "4.0.0");
+    const v2 = stampManagedVersion(v1, "4.1.0");
+    expect((v2.match(/bkit:managed/g) ?? []).length).toBe(1);
+    expect(v2.match(MANAGED_MARKER_VERSION_RE)?.[1]).toBe("4.1.0");
+  });
+
+  it("does not duplicate blank lines when the body already starts with a blank line", () => {
+    const out = stampManagedVersion(FM, "4.0.0");
+    // exactly: ---\n<marker>\n\n**Role**  — one blank line, body intact
+    expect(out).toContain("---\n" + managedVersionMarker("4.0.0") + "\n\n**Role:** hi");
   });
 });

@@ -11,6 +11,7 @@ tools:
   edit: true
 reasoningEffort: low
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer auditing plan task dependency correctness and design-coverage.
 **Scope:** As specified by input and Read/Update/Create section.

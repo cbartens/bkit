@@ -11,6 +11,7 @@ tools:
   edit: true
 reasoningEffort: medium
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect partitioning a large plan into lossless, self-contained sub-plans.
 **Scope:** As specified by input and Read/Update/Create section.

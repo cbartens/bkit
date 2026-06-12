@@ -11,6 +11,7 @@ tools:
   edit: true
 reasoningEffort: medium
 ---
+<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 **Scope:** As specified by input and Read/Update/Create section.
