@@ -14,7 +14,7 @@
 
 ## CI test tiers (the bkit scaffold)
 
-CI runs the tiers through the 4-job scaffold (full step-by-step in
+CI runs the tiers through the core 4-job scaffold (full step-by-step in
 `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape in
 `deployments.md` § Run-level decision matrix):
 
@@ -22,6 +22,11 @@ CI runs the tiers through the 4-job scaffold (full step-by-step in
   contract — _what should run_.
 - **`bkit-tests`** runs Unit → Integration → E2E (Integration / E2E gated on
   `web_affected` / `run_e2e`).
+- **`bkit-tests-migrate`** (optional; DB repos) — an independent **sibling** of `bkit-tests`
+  that proves every migration replays from an **empty** database (+ the seed loads) on a fresh
+  ephemeral instance. Always runs and reports a status, but self-skips the heavy steps when no
+  migration/seed source changed; folds into the `bkit-tests-check` capstone (a red replay reds
+  the build). See § Provision backing services fresh.
 - **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
   `run_live`; drop the whole job if you have no deploy).
 - **`bkit-tests-check`** is the capstone — it fails the run if any tier the plan
@@ -50,7 +55,7 @@ An auto-discovering RLS suite (RLS-enabled / anon-reads-`[]` / cross-tenant-deni
 
 ## Provision backing services fresh
 
-A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth.
+A tier that needs a stateful backing service (database, cache, queue, search index) must run against a **freshly-provisioned** instance, not a long-lived shared one. Green against a shared environment carrying accumulated state is **not** evidence of reproducibility — a migration that never re-applies cleanly, a seed that aborts on an empty store, or a row another run left behind all stay invisible until the service is rebuilt from scratch. Prove a fresh provision + seed succeeds **in CI**: e.g. an ephemeral per-PR database started fresh each run (Supabase: `supabase db reset` + seed). Reserve the shared remote/dev instance for the `@live` tier (it validates the real deployed schema); it is never the integration tier's source of truth. bkit's `bkit-tests-migrate` tier (an independent sibling of `bkit-tests` — `bkit-stub:bkit-tests-migrate` in the scaffold reference) is the ready-made home for this gate: it always runs, self-skips when no migration/seed source changed, and folds into the `bkit-tests-check` capstone so a failed replay reds the build.
 
 ## CI verbosity (`[verbose ci]`)
 
