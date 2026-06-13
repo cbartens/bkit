@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.0.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
 **Scope:** As specified by input and Read/Update/Create section.
