@@ -479,7 +479,7 @@ jobs:
 #       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
 #
 # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
-# a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .agents/cloud.md.
+# a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .bkit/cloud.md.
 #
 # THE RULE (even with no CI): green != ran != validated. Confirm a FULL run of the touched tiers before
 # trusting green — direct dev pushes auto-escalate to full, but a green capstone on a LIGHT run is not full validation.
