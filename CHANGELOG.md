@@ -6,6 +6,28 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.0.1] — 2026-06-13
+
+CI-scaffold and advisory refinements on top of 4.0.0. Headline: a new `bkit-tests-migrate` tier in the CI scaffold reference, plus a hardened template-reference advisory.
+
+### Added
+
+- **`bkit-tests-migrate` — fresh-DB migration replay gate.** A new opt-in tier in the FULL CI SCAFFOLD REFERENCE (`bkit-stub:bkit-tests-migrate`): an **independent sibling** of `bkit-tests` that proves every migration replays from an EMPTY database (and the seed loads) on a fresh ephemeral instance — catching what `migrate deploy` / `db push` cannot (a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store). It **always runs and reports a status** — branch-protection-safe, never a perpetually-pending required check — while the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR stays a fast green. It folds into the `bkit-tests-check` capstone (a red replay reds the build) and runs in parallel with `bkit-tests`, not in series — they share no state. Stack-independence holds: bkit ships the always-runs scaffold; the consumer supplies the stack's reset+seed (Supabase `supabase db reset`, Prisma `migrate reset`, Drizzle/raw replay). Surfaces as an advisory on `bkit install` / `bkit upgrade`; documented in `docs/testing.md` and `docs/deployments.md`.
+
+### Changed
+
+- **Template-reference advisory is now mandatory.** The pointer to bkit's canonical templates — shown in the `bkit install` / `bkit upgrade` console banner and in `.bkit/advisories.md` — was a soft "read them to see the ideal state before applying any action". It now directs the agent to **read the templates, reconcile them against the repo's existing config, adopt as much as possible without breaking existing functionality, and state which it does not adopt and why**. The same pointer is added as step 4 of the README "Quick install — paste this into your AI" block.
+
+### Fixed
+
+- **Dangling template-reference path** — the advisory pointed at `node_modules/bkit/.bkit/templates/`, but the package is scoped: corrected to `node_modules/@cbartens/bkit/.bkit/templates/`.
+- **Stale doc pointer in the seeded `ci.yml` template** — `.agents/cloud.md` (removed in 3.0.0) corrected to `.bkit/cloud.md`, so consumers no longer inherit a broken reference.
+- **slop-scan exemption for the shipped `gateguard.js`** — its opportunistic GC catch tripped `defensive.empty-catch`, so a fresh `bkit install --opencode` PR could fail the enforcing `slop:delta` gate on bkit's own file; the seeded `slop-scan.config.json` now carries the per-file exemption (slop-scan has no inline suppression marker).
+- **Advisory tagged-test scan false-positives** and a `slop:delta` gate-doc correction.
+- **`.bkit/.env.example` template** — removed an unnecessary blank line.
+
+---
+
 ## [4.0.0] — 2026-06-11
 
 CLI surface redesign ([#252](https://github.com/cbartens/bkit/issues/252)) — a **breaking change** to `bkit install`. The implicit `install → --full` default is gone: the host/module axis is now explicit and required, the granular tooling flags collapse to one `--tooling` bundle, and the deprecated flag aliases are removed. Internal module identities (`ci`/`lint`/`git-hooks`/`renovate`/`dependabot`/`cloud`) and the install dispatch engine are unchanged — the change lives in the parse + ownership layers. The shipped CI gate (`bkit check`, run bare) is unaffected.

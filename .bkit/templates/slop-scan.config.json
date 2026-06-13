@@ -33,6 +33,12 @@
         "structure.duplicate-function-signatures": { "enabled": false },
         "tests.duplicate-mock-setup": { "enabled": false }
       }
+    },
+    {
+      "files": [".opencode/plugin/gateguard.js"],
+      "rules": {
+        "defensive.empty-catch": { "enabled": false }
+      }
     }
   ]
 }

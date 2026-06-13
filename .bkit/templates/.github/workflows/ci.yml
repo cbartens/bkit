@@ -363,10 +363,11 @@ jobs:
 # what should run; bkit-tests-check enforces it ran. green == validated.
 #
 # ORDER + gating (needs: + result guards):
-#   bkit-decide                                       always-on, never skips
-#   bkit-tests        needs:[decide]                  if: run_level != 'none'
-#   bkit-tests-live   needs:[decide,tests]            if: run_live && needs.bkit-tests.result=='success'
-#   bkit-tests-check  needs:[decide,tests,tests-live] if: ${{ !cancelled() }}
+#   bkit-decide                                              always-on, never skips
+#   bkit-tests          needs:[decide]                       if: run_level != 'none'
+#   bkit-tests-migrate  needs:[] (independent sibling)       always-on; heavy steps gated on migration/seed change
+#   bkit-tests-live     needs:[decide,tests]                 if: run_live && needs.bkit-tests.result=='success'
+#   bkit-tests-check    needs:[decide,tests,tests-migrate,tests-live]  if: ${{ !cancelled() }}
 #
 # `bkit install`/`upgrade` raises an advisory per `# bkit-stub:` sentinel below;
 # remove a sentinel header to dismiss (uncommenting alone does not).
@@ -439,6 +440,28 @@ jobs:
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
+# === JOB 2b — migration replay gate (independent sibling of bkit-tests) ===
+# bkit-stub:bkit-tests-migrate — [DB] prove every migration replays from an EMPTY database
+# (+ the seed loads) on a fresh ephemeral instance each run. WHEN: you have a migrations dir.
+# Catches what `migrate deploy` / `db push --linked` cannot: a stale-volume migration a warm
+# `start` silently never re-applies, or a seed that aborts on an empty store — invisible until the
+# DB is rebuilt from scratch (see docs/testing.md, fresh-provision rule). bkit owns the always-runs,
+# self-detecting, branch-protection-safe SCAFFOLD; you supply your stack's reset+seed (Supabase:
+# `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay every migration
+# onto a throwaway DB, then seed). NOT in series before bkit-tests — they share no state (each
+# provisions its own DB), so it runs in parallel and JOB 4 folds it into the capstone.
+#   bkit-tests-migrate:  needs:[] (independent sibling); timeout-minutes: 15
+#   # ALWAYS runs + reports a status (never a perpetually-pending required check); the heavy steps
+#   # short-circuit when no migration/seed source changed, so a no-DB-change PR is a fast green.
+#     steps:
+#       - name: Checkout Repository           # fetch-depth: 0 — diff vs base to detect migration/seed changes
+#       - name: Detect Migration/Seed Changes # id: detect; relevant=true/false. dispatch + no-usable-base (new branch / zero-SHA)
+#       #     => run-to-be-safe; PR => diff vs origin/<base>; push => diff vs before-SHA, over migrations/ + seed + seed-generator paths.
+#       - name: Provision Ephemeral DB        # [DB] if: relevant — fresh instance in Docker, NO shared infra / remote secrets (e.g. supabase start --exclude logflare,vector,supavisor,studio)
+#       - name: Replay Migrations From Empty  # [DB] if: relevant — drop+recreate, replay ALL migrations in order, load the seed (e.g. supabase db reset --local). Non-zero on a bad migration OR a bad seed literal.
+#       - name: Assert Seed Fixture Loaded    # [DB] if: relevant — a reset can exit 0 while a conditional INSERT no-ops; assert a known seed row exists (e.g. psql -tAc "select 1 from <table> where id='<known-id>'") so a silently-broken seed can't pass green.
+#       - name: Tear Down                     # if: always() && relevant — stop the ephemeral instance.
+#
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
 # want post-deploy @live smoke. Sequential after bkit-tests. DROP if no deploy (bkit does).
@@ -465,12 +488,13 @@ jobs:
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
 # moment any tier is skippable. ~seconds, no checkout.
-#   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
+#   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
 #       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome + *_ran counts. Assert + exit 1 on mismatch:
 #       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
 #       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
+#       #   bkit-tests-migrate==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),
 #       #   live_ran (run_live). A declared tier that exits 0 having run ZERO tests is green-by-construction, NOT validated. A tier with NO
@@ -479,7 +503,7 @@ jobs:
 #       #   Then point protection here: bash .bkit/scripts/bkit-protect-main.sh (REQUIRED_JOB=bkit-tests-check; NOT bkit-decide — always green, would not block a tests failure).
 #
 # COMPOSES WITH bkit-cloud.yml: it routes on workflow_run.conclusion (success->ship, failure->debug);
-# a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .agents/cloud.md.
+# a red bkit-tests-check turns the whole run red, so the router reads the capstone for free. See .bkit/cloud.md.
 #
 # THE RULE (even with no CI): green != ran != validated. Confirm a FULL run of the touched tiers before
 # trusting green — direct dev pushes auto-escalate to full, but a green capstone on a LIGHT run is not full validation.

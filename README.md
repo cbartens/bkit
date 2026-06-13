@@ -70,6 +70,8 @@ Please install the latest `@cbartens/bkit` in this repo.
    ```
 
    `pnpm exec bkit install --claude --cursor --tooling` seeds `.agents/`, `.claude/`, `.cursor/`, CI workflows, lint, and git-hooks. Report the resolved version and any advisories printed by `bkit install`.
+
+4. After install, read bkit's canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.). You MUST reconcile them against this repo's existing config and adopt as much as possible without breaking existing functionality — bkit's seed-or-print files (e.g. `ci.yml`) do NOT overwrite an existing file, so adoption is your job. For any template you choose not to adopt, state which one and why.
 ````
 
 ## Install

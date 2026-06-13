@@ -372,6 +372,7 @@ const TAG_SCRIPT_HOMES = [
 const HOME_WALK_SKIP_DIRS = new Set([
     "node_modules",
     ".git",
+    ".worktrees", // local git worktree roots — checkouts of the same repo, not part of it
     "dist",
     ".next",
     "coverage",
@@ -408,6 +409,22 @@ function walkRepoForHomeCheck(dir, testFiles, packageJsons, depth = 0) {
             testFiles.push(full);
         }
     }
+}
+// A tag gates a tier by appearing in a test's NAME — the runner selects it with a
+// `-t @live` / `--testNamePattern` filter, which matches the test TITLE. So only a tag
+// inside a test-title string is a real tagged test; the same token in a code comment or
+// an unrelated string literal (e.g. a doc-comment that documents the convention) is not.
+// Matches the tag inside the title argument of it / test / describe / bench / suite,
+// including `.only` / `.skip` / `.each(table)` chains and ' " ` quotes.
+const TEST_DEF_TITLE = /\b(?:it|test|describe|bench|suite)(?:\.\w+)*\s*(?:\([^)]*\)\s*)?\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1/g;
+function tagUsedInTestTitle(text, tag) {
+    TEST_DEF_TITLE.lastIndex = 0;
+    let m;
+    while ((m = TEST_DEF_TITLE.exec(text)) !== null) {
+        if (m[2].includes(tag))
+            return true;
+    }
+    return false;
 }
 /**
  * Detect `@live` / `@smoke`-tagged tests whose owning package declares no matching
@@ -467,7 +484,9 @@ export function detectTaggedTestsWithoutCiHome(cwd) {
             if (!declaredScripts.has(script))
                 continue; // convention not active for this tag
             if (!text.includes(tag))
-                continue;
+                continue; // fast reject before the title-context regex
+            if (!tagUsedInTestTitle(text, tag))
+                continue; // tag must be in a test TITLE, not a comment/other string
             const pj = nearestPkg(path.dirname(file));
             if (!pj)
                 continue;
@@ -618,6 +637,11 @@ const BKIT_STUBS = [
         id: "bkit-tests-check",
         file: ".github/workflows/ci.yml",
         description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
+    },
+    {
+        id: "bkit-tests-migrate",
+        file: ".github/workflows/ci.yml",
+        description: "Add an independent sibling job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before bkit-tests (they share no state).",
     },
 ];
 export function detectBkitStubs(cwd) {
@@ -1504,10 +1528,12 @@ export function formatChecklist(findings) {
     lines.push(banner);
     lines.push("\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
         "coding assistant to apply each item. Each ACTION is self-contained.\n" +
-        "\nTemplate reference: canonical bkit-managed files (husky hooks, CI workflows,\n" +
-        ".claude/settings.json, .cursor/ config, renovate, vale, etc.) live at\n" +
-        "node_modules/bkit/.bkit/templates/ — read them to see the ideal state\n" +
-        "before applying any action.\n");
+        "\nTemplate reference (MANDATORY): canonical bkit-managed files (husky hooks,\n" +
+        "CI workflows, .claude/settings.json, .cursor/ config, renovate, vale, etc.)\n" +
+        "live at node_modules/@cbartens/bkit/.bkit/templates/. You MUST read these\n" +
+        "templates and reconcile them against this repo's existing config — adopt as\n" +
+        "much as possible WITHOUT breaking existing functionality. For any template\n" +
+        "you do not adopt, state which one and why.\n");
     for (let i = 0; i < findings.length; i++) {
         const f = findings[i];
         lines.push(`\n--- ${i + 1}/${total} [${f.severity}] ${f.id} ---`);
@@ -1551,7 +1577,7 @@ export function renderAdvisoriesMarkdown(findings, opts) {
     lines.push("");
     lines.push("> INSTRUCTIONS FOR AN AI AGENT — copy this file (or specific items) into a coding assistant to apply each item. Each ACTION is self-contained.");
     lines.push("");
-    lines.push("> **Template reference:** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/bkit/.bkit/templates/` — read them to see the ideal state before applying any action.");
+    lines.push("> **Template reference (MANDATORY):** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/@cbartens/bkit/.bkit/templates/`. You **MUST** read these templates and reconcile them against this repo's existing config — adopt as much as possible without breaking existing functionality. For any template you do not adopt, state which one and why.");
     lines.push("");
     const total = findings.length;
     for (let i = 0; i < total; i++) {
