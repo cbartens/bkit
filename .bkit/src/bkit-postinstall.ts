@@ -1644,10 +1644,12 @@ export function formatChecklist(findings: PreflightFinding[]): string {
   lines.push(
     "\nINSTRUCTIONS FOR AN AI AGENT — copy this entire block into a\n" +
       "coding assistant to apply each item. Each ACTION is self-contained.\n" +
-      "\nTemplate reference: canonical bkit-managed files (husky hooks, CI workflows,\n" +
-      ".claude/settings.json, .cursor/ config, renovate, vale, etc.) live at\n" +
-      "node_modules/bkit/.bkit/templates/ — read them to see the ideal state\n" +
-      "before applying any action.\n",
+      "\nTemplate reference (MANDATORY): canonical bkit-managed files (husky hooks,\n" +
+      "CI workflows, .claude/settings.json, .cursor/ config, renovate, vale, etc.)\n" +
+      "live at node_modules/@cbartens/bkit/.bkit/templates/. You MUST read these\n" +
+      "templates and reconcile them against this repo's existing config — adopt as\n" +
+      "much as possible WITHOUT breaking existing functionality. For any template\n" +
+      "you do not adopt, state which one and why.\n",
   );
 
   for (let i = 0; i < findings.length; i++) {
@@ -1712,7 +1714,7 @@ export function renderAdvisoriesMarkdown(
   );
   lines.push("");
   lines.push(
-    "> **Template reference:** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/bkit/.bkit/templates/` — read them to see the ideal state before applying any action.",
+    "> **Template reference (MANDATORY):** canonical bkit-managed files (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.) live at `node_modules/@cbartens/bkit/.bkit/templates/`. You **MUST** read these templates and reconcile them against this repo's existing config — adopt as much as possible without breaking existing functionality. For any template you do not adopt, state which one and why.",
   );
   lines.push("");
 
