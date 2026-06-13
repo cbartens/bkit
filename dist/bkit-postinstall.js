@@ -638,6 +638,11 @@ const BKIT_STUBS = [
         file: ".github/workflows/ci.yml",
         description: "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
     },
+    {
+        id: "bkit-tests-migrate",
+        file: ".github/workflows/ci.yml",
+        description: "Add an independent sibling job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before bkit-tests (they share no state).",
+    },
 ];
 export function detectBkitStubs(cwd) {
     const findings = [];
