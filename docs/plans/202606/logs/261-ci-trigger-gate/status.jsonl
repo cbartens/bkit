@@ -9,3 +9,6 @@
 {"type":"step-done","workflow":"design","step":"design-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-14T01:57:26Z","parentSha":"a82045379c4c9c2fb213b1bee6c895e23812b94f","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/design-summary.md"]}
 {"type":"step-done","workflow":"design","step":"design-close-workflow","status":"DONE","at":"2026-06-14T01:59:25Z","parentSha":"ec540db7396a60fa308c1017d475020536ca5b68","artifacts":[]}
 {"type":"workflow-done","workflow":"design","at":"2026-06-14T01:59:25Z"}
+{"type":"workflow-started","workflow":"plan","at":"2026-06-14T02:17:31Z"}
+{"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-06-14T02:17:31Z","parentSha":"d4e567ba628e56053e78efaf54eceb65a17d7503","artifacts":[]}
+{"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-06-14T02:17:31Z","parentSha":"d4e567ba628e56053e78efaf54eceb65a17d7503","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/plan-input.md"]}
