@@ -12,3 +12,4 @@
 {"type":"workflow-started","workflow":"plan","at":"2026-06-14T02:17:31Z"}
 {"type":"step-done","workflow":"plan","step":"plan-start-workflow","status":"DONE","at":"2026-06-14T02:17:31Z","parentSha":"d4e567ba628e56053e78efaf54eceb65a17d7503","artifacts":[]}
 {"type":"step-done","workflow":"plan","step":"plan-worktree-setup","status":"DONE","at":"2026-06-14T02:17:31Z","parentSha":"d4e567ba628e56053e78efaf54eceb65a17d7503","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/plan-input.md"]}
+{"type":"step-done","workflow":"plan","step":"plan-generate","status":"DONE","at":"2026-06-14T02:29:40Z","parentSha":"d12d942233751dfad448920e5341e7176c5317db","artifacts":["docs/plans/202606/261-ci-trigger-gate-plan.md"]}
