@@ -79,7 +79,7 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
         "";
       expect(step).toContain(".github/renovate.json5");
       expect(step).toContain(".github/workflows");
-      expect(step).toMatch(/git diff --name-only "origin\/\{\{DEFAULT_BRANCH\}\}" HEAD/);
+      expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
     });
 
     it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {
