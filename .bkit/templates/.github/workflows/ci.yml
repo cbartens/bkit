@@ -109,7 +109,7 @@ jobs:
             fi
           fi
 
-      # bkit:start main-lag-warning optional
+      # bkit:start main-lag-warning
       # Promotion-lag reminder (non-blocking, bkit-managed block). Renovate reads its config
       # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
       # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
@@ -118,9 +118,10 @@ jobs:
       # default branch. Warns (never fails) on dev pushes when those consumed-from-default-branch
       # surfaces differ — keyed ONLY on those surfaces, so ordinary app-code dev pushes stay
       # quiet. The default branch is read at runtime, so this block is identical for every repo.
-      # bkit-owned: edit it in the bkit template, not here (drift is surfaced by `bkit check`).
-      # Delete the whole block (markers included) if your repo does not gate the default branch
-      # behind dev. See docs/deployments.md § "Promotion-lag warning".
+      # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
+      # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
+      # bkit-owned: edit it in the bkit template, not here. `bkit check` raises a (non-blocking)
+      # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
       - name: Check Main Lags Dev
         if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
         env:

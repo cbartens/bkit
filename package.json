@@ -79,6 +79,7 @@
     "issueTracker": "github",
     "depUpdater": "renovate",
     "cloudAgents": "claude",
-    "githubProject": false
+    "githubProject": false,
+    "opencodeProvider": "nvidia"
   }
 }

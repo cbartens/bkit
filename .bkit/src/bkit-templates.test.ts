@@ -107,11 +107,12 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
 // ci.yml: Tier-3 (seed-or-print). Consumer-owned; bkit seeds once and never
-//   rewrites. The only marker is the NAMED `verbose-ci-env` block, which the
-//   preflight (detectCiYmlVerboseCiBlockMissing) checks by name. The bare
-//   whole-file `# bkit:start`/`# bkit:end` markers were removed in the
-//   v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because consumers
-//   misread them as "bkit owns/syncs these steps".
+//   rewrites. It carries NAMED bkit-managed blocks (`verbose-ci-env`,
+//   `main-lag-warning`), whose drift/absence is surfaced generically by the
+//   preflight `detectTier2TextDrift` advisory (named-block-aware — no per-block
+//   detector). The bare whole-file `# bkit:start`/`# bkit:end` markers were
+//   removed in the v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because
+//   consumers misread them as "bkit owns/syncs these steps".
 // .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
 // ---------------------------------------------------------------------------
 

@@ -1891,54 +1891,73 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
 // step inside marker block → bkit check (detectTier2TextDrift) flags tier2-text-drift
 // ---------------------------------------------------------------------------
 
-describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check step", () => {
-  it("detectTier2TextDrift fires when consumer ci.yml pnpm bkit check step is removed from marker block", () => {
+describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => {
+  const relPath = path.join(".github", "workflows", "ci.yml");
+  const pkgRoot = (() => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
+    return path.resolve(scriptsDir, "..", "..");
+  })();
+  const readTemplate = (): string =>
+    fs.readFileSync(path.join(pkgRoot, ".bkit", "templates", relPath), "utf-8");
+  const writeConsumer = (content: string): void => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relPath), content, "utf-8");
+  };
 
-    // Build consumer ci.yml: template with bkit check step removed from inside marker block
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
-
-    // Remove the Run Bkit Check step from inside the marker block
-    const consumerContent = templateContent.replace(
-      /\n      - name: Run Bkit Check\n        run: pnpm bkit check\n/,
+  it("no drift when a step OUTSIDE any named block is removed (consumer owns unmarked regions)", () => {
+    // The `Run Bkit Check` step is a plain step, not inside a bkit:start/end block, so the
+    // consumer owns it — removing it is NOT drift. Only bkit-owned named blocks are compared.
+    const consumer = readTemplate().replace(
+      /\n      - name: Run Bkit Check\n        if: steps\.cache\.outputs\.skip != 'true'\n        run: pnpm bkit check\n/,
       "\n",
     );
-
-    // Write the consumer version (with the pnpm bkit check line removed)
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), consumerContent, "utf-8");
-
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // NOTE: ci.yml is Tier-3 (seed-or-print, byte-equal) and carries NO whole-file
-    // bkit:start/end managed-block markers — only the named `verbose-ci-env` block, which
-    // extractManagedBlock does not treat as a Tier-2 managed block. With no col-0 managed
-    // block to extract, detectTier2TextDrift returns null: drift inside a Tier-3 file is
-    // expected (the consumer owns it after the one-time seed), not flagged. The test
-    // documents that boundary.
-    expect(result).toBeNull();
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("no tier2-text-drift when consumer ci.yml marker block matches template exactly", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
+  it("no tier2-text-drift when consumer ci.yml matches the template exactly", () => {
+    writeConsumer(readTemplate());
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
 
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), templateContent, "utf-8");
+  it("flags DRIFT when the bkit-owned verbose-ci-env block content is edited", () => {
+    // Mutate one line INSIDE the verbose-ci-env named block → bkit-owned content drift.
+    const consumer = readTemplate().replace(
+      /VERBOSE_CI: \$\{\{[^\n]*\}\}/,
+      "VERBOSE_CI: 'consumer-hacked'",
+    );
+    writeConsumer(consumer);
+    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(drift?.id).toBe("tier2-text-drift");
+    expect(drift?.detect).toContain("verbose-ci-env");
+  });
 
+  it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
+    // Drop the whole verbose-ci-env block; keep the (optional) main-lag-warning block so the
+    // consumer still has bkit markers. Required block missing → flagged (migrates the retired
+    // detectCiYmlVerboseCiBlockMissing coverage onto the generic drift advisory).
+    const consumer = readTemplate().replace(
+      /\n {4}# bkit:start verbose-ci-env\n[\s\S]*?# bkit:end verbose-ci-env\n/,
+      "\n",
+    );
+    writeConsumer(consumer);
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // ci.yml is Tier-3 (seed-or-print, byte-equal) with no whole-file managed-block
-    // markers, so extractManagedBlock finds no col-0 block and detectTier2TextDrift
-    // returns null (no managed block → not a Tier-2 drift case). Correct for a Tier-3
-    // file: the consumer owns it after the one-time seed.
-    expect(result).toBeNull();
+    expect(result?.id).toBe("tier2-text-drift");
+    expect(result?.detect).toMatch(/missing:.*verbose-ci-env/);
+  });
+
+  it("flags MISSING when the required main-lag-warning block is deleted", () => {
+    // main-lag-warning ships REQUIRED (no `optional` flag) so adoption is nagged everywhere —
+    // a consumer that drops it (e.g. installed before the block existed) gets a non-blocking
+    // advisory pointing them to re-sync from the template.
+    const consumer = readTemplate().replace(
+      /\n {6}# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning\n/,
+      "\n",
+    );
+    writeConsumer(consumer);
+    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(result?.id).toBe("tier2-text-drift");
+    expect(result?.detect).toMatch(/missing:.*main-lag-warning/);
   });
 });
 

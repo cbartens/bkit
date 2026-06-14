@@ -79,7 +79,19 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
         "";
       expect(step).toContain(".github/renovate.json5");
       expect(step).toContain(".github/workflows");
-      expect(step).toMatch(/git diff --name-only "origin\/\{\{DEFAULT_BRANCH\}\}" HEAD/);
+      expect(step).toMatch(/git diff --name-only "origin\/\$DEFAULT_BRANCH" HEAD/);
+    });
+
+    it("is token-free (default branch read at runtime, so the block is identical per repo)", () => {
+      // No bkit {{TOKEN}} inside the block — otherwise install would render it and the
+      // managed-block drift check would false-positive on every consumer. The default
+      // branch comes from the Actions context at runtime instead.
+      const block =
+        content.match(/# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning/)?.[0] ??
+        "";
+      expect(block).toContain("- name: Check Main Lags Dev");
+      expect(block).toContain("DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}");
+      expect(block).not.toMatch(/\{\{[A-Z_]+\}\}/);
     });
 
     it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {

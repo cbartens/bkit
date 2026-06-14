@@ -17,7 +17,6 @@ import {
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
   detectPrettierignoreScopeBroadening,
-  detectCiYmlVerboseCiBlockMissing,
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
   detectObservabilityDebugFetchSourceNotEnabled,
@@ -552,49 +551,6 @@ describe("detectPrettierignoreScopeBroadening", () => {
 
   it("returns null when .prettierignore does not exist", () => {
     const f = detectPrettierignoreScopeBroadening(tmpDir);
-    expect(f).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// [verbose ci] marker advisories (BAR-224)
-// ---------------------------------------------------------------------------
-
-describe("detectCiYmlVerboseCiBlockMissing", () => {
-  function writeCiYml(content: string): void {
-    const dir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "ci.yml"), content, "utf-8");
-  }
-
-  it("flags when bkit markers present but verbose-ci-env block missing", () => {
-    writeCiYml(
-      "jobs:\n  bkit-tests:\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
-    );
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeDefined();
-    expect(f?.id).toBe("ci-yml-verbose-ci-block-missing");
-    expect(f?.severity).toBe("advisory");
-    expect(f?.action).toContain("pnpm bkit install");
-    expect(f?.action).toContain("[verbose ci]");
-  });
-
-  it("does NOT flag when verbose-ci-env named block is present", () => {
-    writeCiYml(
-      "jobs:\n  bkit-tests:\n    # bkit:start verbose-ci-env\n    env:\n      VERBOSE_CI: ''\n    # bkit:end verbose-ci-env\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
-    );
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("does NOT flag when ci.yml has no bkit markers at all (consumer owns ci.yml entirely)", () => {
-    writeCiYml("jobs:\n  bkit-tests:\n    steps:\n      - run: echo hi\n");
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("returns null when ci.yml does not exist", () => {
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
     expect(f).toBeNull();
   });
 });
