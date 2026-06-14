@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import type { ModuleFlag } from "./bkit-cli.js";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock, type JsonValue } from "./bkit-tiers.js";
-import { extractManagedBlock, type MarkerStyle } from "./bkit-install.js";
+import { extractNamedBlocks } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, type IssueTracker } from "./bkit-manifest.js";
 
@@ -630,6 +630,7 @@ export function detectTier2TextDrift(
   relPath: string,
   pkgRoot: string,
 ): PreflightFinding | null {
+  void pkgRoot; // signature kept for call-site compatibility; templates resolve via getTemplatesRoot
   const absPath = path.join(cwd, relPath);
   const templatePath = path.join(getTemplatesRoot(), relPath);
   if (!fs.existsSync(absPath) || !fs.existsSync(templatePath)) return null;
@@ -637,34 +638,47 @@ export function detectTier2TextDrift(
   const consumerContent = fs.readFileSync(absPath, "utf-8");
   const templateContent = fs.readFileSync(templatePath, "utf-8");
 
-  // Detect marker style from the consumer file
-  let style: MarkerStyle | null = null;
-  if (/^<!-- bkit:start -->$/m.test(consumerContent)) style = "html-comment";
-  else if (/^# bkit:start$/m.test(consumerContent)) style = "hash-comment";
-  if (!style) return null; // no markers in consumer — not a drift (markers-missing case)
+  // Every named (and the default unnamed) bkit-managed block in the TEMPLATE is the
+  // authoritative scope. Compare each against the consumer's same-named block:
+  //   - consumer lacks it  → "missing"  (unless the template marks the block `optional`)
+  //   - consumer has it but content differs → "drifted"
+  // Content OUTSIDE bkit:start/bkit:end is consumer-owned and never compared, so a
+  // freely-edited Tier-3 file only trips on its bkit-owned regions — no false positives.
+  const templateBlocks = extractNamedBlocks(templateContent);
+  if (templateBlocks.size === 0) return null; // template owns no marked region in this file
 
-  // Extract the block from both consumer and template
-  const consumerBlock = extractManagedBlock(consumerContent, style);
-  if (consumerBlock === null) return null; // consumer has markers but they're malformed
+  const consumerBlocks = extractNamedBlocks(consumerContent);
+  // Consumer carries no bkit markers at all → fully consumer-owned (markers-missing case),
+  // or has only the bare wrapper of a different file shape. Never flag a file the consumer
+  // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
+  if (consumerBlocks.size === 0) return null;
 
-  // Template may use the same or different marker style
-  let templateBlock = extractManagedBlock(templateContent, style);
-  if (templateBlock === null) {
-    // Try the other style in case template uses different style
-    const altStyle: MarkerStyle = style === "html-comment" ? "hash-comment" : "html-comment";
-    templateBlock = extractManagedBlock(templateContent, altStyle);
+  const missing: string[] = [];
+  const drifted: string[] = [];
+  for (const [name, tBlock] of templateBlocks) {
+    const label = name || "(default block)";
+    const cBlock = consumerBlocks.get(name);
+    if (!cBlock) {
+      if (!tBlock.optional) missing.push(label);
+      continue;
+    }
+    if (cBlock.body !== tBlock.body) drifted.push(label);
   }
-  if (templateBlock === null) return null; // template has no block to compare against
 
-  if (consumerBlock === templateBlock) return null; // byte-equal — no drift
+  if (missing.length === 0 && drifted.length === 0) return null;
 
+  const parts = [...missing.map((n) => `missing: ${n}`), ...drifted.map((n) => `drifted: ${n}`)];
+  const details = parts.slice(0, 6).join("; ");
+  const more = parts.length > 6 ? ` (+${parts.length - 6} more)` : "";
   return {
     id: "tier2-text-drift",
     severity: "advisory",
-    detect: `${relPath} bkit-managed marker block content differs from template.`,
+    detect: `${relPath} has bkit-managed block(s) that differ from the shipped template — ${details}${more}.`,
     action:
-      `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
-      "Content outside the bkit:start/bkit:end markers is preserved.",
+      `Re-sync the bkit-managed block(s) in ${relPath} from .bkit/templates/${relPath} ` +
+      "(run `pnpm bkit install`, or copy the block between its `bkit:start`/`bkit:end` markers). " +
+      "Content outside the markers is preserved. A block marked `bkit:start <name> optional` may be " +
+      "deleted (markers included) without this warning.",
   };
 }
 

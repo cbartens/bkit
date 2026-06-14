@@ -58,6 +58,40 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).toContain("{{NODE_VERSION}}");
   });
 
+  describe("Check Main Lags Dev step (promotion-lag warning)", () => {
+    it("ships the Check Main Lags Dev step", () => {
+      expect(content).toContain("- name: Check Main Lags Dev");
+    });
+
+    it("fires only on dev pushes (not PRs, not other branches)", () => {
+      // The step's if: gates on a push to dev — that's the moment main starts
+      // to lag. Matching the exact guard keeps it from firing on PRs / feature pushes.
+      expect(content).toMatch(
+        /Check Main Lags Dev[\s\S]*?if:[^\n]*github\.event_name == 'push'[^\n]*github\.ref == 'refs\/heads\/dev'/,
+      );
+    });
+
+    it("keys ONLY on consumed-from-default-branch surfaces (renovate config + workflows)", () => {
+      // The trigger is the stale-consumed-surface set, not any dev-ahead-of-main —
+      // so ordinary app-code dev pushes stay quiet.
+      const step =
+        content.match(/- name: Check Main Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/)?.[0] ??
+        "";
+      expect(step).toContain(".github/renovate.json5");
+      expect(step).toContain(".github/workflows");
+      expect(step).toMatch(/git diff --name-only "origin\/\{\{DEFAULT_BRANCH\}\}" HEAD/);
+    });
+
+    it("is non-blocking — warns via ::warning:: and never exits non-zero", () => {
+      const step =
+        content.match(/- name: Check Main Lags Dev[\s\S]*?(?=\n      - name:|\n      #)/)?.[0] ??
+        "";
+      expect(step).toContain("::warning::");
+      // No `exit 1` (or any non-zero exit) — the step is a nudge, not a gate.
+      expect(step).not.toMatch(/exit [1-9]/);
+    });
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });

@@ -723,6 +723,60 @@ export function extractManagedBlock(content, markerStyle = "html-comment") {
     const inner = startLineEnd === -1 ? "" : content.slice(startLineEnd + 1, lineStartOf(content, ends[0]));
     return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
+/**
+ * Parse EVERY named bkit-managed block in a file into `name -> { body, optional }`.
+ *
+ * Marker grammar (one style per file — auto-detected; HTML-comment wins if present):
+ *   HTML:  <!-- bkit:start [name] [optional] -->  ...  <!-- bkit:end [name] -->
+ *   hash:  # bkit:start [name] [optional]          ...  # bkit:end [name]
+ * The default (unnamed) block uses a bare `# bkit:start` / `<!-- bkit:start -->` and is
+ * keyed under "" — backward-compatible with extractManagedBlock's single-block model.
+ *
+ * Markers may be indented (leading whitespace); HTML markers may additionally carry a
+ * `# ` / `// ` comment prefix (so they survive inside shell / JS files). `optional` after
+ * the name flags the block as deletable — callers use it to suppress a "missing block"
+ * finding (a block that is PRESENT but DIFFERS is still drift regardless of `optional`).
+ *
+ * `body` is the inner content with surrounding blank lines stripped (matching
+ * extractManagedBlock). First occurrence of a name wins; an unterminated block (no
+ * matching end) is dropped. Matching is line-anchored — the marker must be the whole
+ * line (modulo indent + comment prefix) — so backtick-quoted prose mentions never match.
+ * An end marker closes the open block when its name matches OR when it is bare (`# bkit:end`).
+ */
+export function extractNamedBlocks(content) {
+    const NAME = "[A-Za-z0-9][A-Za-z0-9_-]*";
+    const hashStart = new RegExp(`^[ \\t]*#[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*$`);
+    const hashEnd = new RegExp(`^[ \\t]*#[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*$`);
+    const htmlStart = new RegExp(`^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*-->[ \\t]*$`);
+    const htmlEnd = new RegExp(`^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*-->[ \\t]*$`);
+    const lines = content.split("\n");
+    const isHtml = lines.some((l) => htmlStart.test(l));
+    const startRe = isHtml ? htmlStart : hashStart;
+    const endRe = isHtml ? htmlEnd : hashEnd;
+    const result = new Map();
+    let open = null;
+    for (const line of lines) {
+        if (open) {
+            const em = endRe.exec(line);
+            const endName = em ? (em[1] ?? "") : null;
+            if (em && (endName === open.name || endName === "")) {
+                const body = open.bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+                if (!result.has(open.name))
+                    result.set(open.name, { body, optional: open.optional });
+                open = null;
+            }
+            else {
+                open.bodyLines.push(line);
+            }
+        }
+        else {
+            const sm = startRe.exec(line);
+            if (sm)
+                open = { name: sm[1] ?? "", optional: !!sm[2], bodyLines: [] };
+        }
+    }
+    return result;
+}
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
 // markerStyle defaults to "html-comment" for backward compat.
 // Used to append a fresh block to a destination that has none. Markers may be

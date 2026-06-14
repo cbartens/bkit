@@ -112,6 +112,40 @@ jobs:
             fi
           fi
 
+      # Promotion-lag reminder (non-blocking). Renovate reads its config ONLY from the
+      # default branch ({{DEFAULT_BRANCH}}), and scheduled / default-branch-triggered Actions run the
+      # {{DEFAULT_BRANCH}} copy of each workflow — so a renovate.json5 or .github/workflows/ edit that
+      # lands on dev but is never promoted runs STALE for everyone until you open a
+      # dev -> {{DEFAULT_BRANCH}} PR. CI on dev validates the code; nothing otherwise checks that it
+      # actually reached {{DEFAULT_BRANCH}}. This warns (never fails) on dev pushes when those
+      # consumed-from-{{DEFAULT_BRANCH}} surfaces differ between dev and {{DEFAULT_BRANCH}}. It keys ONLY on
+      # those surfaces, so ordinary app-code dev pushes stay quiet. Delete this step if
+      # your repo does not gate {{DEFAULT_BRANCH}} behind dev. See docs/deployments.md § "Promotion-lag warning".
+      - name: Check Main Lags Dev
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        run: |
+          if ! git fetch --no-tags --quiet origin "+refs/heads/{{DEFAULT_BRANCH}}:refs/remotes/origin/{{DEFAULT_BRANCH}}" 2>/dev/null; then
+            echo "::notice::promotion-lag check skipped — could not fetch {{DEFAULT_BRANCH}}"
+            exit 0
+          fi
+          SURFACES=(.github/renovate.json5 .github/renovate.json .github/workflows)
+          STALE=$(git diff --name-only "origin/{{DEFAULT_BRANCH}}" HEAD -- "\${SURFACES[@]}" 2>/dev/null || true)
+          if [ -z "$STALE" ]; then
+            echo "consumed-from-{{DEFAULT_BRANCH}} surfaces match {{DEFAULT_BRANCH}} — nothing stale to promote."
+            exit 0
+          fi
+          BEHIND=$(git rev-list --count "origin/{{DEFAULT_BRANCH}}..HEAD" 2>/dev/null || echo "?")
+          {
+            echo "### WARNING: {{DEFAULT_BRANCH}} is serving stale consumed surfaces"
+            echo ""
+            echo "\\\`{{DEFAULT_BRANCH}}\\\` is **$BEHIND commit(s)** behind \\\`dev\\\`, and these files — which Renovate and scheduled / default-branch Actions read LIVE from \\\`{{DEFAULT_BRANCH}}\\\` — differ from \\\`dev\\\`:"
+            echo ""
+            printf '%s\\n' "$STALE" | sed 's/^/- /'
+            echo ""
+            echo "They run the **{{DEFAULT_BRANCH}}** version until promoted. Open a \\\`dev\\\` -> \\\`{{DEFAULT_BRANCH}}\\\` PR to apply them."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::{{DEFAULT_BRANCH}} is $BEHIND commit(s) behind dev and consumed-from-{{DEFAULT_BRANCH}} surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> {{DEFAULT_BRANCH}}. See the run summary."
+
       # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
       # - name: Auto Force E2E for Sensitive Paths
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
