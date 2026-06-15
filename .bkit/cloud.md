@@ -78,7 +78,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. The th
 ## In-repo side
 
 - `.claude/hooks/preflight.sh` — Tracker opt-in guard. Skips silently when the tracker issue ID env var is unset (i.e. IDE sessions). Non-zero exit is informational only on Claude (`SessionStart` cannot block); the agent reads the `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally.
+- `.claude/hooks/cloud-bootstrap.sh` — writes the GH Packages auth token to pnpm's user-level config (from the `GH_BKIT_TOKEN` env var), then runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally. (The token step is required: pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution — so set `GH_BKIT_TOKEN` in the cloud dashboard env.)
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 Ships with the repo — you don't paste these into the app.
@@ -247,7 +247,7 @@ Everything sits **in the repo** under `.cursor/`. bkit ships canonical content f
 | File | Role | bkit ownership |
 | --- | --- | --- |
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 + pnpm `10.34.1` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
-| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
+| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm config set …:_authToken=$GH_BKIT_TOKEN` + `pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
 
