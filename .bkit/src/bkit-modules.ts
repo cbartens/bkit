@@ -876,10 +876,13 @@ export function runCoreModule(ctx: ModuleContext): void {
         "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
         "   - Name: GH_BKIT_TOKEN\n" +
         "   - See README.md ## Consumer CI auth for full setup.\n\n" +
-        "2. Add a `.npmrc` at your repo root so pnpm can authenticate to GH Packages:\n" +
-        "     @cbartens:registry=https://npm.pkg.github.com\n" +
-        "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
-        "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+        "2. Add a `.npmrc` at your repo root with the @cbartens registry mapping (the\n" +
+        "   auth token is NOT stored here — it goes in pnpm's user-level config):\n" +
+        "     @cbartens:registry=https://npm.pkg.github.com\n\n" +
+        "3. Write the token into pnpm's user-level config (run once; CI does this in its\n" +
+        "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN} ref:\n" +
+        '     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
+        "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
         "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
         "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
         "`pnpm bkit install --tooling` to seed them all. Existing scripts are preserved\n" +
@@ -1631,9 +1634,9 @@ export function runOpencodeModule(ctx: ModuleContext): void {
 // scanForeignBkitUses — BAR-164 installer guard. Returns every
 // `uses: cbartens/bkit/...@<ref>` line in the canonical CI template. While
 // `cbartens/bkit` stays private and consumers live in other GitHub orgs, such
-// references cannot be resolved by the runner's GITHUB_TOKEN. The env-var
-// pattern (GH_BKIT_TOKEN env on the install step) is the canonical install
-// flow — see README §"Consumer CI auth". `runCiModule` calls this and throws
+// references cannot be resolved by the runner's GITHUB_TOKEN. The canonical
+// install flow is the install step's `pnpm config set` + GH_BKIT_TOKEN env —
+// see README §"Consumer CI auth". `runCiModule` calls this and throws
 // before writing if any matches are found, so a regression is caught at
 // dev/CI time, never in a consumer repo.
 export function scanForeignBkitUses(content: string): string[] {
@@ -1656,23 +1659,27 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   jobs and triggers — preserve those.
 
   Required merge actions:
-  1. Ensure a .npmrc file exists at the repo root with these two lines:
+  1. Ensure a .npmrc file exists at the repo root with ONLY the registry mapping
+     (the auth token is NOT stored here):
 
         @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
      Commit this .npmrc file — the CI runner reads it during pnpm install.
 
-  2. Ensure the install step passes GH_BKIT_TOKEN from the repo secret:
+  2. Ensure the install step writes the auth token into pnpm's user-level config
+     BEFORE install. pnpm >=10.34.3 no longer authenticates a project-.npmrc
+     \${GH_BKIT_TOKEN} env-substitution (it 401s on download):
 
-        - name: Install dependencies
-          run: pnpm install --frozen-lockfile
+        - name: Install Dependencies
+          run: |
+            pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+            pnpm install --frozen-lockfile
           env:
             GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
   3. Remove any 'Configure private-repo auth' step (git config --global
      url."...cbartens/bkit...".insteadOf "...") — this git auth-shim is
-     obsolete. The .npmrc + env var approach replaces it entirely.
+     obsolete. The .npmrc + \`pnpm config set\` approach replaces it entirely.
 
   4. Ensure the GitHub repo secret GH_BKIT_TOKEN is set with a PAT that has
      read:packages scope (classic) or Packages: read permission (fine-grained).
@@ -2048,10 +2055,10 @@ export function runCiModule(ctx: ModuleContext): void {
   // `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` stays
   // private and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN
   // cannot resolve such a reference and CI fails with "repository not found"
-  // before any install step runs. The env-var pattern (GH_BKIT_TOKEN on the
-  // install step + .npmrc substitution) is the canonical install flow — see
-  // README §"Consumer CI auth". Hard error so the regression is caught at
-  // dev/CI time, never written into a consumer repo.
+  // before any install step runs. The canonical install flow is the install
+  // step's `pnpm config set` (writes the token to pnpm's user-level config) +
+  // GH_BKIT_TOKEN env — see README §"Consumer CI auth". Hard error so the
+  // regression is caught at dev/CI time, never written into a consumer repo.
   const templateContent = fs.readFileSync(templatePath, "utf-8");
   const foreignUses = scanForeignBkitUses(templateContent);
   if (foreignUses.length > 0) {

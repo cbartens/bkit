@@ -29,7 +29,7 @@ bkit has no database, no server, no user-authentication surface. Security concer
 
 Sole credential bkit depends on. Must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` (fine-grained). Required at four surfaces — see `docs/deployments.md` for the full presence matrix.
 
-- NEVER commit as a literal value in `.npmrc`. Always use `${GH_BKIT_TOKEN}` env-var reference.
+- NEVER commit the token as a literal value anywhere. The committed `.npmrc` carries ONLY the registry mapping; the token goes into pnpm's user-level config via `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` (not the project `.npmrc` — pnpm >=10.34.3 401s on a project-`.npmrc` env-substitution; see `docs/knowledge.md` KN-CORE-7).
 - NEVER log or print the token value. `detectShellToken` (Phase 3) reads the env var's presence; it does NOT log its value.
 - `git status` review before every commit — `.env*` files are in `.gitignore` and must never be staged.
 

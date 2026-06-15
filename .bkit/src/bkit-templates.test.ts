@@ -164,6 +164,17 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block!).toContain("TURBO_LOG_LEVEL");
     expect(block!).toContain("GH_BKIT_TOKEN");
   });
+
+  it("ci.yml install step writes the GH Packages auth token via pnpm config set (#274)", () => {
+    const content = readTemplate(".github/workflows/ci.yml");
+    // #274: token goes into pnpm user-level config before install (pnpm >=10.34.3 401s
+    // on a project-.npmrc ${GH_BKIT_TOKEN} env-substitution).
+    expect(content).toMatch(
+      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
+    );
+    // The broken project-.npmrc env-substituted token line must NOT be seeded.
+    expect(content).not.toMatch(/_authToken=\$\{GH_BKIT_TOKEN\}/);
+  });
 });
 
 describe("Group B templates — .vale.ini partial-ownership markers", () => {

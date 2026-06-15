@@ -36,11 +36,13 @@ jobs:
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #
-    # GH_BKIT_TOKEN is also declared at the job level so every pnpm/npx invocation in
-    # this job (vitest, turbo, etc.) can substitute \${GH_BKIT_TOKEN} when reading
-    # .npmrc. Without it, pnpm emits "Failed to replace env in config" warnings on
-    # every read after the install step. The install step keeps its own env: block
-    # for explicitness and to satisfy the BAR-138 regression tests.
+    # GH_BKIT_TOKEN is declared at the job level so $GH_BKIT_TOKEN is available to the
+    # install step's \`pnpm config set\` (which writes the GH Packages auth token into
+    # pnpm's user-level config) and to any later pnpm/npx invocation. The committed
+    # project .npmrc carries ONLY the @cbartens registry mapping — the _authToken is
+    # NOT stored there: pnpm >=10.34.3 no longer authenticates a project-.npmrc
+    # \${GH_BKIT_TOKEN} env-substitution and 401s on download. The install step also
+    # keeps its own env: block for explicitness and to satisfy the BAR-138 tests.
     env:
       TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
@@ -188,7 +190,14 @@ jobs:
 
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        # Write the GH Packages auth token into pnpm's user-level config BEFORE install.
+        # pnpm >=10.34.3 no longer authenticates a project-.npmrc \${GH_BKIT_TOKEN}
+        # env-substitution and 401s on download (ERR_PNPM_FETCH_401). \`pnpm config set\`
+        # is version-aware: it writes ~/.npmrc on pnpm 10.x and ~/.config/pnpm/auth.ini
+        # on pnpm 11.x — whichever location this pnpm reads at install time.
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+          pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 

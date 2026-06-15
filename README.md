@@ -29,7 +29,7 @@ For the full pipeline and subagent reference, and a mapping against Antonio Gull
 > 1. **Local shell** — pick one of two flows (see § Local env setup for details):
 >    - **(A) Quick:** `export GH_BKIT_TOKEN=<classic PAT>` in `~/.zshrc` or `~/.bashrc`. Works immediately, single-step. Same token leaks into every shell.
 >    - **(B) direnv + `.bkit/.env` (recommended for daily use):** `brew install direnv` once per machine, then `.bkit/.env` (gitignored, scaffolded by `bkit install`) auto-loads on `cd`. Tokens scoped to the repo, not your whole shell. Note: `.bkit/.env` only exists _after_ `bkit install` runs, so for the first install you need either (A) or a one-off `export` in the current shell.
-> 2. **`.npmrc` at repo root** — two lines (registry + auth) — see § Consumer CI auth below
+> 2. **`.npmrc` at repo root** — registry mapping only; token goes in pnpm user-level config via `pnpm config set` — see § Consumer CI auth below
 > 3. **GitHub Actions repo secret** — `gh secret set GH_BKIT_TOKEN --body=<token>` per consumer repo
 > 4. **Vercel env vars** (if applicable) — `vercel env add GH_BKIT_TOKEN preview/production`
 >
@@ -54,17 +54,17 @@ Please install the latest `@cbartens/bkit` in this repo.
 
    Caveat: shell state does NOT persist between separate Bash tool calls. The `source` and the consuming command MUST run in the SAME invocation — chain with `;` or `&&`.
 
-3. Ensure `.npmrc` at the repo root contains these two lines (create or update; never inline the token value):
+3. Ensure `.npmrc` at the repo root contains the registry mapping (create or update). The auth token is **NOT** stored here — pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution:
 
    ```
    @cbartens:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
    ```
 
-   Then resolve and install the latest `@cbartens/bkit` and seed both hosts + the tooling stack in a single Bash call (`bkit install` requires you to name the modules — core is implicit):
+   Then write the token into pnpm's user-level config, resolve and install the latest `@cbartens/bkit`, and seed both hosts + the tooling stack in a single Bash call (`bkit install` requires you to name the modules — core is implicit):
 
    ```bash
    set -a; source <ENV-FILE-PATH>; set +a; \
+     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" && \
      pnpm add -D @cbartens/bkit@latest && \
      pnpm exec bkit install --claude --cursor --tooling
    ```
@@ -91,14 +91,14 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | --- | --- | --- |
 | 1 | Create a classic PAT with `read:packages` (fine-grained PATs are rejected by GitHub Packages) | [§ Consumer CI auth](#consumer-ci-auth) step 1 |
 | 2 | Add `GH_BKIT_TOKEN` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
-| 3 | Commit `.npmrc` at repo root (registry + `${GH_BKIT_TOKEN}` substitution) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
+| 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
 | 4 | Export `GH_BKIT_TOKEN` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
 | 5 | Run `pnpm exec bkit install --claude --cursor --tooling` to seed both hosts + tooling (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
 | 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
 
-The seeded `.github/workflows/ci.yml` carries the install step env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
+The seeded `.github/workflows/ci.yml` install step writes the token into pnpm's user-level config (`pnpm config set …`) before `pnpm install` and carries the `GH_BKIT_TOKEN` env block — the only thing CI needs to authenticate `@cbartens/bkit` is the `GH_BKIT_TOKEN` secret set in step 2. No cross-org `uses:` reference is added; `bkit` stays private without affecting consumer auth.
 
 ### Then in the consumer repo
 
@@ -172,6 +172,16 @@ After step 4, restart any open Claude Code / Cursor sessions in this repo so the
 
 `.bkit/.env` is gitignored — never commit it. For cloud sessions (Claude Code on the web, Cursor Background Agents) set the same names in the respective online dashboards instead; see [`.bkit/cloud.md`](.bkit/cloud.md) § Environment variables. `bkit install` / `bkit check` advisories detect missing direnv, blank required keys, and an un-allowed `.envrc` — follow whichever fires.
 
+#### One-time per machine — register the GH Packages token with pnpm
+
+After either flow makes `GH_BKIT_TOKEN` available in your shell, write it into pnpm's user-level auth config so a local `pnpm install` can resolve `@cbartens/bkit`:
+
+```bash
+pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+```
+
+pnpm >=10.34.3 no longer authenticates a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution (it 401s on download), so this user-level step is required — the committed `.npmrc` carries only the registry mapping. `pnpm config set` writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever your pnpm reads), so the same command is correct across pnpm versions.
+
 ## Cloud agent environments (Claude Code on the web + Cursor Background Agents)
 
 bkit ships repo-side scaffolding for both cloud agents via the opt-in `bkit install --auto=<variant>` module — `.claude/hooks/cloud-bootstrap.sh` (per-session install), `.cursor/Dockerfile` + `.cursor/environment.json` (Cursor cloud image), and the phase-routed `.github/workflows/bkit-cloud.yml`. (`.cursor/hooks.json` — the Linear preflight wiring — ships with `--cursor`, not `--auto`.) An install without `--auto` ships zero cloud footprint. The **online-dashboard** half (Claude env in `claude.ai/code`, Cursor env vars in `Cursor → Settings → Background Agents`) is configured once per machine / account.
@@ -221,23 +231,24 @@ bkit resolves from the **GitHub Packages npm registry**. Authentication requires
    - Name: `GH_BKIT_TOKEN`
    - Value: paste the PAT
 
-3. **Add `.npmrc`** at your repo root (committed, no secrets):
+3. **Add `.npmrc`** at your repo root (committed, no secrets) — the registry mapping ONLY. The auth token is **not** stored here:
 
    ```
    @cbartens:registry=https://npm.pkg.github.com
-   //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}
    ```
 
-4. The seeded `ci.yml` install step already carries the required env block (added by `bkit install`):
+4. The seeded `ci.yml` install step writes the token into pnpm's user-level config before install (added by `bkit install`):
 
    ```yaml
-   - name: Install dependencies
-     run: pnpm install --frozen-lockfile
+   - name: Install Dependencies
+     run: |
+       pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+       pnpm install --frozen-lockfile
      env:
        GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
    ```
 
-> **⚠️ pnpm silent-ignore footgun:** If `GH_BKIT_TOKEN` is unset (missing shell export, missing GHA secret, missing Vercel env var), pnpm v7.20+ **silently ignores the entire `.npmrc`** and falls back to npmjs.org — which has no `@cbartens/bkit` — producing an opaque 401. The error does NOT say "token missing"; it looks like a generic registry auth failure. Always verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install` if you're troubleshooting.
+> **⚠️ Why `pnpm config set`, not `.npmrc`:** pnpm >=10.34.3 no longer authenticates a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution — `pnpm install` 401s on the `@cbartens/bkit` download (`ERR_PNPM_FETCH_401`) even when the token is set. `pnpm config set` writes the token to pnpm's user-level config (`~/.npmrc` on pnpm 10.x, `~/.config/pnpm/auth.ini` on pnpm 11.x). A leftover `_authToken` line in the project `.npmrc` must be **removed** — it 401s and, by config precedence (project > user), shadows the user-level token. Note: `pnpm view @cbartens/bkit` (metadata) may still resolve with the broken setup, so verify with a real `pnpm install`, not `view`.
 
 ### Agent access to `GH_BKIT_TOKEN`
 
@@ -255,7 +266,7 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 
 ## Consumer Vercel auth
 
-Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` committed to your repo root, auth is handled via a single Vercel env var — **no `installCommand` shim required**.
+Vercel runs its own `pnpm install` in a fresh build container and cannot run a pre-install shell step. Since pnpm >=10.34.3 no longer authenticates a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution, set the token via a one-line `installCommand` that writes pnpm's user-level config before install.
 
 1. **Add `GH_BKIT_TOKEN` to Vercel env vars** for each environment that builds (preview + production at minimum):
 
@@ -266,16 +277,15 @@ Vercel runs its own `pnpm install` in a fresh build container. With `.npmrc` com
 
    Or via web: Vercel project → Settings → Environment Variables. Token value is the same PAT used for the GitHub Actions secret (scope: `read:packages`).
 
-2. **Remove any pre-existing `installCommand` git-shim** from `vercel.json` if present:
+2. **Set the `installCommand` in `vercel.json`** so the token reaches pnpm's user-level auth config before install (and remove any pre-existing git-shim `installCommand`):
 
    ```json
-   // REMOVE THIS:
    {
-     "installCommand": "git config --global url.\"https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/\".insteadOf \"https://github.com/cbartens/bkit/\" && pnpm install"
+     "installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install"
    }
    ```
 
-   With `.npmrc` committed and `GH_BKIT_TOKEN` set as a Vercel env var, a plain `pnpm install` resolves `@cbartens/bkit` from the registry directly.
+   If a legacy git-shim `installCommand` is present (`git config --global url."https://x-access-token:$GH_BKIT_TOKEN@github.com/cbartens/bkit/".insteadOf …`), remove it — the `pnpm config set` line replaces it entirely. (This is a registry-auth shim, not the obsolete git-auth shim; see `docs/decisions.md` DE-31.)
 
 3. **Trigger a redeploy** (push a commit) and watch the Vercel build log for `pnpm install` resolving `@cbartens/bkit` from `npm.pkg.github.com`.
 
@@ -310,13 +320,14 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `id` | When |
 | --- | --- |
 | `gh-bkit-token-unset-shell` / `gh-bkit-token-empty-shell` | `GH_BKIT_TOKEN` unset (or set but empty) in shell |
-| `npmrc-missing-gh-packages` | `.npmrc` exists but lacks registry/auth lines |
+| `npmrc-missing-gh-packages` | `.npmrc` exists but lacks the `@cbartens` registry mapping |
+| `npmrc-legacy-authtoken` | `.npmrc` still carries a legacy `//npm.pkg.github.com/:_authToken=…` line (401s on pnpm >=10.34.3; move it to pnpm user-level config) |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
 | `gh-token-unset-shell` / `gh-token-empty-shell` | `GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
-| `ci-yml-missing-token-env` | ci.yml install step has no `GH_BKIT_TOKEN` env mapping |
+| `ci-yml-missing-token-env` | ci.yml install step lacks the `pnpm config set` auth step and/or the `GH_BKIT_TOKEN` env mapping |
 | `tracker-setup-none` / `-github` / `-linear` | Optional post-install decision — which issue tracker is wired (`bkit.issueTracker`). `none` nudges `bkit install --tracker=…`. See [§ Optional post-install decisions](#optional-post-install-decisions). |
 | `github-project-board-sync-unconfigured` | GitHub tracker active but Projects v2 board sync is half-configured (`bkit.githubProject` absent and/or `.mcp.json` lacks the `projects` toolset) — sync silently no-ops. Silence with `bkit.githubProject: false`. |
 | `github-project-status-field-id-format` | `bkit.githubProject` is configured but `statusFieldId` holds a GraphQL node id (`PVTSSF_…`) or non-number — `projects_write` needs the numeric field id, so board sync silently no-ops. Re-derive via `gh api /orgs/<org>/projectsV2/<number>/fields`. |
