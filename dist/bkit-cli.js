@@ -368,12 +368,13 @@ Module flags (composable; symmetric install ↔ uninstall):
   --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
                   .cursor/rules/00-shared-rules.mdc + .cursor settings.
   --opencode=<provider>
-                  Additive opencode host. A provider value is REQUIRED (names the API key
-                  env var + base URL seeded into opencode.json). Supported: ollama-local,
-                  nvidia, groq, cerebras, openrouter, ollama (cloud), zen (opencode gateway,
-                  alias \`go\`; auth via OPENCODE_API_KEY). Ships .opencode/**
-                  (agents, commands, opencode.json, gateguard). Configure your provider key
-                  after install; verify with \`bkit doctor\`.
+                  Additive opencode host. Each install ADDS a provider block to
+                  opencode.json; agent defaults track the last-installed (active) provider.
+                  Provider value is REQUIRED. Supported: ollama-local, nvidia, groq,
+                  cerebras, openrouter, ollama (cloud), zen (opencode gateway, alias \`go\`;
+                  auth via OPENCODE_API_KEY). Ships .opencode/** (agents, commands,
+                  opencode.json, gateguard). Configure your provider key; verify with
+                  \`bkit doctor\`. All installed providers tracked in bkit.opencodeProviders.
   --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent
                   bundle (husky runs vale/slop; CI runs lint+check). Tier-3 seed-or-print.
   --dependency=<renovate|dependabot>
@@ -403,6 +404,12 @@ Upgrade flags:
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
+  --opencode=<provider>
+                  Surgical provider removal: removes that provider's block from
+                  opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
+                  agents/commands/gateguard. If the removed provider was active, re-render
+                  agents by running bkit install --opencode=<remaining> or bkit upgrade.
+                  Bare --opencode (no value) tears down the entire opencode host.
   --force         Force-delete Tier-3 files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
   --yes           Skip interactive confirm for --nuke.
@@ -413,7 +420,9 @@ Uninstall flags:
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
   bkit install --claude --cursor --tooling    Both hosts + ci/lint/git-hooks + core.
-  bkit install --opencode=nvidia              opencode host (nvidia provider) + core.
+  bkit install --opencode=nvidia              opencode host (nvidia provider, additive).
+  bkit install --opencode=ollama-local        add ollama-local alongside nvidia.
+  bkit uninstall --opencode=nvidia            remove nvidia block only; keep ollama-local.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).
