@@ -1502,7 +1502,8 @@ function reconcileOpencodeJson(
  * Remove exactly one bkit-seeded provider block from the consumer's opencode.json.
  * Used by the surgical uninstall path — this is NOT called during install (install is additive).
  * Compares on opencodeProviderId(providerKey) so zen (bkit key) → `opencode` (block key).
- * Consumer-added providers (not in OPENCODE_PROVIDER_DEFAULTS) are never touched.
+ * The caller is responsible for passing only bkit-seeded provider keys; this function does not
+ * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
  */
 export function removeOpencodeProviderBlock(
   relDst: string,
@@ -1524,9 +1525,9 @@ export function removeOpencodeProviderBlock(
   if (!(blockKey in pObj)) return; // already absent — idempotent
   delete pObj[blockKey];
   if (Object.keys(pObj).length === 0) delete existing.provider;
-  const mergedStr = JSON.stringify(existing, null, 2) + "\n";
+  const updatedStr = JSON.stringify(existing, null, 2) + "\n";
   if (!dryRun) {
-    fs.writeFileSync(relDst, mergedStr, "utf-8");
+    fs.writeFileSync(relDst, updatedStr, "utf-8");
   }
   ws.writes.push({ path: relDst, action: "update" });
 }
