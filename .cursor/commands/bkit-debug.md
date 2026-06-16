@@ -800,6 +800,9 @@
      fi
      echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
      # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
+     # NOTE: this record is written to the LOCAL status.jsonl ledger only and is deliberately
+     # NOT committed/pushed. Any post-gate commit changes the PR HEAD: a [skip ci] commit
+     # empties the statusCheckRollup (re-introduces KN-11); a clean commit fires a second CI run.
      PARENT_SHA_CLOSE=$(git rev-parse HEAD)
      jq -nc --arg p "$PARENT_SHA_CLOSE" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
        --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
@@ -919,6 +922,9 @@
    fi
    echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
    # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
+   # NOTE: this record is written to the LOCAL status.jsonl ledger only and is deliberately
+   # NOT committed/pushed. Any post-gate commit changes the PR HEAD: a [skip ci] commit
+   # empties the statusCheckRollup (re-introduces KN-11); a clean commit fires a second CI run.
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
      --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
      --arg r "$CI_REASON" --argjson rt "$CI_RETRIGGER" \

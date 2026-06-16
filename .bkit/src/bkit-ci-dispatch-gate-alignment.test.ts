@@ -33,19 +33,37 @@ const shipMd = readWorkflow("bkit-ship.md");
 
 // ---------------------------------------------------------------------------
 // Helper: extract lines between the shared-kernel delimiter comments.
-// Returns null if delimiters not found.
+// Returns null if no delimiters found.
+// DEPRECATED: use extractAllSharedKernelBlocks for multi-kernel files (bkit-debug.md has 2).
 // ---------------------------------------------------------------------------
 function extractSharedKernelLines(content: string): string[] | null {
+  const blocks = extractAllSharedKernelBlocks(content);
+  if (blocks === null || blocks.length === 0) return null;
+  return blocks[0];
+}
+
+// ---------------------------------------------------------------------------
+// Helper: extract ALL kernel blocks from a file.
+// bkit-build.md has 1 block; bkit-debug.md has 2 (PR-mode + LOCAL-mode).
+// Each returned array includes the delimiter lines themselves.
+// Returns null if no start delimiter is found at all.
+// ---------------------------------------------------------------------------
+function extractAllSharedKernelBlocks(content: string): string[][] | null {
   const START_DELIM = "# --- CI-Dispatch Gate shared kernel ---";
   const END_DELIM = "# --- end CI-Dispatch Gate shared kernel ---";
   const lines = content.split("\n");
-  const startIdx = lines.findIndex((l) => l.includes(START_DELIM));
-  if (startIdx === -1) return null;
-  // Find the FIRST end delimiter after the start (there may be multiple kernels)
-  const endIdx = lines.findIndex((l, i) => i > startIdx && l.includes(END_DELIM));
-  if (endIdx === -1) return null;
-  // Include delimiter lines themselves in the comparison (they must be present verbatim).
-  return lines.slice(startIdx, endIdx + 1);
+  const blocks: string[][] = [];
+  let searchFrom = 0;
+  while (searchFrom < lines.length) {
+    const startIdx = lines.findIndex((l, i) => i >= searchFrom && l.includes(START_DELIM));
+    if (startIdx === -1) break;
+    const endIdx = lines.findIndex((l, i) => i > startIdx && l.includes(END_DELIM));
+    if (endIdx === -1) break;
+    // Include delimiter lines themselves in the comparison (they must be present verbatim).
+    blocks.push(lines.slice(startIdx, endIdx + 1));
+    searchFrom = endIdx + 1;
+  }
+  return blocks.length > 0 ? blocks : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,31 +161,51 @@ describe("bkit-debug.md — CI-Dispatch gate presence", () => {
 // ---------------------------------------------------------------------------
 // 3. Byte-equality on the SHARED poll-loop + named-symbol sub-lines
 //    (NOT whole-gate — AUTO_ROUTE sourcing legitimately differs)
+//
+//    bkit-build.md has 1 kernel block.
+//    bkit-debug.md has 2 kernel blocks: PR-mode (sub-step 3) + LOCAL-mode (sub-step 9).
+//    ALL debug kernels must be byte-equal to the single build kernel so a one-sided
+//    edit to either debug site is caught immediately (guard-rot prevention).
 // ---------------------------------------------------------------------------
 describe("build vs debug — shared kernel byte-equality", () => {
-  it("extracts shared kernel lines from bkit-build.md (vacuous-match guard)", () => {
-    const lines = extractSharedKernelLines(buildMd);
-    expect(lines).not.toBeNull();
-    expect(lines!.length).toBeGreaterThan(0);
+  it("extracts >= 1 kernel block from bkit-build.md (non-vacuous guard)", () => {
+    const blocks = extractAllSharedKernelBlocks(buildMd);
+    expect(blocks).not.toBeNull();
+    expect(blocks!.length).toBeGreaterThanOrEqual(1);
+    expect(blocks![0].length).toBeGreaterThan(0);
   });
 
-  it("extracts shared kernel lines from bkit-debug.md (vacuous-match guard)", () => {
-    const lines = extractSharedKernelLines(debugMd);
-    expect(lines).not.toBeNull();
-    expect(lines!.length).toBeGreaterThan(0);
+  it("extracts >= 2 kernel blocks from bkit-debug.md (PR-mode + LOCAL-mode, non-vacuous guard)", () => {
+    const blocks = extractAllSharedKernelBlocks(debugMd);
+    expect(blocks).not.toBeNull();
+    // Debug MUST have both the PR-mode (sub-step 3) and LOCAL-mode (sub-step 9) kernel sites.
+    expect(blocks!.length).toBeGreaterThanOrEqual(2);
+    for (const block of blocks!) {
+      expect(block.length).toBeGreaterThan(0);
+    }
   });
 
-  it("first shared kernel in build == first shared kernel in debug (byte-equal)", () => {
-    const buildLines = extractSharedKernelLines(buildMd);
-    const debugLines = extractSharedKernelLines(debugMd);
-    expect(buildLines).not.toBeNull();
-    expect(debugLines).not.toBeNull();
+  it("every debug kernel block is byte-equal to the single build kernel (trimmed-line comparison)", () => {
+    const buildBlocks = extractAllSharedKernelBlocks(buildMd);
+    const debugBlocks = extractAllSharedKernelBlocks(debugMd);
+    expect(buildBlocks).not.toBeNull();
+    expect(debugBlocks).not.toBeNull();
+
+    // Build has exactly one reference kernel.
+    const buildKernel = buildBlocks![0];
+
     // Normalise whitespace differences caused by indentation in if-block vs top-level
     // (the plan requires the CONTENT to be identical; only leading whitespace may differ
     // due to the PR-mode gate being nested inside `if [ "$PUSH_MODE" = "PR" ]`).
-    // Compare trimmed lines.
     const trimmed = (lines: string[]) => lines.map((l) => l.trim());
-    expect(trimmed(buildLines!)).toEqual(trimmed(debugLines!));
+    const trimmedBuild = trimmed(buildKernel);
+
+    for (let i = 0; i < debugBlocks!.length; i++) {
+      expect(trimmed(debugBlocks![i])).toEqual(
+        trimmedBuild,
+        `debug kernel block ${i} (0-based) does not match build kernel — one-sided edit detected`,
+      );
+    }
   });
 });
 

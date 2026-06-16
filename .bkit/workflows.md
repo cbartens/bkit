@@ -983,6 +983,8 @@ It is **invoked by orchestrators** (NOT a git hook — the invariant is contextu
 
 `reason` is omitted when outcome is `dispatched`/`self-healed`/`no-ci`. The #209 FOLD reducer does `del(.type,.workflow)` then merges remainder — extra keys pass through untouched (additive, backward-compatible).
 
+**`ciDispatch` step-done record is LOCAL-only (intentional non-push):** the `jq ... >> "$STATUS"` write that appends the `ciDispatch`-bearing `step-done` record is written to the local `status.jsonl` ledger only and is deliberately NOT committed or pushed afterward. Pushing any commit after the confirmed-loud close-workflow HEAD changes the PR HEAD: a `[skip ci]` verdict commit empties the `statusCheckRollup` (re-introduces KN-11); a clean commit fires a second CI run. Do NOT "fix" this by adding a post-gate commit+push.
+
 **Per-site AUTO_ROUTE sourcing:**
 
 - **Build (Step 18):** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — re-use the in-block `AUTO_ROUTE_SUFFIX` already derived from `LABELS`. Assert-equal is trivially satisfied; the assert line stays for cross-site symmetry.
