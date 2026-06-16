@@ -118,15 +118,16 @@ _Trade-off vs A:_ B is simpler plumbing (one file, one attribute line, one appen
 
 ## Decisions
 
-| Decided                                                                                                          | Alternatives                                | Why                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Four per-purpose files (A)                                                                                       | Single `telemetry.jsonl` (B)                | Honours locked "one file per purpose"; isolates blast radius; clean rules.md→file affordance ("bug → failures.jsonl"); per-file rollup simpler.       |
-| One `bkit-telemetry.ts` canonical library, workflows run a mirroring jq append (clone of `bkit-status.ts` split) | Each workflow hand-writes JSON inline       | Proven pattern in-repo; prevents prose-written rows drifting from typed contract; unit-testable fold/validate.                                        |
-| Grader = GateGuard-style deterministic advisory, fail-open, dogfood-gated deny behind env var                    | Grader gates the close step                 | Locked "advisory never gates"; GateGuard is the proven precedent; a gating grader re-introduces flakiness risk into the workflow it measures.         |
-| Harvest = copy-only, dedup by `ts`+`repo`, never writes/truncates consumer repos                                 | Truncate-source (friction model)            | Telemetry is the consumer's own analysis history; copy makes a harvest bug non-destructive; pre-empts the consumer-bricking class on the read side.   |
-| P5 consumer migration = opt-in dry-run-by-default CLI, writes alongside `.md`                                    | Engine auto-migrates on `bkit upgrade` (C)  | Auto-migration is the pinnedCommit bricking class at consumer scale; opt-in + dogfood-first + tarball-validated is the scarred-lesson-compliant path. |
-| `schemaVersion` on every row from P1                                                                             | Add versioning later                        | Rows are immutable append-only — retrofitting is impossible; cheapest drift insurance.                                                                |
-| Keep ledger files out of the manifest; only `.gitattributes`/rules/template blocks are engine-managed            | Add `format` entries for the `.jsonl` files | Concretely realises "exempt from install/mirror + slop + Vale"; matches how status.jsonl is handled today.                                            |
+<!-- prettier-ignore -->
+| Decided | Alternatives | Why |
+| --- | --- | --- |
+| Four per-purpose files (A) | Single `telemetry.jsonl` (B) | Honours locked "one file per purpose"; isolates blast radius; clean rules.md→file affordance ("bug → failures.jsonl"); per-file rollup simpler. |
+| One `bkit-telemetry.ts` canonical library, workflows run a mirroring jq append (clone of `bkit-status.ts` split) | Each workflow hand-writes JSON inline | Proven pattern in-repo; prevents prose-written rows drifting from typed contract; unit-testable fold/validate. |
+| Grader = GateGuard-style deterministic advisory, fail-open, dogfood-gated deny behind env var | Grader gates the close step | Locked "advisory never gates"; GateGuard is the proven precedent; a gating grader re-introduces flakiness risk into the workflow it measures. |
+| Harvest = copy-only, dedup by `ts`+`repo`, never writes/truncates consumer repos | Truncate-source (friction model) | Telemetry is the consumer's own analysis history; copy makes a harvest bug non-destructive; pre-empts the consumer-bricking class on the read side. |
+| P5 consumer migration = opt-in dry-run-by-default CLI, writes alongside `.md` | Engine auto-migrates on `bkit upgrade` (C) | Auto-migration is the pinnedCommit bricking class at consumer scale; opt-in + dogfood-first + tarball-validated is the scarred-lesson-compliant path. |
+| `schemaVersion` on every row from P1 | Add versioning later | Rows are immutable append-only — retrofitting is impossible; cheapest drift insurance. |
+| Keep ledger files out of the manifest; only `.gitattributes`/rules/template blocks are engine-managed | Add `format` entries for the `.jsonl` files | Concretely realises "exempt from install/mirror + slop + Vale"; matches how status.jsonl is handled today. |
 
 ## Cross-Approach Risks
 

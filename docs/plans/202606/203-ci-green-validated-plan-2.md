@@ -109,18 +109,19 @@ This sub-plan executes **Phase C + Phase D + Phase E + Phase F** of the consolid
 
 Sub-Plan 2 contributes the following Derived Test Matrix rows:
 
-| Matrix concern                                                                                                   | Where Sub-Plan 2 addresses it                                    |
-| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `.bkit/workflows/bkit-ship.md` Gate 2 + Step 12 + Gate 3 read `bkit-tests-check == SUCCESS` via MCP              | Task C1 + C2                                                     |
-| Bug-class regression: ship/debug gate rejects each of `cancelled`/`skipped`/`neutral`/`missing` (4 Vitest cases) | Task E2 (`bkit-ship-workflow.test.ts`)                           |
-| `.bkit/workflows/bkit-debug.md` Step 3 inspects `bkit-tests-check` via MCP equivalent                            | Task C3 + E2                                                     |
-| `.agents/rules.md` + template mirror carry "Green != ran != validated" bullet                                    | Tasks D1 + D2 + E4                                               |
-| `heavy-customised-ci` fixture upgraded to 4-job shape PRESERVING bare markers                                    | Task E5                                                          |
-| Template's no-bare-marker guard remains scoped to `.bkit/templates/**`                                           | Task E1 (assertion added) + E5 (verification of scope unchanged) |
-| `docs/pending.md` Quick path entry says `bkit-protect-main.sh` + `bkit-tests-check`                              | Task E7                                                          |
-| `dist/` regenerated; `dist/bkit-postinstall.js` contains `bkit-protect-main` literal                             | Task F1                                                          |
-| `.claude/commands/*` + `.cursor/commands/*` mirrors match `.bkit/workflows/*.md`                                 | Task F2                                                          |
-| All test rows of the Derived Test Matrix execute green together                                                  | Task F3                                                          |
+<!-- prettier-ignore -->
+| Matrix concern | Where Sub-Plan 2 addresses it |
+| --- | --- |
+| `.bkit/workflows/bkit-ship.md` Gate 2 + Step 12 + Gate 3 read `bkit-tests-check == SUCCESS` via MCP | Task C1 + C2 |
+| Bug-class regression: ship/debug gate rejects each of `cancelled`/`skipped`/`neutral`/`missing` (4 Vitest cases) | Task E2 (`bkit-ship-workflow.test.ts`) |
+| `.bkit/workflows/bkit-debug.md` Step 3 inspects `bkit-tests-check` via MCP equivalent | Task C3 + E2 |
+| `.agents/rules.md` + template mirror carry "Green != ran != validated" bullet | Tasks D1 + D2 + E4 |
+| `heavy-customised-ci` fixture upgraded to 4-job shape PRESERVING bare markers | Task E5 |
+| Template's no-bare-marker guard remains scoped to `.bkit/templates/**` | Task E1 (assertion added) + E5 (verification of scope unchanged) |
+| `docs/pending.md` Quick path entry says `bkit-protect-main.sh` + `bkit-tests-check` | Task E7 |
+| `dist/` regenerated; `dist/bkit-postinstall.js` contains `bkit-protect-main` literal | Task F1 |
+| `.claude/commands/*` + `.cursor/commands/*` mirrors match `.bkit/workflows/*.md` | Task F2 |
+| All test rows of the Derived Test Matrix execute green together | Task F3 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -132,10 +133,11 @@ Sub-Plan 2 contributes the following Derived Test Matrix rows:
 
 Sub-Plan 2 introduces / surfaces the following breaking changes (parent table at [`203-ci-green-validated-plan.md`](./203-ci-green-validated-plan.md#breaking-changes--naming-review-human-review-required) is canonical):
 
-| Change                                                                                                                                                           | Type            | Notes                                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `.bkit/workflows/bkit-ship.md` Step 12 squash-merge guard: now keys off `bkit-tests-check` capstone conclusion instead of "any job whose name matches `/test/i`" | Behavioural     | A consumer whose ci.yml does not yet ship the capstone will see ship Step 12 refuse to declare validated — that is correct. |
-| Branch protection on bkit's own `main` (operator step — out-of-tree)                                                                                             | Operator action | Not executed by this build; `docs/pending.md` entry updated only (Task E7); the actual flip is operator-side.               |
+<!-- prettier-ignore -->
+| Change | Type | Notes |
+| --- | --- | --- |
+| `.bkit/workflows/bkit-ship.md` Step 12 squash-merge guard: now keys off `bkit-tests-check` capstone conclusion instead of "any job whose name matches `/test/i`" | Behavioural | A consumer whose ci.yml does not yet ship the capstone will see ship Step 12 refuse to declare validated — that is correct. |
+| Branch protection on bkit's own `main` (operator step — out-of-tree) | Operator action | Not executed by this build; `docs/pending.md` entry updated only (Task E7); the actual flip is operator-side. |
 
 ### 👤 ✅ Human Confirmation
 
@@ -268,14 +270,15 @@ Sub-Plan 2 introduces / surfaces the following breaking changes (parent table at
 
 ### Documentation Updates
 
-| File                                  | Change required                                                                                                                                                                                              |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `docs/deployments.md`                 | Refresh "Run-level tiers" table heading to reference the new 4-job vocabulary (`bkit-decide` plan + `bkit-tests-check` capstone); add one line under "Branch protection" pointing at `bkit-protect-main.sh`. |
-| `.bkit/templates/docs/deployments.md` | Same edits (consumer mirror).                                                                                                                                                                                |
-| `docs/knowledge.md`                   | Append one KN-N entry: "Capstone-gated CI — `bkit-tests-check` is the only required check; partial runs legitimately skip tiers without breaking required-check".                                            |
-| `docs/decisions.md`                   | Append one DE-N entry: "Capstone CI job `bkit-tests-check` adopted (gether #403 backport); decided over original #203 `bkit-gate` name and over making `bkit-tests` the required check".                     |
-| `docs/pending.md`                     | Update quick-path entry (covered by Task E7).                                                                                                                                                                |
-| `CHANGELOG.md`                        | New version entry (covered by Task E10).                                                                                                                                                                     |
+<!-- prettier-ignore -->
+| File | Change required |
+| --- | --- |
+| `docs/deployments.md` | Refresh "Run-level tiers" table heading to reference the new 4-job vocabulary (`bkit-decide` plan + `bkit-tests-check` capstone); add one line under "Branch protection" pointing at `bkit-protect-main.sh`. |
+| `.bkit/templates/docs/deployments.md` | Same edits (consumer mirror). |
+| `docs/knowledge.md` | Append one KN-N entry: "Capstone-gated CI — `bkit-tests-check` is the only required check; partial runs legitimately skip tiers without breaking required-check". |
+| `docs/decisions.md` | Append one DE-N entry: "Capstone CI job `bkit-tests-check` adopted (gether #403 backport); decided over original #203 `bkit-gate` name and over making `bkit-tests` the required check". |
+| `docs/pending.md` | Update quick-path entry (covered by Task E7). |
+| `CHANGELOG.md` | New version entry (covered by Task E10). |
 
 ---
 
@@ -423,10 +426,11 @@ Sub-Plan 2 introduces / surfaces the following breaking changes (parent table at
 
 ## Rollback Strategy
 
-| Axis            | Action                                                 | Notes                                                                                                                                                                                                                                                                            |
-| --------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **DB**          | N/A                                                    | No migrations.                                                                                                                                                                                                                                                                   |
-| **Code**        | `git revert {squash-merge-SHA}`                        | All edits are in one squash. CI template rolls back to single-job shape; protection script reverts via `git mv` in the revert commit.                                                                                                                                            |
+<!-- prettier-ignore -->
+| Axis | Action | Notes |
+| --- | --- | --- |
+| **DB** | N/A | No migrations. |
+| **Code** | `git revert {squash-merge-SHA}` | All edits are in one squash. CI template rolls back to single-job shape; protection script reverts via `git mv` in the revert commit. |
 | **Risk window** | None for consumers who have not re-applied protection. | Consumers who flipped branch protection to require `bkit-tests-check` between merge and revert would need to re-apply old `REQUIRED_JOB="bkit-tests"` — they can run `bash scripts/ci/bkit-set-protection.sh` from the revert; engine handles both names cleanly via the rename. |
 
 ---

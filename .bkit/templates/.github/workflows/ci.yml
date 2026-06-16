@@ -282,6 +282,11 @@ jobs:
       #   run: |
       #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
       #     pnpm dlx supabase db push --linked --include-all
+      #
+      # BUILD-vs-MIGRATION RACE (latent until your first build-time DB read): if your host auto-deploys
+      # on this same push, its build runs UNORDERED vs this migrate step and a build-time DB read can
+      # ERROR the first deploy (PG 42P01/42703/42704/3F000; a redeploy of the SAME sha self-heals).
+      # Fix: serialise migrate -> deploy. Full mechanism + fix options: docs/deployments.md § Build-vs-migration race.
 
       # bkit-stub:test-db — Assert schema-invariant DB checks (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. Two co-equal routes — pick by DEPLOY TOPOLOGY, not by whether you can run pgTAP locally:
       #   * pgTAP (this step) — fast, hermetic, offline; runs supabase/tests/*.sql against a CI-LOCAL fixture built from supabase/migrations. Caveat: that fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this GREEN while prod RLS is broken. Best when there is NO deploy/@live tier, or for pure-logic DB unit tests.
@@ -343,6 +348,11 @@ jobs:
       #     done
       #     echo "::error::Vercel preview did not reach READY within 10 minutes"
       #     exit 1
+      #
+      # MIGRATION-COUPLED PRs: a preview deploy hits the SHARED dev DB, blind to a PR's unmerged migration,
+      # so a PR that adds+uses a column in one PR 500s pre-merge ([force e2e] won't help). Run feature->dev
+      # PR E2E against a LOCAL DB carrying this PR's migrations; keep preview E2E for pushes. Gate on head
+      # ref, not a flag. Full write-up: docs/testing.md § "E2E on PRs".
 
       # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
       # Under bkit [verbose ci]: your test:e2e script reads VERBOSE_CI (in the job env) and
@@ -366,6 +376,11 @@ jobs:
       #     TARGET_URL: ${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
       #   run: |
       #     pnpm test:e2e
+      #
+      # E2E PR-TIERING (biggest PR-wall-clock win): tag ~10-15 critical specs { tag:'@smoke' } and run the
+      # subset on PRs / full on push + nightly via a PROJECT-scoped grep (e.g. PW_E2E_GREP on pull_request
+      # only) — NOT a CLI/top-level --grep, which also filters the auth/setup projects and breaks seeding.
+      # Mechanism + turbo strict-env note: docs/testing.md § "E2E on PRs".
 
       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
       # `if: always()` captures both failure AND job-timeout cancel: Playwright's HTML reporter
@@ -451,6 +466,10 @@ jobs:
 #
 # === JOB 2: bkit-tests — the tiers ===
 #   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   SCALING: bkit-tests is ONE job, so tiers run SERIALLY (wall-clock = SUM of steps). On a monorepo
+#   where that dominates, split into parallel sibling lanes (-static/-unit/-integration/-e2e) so
+#   wall-clock = MAX(lane); the capstone needs: ALL lanes and EACH emits its own *_ran count. Detail +
+#   cost/mitigation: docs/deployments.md § Parallel test lanes.
 #   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
 #     integration_outcome: ${{ steps.integration.outcome }} ; e2e_outcome: ${{ steps.e2e.outcome }}
 #     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just
@@ -480,6 +499,8 @@ jobs:
 #       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
 #       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
 #       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
+#       #     [DB] BUILD-vs-MIGRATION RACE if the host auto-deploys on this push (build races this step; PG
+#       #     42P01/42703/42704/3F000, redeploy-same-sha self-heals). Fix: serialise migrate -> deploy. See docs/deployments.md § Build-vs-migration race.
 # bkit-stub:test-db — [DB] schema invariants ("every public table has RLS" etc., not app-defined). Two co-equal
 #       # routes by deploy topology: pgTAP (`supabase db test` over supabase/tests/*.sql) against a CI-LOCAL fixture
 #       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
@@ -491,6 +512,8 @@ jobs:
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
 #       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
 #       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
+#       #     [E/PR] PR-tier the suite (@smoke subset on PRs via a PROJECT-scoped grep, full on push) AND, for migration-
+#       #     coupled PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
@@ -502,7 +525,10 @@ jobs:
 # DB is rebuilt from scratch (see docs/testing.md, fresh-provision rule). bkit owns the always-runs,
 # self-detecting, branch-protection-safe SCAFFOLD; you supply your stack's reset+seed (Supabase:
 # `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay every migration
-# onto a throwaway DB, then seed). NOT in series before bkit-tests — they share no state (each
+# onto a throwaway DB, then seed). MULTIPLE MIGRATION SYSTEMS (e.g. Supabase public schema AND an
+# ORM/CMS chain like Payload/Prisma): replay EVERY chain + trigger on EVERY migration dir, or the
+# un-replayed chain is an unverified hole — see docs/testing.md § Provision backing services fresh.
+# NOT in series before bkit-tests — they share no state (each
 # provisions its own DB), so it runs in parallel and JOB 4 folds it into the capstone.
 #   bkit-tests-migrate:  needs:[] (independent sibling); timeout-minutes: 15
 #   # ALWAYS runs + reports a status (never a perpetually-pending required check); the heavy steps

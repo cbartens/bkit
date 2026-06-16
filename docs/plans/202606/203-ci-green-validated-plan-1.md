@@ -91,20 +91,21 @@ bkit's ship/debug gates and consumer-template CI conflate "the CI run concluded 
 
 Sub-Plan 1 contributes the following Derived Test Matrix rows (the matrix rows mapped to tests / verification land here; the test AUTHORING is in Sub-Plan 2):
 
-| Matrix concern                                                                                                            | Where Sub-Plan 1 addresses it                                     |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Template ci.yml has 4 named jobs + verbose-ci-env block preserved                                                         | Task A2 (Done-when grep counts)                                   |
-| Template ci.yml capstone has `if: !cancelled()` + `needs:` lists 3 jobs + 5-rule assertions                               | Task A2 (Done-when grep counts)                                   |
-| Template ci.yml `bkit-decide` carries jq-schema validation loop with all 7 literal field names                            | Task A2 (Done-when verifies `plan-table-v1` occurrence count = 4) |
-| Template ci.yml `bkit-decide` writes plan-table-v1 summary AND cancellation notice                                        | Task A2 (Done-when greps `Write cancellation notice`)             |
-| Template ci.yml `bkit-tests` declares `integration_outcome` + `e2e_outcome` job outputs                                   | Task A2 (Done-when greps both)                                    |
-| Template ci.yml `bkit-tests-live` is a CANONICAL job body (not commented stub)                                            | Task A2 (Done-when greps un-commented `Run Live Tests`)           |
-| Snapshot regenerated to match new 4-job template, diff human-reviewed                                                     | Task A5                                                           |
-| `bkit-decide` carries `Detect Direct Push` step so `detectRunLevelsNotComposed` advisory still fires (template)           | Task A2b                                                          |
-| `bkit-decide` carries `Detect Direct Push` step so `detectRunLevelsNotComposed` still passes against bkit-self (bkit-own) | Task A3b                                                          |
-| bkit's own ci.yml has degenerate 3-job shape; SHA-cache + `[skip ci]` preserved; actionlint clean                         | Task A3 + A3a + A4                                                |
-| `bkit-protect-main.sh` exists, old name absent, `REQUIRED_JOB="bkit-tests-check"`, preflight greps the new literal        | Tasks B1 + B2 + B3 + B4                                           |
-| `bkit-postinstall.ts` Quick-path advisory mentions `bkit-protect-main.sh` + `bkit-tests-check`                            | Task B5                                                           |
+<!-- prettier-ignore -->
+| Matrix concern | Where Sub-Plan 1 addresses it |
+| --- | --- |
+| Template ci.yml has 4 named jobs + verbose-ci-env block preserved | Task A2 (Done-when grep counts) |
+| Template ci.yml capstone has `if: !cancelled()` + `needs:` lists 3 jobs + 5-rule assertions | Task A2 (Done-when grep counts) |
+| Template ci.yml `bkit-decide` carries jq-schema validation loop with all 7 literal field names | Task A2 (Done-when verifies `plan-table-v1` occurrence count = 4) |
+| Template ci.yml `bkit-decide` writes plan-table-v1 summary AND cancellation notice | Task A2 (Done-when greps `Write cancellation notice`) |
+| Template ci.yml `bkit-tests` declares `integration_outcome` + `e2e_outcome` job outputs | Task A2 (Done-when greps both) |
+| Template ci.yml `bkit-tests-live` is a CANONICAL job body (not commented stub) | Task A2 (Done-when greps un-commented `Run Live Tests`) |
+| Snapshot regenerated to match new 4-job template, diff human-reviewed | Task A5 |
+| `bkit-decide` carries `Detect Direct Push` step so `detectRunLevelsNotComposed` advisory still fires (template) | Task A2b |
+| `bkit-decide` carries `Detect Direct Push` step so `detectRunLevelsNotComposed` still passes against bkit-self (bkit-own) | Task A3b |
+| bkit's own ci.yml has degenerate 3-job shape; SHA-cache + `[skip ci]` preserved; actionlint clean | Task A3 + A3a + A4 |
+| `bkit-protect-main.sh` exists, old name absent, `REQUIRED_JOB="bkit-tests-check"`, preflight greps the new literal | Tasks B1 + B2 + B3 + B4 |
+| `bkit-postinstall.ts` Quick-path advisory mentions `bkit-protect-main.sh` + `bkit-tests-check` | Task B5 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -116,12 +117,13 @@ Sub-Plan 1 contributes the following Derived Test Matrix rows (the matrix rows m
 
 Sub-Plan 1 introduces the following breaking changes (parent table at [`203-ci-green-validated-plan.md`](./203-ci-green-validated-plan.md#breaking-changes--naming-review-human-review-required) is canonical):
 
-| Change                                                                                                                    | Type        | Notes                                                                                                                        |
-| ------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| New job names in shipped `ci.yml`: `bkit-decide`, `bkit-tests-live`, `bkit-tests-check` (alongside existing `bkit-tests`) | New         | Capstone is `bkit-tests-check` (NOT `bkit-gate` — settled per #203 comment 2).                                               |
-| `scripts/ci/bkit-set-protection.sh` -> `scripts/ci/bkit-protect-main.sh` (`git mv` rename of both engine + template copy) | Breaking    | Tier-3 seed-or-print: existing consumers keep their copy; postinstall advisory + CHANGELOG (Sub-Plan 2 E10) flag the rename. |
-| `REQUIRED_JOB` constant: `"bkit-tests"` -> `"bkit-tests-check"` inside `bkit-protect-main.sh`                             | Breaking    | Consumer ci.yml MUST already carry `bkit-tests-check` for the preflight to pass.                                             |
-| Postinstall advisory "Quick path" text + "Require status checks: bkit-tests" line                                         | Behavioural | Both updated to reference `bkit-protect-main.sh` and `bkit-tests-check`.                                                     |
+<!-- prettier-ignore -->
+| Change | Type | Notes |
+| --- | --- | --- |
+| New job names in shipped `ci.yml`: `bkit-decide`, `bkit-tests-live`, `bkit-tests-check` (alongside existing `bkit-tests`) | New | Capstone is `bkit-tests-check` (NOT `bkit-gate` — settled per #203 comment 2). |
+| `scripts/ci/bkit-set-protection.sh` -> `scripts/ci/bkit-protect-main.sh` (`git mv` rename of both engine + template copy) | Breaking | Tier-3 seed-or-print: existing consumers keep their copy; postinstall advisory + CHANGELOG (Sub-Plan 2 E10) flag the rename. |
+| `REQUIRED_JOB` constant: `"bkit-tests"` -> `"bkit-tests-check"` inside `bkit-protect-main.sh` | Breaking | Consumer ci.yml MUST already carry `bkit-tests-check` for the preflight to pass. |
+| Postinstall advisory "Quick path" text + "Require status checks: bkit-tests" line | Behavioural | Both updated to reference `bkit-protect-main.sh` and `bkit-tests-check`. |
 
 ### 👤 ✅ Human Confirmation
 

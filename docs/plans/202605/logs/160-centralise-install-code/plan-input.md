@@ -118,15 +118,16 @@ Verdict: **PASS** — design ready to enter planning with no revisions required.
 
 Created 7 workstream sub-issues with dependency edges:
 
-| WS   | Title                                                                     | Issue | Requires (Blocked by) |
-| ---- | ------------------------------------------------------------------------- | ----- | --------------------- |
-| WS-1 | Resolver-seam consolidation & dogfood safety scaffolding                  | #161  | —                     |
-| WS-2 | Pre-refactor baseline capture                                             | #162  | —                     |
-| WS-3 | Physical move, resolver re-point, tooling/config & dead-arm deletion      | #163  | #161, #162            |
-| WS-4 | Two-axis verification gate (install AND upgrade)                          | #164  | #162, #163            |
-| WS-5 | Doctor observability for resolved templates root                          | #165  | #161                  |
-| WS-6 | Authoring-rule, docs & shipped-config drift updates (merge-gated)         | #166  | #163                  |
-| WS-7 | Optional rules.md byte-equality CI assertion (deferred → bundled, see D3) | #167  | #166                  |
+<!-- prettier-ignore -->
+| WS | Title | Issue | Requires (Blocked by) |
+| --- | --- | --- | --- |
+| WS-1 | Resolver-seam consolidation & dogfood safety scaffolding | #161 | — |
+| WS-2 | Pre-refactor baseline capture | #162 | — |
+| WS-3 | Physical move, resolver re-point, tooling/config & dead-arm deletion | #163 | #161, #162 |
+| WS-4 | Two-axis verification gate (install AND upgrade) | #164 | #162, #163 |
+| WS-5 | Doctor observability for resolved templates root | #165 | #161 |
+| WS-6 | Authoring-rule, docs & shipped-config drift updates (merge-gated) | #166 | #163 |
+| WS-7 | Optional rules.md byte-equality CI assertion (deferred → bundled, see D3) | #167 | #166 |
 
 ### Step 10 — Design Close
 

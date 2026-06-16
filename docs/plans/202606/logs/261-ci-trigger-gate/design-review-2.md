@@ -98,18 +98,19 @@ The project has no server-side telemetry (confirmed: `docs/observability.md` sco
 
 ### Per failure mode:
 
-| Failure Mode                                    | Structured log at failure point                                        | Metric/counter | Trace/correlation ID | Assessment                                                                                                   |
-| ----------------------------------------------- | ---------------------------------------------------------------------- | -------------- | -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Poll loop: queue latency false suppression      | Per-attempt "attempt N/6: rollup has K checks" — present per design    | None           | None                 | Adequate for reconstruct; no proactive detection                                                             |
-| Poll loop: gh API rate-limit / subprocess error | NOT specified — no structured log for non-zero `gh` exit in loop       | None           | None                 | CRITICAL GAP — gate can silently fail to assess                                                              |
-| Self-heal: re-trigger suppressed                | `ciDispatch=unresolved` + HEAD SHA + last rollup state in Failure Path | None           | None                 | Adequate for diagnosis                                                                                       |
-| Self-heal: second poll times out (false no-CI)  | `ciDispatch=no-ci` in status.jsonl — present                           | None           | None                 | Gap: `no-ci` on a CI-capable repo is silent (no adverse signal); no way to distinguish from legitimate no-CI |
-| Self-heal: AUTO_ROUTE_SUFFIX derivation failure | NOT specified                                                          | None           | None                 | CRITICAL GAP — auto-route miss is silent                                                                     |
-| EC-2 abort: gh probe failure                    | Orchestrator stdout (gh error); issue comment preserved                | None           | None                 | Adequate                                                                                                     |
-| EC-2 abort: stale CI on old HEAD                | NOT specified — no log that old HEAD CI is now the visible status      | None           | None                 | Gap — operator must manually correlate HEAD SHA to run SHA                                                   |
-| EC-1 pre-flight: probe failure falls through    | Orchestrator stdout                                                    | None           | None                 | Adequate (existing behavior)                                                                                 |
-| Ship gate: poll times out                       | Failure Path with recovery command                                     | None           | None                 | Adequate for actionability                                                                                   |
-| Inline copy drift                               | None at runtime — grep-equality check in CI (if wired)                 | None           | None                 | Gap — drift is silent until symptom                                                                          |
+<!-- prettier-ignore -->
+| Failure Mode | Structured log at failure point | Metric/counter | Trace/correlation ID | Assessment |
+| --- | --- | --- | --- | --- |
+| Poll loop: queue latency false suppression | Per-attempt "attempt N/6: rollup has K checks" — present per design | None | None | Adequate for reconstruct; no proactive detection |
+| Poll loop: gh API rate-limit / subprocess error | NOT specified — no structured log for non-zero `gh` exit in loop | None | None | CRITICAL GAP — gate can silently fail to assess |
+| Self-heal: re-trigger suppressed | `ciDispatch=unresolved` + HEAD SHA + last rollup state in Failure Path | None | None | Adequate for diagnosis |
+| Self-heal: second poll times out (false no-CI) | `ciDispatch=no-ci` in status.jsonl — present | None | None | Gap: `no-ci` on a CI-capable repo is silent (no adverse signal); no way to distinguish from legitimate no-CI |
+| Self-heal: AUTO_ROUTE_SUFFIX derivation failure | NOT specified | None | None | CRITICAL GAP — auto-route miss is silent |
+| EC-2 abort: gh probe failure | Orchestrator stdout (gh error); issue comment preserved | None | None | Adequate |
+| EC-2 abort: stale CI on old HEAD | NOT specified — no log that old HEAD CI is now the visible status | None | None | Gap — operator must manually correlate HEAD SHA to run SHA |
+| EC-1 pre-flight: probe failure falls through | Orchestrator stdout | None | None | Adequate (existing behavior) |
+| Ship gate: poll times out | Failure Path with recovery command | None | None | Adequate for actionability |
+| Inline copy drift | None at runtime — grep-equality check in CI (if wired) | None | None | Gap — drift is silent until symptom |
 
 **Project convention check:** `docs/observability.md` specifies `[{Context}]` prefixed log format for bkit CLI output. The design's poll log ("attempt N/6: rollup has K checks") does not specify a `[Context]` prefix. Per project convention, this should be `[bkit-ci-gate]` or similar. This is not a blocker but is a convention gap.
 
@@ -151,13 +152,14 @@ A more diagnostic label would be `no-ci-confirmed` (when the re-trigger is also 
 
 ### Recovery action classification
 
-| Outcome                | Recovery action                                  | Automatic / idempotent / human judgement                             |
-| ---------------------- | ------------------------------------------------ | -------------------------------------------------------------------- |
-| `dispatched`           | None                                             | Automatic                                                            |
-| `self-healed`          | None (one extra empty commit stays on branch)    | Automatic; commit is cosmetic                                        |
-| `no-ci`                | None (logged no-op)                              | Automatic                                                            |
-| `unresolved`           | `gh workflow run ci.yml --ref feat/{FID}`        | Human judgement (operator must decide if this is transient or a bug) |
-| Ship gate Failure Path | `gh workflow run ci.yml --ref dev` + re-run ship | Human judgement                                                      |
+<!-- prettier-ignore -->
+| Outcome | Recovery action | Automatic / idempotent / human judgement |
+| --- | --- | --- |
+| `dispatched` | None | Automatic |
+| `self-healed` | None (one extra empty commit stays on branch) | Automatic; commit is cosmetic |
+| `no-ci` | None (logged no-op) | Automatic |
+| `unresolved` | `gh workflow run ci.yml --ref feat/{FID}` | Human judgement (operator must decide if this is transient or a bug) |
+| Ship gate Failure Path | `gh workflow run ci.yml --ref dev` + re-run ship | Human judgement |
 
 **Alert noise risk:** The ship gate (poll-only, no self-heal) can page on genuine GitHub Actions queue latency, not just suppression. If the org's Actions queues run slow (e.g. a large CI spike), every concurrent ship attempt fails. No threshold tuning is possible because this is a bash poll, not a metric-driven alert. The only mitigation is increasing `POLL_BUDGET_S`, but that adds wall-clock latency to every ship.
 

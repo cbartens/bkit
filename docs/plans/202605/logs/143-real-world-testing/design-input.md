@@ -15,11 +15,12 @@ runtime-only defects can no longer ship green behind mocked tests.
 
 All three bugs are **runtime-only** — none is visible by reading code or running mocked tests:
 
-| Bug                                     | Only visible when you…                             |
-| --------------------------------------- | -------------------------------------------------- |
+<!-- prettier-ignore -->
+| Bug | Only visible when you… |
+| --- | --- |
 | typmod strips `vector(1536)` → seq scan | run `EXPLAIN ANALYZE` against the real 132k corpus |
-| model injects nil-UUID `partnerId`      | watch the real model make a real tool call         |
-| reasoning tokens eat `maxOutputTokens`  | run the real reasoning model to completion         |
+| model injects nil-UUID `partnerId` | watch the real model make a real tool call |
+| reasoning tokens eat `maxOutputTokens` | run the real reasoning model to completion |
 
 Both debug rounds were **static analysis + MSW mocks**. The round-1 summary literally says
 "no integration test for the tool loop; MSW fabricates the stream." The mocks asserted the world

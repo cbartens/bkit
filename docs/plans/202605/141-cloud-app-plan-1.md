@@ -174,7 +174,7 @@ This child acts on **DECISION-A** (T1.1/T1.7 — keep `bkit-cloud.yml` on `ANTHR
 | `bkit-modules.ts:2075` "Do NOT add `GH_BKIT_TOKEN` … github.token" advisory line | App-required advisory text | DELETE | Same as above; advisory must state App + `/install-github-app` required (decision 2). | **[C1]** T1.7 |
 | Bare `Auto` label in `.agents/templates/.claude/hooks/preflight.sh:8,109-111` + `.agents/templates/.cursor/hooks/preflight.sh:8,96-98` | `bkit:auto` | DELETE | Label convention: `bkit:` prefix on every tracker (FINAL SCOPE Labels row; migrate bare `Auto`). | **[C3]** T4.2 |
 | Bare `Auto` in `bkit-modules.ts` advisory text — `bkit-cloud-setup` strings at `:2051` ("reads the `Auto` opt-in label"), `:2054` ("labelled `Auto` in Linear"), `:2055` ("carries the `Auto` label") | `bkit:auto` (fix-in-place) OR removed-with-branch | DELETE | R3-2: consumer-facing advisory shipped by bkit must say `bkit:auto` for consistency with the migrated hooks that check `bkit:auto`. These live in the `isLinearCloud` branch — reconcile with the cloud-split (cursor=linear): if the split removes the branch wholesale, the strings go with it; otherwise fix them in place. Either way they MUST NOT survive saying bare `Auto`. | **[C1]** T1.7 |
-| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\|cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. | **[C1]** T1.4 |
+| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\ | cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. | **[C1]** T1.4 |
 | `bkit-postinstall.ts` `tracker==="linear"` → `LINEAR_API_KEY`-in-`bkit-cloud.yml` coupling in `buildCloudSetupAdvisory` (`:803`), `buildCloudDashboardsAdvisory` (`:849`), `buildCloudSecretsAdvisory` (`:895`) | GitHub-only secret set for `cloud=claude`/`tracker=github`; `LINEAR_API_KEY`/`.cursor` guidance moves to the `cloud=cursor`/`tracker=linear` path | DELETE | Decision 1 / "Vestigial Linear branch removed; `bkit-cloud.yml` is GitHub-only" — a Linear `bkit-cloud.yml` can no longer exist, so these three branches describe an impossible state and `buildCloudSecretsAdvisory` would tell a mis-recorded consumer to set a `LINEAR_API_KEY` the GitHub-only workflow never reads (downstream-reader regression). Removed by T1.9. | **[C1]** T1.9 |
 
 ## Security & Privacy
@@ -337,7 +337,7 @@ None.
 <!-- prettier-ignore -->
 | File | Change required |
 | --- | --- |
-| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\|cursor`; remove `github.token`-only framing (lines 367, 369). |
+| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\ | cursor`; remove `github.token`-only framing (lines 367, 369). |
 | `.agents/advisories.md` | Regenerate after `bkit-cloud-setup` advisory edits (T1.11). |
 
 > [!NOTE]

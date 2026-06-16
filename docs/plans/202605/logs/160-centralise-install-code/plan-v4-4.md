@@ -95,7 +95,7 @@ None — docs/prose + a CI lint test; no new routes, DB writes, secrets, or user
 | `docs/testing.md` (37, 51) | Test-colocation rule (37) + CI-parity rule (51): `.agents/scripts/` → `.bkit/src/`. (WS6-T2.) |
 | `docs/deployments.md` | Build-freshness rule (193) → `.bkit/src/*.ts`; ci.yml/template/husky refs (197, 202, 214, 260) → `.bkit/templates/...`; Renovate `ignorePaths` note (211) → `.bkit/templates/**` AND the shipped `renovate.json5` template glob (line 81) AND its lines 66-70 comment block (which falsely describes `.agents/templates/**` as a consumer-written mirror post-D1) in lockstep. (WS6-T2.) |
 | `docs/knowledge.md` | Forward-looking rules text ONLY (e.g. KN-7, line 162 `.agents/scripts/*.ts` build rule). Do NOT rewrite historic KN-* narrative or commit-hashed `Related:` refs. (WS6-T2.) |
-| `README.md`, `.agents/docs.md`, `.agents/workflows.md`, `.bkitignore` (header comment), `.github/workflows/ci.yml:82` (+ its template source) | Grep `\.agents/(templates\|scripts)` and re-point any hits. (WS6-T3.) |
+| `README.md`, `.agents/docs.md`, `.agents/workflows.md`, `.bkitignore` (header comment), `.github/workflows/ci.yml:82` (+ its template source) | Grep `\.agents/(templates\ | scripts)` and re-point any hits. (WS6-T3.) |
 | `docs/decisions.md` | Append the WS-7 rules.md byte-equality gate decision (block-scoped) if not already recorded. (WS7-T2.) |
 | `docs/completed.md` | (Ship phase) one entry for #160 on merge. |
 
