@@ -614,10 +614,14 @@ export async function runSurgicalOpencodeUninstall(
 
   if (fs.existsSync(pkgPath)) {
     const raw = fs.readFileSync(pkgPath, "utf-8");
-    let pkg: Record<string, unknown>;
+    // Parse-or-sentinel idiom: keep the early-return outside the catch body.
+    let pkg: Record<string, unknown> | null = null;
     try {
       pkg = JSON.parse(raw) as Record<string, unknown>;
     } catch {
+      pkg = null;
+    }
+    if (pkg === null) {
       console.warn(`${LOG_PREFIX} package.json is malformed — skipping bkit section update`);
       return;
     }

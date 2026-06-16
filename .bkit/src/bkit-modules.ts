@@ -1512,11 +1512,16 @@ export function removeOpencodeProviderBlock(
   ws: WriteSet,
 ): void {
   if (!fs.existsSync(dst)) return;
+  // Parse-or-sentinel idiom: keep the early-return outside the catch body.
   let existing: Record<string, JsonValue> | null = null;
   try {
     existing = JSON.parse(fs.readFileSync(dst, "utf-8")) as Record<string, JsonValue>;
   } catch {
-    return; // malformed — leave it; uninstall should not crash
+    existing = null;
+  }
+  if (existing === null) {
+    console.warn(`[bkit] ${dst} is malformed — leaving as-is`);
+    return;
   }
   const blockKey = opencodeProviderId(providerKey);
   const providerObj = existing.provider;
