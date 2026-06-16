@@ -16,6 +16,7 @@ import {
   getPkgRoot,
   renderCloudWorkflow,
   renderOpencodeJson,
+  reconcileOpencodeJson,
   buildMcpJson,
   renderManagedOutputs,
   opencodeProviderId,
@@ -30,7 +31,11 @@ import {
   readChangelogVersionDelta,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall.js";
-import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import {
+  runUninstall,
+  runSurgicalOpencodeUninstall,
+  type UninstallContext,
+} from "./bkit-uninstall.js";
 import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
@@ -1224,9 +1229,10 @@ function runStatus(cwd: string, logPrefix: string): void {
   // --- opencode host ---
   const opencodeDir = path.join(cwd, ".opencode");
   const opencodePresent = fs.existsSync(opencodeDir);
-  // Provider is the bkit provider key — resolved manifest-first (detectOpencodeProvider),
-  // which also covers managed-auth gateways (zen) whose opencode.json has no provider block.
-  let opencodeProvider = detectOpencodeProvider(cwd) ?? "unknown";
+  // Resolve active provider (manifest-first; covers managed-auth gateways like zen).
+  const activeOpencodeProvider = detectOpencodeProvider(cwd);
+  // All installed providers (multi-provider tracking, Task 5 / #281).
+  const allOpencodeProviders = detectOpencodeProviders(cwd);
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
   if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
@@ -1245,8 +1251,22 @@ function runStatus(cwd: string, logPrefix: string): void {
       opencodeModel = "parse-error";
     }
   }
+  let opencodeProviderDisplay: string;
+  let providerLabel: string;
+  if (allOpencodeProviders.length > 1) {
+    // Multi-provider: list all, mark active
+    const activeKey = activeOpencodeProvider ?? allOpencodeProviders[0];
+    opencodeProviderDisplay = allOpencodeProviders
+      .map((p) => (p === activeKey ? `${p} (active)` : p))
+      .join(", ");
+    providerLabel = "providers";
+  } else {
+    // Single provider: use singular label
+    opencodeProviderDisplay = activeOpencodeProvider ?? allOpencodeProviders[0] ?? "unknown";
+    providerLabel = "provider";
+  }
   const opencodeStatus = opencodePresent
-    ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+    ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
     : "absent (run: bkit install --opencode=<provider>)";
   console.log(`${logPrefix} opencode: ${opencodeStatus}`);
 
@@ -1380,6 +1400,37 @@ function detectOpencodeProvider(cwd: string): string | null {
   return null;
 }
 
+/**
+ * Returns all bkit-installed opencode providers from the consumer package.json.
+ * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
+ * legacy single-provider installs (migrated on the next install run).
+ * Filters to valid OPENCODE_PROVIDERS entries; returns [] when neither field exists.
+ */
+export function detectOpencodeProviders(cwd: string): string[] {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return [];
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit?: { opencodeProviders?: unknown; opencodeProvider?: unknown };
+    };
+    const arr = pkg.bkit?.opencodeProviders;
+    if (Array.isArray(arr)) {
+      return arr.filter(
+        (v): v is string =>
+          typeof v === "string" && (OPENCODE_PROVIDERS as readonly string[]).includes(v),
+      );
+    }
+    // Legacy fallback: call detectOpencodeProvider which checks both package.json and opencode.json
+    const single = detectOpencodeProvider(cwd);
+    if (single !== null) {
+      return [single];
+    }
+  } catch {
+    // unparseable — return empty
+  }
+  return [];
+}
+
 async function main() {
   const {
     verb,
@@ -1471,6 +1522,14 @@ async function main() {
       let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
       if (opencodeProvider) detectedProvider = opencodeProvider;
 
+      // Multi-provider: get all installed providers (Task 5 / #281).
+      // If bkit.opencodeProviders is populated, use it; otherwise fall back to the
+      // single detected provider for backward compat with legacy single-provider installs.
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const activeProvider = detectedProvider ?? allProviders[0] ?? null;
+      const providersToCheck =
+        allProviders.length > 0 ? allProviders : activeProvider ? [activeProvider] : [];
+
       // Per-provider cred check (present/absent only — no value echoed).
       // Remote providers each name one API key; ollama-local is local (no key). Any
       // remote provider absent here falls back to `${PROVIDER}_API_KEY` (see below).
@@ -1485,57 +1544,63 @@ async function main() {
       };
       // Local-only providers that use no remote API key
       const LOCAL_PROVIDERS = new Set(["ollama-local"]);
-      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
-        const keys = PROVIDER_KEYS[detectedProvider] ?? [
-          `${detectedProvider.toUpperCase()}_API_KEY`,
-        ];
-        for (const key of keys) {
-          const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
-          console.log(
-            `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
-          );
-        }
-      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
-        console.log(
-          `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
-        );
-        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
-        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
-        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
-        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
-        if (!maxLoaded) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
-          );
-        } else if (maxLoaded !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
-        }
-        console.log(
-          `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
-        );
-        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
-        // model, parallel requests give no speedup and split the KV cache (more memory).
-        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
-        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
-        if (!numParallel) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
-          );
-        } else if (numParallel !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
-        }
-      } else if (!detectedProvider) {
+
+      if (providersToCheck.length === 0) {
         console.log(
           `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
         );
+      } else {
+        for (const provider of providersToCheck) {
+          const roleLabel = provider === activeProvider ? "(active)" : "(installed)";
+          console.log(`${LOG_PREFIX} --- ${provider} ${roleLabel} ---`);
+          if (!LOCAL_PROVIDERS.has(provider)) {
+            const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
+            for (const key of keys) {
+              const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
+              console.log(
+                `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`,
+              );
+            }
+          } else {
+            // ollama-local: local server, check host and memory-safety vars
+            console.log(
+              `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
+            );
+            // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+            // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+            // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+            const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+            if (!maxLoaded) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
+              );
+            } else if (maxLoaded !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+            }
+            console.log(
+              `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
+            );
+            // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+            // model, parallel requests give no speedup and split the KV cache (more memory).
+            // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+            const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+            if (!numParallel) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
+              );
+            } else if (numParallel !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+            }
+          }
+        }
       }
     }
 
@@ -1755,6 +1820,32 @@ async function main() {
       tokens,
     });
 
+    // Task 3 (#281): re-render all installed provider blocks for upgrade.
+    // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
+    // For each ADDITIONAL installed provider, reconcile their template block into opencode.json
+    // so template changes (new keys, updated placeholders) propagate to all providers' blocks.
+    const OPENCODE_JSON_DST = path.join(".opencode", "opencode.json");
+    if (fs.existsSync(path.join(process.cwd(), OPENCODE_JSON_DST))) {
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const otherProviders = allProviders.filter((p) => p !== upgradeOpencodeProvider);
+      if (otherProviders.length > 0) {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        if (fs.existsSync(jsonSrc)) {
+          const upgradeWs: WriteSet = { writes: [] };
+          for (const provider of otherProviders) {
+            const rendered = renderOpencodeJson(jsonSrc, upgradeTracker, provider);
+            reconcileOpencodeJson(rendered, OPENCODE_JSON_DST, upgradeFlags.dryRun, upgradeWs);
+          }
+          for (const w of upgradeWs.writes) {
+            console.log(
+              `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: additional provider ${w.path}`,
+            );
+          }
+        }
+      }
+    }
+
     // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host
     // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
@@ -1854,6 +1945,17 @@ async function main() {
 
   if (verb === "uninstall") {
     LOG_PREFIX = "[bkit-uninstall]";
+
+    // Surgical single-provider removal: `uninstall --opencode=<provider>`
+    if (modules.has("opencode") && opencodeProvider !== null) {
+      const tag = uninstallFlags.dryRun ? " (dry-run)" : "";
+      console.log(
+        `${LOG_PREFIX} Surgical opencode uninstall: removing provider "${opencodeProvider}"${tag}...`,
+      );
+      await runSurgicalOpencodeUninstall(opencodeProvider, uninstallFlags.dryRun, process.cwd());
+      return;
+    }
+
     const uninstallCtx: UninstallContext = {
       cwd: process.cwd(),
       dryRun: uninstallFlags.dryRun,
@@ -2052,7 +2154,22 @@ async function main() {
         const pkg = JSON.parse(raw) as Record<string, unknown>;
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
         if (persistTracker) bkit.issueTracker = tracker;
-        if (persistProvider) bkit.opencodeProvider = opencodeProvider;
+        if (persistProvider) {
+          // Save legacy single-string value BEFORE overwriting
+          const prevProvider =
+            typeof bkit.opencodeProvider === "string" ? bkit.opencodeProvider : null;
+          bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+          // Update providers array (deduped). Migrate: if only legacy string existed, seed array.
+          const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
+            ? [...(bkit.opencodeProviders as string[])]
+            : prevProvider && (OPENCODE_PROVIDERS as readonly string[]).includes(prevProvider)
+              ? [prevProvider]
+              : [];
+          if (!existingArr.includes(opencodeProvider!)) {
+            existingArr.push(opencodeProvider!);
+          }
+          bkit.opencodeProviders = existingArr;
+        }
         pkg.bkit = bkit;
         const indentMatch = raw.match(/\n([ \t]+)"/);
         const indent = indentMatch ? indentMatch[1] : "  ";
@@ -2067,7 +2184,7 @@ async function main() {
         }
         if (persistProvider) {
           console.log(
-            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" in package.json`,
+            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`,
           );
         }
       } catch {

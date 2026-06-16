@@ -1182,21 +1182,17 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
     }
 }
 /**
- * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template:
- * prune stale bkit-owned provider blocks, then deep-merge the template in.
+ * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template.
+ * Install is purely additive: existing provider blocks (bkit-seeded or consumer-added) are
+ * preserved unchanged. Only the current provider's template block is deep-merged in.
  *
- * The plain Tier-2 deep-merge (writeTier2JsonContained) keeps the consumer's existing
- * `provider.<x>` block because the new template has no key to override it — so switching
- * provider (e.g. nvidia -> zen) leaves a stale `{env:NVIDIA_API_KEY}` provider behind. Here we
- * delete any provider key bkit itself could have seeded — the opencode-side block key for each
- * OPENCODE_PROVIDER_DEFAULTS entry (its `providerId`, e.g. zen → `opencode`, else the bkit key) —
- * that is not the current provider's block key, leaving consumer-added providers untouched. (#255 P2-9)
+ * To remove a stale bkit provider block (e.g. after switching providers), use the surgical
+ * `removeOpencodeProviderBlock` below — called by the uninstall path, not install.
  *
  * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
- * deepContains, else merge) with the pre-merge prune folded in, so dry-run and real runs
- * compute the identical writeset.
+ * deepContains, else merge), so dry-run and real runs compute the identical writeset.
  */
-function reconcileOpencodeJson(renderedTemplate, relDst, currentProvider, dryRun, ws) {
+export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
     const template = JSON.parse(renderedTemplate);
     if (!fs.existsSync(relDst)) {
         // First install — write template as-is.
@@ -1220,29 +1216,8 @@ function reconcileOpencodeJson(renderedTemplate, relDst, currentProvider, dryRun
     if (existing === null) {
         throw new Error(`[bkit] ${relDst} is malformed JSON — fix manually before running bkit install`);
     }
-    // Prune stale bkit-owned provider blocks (keep the current provider + any consumer-added ones).
-    // Compare on the opencode-side block key (providerId), since the rendered block for zen is
-    // keyed `opencode`, not the bkit key `zen` — so a zen<->nvidia switch prunes correctly.
-    let pruned = false;
-    const seededBlockKeys = new Set(Object.entries(OPENCODE_PROVIDER_DEFAULTS).map(([key, def]) => def.providerId ?? key));
-    const currentBlockKey = opencodeProviderId(currentProvider);
-    const providerObj = existing.provider;
-    if (providerObj !== null && typeof providerObj === "object" && !Array.isArray(providerObj)) {
-        const pObj = providerObj;
-        for (const key of Object.keys(pObj)) {
-            if (key !== currentBlockKey && seededBlockKeys.has(key)) {
-                delete pObj[key];
-                pruned = true;
-            }
-        }
-        // A pruned-empty provider object would merge oddly — drop it; the template re-adds the current one.
-        if (Object.keys(pObj).length === 0) {
-            delete existing.provider;
-            pruned = true;
-        }
-    }
-    // Idempotent no-op only when nothing was pruned AND the template is already contained.
-    if (!pruned && deepContains(template, existing).ok) {
+    // Idempotent no-op: skip write if existing already contains the template.
+    if (deepContains(template, existing).ok) {
         return;
     }
     const merged = deepMergeJson(existing, template);
@@ -1253,6 +1228,40 @@ function reconcileOpencodeJson(renderedTemplate, relDst, currentProvider, dryRun
         fs.writeFileSync(relDst, mergedStr, "utf-8");
     }
     ws.writes.push({ path: relDst, action: "update" });
+}
+/**
+ * Remove exactly one bkit-seeded provider block from the consumer's opencode.json.
+ * `dst` may be an absolute or relative path (fs.* accepts both).
+ * Used by the surgical uninstall path — this is NOT called during install (install is additive).
+ * Compares on opencodeProviderId(providerKey) so zen (bkit key) → `opencode` (block key).
+ * The caller is responsible for passing only bkit-seeded provider keys; this function does not
+ * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
+ */
+export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
+    if (!fs.existsSync(dst))
+        return;
+    let existing = null;
+    try {
+        existing = JSON.parse(fs.readFileSync(dst, "utf-8"));
+    }
+    catch {
+        return; // malformed — leave it; uninstall should not crash
+    }
+    const blockKey = opencodeProviderId(providerKey);
+    const providerObj = existing.provider;
+    if (providerObj === null || typeof providerObj !== "object" || Array.isArray(providerObj))
+        return;
+    const pObj = providerObj;
+    if (!(blockKey in pObj))
+        return; // already absent — idempotent
+    delete pObj[blockKey];
+    if (Object.keys(pObj).length === 0)
+        delete existing.provider;
+    const updatedStr = JSON.stringify(existing, null, 2) + "\n";
+    if (!dryRun) {
+        fs.writeFileSync(dst, updatedStr, "utf-8");
+    }
+    ws.writes.push({ path: dst, action: "update" });
 }
 const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
 
@@ -1287,12 +1296,12 @@ export function runOpencodeModule(ctx) {
         const jsonDst = ".opencode/opencode.json";
         if (fs.existsSync(jsonSrc)) {
             // Render the template with tracker-filtered mcp + provider config, then reconcile it into
-            // the consumer file. reconcileOpencodeJson prunes a stale prior provider block before the
-            // deep-merge (so a provider switch doesn't leave an orphan `{env:VAR}` block) and computes
-            // an identical writeset for dry-run vs real runs — no `.bkit-staging` scratch file. (#255 P2-9)
+            // the consumer file. Install is additive: existing provider blocks are preserved.
+            // reconcileOpencodeJson computes an identical writeset for dry-run vs real runs — no
+            // `.bkit-staging` scratch file.
             const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
             const prevLen = ws.writes.length;
-            reconcileOpencodeJson(rendered, jsonDst, provider, dryRun, ws);
+            reconcileOpencodeJson(rendered, jsonDst, dryRun, ws);
             if (ws.writes.length > prevLen) {
                 console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
             }
