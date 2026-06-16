@@ -350,13 +350,14 @@ jobs:
           # Fan out the single OPENCODE_PROVIDER_KEY secret to every supported cloud provider's
           # env var name, so the committed .opencode/opencode.json {env:VAR} reference resolves
           # regardless of which provider the consumer installed (nvidia/groq/cerebras/openrouter/
-          # ollama-cloud). ollama-local is keyless and zen uses managed auth (opencode auth login),
-          # so neither reads a key here. No Claude identity leak — ANTHROPIC_API_KEY is absent.
+          # ollama-cloud/zen). ollama-local is keyless, so it reads no key here. zen (OpenCode Zen
+          # gateway) reads OPENCODE_API_KEY. No Claude identity leak — ANTHROPIC_API_KEY is absent.
           NVIDIA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           GROQ_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OLLAMA_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           OPENCODE_PROVIDER_KEY: ${{ secrets.OPENCODE_PROVIDER_KEY }}
           # Pass phase/arg via env to avoid ${{ }} expansion in run: shell string (injection guard).
           BKIT_PHASE: ${{ steps.ctx.outputs.phase }}

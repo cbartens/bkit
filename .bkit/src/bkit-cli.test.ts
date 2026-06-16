@@ -523,9 +523,16 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
   }
 
   // #245 Phase 3 — zen (opencode-native gateway). bkit key is `zen`; the opencode-side
-  // provider id is `opencode`. Accepted at the CLI; render path differs (managed auth).
+  // provider id is `opencode`. Accepted at the CLI; render path differs (built-in provider,
+  // auth via OPENCODE_API_KEY).
   it("--opencode=zen is accepted (#245 Phase 3)", () => {
     expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("zen");
+  });
+
+  // #282 — `go` is opencode's plan name for the Zen gateway. `--opencode=go` is an alias that
+  // normalises to the canonical `zen` provider key (so package.json records `zen`, not `go`).
+  it("--opencode=go is accepted and normalises to zen (#282)", () => {
+    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("zen");
   });
 
   const rejected: Array<[string, string]> = [

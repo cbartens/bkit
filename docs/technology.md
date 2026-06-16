@@ -50,7 +50,7 @@ bkit renders agent payload for three IDE/agent-host runtimes. Hosts are additive
 | Cursor (`.cursor/`) | always-on (no flag) | Cursor IDE agent runtime |
 | opencode (`.opencode/`) | `--opencode=<provider>` | sst/opencode universal agent host; seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen` |
 
-OpenAI-compatible providers (all except `zen`) use the npm `@ai-sdk/openai-compatible` driver. `zen` is an opencode-native gateway authenticated via `opencode auth login` (managed auth, no `{env:KEY}` block). Per-agent model pins live in `.bkit/prompts.md` § Models, one column per provider.
+OpenAI-compatible providers (all except `zen`) use the npm `@ai-sdk/openai-compatible` driver. `zen` (alias `go`) is the opencode-native built-in gateway authenticated via `OPENCODE_API_KEY` (`{env:OPENCODE_API_KEY}` in a minimal `provider.opencode` block, no npm driver / `baseURL`). Per-agent model pins live in `.bkit/prompts.md` § Models, one column per provider.
 
 ## Testing
 

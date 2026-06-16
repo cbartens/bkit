@@ -1246,7 +1246,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     // Tier identities reused from the cross-platform map (opus=kimi-k2.6, convergent=deepseek-v4-pro).
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.6"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("opencode/gemini-3-flash"); // haiku
+    expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
   });
 });

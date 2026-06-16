@@ -2377,9 +2377,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
   });
 
-  // #255 P2-9 — a provider switch must not leave a stale bkit provider block behind.
-  it("provider switch nvidia → zen (managed-auth) prunes the stale nvidia block", () => {
-    type OpencodeDoc = { provider?: Record<string, unknown> };
+  // #255 P2-9 / #282 — a provider switch must not leave a stale bkit provider block behind.
+  it("provider switch nvidia → zen prunes the stale nvidia block, seeds the opencode block", () => {
+    type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
@@ -2387,12 +2387,16 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
     expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
 
-    // zen is managed-auth → its rendered template ships NO provider block.
+    // zen renders a minimal built-in `opencode` provider block keyed by its providerId.
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
     expect(parsed.provider?.nvidia, "stale nvidia provider must be pruned").toBeUndefined();
     // No orphan {env:NVIDIA_API_KEY} reference requiring a now-irrelevant secret.
     expect(fs.readFileSync(jsonPath, "utf-8")).not.toContain("NVIDIA_API_KEY");
+    // The new zen block is keyed `opencode` and references OPENCODE_API_KEY.
+    expect((parsed.provider?.opencode?.options as Record<string, unknown>)?.apiKey).toBe(
+      "{env:OPENCODE_API_KEY}",
+    );
   });
 
   it("provider switch nvidia → groq prunes the old keyed provider and seeds the new one", () => {
@@ -2642,12 +2646,17 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.apiKey).toBeUndefined();
   });
 
-  it("zen (#245 Phase 3): managed auth — NO custom provider block at all", () => {
-    // zen is a first-class built-in opencode provider authenticated via `opencode auth login`,
-    // not a {env:KEY} block. renderOpencodeJson must emit no `provider` key (a stray custom
-    // block — npm/baseURL/apiKey — would be wrong and could shadow the built-in gateway).
+  it("zen (#282): built-in provider — minimal `opencode` block keyed by providerId, OPENCODE_API_KEY only", () => {
+    // zen is a first-class built-in opencode provider (id `opencode`). renderOpencodeJson emits a
+    // minimal block carrying only options.apiKey ({env:OPENCODE_API_KEY}) — NO npm driver, NO
+    // baseURL (opencode resolves the built-in provider itself), and keyed `opencode`, not `zen`.
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zen"));
-    expect(parsed.provider).toBeUndefined();
+    expect(parsed.provider?.zen, "must not key the block by the bkit alias").toBeUndefined();
+    const block = parsed.provider?.opencode;
+    expect(block, "opencode provider block present").toBeDefined();
+    expect(block.npm, "no npm driver for the built-in gateway").toBeUndefined();
+    expect(block.options?.baseURL, "no baseURL for the built-in gateway").toBeUndefined();
+    expect(block.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
     // The rest of the managed surface still renders normally.
     expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
     expect(parsed.mcp?.github?.type).toBe("remote");

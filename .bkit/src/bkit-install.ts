@@ -1480,35 +1480,12 @@ async function main() {
         cerebras: ["CEREBRAS_API_KEY"],
         openrouter: ["OPENROUTER_API_KEY"],
         ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
+        zen: ["OPENCODE_API_KEY"], // opencode-native gateway (Zen / "Go" plan)
         // ollama-local: local server, no API key required
       };
       // Local-only providers that use no remote API key
       const LOCAL_PROVIDERS = new Set(["ollama-local"]);
-      // Managed-auth gateways (zen): no API key env var — opencode holds the credential
-      // (`opencode auth login`). The doctor check is "is opencode logged in for this gateway",
-      // not "is $KEY set". Best-effort: parse `opencode auth list` for the `opencode` provider.
-      const MANAGED_AUTH_PROVIDERS = new Set(["zen"]);
-      if (detectedProvider && MANAGED_AUTH_PROVIDERS.has(detectedProvider)) {
-        let authState = "UNKNOWN — run `opencode auth login` if not already authenticated";
-        if (opencodeInstalled) {
-          const authResult = spawnSyncLocal("opencode", ["auth", "list"], { encoding: "utf-8" });
-          if (authResult.status === 0 && typeof authResult.stdout === "string") {
-            // The gateway shows up as the built-in `opencode` provider entry in `auth list`.
-            // The output header always names the auth.json path (…/opencode/auth.json), so a
-            // naive substring match false-positives — exclude the header/path line, then look
-            // for an `opencode` credential entry among the remaining lines.
-            const stripAnsi = (s: string) => s.replace(/\[[0-9;]*m/g, "");
-            const loggedIn = stripAnsi(authResult.stdout)
-              .split("\n")
-              .filter((l) => !/auth\.json|Credentials|Environment/i.test(l))
-              .some((l) => /\bopencode\b/i.test(l));
-            authState = loggedIn ? "LOGGED IN" : "NOT LOGGED IN (run `opencode auth login`)";
-          }
-        }
-        console.log(
-          `${LOG_PREFIX} zen (opencode gateway): opencode-managed auth — no API key env var. Auth: ${authState}`,
-        );
-      } else if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
+      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
         const keys = PROVIDER_KEYS[detectedProvider] ?? [
           `${detectedProvider.toUpperCase()}_API_KEY`,
         ];
