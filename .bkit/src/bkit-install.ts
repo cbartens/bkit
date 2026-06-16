@@ -16,6 +16,7 @@ import {
   getPkgRoot,
   renderCloudWorkflow,
   renderOpencodeJson,
+  reconcileOpencodeJson,
   buildMcpJson,
   renderManagedOutputs,
   opencodeProviderId,
@@ -1785,6 +1786,32 @@ async function main() {
       cwd: process.cwd(),
       tokens,
     });
+
+    // Task 3 (#281): re-render all installed provider blocks for upgrade.
+    // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
+    // For each ADDITIONAL installed provider, reconcile their template block into opencode.json
+    // so template changes (new keys, updated placeholders) propagate to all providers' blocks.
+    const OPENCODE_JSON_DST = path.join(".opencode", "opencode.json");
+    if (fs.existsSync(path.join(process.cwd(), OPENCODE_JSON_DST))) {
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const otherProviders = allProviders.filter((p) => p !== upgradeOpencodeProvider);
+      if (otherProviders.length > 0) {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        if (fs.existsSync(jsonSrc)) {
+          const upgradeWs: WriteSet = { writes: [] };
+          for (const provider of otherProviders) {
+            const rendered = renderOpencodeJson(jsonSrc, upgradeTracker, provider);
+            reconcileOpencodeJson(rendered, OPENCODE_JSON_DST, upgradeFlags.dryRun, upgradeWs);
+          }
+          for (const w of upgradeWs.writes) {
+            console.log(
+              `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: additional provider ${w.path}`,
+            );
+          }
+        }
+      }
+    }
 
     // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host

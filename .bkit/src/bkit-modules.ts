@@ -1451,7 +1451,7 @@ export function renderOpencodeJson(
  * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
  * deepContains, else merge), so dry-run and real runs compute the identical writeset.
  */
-function reconcileOpencodeJson(
+export function reconcileOpencodeJson(
   renderedTemplate: string,
   relDst: string,
   dryRun: boolean,

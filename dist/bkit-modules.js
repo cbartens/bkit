@@ -1192,7 +1192,7 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
  * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
  * deepContains, else merge), so dry-run and real runs compute the identical writeset.
  */
-function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
+export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
     const template = JSON.parse(renderedTemplate);
     if (!fs.existsSync(relDst)) {
         // First install — write template as-is.
