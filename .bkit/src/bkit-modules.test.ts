@@ -86,8 +86,10 @@ describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", ()
     expect(POSTINSTALL_SRC).toContain("@cbartens:registry=https://npm.pkg.github.com");
   });
 
-  it("postinstall source contains _authToken= line with GH_BKIT_TOKEN env-var interpolation", () => {
-    expect(POSTINSTALL_SRC).toContain("_authToken=");
+  it("postinstall source prescribes the user-level pnpm config set auth shape (#274)", () => {
+    expect(POSTINSTALL_SRC).toContain(
+      'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"',
+    );
     expect(POSTINSTALL_SRC).toContain("GH_BKIT_TOKEN");
   });
 
@@ -95,8 +97,9 @@ describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", ()
     expect(POSTINSTALL_SRC).toContain("read:packages");
   });
 
-  it("postinstall source contains pnpm silent-ignore warning", () => {
-    expect(POSTINSTALL_SRC).toContain("silently ignores");
+  it("postinstall source warns about the pnpm >=10.34.3 download 401 (#274)", () => {
+    expect(POSTINSTALL_SRC).toContain("pnpm >=10.34.3");
+    expect(POSTINSTALL_SRC).toContain("401");
   });
 
   it("postinstall source does NOT contain git insteadOf shim language", () => {

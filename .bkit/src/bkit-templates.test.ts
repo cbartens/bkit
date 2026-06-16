@@ -107,11 +107,12 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
 // ci.yml: Tier-3 (seed-or-print). Consumer-owned; bkit seeds once and never
-//   rewrites. The only marker is the NAMED `verbose-ci-env` block, which the
-//   preflight (detectCiYmlVerboseCiBlockMissing) checks by name. The bare
-//   whole-file `# bkit:start`/`# bkit:end` markers were removed in the
-//   v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because consumers
-//   misread them as "bkit owns/syncs these steps".
+//   rewrites. It carries NAMED bkit-managed blocks (`verbose-ci-env`,
+//   `main-lag-warning`), whose drift/absence is surfaced generically by the
+//   preflight `detectTier2TextDrift` advisory (named-block-aware — no per-block
+//   detector). The bare whole-file `# bkit:start`/`# bkit:end` markers were
+//   removed in the v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because
+//   consumers misread them as "bkit owns/syncs these steps".
 // .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
 // ---------------------------------------------------------------------------
 
@@ -162,6 +163,17 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block!).toContain("VERBOSE_CI");
     expect(block!).toContain("TURBO_LOG_LEVEL");
     expect(block!).toContain("GH_BKIT_TOKEN");
+  });
+
+  it("ci.yml install step writes the GH Packages auth token via pnpm config set (#274)", () => {
+    const content = readTemplate(".github/workflows/ci.yml");
+    // #274: token goes into pnpm user-level config before install (pnpm >=10.34.3 401s
+    // on a project-.npmrc ${GH_BKIT_TOKEN} env-substitution).
+    expect(content).toMatch(
+      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
+    );
+    // The broken project-.npmrc env-substituted token line must NOT be seeded.
+    expect(content).not.toMatch(/_authToken=\$\{GH_BKIT_TOKEN\}/);
   });
 });
 

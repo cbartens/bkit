@@ -92,7 +92,7 @@ CLI verbs:
 ```
 Consumer repo
 ├── package.json            # devDependencies: { "@cbartens/bkit": "^4.0.0" }
-├── .npmrc                  # @cbartens:registry=npm.pkg.github.com + GH_BKIT_TOKEN ref
+├── .npmrc                  # @cbartens:registry=npm.pkg.github.com (registry only; token in pnpm user-level config)
 ├── .bkitignore             # (optional, v0.7.0+) consumer escape hatch — picomatch globs
 ├── .claude/settings.json   # json format — deep-containment (template scope ⊆ consumer; v2.0.0+)
 ├── .cursor/hooks.json      # json format — Cursor v1 keyed-object; deep-containment (v2.0.0+)

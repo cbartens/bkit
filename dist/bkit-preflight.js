@@ -287,40 +287,12 @@ export function detectPrettierignoreScopeBroadening(cwd) {
 // ---------------------------------------------------------------------------
 // [verbose ci] marker advisories (BAR-224)
 // ---------------------------------------------------------------------------
-/**
- * Advisory: consumer's `.github/workflows/ci.yml` has bkit-managed markers but is
- * missing the `# bkit:start verbose-ci-env` named block that enables the
- * `[verbose ci]` commit/PR-title marker.
- *
- * Without the env block, the marker is a silent no-op — bkit-debug prompts will
- * still recommend `[verbose ci]` on thin-log failures, but the consumer's CI will
- * not escalate log detail. Surfacing this as an advisory directs the consumer to
- * `bkit install` which rewrites the bkit-managed block to include the env.
- *
- * Only fires when the consumer has opted into a bkit-managed ci.yml at all (other
- * bkit markers present). Consumers who own their ci.yml entirely are not nagged.
- */
-export function detectCiYmlVerboseCiBlockMissing(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
-    if (!fs.existsSync(ciPath))
-        return null;
-    const content = fs.readFileSync(ciPath, "utf-8");
-    // YAML-aware marker detection: allow leading whitespace, because ci.yml markers are
-    // indented inside `jobs:` / `steps:` (unlike the strict `hasBkitMarkers` used for
-    // flat-structure files like .gitignore / .prettierignore where indentation is unusual).
-    const hasAnyBkitMarker = /^\s*# bkit:start\b/m.test(content);
-    if (!hasAnyBkitMarker)
-        return null;
-    // Named block marker present? `# bkit:start verbose-ci-env`
-    if (/^\s*# bkit:start verbose-ci-env\b/m.test(content))
-        return null;
-    return {
-        id: "ci-yml-verbose-ci-block-missing",
-        severity: "advisory",
-        detect: ".github/workflows/ci.yml has bkit-managed markers but is missing the `# bkit:start verbose-ci-env` block. The `[verbose ci]` commit-message / PR-title marker will silently no-op.",
-        action: "Run `pnpm bkit install` to add the verbose-ci-env block (sets TURBO_LOG_LEVEL=full, NODE_OPTIONS=--trace-warnings, DEBUG=vercel:*,supabase:* under the marker). After install, append `[verbose ci]` to the PR title (for feature-branch pushes — the workflow fires on `pull_request`, not `push`) or to the commit message (for direct pushes to `dev` / `main`).",
-    };
-}
+// NOTE: detectCiYmlVerboseCiBlockMissing was retired once detectTier2TextDrift became
+// named-block-aware. The template's `verbose-ci-env` is a named bkit-managed block, so a
+// consumer missing it (or having drifted it) is now surfaced generically by the tier2-text-drift
+// advisory over `.github/workflows/ci.yml` — no per-block detector needed. New bkit-owned
+// fragments follow the same path: wrap them in `# bkit:start <name>` in the template and the
+// generic drift advisory covers them. Per-block presence detectors are no longer added.
 /**
  * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
  * overrides the configured reporter chain in `playwright.config.ts`. Under
@@ -1115,9 +1087,6 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     if (versionPinStale)
         advisories.push(versionPinStale);
     // BAR-224: [verbose ci] marker advisories
-    const verboseCiMissing = detectCiYmlVerboseCiBlockMissing(cwd);
-    if (verboseCiMissing)
-        advisories.push(verboseCiMissing);
     const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
     if (playwrightReporterHostile)
         advisories.push(playwrightReporterHostile);

@@ -147,6 +147,18 @@ Composition guidance:
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
 - The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
+### Promotion-lag warning (`Check Main Lags Dev`)
+
+CI on `dev` proves the code is good; nothing otherwise checks that good code ever reached the default branch. That gap bites because several surfaces are read LIVE from the default branch, not from `dev` and not from the validated tip:
+
+- **Renovate** resolves its config only from the default branch (see § Customizing Renovate). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
+- **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
+- **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
+
+The `Check Main Lags Dev` step (in `bkit-tests`) closes that blind spot: on every push to `dev` it diffs `renovate.json5`, `renovate.json`, and `.github/workflows/**` between the default branch and `dev`, and if any differ it emits a `::warning::` plus a `$GITHUB_STEP_SUMMARY` block naming the stale files and how far the default branch lags. It is **non-blocking** (a nudge — those surfaces may legitimately sit on `dev` between releases) and keys ONLY on those consumed-from-default-branch surfaces, so ordinary app-code `dev` pushes stay quiet. Clear it by opening a `dev` → default-branch PR.
+
+The step reads the default branch from the Actions context at runtime, so it is identical for every repo. It ships as the bkit-managed `main-lag-warning` block (between `# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` raises a non-blocking `tier2-text-drift` advisory if that block is **missing or drifted** — so adoption is nudged everywhere; keep it in sync from the template and do not hand-edit. It is safe to keep in any repo even if you do not gate the default branch behind `dev`: it only runs on `dev` pushes and self-skips when the default branch is `dev`/unset, so it never fires where the flow does not apply.
+
 ## GitHub Actions pinning
 
 Workflows with elevated permissions (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) MUST pin `uses:` to a 40-character commit SHA — never `@v{N}` floating tags. Floating tags are forgeable: a compromised maintainer can re-point `v4` at malicious code that runs on the next push.

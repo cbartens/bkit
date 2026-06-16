@@ -16,6 +16,7 @@ import {
   parseModelLookupForColumn,
   extractFullManagedBlock,
   extractManagedBlock,
+  extractNamedBlocks,
   parseFrontmatter,
   remapTemplateDest,
   updateManagedBlock,
@@ -591,6 +592,69 @@ describe("hash-comment marker round-trip (markerStyle: 'hash-comment')", () => {
     fs.writeFileSync(tmpFile, "no: markers\n", "utf-8");
     const changed = updateManagedBlock(tmpFile, "content", false, "hash-comment");
     expect(changed).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractNamedBlocks — named/optional/multi-block parser (template-driven drift)
+// ---------------------------------------------------------------------------
+
+describe("extractNamedBlocks", () => {
+  it("parses a bare (unnamed) hash block under the empty-string key", () => {
+    const m = extractNamedBlocks("a.txt\n# bkit:start\nb.txt\n# bkit:end\n");
+    expect([...m.keys()]).toEqual([""]);
+    expect(m.get("")?.body).toBe("b.txt");
+    expect(m.get("")?.optional).toBe(false);
+  });
+
+  it("parses a bare HTML block under the empty-string key", () => {
+    const m = extractNamedBlocks("# Title\n<!-- bkit:start -->\nbody\n<!-- bkit:end -->\n");
+    expect(m.get("")?.body).toBe("body");
+  });
+
+  it("parses multiple INDENTED named blocks in one file", () => {
+    const yaml =
+      "jobs:\n" +
+      "  t:\n" +
+      "    # bkit:start verbose-ci-env\n" +
+      "    env:\n" +
+      "      V: '1'\n" +
+      "    # bkit:end verbose-ci-env\n" +
+      "    steps:\n" +
+      "      # bkit:start main-lag-warning optional\n" +
+      "      - run: echo lag\n" +
+      "      # bkit:end main-lag-warning\n";
+    const m = extractNamedBlocks(yaml);
+    expect(new Set(m.keys())).toEqual(new Set(["verbose-ci-env", "main-lag-warning"]));
+    // Raw line indentation is preserved (same contract as extractManagedBlock) — both the
+    // template and consumer blocks carry identical indentation, so the comparison is exact.
+    expect(m.get("verbose-ci-env")?.body).toBe("    env:\n      V: '1'");
+    expect(m.get("verbose-ci-env")?.optional).toBe(false);
+    expect(m.get("main-lag-warning")?.body).toBe("      - run: echo lag");
+    expect(m.get("main-lag-warning")?.optional).toBe(true);
+  });
+
+  it("ignores backtick-quoted prose mentions of markers (line-anchored matching)", () => {
+    const content =
+      "# The one exception is the `# bkit:start verbose-ci-env` block below.\n" +
+      "jobs:\n  t:\n    # bkit:start verbose-ci-env\n    env: {}\n    # bkit:end verbose-ci-env\n";
+    const m = extractNamedBlocks(content);
+    expect([...m.keys()]).toEqual(["verbose-ci-env"]);
+    expect(m.get("verbose-ci-env")?.body).toBe("    env: {}");
+  });
+
+  it("drops an unterminated block (no matching end)", () => {
+    const m = extractNamedBlocks("  # bkit:start orphan\n  body line\n  steps:\n");
+    expect(m.size).toBe(0);
+  });
+
+  it("closes a named block with a bare `# bkit:end` too (lenient end matching)", () => {
+    const m = extractNamedBlocks("# bkit:start foo\nx\n# bkit:end\n");
+    expect(m.get("foo")?.body).toBe("x");
+  });
+
+  it("returns an empty map when no markers are present", () => {
+    expect(extractNamedBlocks("jobs:\n  t:\n    steps:\n      - run: a\n").size).toBe(0);
   });
 });
 

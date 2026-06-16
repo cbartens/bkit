@@ -17,7 +17,6 @@ import {
   detectBkitVersionPinStale,
   detectGitignoreBlockDuplicates,
   detectPrettierignoreScopeBroadening,
-  detectCiYmlVerboseCiBlockMissing,
   detectPlaywrightReporterHostile,
   detectObservabilityDebugFetchMissing,
   detectObservabilityDebugFetchSourceNotEnabled,
@@ -556,49 +555,6 @@ describe("detectPrettierignoreScopeBroadening", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// [verbose ci] marker advisories (BAR-224)
-// ---------------------------------------------------------------------------
-
-describe("detectCiYmlVerboseCiBlockMissing", () => {
-  function writeCiYml(content: string): void {
-    const dir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "ci.yml"), content, "utf-8");
-  }
-
-  it("flags when bkit markers present but verbose-ci-env block missing", () => {
-    writeCiYml(
-      "jobs:\n  bkit-tests:\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
-    );
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeDefined();
-    expect(f?.id).toBe("ci-yml-verbose-ci-block-missing");
-    expect(f?.severity).toBe("advisory");
-    expect(f?.action).toContain("pnpm bkit install");
-    expect(f?.action).toContain("[verbose ci]");
-  });
-
-  it("does NOT flag when verbose-ci-env named block is present", () => {
-    writeCiYml(
-      "jobs:\n  bkit-tests:\n    # bkit:start verbose-ci-env\n    env:\n      VERBOSE_CI: ''\n    # bkit:end verbose-ci-env\n    steps:\n      # bkit:start\n      - run: echo hi\n      # bkit:end\n",
-    );
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("does NOT flag when ci.yml has no bkit markers at all (consumer owns ci.yml entirely)", () => {
-    writeCiYml("jobs:\n  bkit-tests:\n    steps:\n      - run: echo hi\n");
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeNull();
-  });
-
-  it("returns null when ci.yml does not exist", () => {
-    const f = detectCiYmlVerboseCiBlockMissing(tmpDir);
-    expect(f).toBeNull();
-  });
-});
-
 describe("detectObservabilityDebugFetchMissing", () => {
   function writeObservability(content: string): void {
     const dir = path.join(tmpDir, "docs");
@@ -894,16 +850,17 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 });
 
 // ---------------------------------------------------------------------------
-// B6 — .npmrc inline action text uses plain ${GH_BKIT_TOKEN} (BAR-142 §B6 reversal)
+// B6 — advisory auth shape (BAR-142 §B6 + #274 user-level relocation)
 //
-// pnpm's .npmrc env-var substitution only supports the simple `${VAR}` form,
-// NOT the POSIX `${VAR:-default}` bash fallback. The earlier B6 ship shipped
-// `${GH_BKIT_TOKEN:-}` on the assumption pnpm parsed it; in practice pnpm
-// treats `GH_BKIT_TOKEN:-` as the literal var name and sends no auth header
-// (opaque 401 from GH Packages). Worse: bkit's own `detectNpmrcAuth` validator
-// in bkit-postinstall.ts only matches the plain form — so a consumer following
-// the buggy advisory would fail bkit's `npmrc-missing-gh-packages` check.
-// This test now enforces the plain form everywhere in advisory text.
+// #274: pnpm >=10.34.3 no longer authenticates a project-.npmrc `${GH_BKIT_TOKEN}`
+// env-substitution (it 401s on download), and via config precedence a project-.npmrc
+// auth line shadows the user-level token. So advisory text must prescribe the
+// user-level shape — `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
+// (a shell var, not an .npmrc `${VAR}` interpolation) — and must NOT prescribe a
+// project-.npmrc `_authToken=${GH_BKIT_TOKEN}` line.
+//
+// The BAR-142 §B6 invariant still holds permanently: the broken POSIX-fallback
+// `${VAR:-default}` form must never appear (pnpm cannot parse it; it 401s).
 // ---------------------------------------------------------------------------
 
 describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
@@ -914,13 +871,20 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
     expect(src).toContain("export GH_BKIT_TOKEN=$(gh auth token)");
   });
 
-  it("bkit-modules.ts .npmrc inline advisory strings use plain ${GH_BKIT_TOKEN} (pnpm does not parse :-) ", () => {
-    const src = fs.readFileSync(path.join(__dirname, "bkit-modules.ts"), "utf-8");
-    // Both .npmrc literal advisory locations must contain `_authToken=${GH_BKIT_TOKEN}` (plain form).
-    const plainAuthMatches = (src.match(/_authToken=\\?\$\{GH_BKIT_TOKEN\}/g) ?? []).length;
-    expect(plainAuthMatches).toBeGreaterThanOrEqual(2);
-    // The broken POSIX-fallback form must NOT appear anywhere — pnpm cannot parse it.
-    expect(src).not.toMatch(/_authToken=\\?\$\{GH_BKIT_TOKEN:-\}/);
+  it("advisory strings prescribe the user-level `pnpm config set` shape, not a project-.npmrc auth line (#274)", () => {
+    for (const f of ["bkit-modules.ts", "bkit-postinstall.ts"]) {
+      const src = fs.readFileSync(path.join(__dirname, f), "utf-8");
+      // New canonical shape present: pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+      expect(src, `${f} must prescribe the user-level pnpm config set auth shape`).toMatch(
+        /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
+      );
+      // Broken project-.npmrc auth line (env-substituted token) must NOT be prescribed:
+      // pnpm >=10.34.3 401s on it and it shadows the user-level token.
+      expect(
+        src,
+        `${f} must NOT prescribe a project-.npmrc _authToken=\${GH_BKIT_TOKEN} line`,
+      ).not.toMatch(/_authToken=\\?\$\{GH_BKIT_TOKEN\}/);
+    }
   });
 
   it("no advisory string anywhere in scripts prescribes the broken ${GH_BKIT_TOKEN:-} form", () => {
