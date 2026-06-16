@@ -1230,6 +1230,33 @@ function detectOpencodeProvider(cwd) {
     }
     return null;
 }
+/**
+ * Returns all bkit-installed opencode providers from the consumer package.json.
+ * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
+ * legacy single-provider installs (migrated on the next install run).
+ * Filters to valid OPENCODE_PROVIDERS entries; returns [] when neither field exists.
+ */
+export function detectOpencodeProviders(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return [];
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const arr = pkg.bkit?.opencodeProviders;
+        if (Array.isArray(arr)) {
+            return arr.filter((v) => typeof v === "string" && OPENCODE_PROVIDERS.includes(v));
+        }
+        // Legacy fallback: single-string field only
+        const single = pkg.bkit?.opencodeProvider;
+        if (typeof single === "string" && OPENCODE_PROVIDERS.includes(single)) {
+            return [single];
+        }
+    }
+    catch {
+        // unparseable — return empty
+    }
+    return [];
+}
 async function main() {
     const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
@@ -1804,8 +1831,21 @@ async function main() {
                 const bkit = (pkg.bkit ?? {});
                 if (persistTracker)
                     bkit.issueTracker = tracker;
-                if (persistProvider)
-                    bkit.opencodeProvider = opencodeProvider;
+                if (persistProvider) {
+                    // Save legacy single-string value BEFORE overwriting
+                    const prevProvider = typeof bkit.opencodeProvider === "string" ? bkit.opencodeProvider : null;
+                    bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+                    // Update providers array (deduped). Migrate: if only legacy string existed, seed array.
+                    const existingArr = Array.isArray(bkit.opencodeProviders)
+                        ? [...bkit.opencodeProviders]
+                        : prevProvider && OPENCODE_PROVIDERS.includes(prevProvider)
+                            ? [prevProvider]
+                            : [];
+                    if (!existingArr.includes(opencodeProvider)) {
+                        existingArr.push(opencodeProvider);
+                    }
+                    bkit.opencodeProviders = existingArr;
+                }
                 pkg.bkit = bkit;
                 const indentMatch = raw.match(/\n([ \t]+)"/);
                 const indent = indentMatch ? indentMatch[1] : "  ";
@@ -1815,7 +1855,7 @@ async function main() {
                     console.log(`${LOG_PREFIX} Set bkit.issueTracker = "${tracker}" in package.json`);
                 }
                 if (persistProvider) {
-                    console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" in package.json`);
+                    console.log(`${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`);
                 }
             }
             catch {
