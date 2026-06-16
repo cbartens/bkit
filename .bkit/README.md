@@ -52,12 +52,23 @@ Plus two human-triggered utilities: `/bkit-worktree-sync` (merge worktree branch
 <!-- prettier-ignore -->
 | Tool | Version | Used for |
 | --- | --- | --- |
-| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`pnpm exec bkit install` in consumer repos; `pnpm tsx .bkit/src/bkit-install.ts` in bkit's own dev). |
+| `pnpm` | matches `package.json` `packageManager` | Workspace install (`pnpm install --frozen-lockfile`) inside worktrees, lint/typecheck/test gates. Also runs the bkit CLI (`bkit install` with the alias below; `pnpm tsx .bkit/src/bkit-install.ts` in bkit's own dev). |
 | `gh` | latest, authenticated | PR create / view / merge in `/bkit-build`, `/bkit-debug`, `/bkit-ship` |
 | `git` >= 2.5 | — | Worktree operations |
 | `jq` | latest | `status.jsonl` append operations in workflow Bash |
 | Claude Code CLI | latest | Local-IDE workflow execution |
 | Cursor (optional) | 2.4+ | Cloud Agent execution; honours `tools:` frontmatter allowlist |
+
+### Shell alias
+
+bkit is a devDependency — add this alias once so you can type `bkit <verb>` directly:
+
+```bash
+# Add to ~/.zshrc (or ~/.bashrc), then: source ~/.zshrc
+alias bkit='pnpm bkit'
+```
+
+`bkit doctor` emits a `bkit-not-on-path` advisory if the alias is absent. For `bkit cursor` / `bkit opencode` (GUI app launchers), run from the repo root in an external terminal — not from inside the running app.
 
 ### Environment variables
 

@@ -27,6 +27,7 @@ import {
   detectBlankDotenvKeys,
   detectDirenvMissing,
   detectDirenvNotAllowed,
+  detectBkitNotOnPath,
   runPreflight,
 } from "./bkit-preflight";
 import { detectVercelEnv, detectVercelProject } from "./bkit-postinstall";
@@ -1543,5 +1544,50 @@ describe("[mcp-env] detector outputs", () => {
       expect(f.action).not.toMatch(/BAR-\d+/);
       expect(f.detect).not.toMatch(/BAR-\d+/);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectBkitNotOnPath
+// ---------------------------------------------------------------------------
+
+describe("detectBkitNotOnPath", () => {
+  const savedPath = process.env.PATH;
+  const savedCI = process.env.CI;
+
+  afterEach(() => {
+    process.env.PATH = savedPath;
+    if (savedCI === undefined) delete process.env.CI;
+    else process.env.CI = savedCI;
+  });
+
+  it("returns null in CI environment", () => {
+    process.env.CI = "true";
+    expect(detectBkitNotOnPath()).toBeNull();
+  });
+
+  it("returns null when `bkit` is on PATH (found by which)", () => {
+    // Point PATH at a dir containing a fake `bkit` executable
+    const fakeDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-path-test-"));
+    const fakeBkit = path.join(fakeDir, "bkit");
+    fs.writeFileSync(fakeBkit, "#!/bin/sh\n", "utf-8");
+    fs.chmodSync(fakeBkit, 0o755);
+    process.env.PATH = `${fakeDir}:${process.env.PATH}`;
+    delete process.env.CI;
+    try {
+      expect(detectBkitNotOnPath()).toBeNull();
+    } finally {
+      fs.rmSync(fakeDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns advisory when `bkit` is not on PATH", () => {
+    process.env.PATH = "/nonexistent-path-for-test";
+    delete process.env.CI;
+    const finding = detectBkitNotOnPath();
+    expect(finding).not.toBeNull();
+    expect(finding?.id).toBe("bkit-not-on-path");
+    expect(finding?.severity).toBe("advisory");
+    expect(finding?.action).toContain("alias bkit='pnpm bkit'");
   });
 });

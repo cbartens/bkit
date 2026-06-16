@@ -66,10 +66,10 @@ Please install the latest `@cbartens/bkit` in this repo.
    set -a; source <ENV-FILE-PATH>; set +a; \
      pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" && \
      pnpm add -D @cbartens/bkit@latest && \
-     pnpm exec bkit install --claude --cursor --tooling
+     bkit install --claude --cursor --tooling
    ```
 
-   `pnpm exec bkit install --claude --cursor --tooling` seeds `.agents/`, `.claude/`, `.cursor/`, CI workflows, lint, and git-hooks. Report the resolved version and any advisories printed by `bkit install`.
+   `bkit install --claude --cursor --tooling` seeds `.agents/`, `.claude/`, `.cursor/`, CI workflows, lint, and git-hooks. Report the resolved version and any advisories printed by `bkit install`.
 
 4. After install, read bkit's canonical templates at `node_modules/@cbartens/bkit/.bkit/templates/` (husky hooks, CI workflows, `.claude/settings.json`, `.cursor/` config, renovate, vale, etc.). You MUST reconcile them against this repo's existing config and adopt as much as possible without breaking existing functionality — bkit's seed-or-print files (e.g. `ci.yml`) do NOT overwrite an existing file, so adoption is your job. For any template you choose not to adopt, state which one and why.
 ````
@@ -93,7 +93,7 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 2 | Add `GH_BKIT_TOKEN` repo secret | [§ Consumer CI auth](#consumer-ci-auth) step 2 |
 | 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
 | 4 | Export `GH_BKIT_TOKEN` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
-| 5 | Run `pnpm exec bkit install --claude --cursor --tooling` to seed both hosts + tooling (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
+| 5 | Run `bkit install --claude --cursor --tooling` to seed both hosts + tooling (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
 | 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
@@ -104,29 +104,37 @@ The seeded `.github/workflows/ci.yml` install step writes the token into pnpm's 
 
 `bkit install` requires you to name the modules to install (at least one) — a bare `bkit install` errors. Core (the stack-agnostic foundation) is always implicit. Re-run / `bkit upgrade` after package updates. Use `bkit check` as a CI drift gate.
 
+> **Shell alias (add once to `~/.zshrc` or `~/.bashrc`, then `source ~/.zshrc`)**
+>
+> ```bash
+> alias bkit='pnpm bkit'
+> ```
+>
+> This lets you type `bkit <verb>` from anywhere in the repo. Without the alias, prefix every command with `pnpm`: `pnpm bkit install --claude`. `bkit doctor` emits an advisory if the alias is not detected.
+
 ```bash
 # Name the host(s) + stack you want — core is implicit. Hosts compose.
-pnpm exec bkit install --claude                    # .claude/** + CLAUDE.md + core
-pnpm exec bkit install --cursor                    # .cursor/** + core
-pnpm exec bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core
-pnpm exec bkit install --opencode=nvidia           # additive opencode host (nvidia) + core
-pnpm exec bkit install --tooling                   # ci.yml + Vale/slop/prettier + husky hooks + core
+bkit install --claude                    # .claude/** + CLAUDE.md + core
+bkit install --cursor                    # .cursor/** + core
+bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core
+bkit install --opencode=nvidia           # additive opencode host (nvidia) + core
+bkit install --tooling                   # ci.yml + Vale/slop/prettier + husky hooks + core
 
 # A bare install errors — name at least one module:
-pnpm exec bkit install                             # ✗ error: requires ≥1 module flag
+bkit install                             # ✗ error: requires ≥1 module flag
 
 # Ongoing sync — operates on everything installed (MANDATORY after a version bump)
-pnpm exec bkit upgrade
+bkit upgrade
 
 # Drift detection — drift-checks everything installed; exits non-zero on drift (CI gate)
-pnpm exec bkit check
+bkit check
 ```
 
 **Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--opencode=<provider>` `--tooling`. `--tooling` is the interdependent `ci + lint + git-hooks` bundle. Core is implicit on every install — there is no `--core`/`--full`/`--ci`/`--lint`/`--git-hooks` flag.
 
 **Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (the additive opencode execution host — `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`). These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 
-> **⚠️ Always run `pnpm exec bkit upgrade` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.bkit/version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
+> **⚠️ Always run `bkit upgrade` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.bkit/version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
 
 ### Local env setup
 
@@ -259,7 +267,7 @@ set -a; source apps/web/.env.preview 2>/dev/null; set +a; <command that needs th
 ```
 
 - `source` is a shell builtin, not file I/O — the agent's permission layer (which gates `Read` / `grep` / `cat`) does not see it. The token text never enters the agent's context.
-- `<command>` (e.g. `pnpm view @cbartens/bkit`, `pnpm exec bkit check`) inherits `GH_BKIT_TOKEN` via the environment.
+- `<command>` (e.g. `pnpm view @cbartens/bkit`, `bkit check`) inherits `GH_BKIT_TOKEN` via the environment.
 - Verify the token loaded **without leaking the value**: `echo "len=${#GH_BKIT_TOKEN}"`.
 
 **Caveat:** shell state does not persist between separate Bash tool calls. The `source` and the consuming command MUST run in the **same** invocation — chain with `;` or `&&`. When directing another agent, name the file path explicitly (e.g. _"source `apps/web/.env.preview` in-line; the registry needs `GH_BKIT_TOKEN`"_).
@@ -390,7 +398,7 @@ All three decisions are reversible — re-run the install with the relevant flag
 
 ```bash
 # Diagnose drift without running install
-pnpm exec bkit doctor
+bkit doctor
 ```
 
 Use `bkit doctor` to:
@@ -411,25 +419,25 @@ Use `bkit doctor` to:
 # (renovate / dependabot / cloud) if present. The inverse of install is
 # asymmetric: a full *install* skips the opt-in add-ons, a full *uninstall*
 # removes them too.
-pnpm exec bkit uninstall
+bkit uninstall
 
 # Preview what would be removed (no writes)
-pnpm exec bkit uninstall --dry-run
+bkit uninstall --dry-run
 
 # Uninstall specific modules (targeted — leaves core + the other modules intact)
-pnpm exec bkit uninstall --tooling      # removes ci.yml + lint + husky hooks only
-pnpm exec bkit uninstall --auto         # removes only bkit-cloud.yml + the cloudAgents key
+bkit uninstall --tooling      # removes ci.yml + lint + husky hooks only
+bkit uninstall --auto         # removes only bkit-cloud.yml + the cloudAgents key
 
 # Also strip managed package.json scripts/devDeps
-pnpm exec bkit uninstall --package
+bkit uninstall --package
 
 # Force-delete byte-equal-text files even if consumer modified them
-pnpm exec bkit uninstall --force
+bkit uninstall --force
 
 # Delete ALL bkit files regardless of consumer modifications (confirm prompt)
-pnpm exec bkit uninstall --nuke
+bkit uninstall --nuke
 # Skip interactive confirm:
-pnpm exec bkit uninstall --nuke --yes
+bkit uninstall --nuke --yes
 ```
 
 ### Format semantics during uninstall
@@ -455,7 +463,7 @@ When `bkit install` detects a **blocker-severity** finding in Phase 3 (e.g. `ci.
 
 ```
 [bkit-install] 1 Phase 3 blocker(s) detected. Recovery:
-  pnpm bkit uninstall <flags> && <fix the issue> && pnpm bkit install <flags>
+  bkit uninstall <flags> && <fix the issue> && bkit install <flags>
 ```
 
 Advisories (non-blockers) are informational only and do NOT trigger exit-1.
@@ -465,7 +473,7 @@ Advisories (non-blockers) are informational only and do NOT trigger exit-1.
 Add `--auto-revert` to `bkit install` to automatically run `bkit uninstall` in-process when a Phase 3 blocker fires:
 
 ```bash
-pnpm exec bkit install --auto-revert
+bkit install --auto-revert
 ```
 
 Useful in CI scripts to guarantee a clean state on failure.
@@ -499,7 +507,7 @@ Create a `.bkitignore` file at your repo root to suppress `bkit check` drift for
 Per-key (`:dotted.key`) matching is off by default. Enable with:
 
 ```bash
-BKIT_BKITIGNORE_PER_KEY=1 pnpm exec bkit check
+BKIT_BKITIGNORE_PER_KEY=1 bkit check
 ```
 
 This allows consumers to add their own JSON keys (e.g. `hooks.Stop` in `.claude/settings.json`) without triggering drift detection, while still letting bkit manage its own keys in the same file.

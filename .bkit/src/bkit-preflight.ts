@@ -959,6 +959,30 @@ export function detectBlankDotenvKeys(
 }
 
 /**
+ * Advisory: `bkit` is not on PATH.
+ * bkit is a devDependency — without a shell alias, every invocation requires
+ * `pnpm bkit <verb>` or `pnpm exec bkit <verb>`. Suggest the one-line alias.
+ * Short-circuits in CI / cloud environments where the alias is irrelevant.
+ */
+export function detectBkitNotOnPath(): PreflightFinding | null {
+  if (isCloudOrCi()) return null;
+  const result = spawnSync("which", ["bkit"], { encoding: "utf-8" });
+  if (result.status === 0 && result.stdout.trim()) return null;
+  return {
+    id: "bkit-not-on-path",
+    severity: "advisory",
+    detect:
+      "`bkit` is not on PATH — commands must be run as `pnpm bkit <verb>` or `pnpm exec bkit <verb>`.",
+    action:
+      "[bkit] Add a shell alias so you can type `bkit <verb>` directly. Add to ~/.zshrc (or ~/.bashrc), then reload:\n\n" +
+      "    alias bkit='pnpm bkit'\n" +
+      "    source ~/.zshrc\n\n" +
+      "For `bkit cursor` / `bkit opencode` (GUI app launchers), run from the repo root in\n" +
+      "an external terminal (Terminal.app / iTerm2) — not from inside the running app.",
+  };
+}
+
+/**
  * Returns true when running in a cloud/CI environment where direnv is not
  * applicable (agent reads env vars from the platform dashboard instead).
  */
@@ -1189,6 +1213,10 @@ export function runPreflight(
 
   const observabilityDebugFetchSource = detectObservabilityDebugFetchSourceNotEnabled(cwd);
   if (observabilityDebugFetchSource) advisories.push(observabilityDebugFetchSource);
+
+  // bkit-not-on-path advisory — suggest the shell alias for local development.
+  const bkitNotOnPath = detectBkitNotOnPath();
+  if (bkitNotOnPath) advisories.push(bkitNotOnPath);
 
   // Missing MCP server advisory — one finding per missing required key, per file.
   // Tracker-aware: when issueTracker === "github", only github MCP server is required
