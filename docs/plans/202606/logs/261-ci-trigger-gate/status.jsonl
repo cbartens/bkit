@@ -39,3 +39,6 @@
 {"type":"step-done","workflow":"ship","step":"ship-update-docs","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-16T03:59:28Z","parentSha":"8ab39dc5778b4bc974a90975fbb1dd4e7a885108","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/ship-update-docs.md"]}
 {"type":"step-done","workflow":"ship","step":"ship-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-16T03:59:28Z","parentSha":"8ab39dc5778b4bc974a90975fbb1dd4e7a885108","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/ship-summary.md"]}
 {"type":"step-done","workflow":"ship","step":"ship-prune-skills","status":"DONE","at":"2026-06-16T04:00:21Z","parentSha":"dc8f11b8ea78b550cef2c444406a155b7cf16dda","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-worktree-cleanup","status":"DONE","at":"2026-06-16T04:01:27Z","parentSha":"356ee120952f9c93b2c8fbcdfb9dec7e3ea9f4ac","artifacts":[]}
+{"type":"step-done","workflow":"ship","step":"ship-close-workflow","status":"DONE","at":"2026-06-16T04:02:14Z","parentSha":"356ee120952f9c93b2c8fbcdfb9dec7e3ea9f4ac","artifacts":[]}
+{"type":"workflow-done","workflow":"ship","at":"2026-06-16T04:02:14Z"}
