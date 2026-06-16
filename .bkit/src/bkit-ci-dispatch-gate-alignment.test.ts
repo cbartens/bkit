@@ -330,3 +330,237 @@ describe("retrigger-suppressed sub-reason — maps to unresolved only", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. KN-11 regression guard — no post-gate verdict-commit push (FIX B lock-in)
+//
+//    The ciDispatch jq >> "$STATUS" verdict write must NOT be followed by a
+//    git push inside the same gate block. The only legitimate post-kernel push
+//    is the capped self-heal re-trigger, which happens BEFORE the jq verdict
+//    write (inside the self-heal branch). Adding any push after the verdict
+//    write would either:
+//      (a) re-hide CI via a [skip ci] commit → empty statusCheckRollup → KN-11
+//      (b) fire a second CI run on the already-confirmed HEAD
+//
+//    Approach: for each gate site, extract the slice of text from
+//    "# ciDispatch verdict is ALWAYS written" down to the end of the gate's
+//    closing `case "$CI_OUTCOME" in unresolved)` line and assert no `git push`
+//    appears in that slice.
+// ---------------------------------------------------------------------------
+
+// Helper: extract the post-verdict tail for each ciDispatch gate site.
+// Returns an array of slices (one per gate site), each being the lines from
+// "# ciDispatch verdict is ALWAYS written" to the nearest closing
+// `case "$CI_OUTCOME" in unresolved)` line (inclusive).
+function extractPostVerdictSlices(content: string): string[][] {
+  const lines = content.split("\n");
+  const VERDICT_MARKER = "# ciDispatch verdict is ALWAYS written";
+  const GATE_END_MARKER = 'case "$CI_OUTCOME" in unresolved)';
+  const slices: string[][] = [];
+  let searchFrom = 0;
+  while (searchFrom < lines.length) {
+    const startIdx = lines.findIndex((l, i) => i >= searchFrom && l.includes(VERDICT_MARKER));
+    if (startIdx === -1) break;
+    const endIdx = lines.findIndex((l, i) => i >= startIdx && l.includes(GATE_END_MARKER));
+    if (endIdx === -1) {
+      // No closing case line found — include to end of file as a safe fallback
+      slices.push(lines.slice(startIdx));
+      break;
+    }
+    slices.push(lines.slice(startIdx, endIdx + 1));
+    searchFrom = endIdx + 1;
+  }
+  return slices;
+}
+
+describe("no post-gate verdict-commit push — KN-11 regression guard (FIX B)", () => {
+  it("bkit-build.md: post-verdict slice present (vacuous-match guard — at least 1 site)", () => {
+    const slices = extractPostVerdictSlices(buildMd);
+    expect(slices.length).toBeGreaterThanOrEqual(1);
+    for (const slice of slices) {
+      expect(slice.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("bkit-debug.md: post-verdict slices present (vacuous-match guard — at least 2 sites)", () => {
+    const slices = extractPostVerdictSlices(debugMd);
+    expect(slices.length).toBeGreaterThanOrEqual(2);
+    for (const slice of slices) {
+      expect(slice.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("bkit-build.md: no git push in the post-verdict slice (the ciDispatch jq write is the last action)", () => {
+    const slices = extractPostVerdictSlices(buildMd);
+    expect(slices.length).toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < slices.length; i++) {
+      const sliceText = slices[i].join("\n");
+      // git push must NOT appear after the verdict write; the self-heal re-trigger push
+      // happens before this slice, inside the suppressed/self-heal branch.
+      expect(sliceText).not.toMatch(
+        /git push/,
+        `bkit-build.md gate site ${i}: found a git push in the post-verdict slice — this would re-introduce KN-11 or fire a second CI run`,
+      );
+    }
+  });
+
+  it("bkit-debug.md: no git push in any post-verdict slice (both PR-mode and LOCAL-mode gate sites)", () => {
+    const slices = extractPostVerdictSlices(debugMd);
+    expect(slices.length).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < slices.length; i++) {
+      const sliceText = slices[i].join("\n");
+      expect(sliceText).not.toMatch(
+        /git push/,
+        `bkit-debug.md gate site ${i}: found a git push in the post-verdict slice — this would re-introduce KN-11 or fire a second CI run`,
+      );
+    }
+  });
+
+  it("bkit-build.md: no ci-dispatch-verdict commit message token after the ciDispatch jq write", () => {
+    // Locks out the specific rejected-fix pattern: a 'ci-dispatch-verdict' commit pushed after the gate.
+    const slices = extractPostVerdictSlices(buildMd);
+    expect(slices.length).toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < slices.length; i++) {
+      const sliceText = slices[i].join("\n");
+      expect(sliceText).not.toContain(
+        "ci-dispatch-verdict",
+        `bkit-build.md gate site ${i}: 'ci-dispatch-verdict' commit token found after the ciDispatch jq write — this commit+push was rejected as KN-11 regression`,
+      );
+    }
+  });
+
+  it("bkit-debug.md: no ci-dispatch-verdict commit message token after the ciDispatch jq write", () => {
+    const slices = extractPostVerdictSlices(debugMd);
+    expect(slices.length).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < slices.length; i++) {
+      const sliceText = slices[i].join("\n");
+      expect(sliceText).not.toContain(
+        "ci-dispatch-verdict",
+        `bkit-debug.md gate site ${i}: 'ci-dispatch-verdict' commit token found after the ciDispatch jq write — this commit+push was rejected as KN-11 regression`,
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. Intentional-non-push documentation present (FIX B documentation lock-in)
+//
+//    Each of the three gate jq-write sites must carry the NOTE explaining the
+//    local-only write and the KN-11/second-run rationale. The workflows.md
+//    § CI-Dispatch Gate must also carry the doctrine paragraph.
+//
+//    This ensures the documentation cannot be silently deleted without
+//    breaking this test.
+// ---------------------------------------------------------------------------
+describe("intentional-non-push NOTE present at all gate sites (FIX B)", () => {
+  // The canonical NOTE anchor phrase present in each inline gate site.
+  const GATE_NOTE_ANCHOR = "written to the LOCAL status.jsonl ledger only and is deliberately";
+
+  it("bkit-build.md: NOTE is present at the ciDispatch jq write site", () => {
+    // The NOTE must appear at least once (one gate site in build).
+    const occurrences = [
+      ...buildMd.matchAll(new RegExp(GATE_NOTE_ANCHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")),
+    ];
+    expect(occurrences.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("bkit-debug.md: NOTE is present at both ciDispatch jq write sites (PR-mode + LOCAL-mode)", () => {
+    // Debug has two gate sites — both must carry the NOTE.
+    const occurrences = [
+      ...debugMd.matchAll(new RegExp(GATE_NOTE_ANCHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")),
+    ];
+    expect(occurrences.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("bkit-build.md: NOTE mentions KN-11 by name", () => {
+    // The NOTE must reference KN-11 so the rationale is self-evident.
+    expect(buildMd).toContain("KN-11");
+  });
+
+  it("bkit-debug.md: NOTE mentions KN-11 by name", () => {
+    expect(debugMd).toContain("KN-11");
+  });
+
+  it("bkit-build.md: NOTE mentions NOT committed/pushed", () => {
+    expect(buildMd).toContain("NOT committed/pushed");
+  });
+
+  it("bkit-debug.md: NOTE mentions NOT committed/pushed at both gate sites", () => {
+    const occurrences = [...debugMd.matchAll(/NOT committed\/pushed/g)];
+    expect(occurrences.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("workflows.md CI-Dispatch Gate section carries the LOCAL-only intentional non-push doctrine", () => {
+    // Read workflows.md from the WORKFLOWS_DIR parent.
+    const workflowsMd = fs.readFileSync(path.resolve(".bkit/workflows.md"), "utf-8");
+    // Doctrine paragraph must mention: LOCAL-only, intentional non-push, and KN-11.
+    expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
+    expect(workflowsMd).toContain("KN-11");
+    // Must explicitly forbid the rejected fix.
+    expect(workflowsMd).toContain('Do NOT "fix" this by adding a post-gate commit+push');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. All-kernels equality is non-vacuous (FIX A lock-in — count guards)
+//
+//    These assertions verify the count guards in describe block 3 are
+//    non-vacuous: build yields exactly 1 kernel (not 0, not accidentally 2+),
+//    debug yields exactly 2 kernels (not 0 or 1 — both sites must be present).
+//    If a kernel were dropped the count check would fail immediately.
+// ---------------------------------------------------------------------------
+describe("all-kernels equality count guards are non-vacuous (FIX A)", () => {
+  it("bkit-build.md: extractAllSharedKernelBlocks returns EXACTLY 1 block (build has one gate site)", () => {
+    const blocks = extractAllSharedKernelBlocks(buildMd);
+    expect(blocks).not.toBeNull();
+    // Exactly 1 — if a second (spurious) kernel were added, this would catch it too.
+    expect(blocks!.length).toBe(1);
+  });
+
+  it("bkit-debug.md: extractAllSharedKernelBlocks returns EXACTLY 2 blocks (PR-mode + LOCAL-mode)", () => {
+    const blocks = extractAllSharedKernelBlocks(debugMd);
+    expect(blocks).not.toBeNull();
+    // Exactly 2 — dropping either site would fail this, adding a spurious third would also fail.
+    expect(blocks!.length).toBe(2);
+  });
+
+  it("bkit-build.md: the single kernel block has >= 10 lines (non-trivial content guard)", () => {
+    const blocks = extractAllSharedKernelBlocks(buildMd);
+    expect(blocks).not.toBeNull();
+    // The canonical kernel is 21 lines including delimiters; guard at >=10 to allow minor
+    // whitespace-only edits while catching accidental emptying.
+    expect(blocks![0].length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("bkit-debug.md: both kernel blocks have >= 10 lines (non-trivial content guard)", () => {
+    const blocks = extractAllSharedKernelBlocks(debugMd);
+    expect(blocks).not.toBeNull();
+    for (let i = 0; i < blocks!.length; i++) {
+      expect(blocks![i].length).toBeGreaterThanOrEqual(10);
+    }
+  });
+
+  it("build kernel and both debug kernels are all byte-equal (trimmed) — dropping any one breaks equality", () => {
+    // This re-asserts the core FIX-A guarantee with explicit failure context.
+    const buildBlocks = extractAllSharedKernelBlocks(buildMd);
+    const debugBlocks = extractAllSharedKernelBlocks(debugMd);
+    expect(buildBlocks).not.toBeNull();
+    expect(debugBlocks).not.toBeNull();
+    expect(buildBlocks!.length).toBe(1);
+    expect(debugBlocks!.length).toBe(2);
+
+    const trimmed = (lines: string[]) => lines.map((l) => l.trim());
+    const buildKernel = trimmed(buildBlocks![0]);
+
+    // Both debug kernels must equal build — if LOCAL-mode kernel were quietly edited,
+    // this would catch it (it would fail on debug index 1 specifically).
+    expect(trimmed(debugBlocks![0])).toEqual(
+      buildKernel,
+      "debug PR-mode kernel (block 0) diverged from build kernel",
+    );
+    expect(trimmed(debugBlocks![1])).toEqual(
+      buildKernel,
+      "debug LOCAL-mode kernel (block 1) diverged from build kernel — one-sided edit detected",
+    );
+  });
+});
