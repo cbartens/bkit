@@ -572,3 +572,148 @@ describe("bkit doctor — Ollama memory-safety check (ollama-local)", () => {
     expect(combined).not.toMatch(/OLLAMA_MAX_LOADED_MODELS/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 5 (#281) — status and doctor show ALL installed providers
+// ---------------------------------------------------------------------------
+
+function seedMultiProvider(dir: string): void {
+  // package.json with two providers; nvidia is active
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({
+      name: "test-consumer",
+      bkit: {
+        opencodeProvider: "nvidia",
+        opencodeProviders: ["nvidia", "ollama-local"],
+      },
+    }),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+  // opencode.json with both provider blocks present
+  fs.mkdirSync(path.join(dir, ".opencode"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, ".opencode", "opencode.json"),
+    JSON.stringify({
+      provider: {
+        nvidia: {
+          npm: "@ai-sdk/openai-compatible",
+          name: "NVIDIA NIM",
+          options: {
+            baseURL: "https://integrate.api.nvidia.com/v1",
+            apiKey: "{env:NVIDIA_API_KEY}",
+          },
+        },
+        "ollama-local": {
+          npm: "@ai-sdk/openai-compatible",
+          name: "Ollama (Local)",
+          options: { baseURL: "http://localhost:11434/v1" },
+        },
+      },
+    }),
+    "utf-8",
+  );
+}
+
+describe("bkit status — multi-provider (Task 5 / #281)", () => {
+  it("shows both providers with (active) marker on the active one", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMultiProvider(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `status crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    // Must say "providers:" (plural) when multiple are installed
+    expect(result.stdout).toMatch(/providers:/);
+    // Active provider has (active) label
+    expect(result.stdout).toMatch(/nvidia \(active\)/);
+    // Second provider is listed without (active)
+    expect(result.stdout).toContain("ollama-local");
+    // (active) appears exactly once (only on the active provider)
+    const activeMatches = (result.stdout.match(/\(active\)/g) ?? []).length;
+    expect(activeMatches).toBe(1);
+  });
+
+  it("keeps singular provider: format when only one provider installed", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Single-provider fixture
+    seedMinimalConsumer(tmpDir);
+    fs.mkdirSync(path.join(tmpDir, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".opencode", "opencode.json"),
+      JSON.stringify({
+        provider: {
+          nvidia: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "NVIDIA NIM",
+            options: {
+              baseURL: "https://integrate.api.nvidia.com/v1",
+              apiKey: "{env:NVIDIA_API_KEY}",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "status"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status).toBe(0);
+    // Singular label when only one provider
+    expect(result.stdout).toMatch(/provider:/);
+    expect(result.stdout).not.toMatch(/\(active\)/);
+  });
+});
+
+describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
+  it("checks credentials for ALL installed providers (nvidia key + ollama-local memory check)", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMultiProvider(tmpDir);
+
+    const { OLLAMA_MAX_LOADED_MODELS: _drop, ...envNoMax } = process.env;
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...envNoMax, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    // nvidia key check should appear (active provider)
+    expect(combined).toMatch(/NVIDIA_API_KEY/);
+    // ollama-local memory-safety check should also appear (installed provider)
+    expect(combined).toMatch(/OLLAMA_MAX_LOADED_MODELS/);
+  });
+
+  it("marks the active provider with (active) label in doctor output", () => {
+    if (!fs.existsSync(tsxBin)) return;
+
+    seedMultiProvider(tmpDir);
+
+    const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      timeout: 30_000,
+      env: { ...process.env, GH_BKIT_TOKEN: "test-token" },
+    });
+
+    expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
+    const combined = result.stdout + result.stderr;
+    expect(combined).toMatch(/nvidia.*\(active\)/);
+  });
+});

@@ -1229,9 +1229,10 @@ function runStatus(cwd: string, logPrefix: string): void {
   // --- opencode host ---
   const opencodeDir = path.join(cwd, ".opencode");
   const opencodePresent = fs.existsSync(opencodeDir);
-  // Provider is the bkit provider key — resolved manifest-first (detectOpencodeProvider),
-  // which also covers managed-auth gateways (zen) whose opencode.json has no provider block.
-  let opencodeProvider = detectOpencodeProvider(cwd) ?? "unknown";
+  // Resolve active provider (manifest-first; covers managed-auth gateways like zen).
+  const activeOpencodeProvider = detectOpencodeProvider(cwd);
+  // All installed providers (multi-provider tracking, Task 5 / #281).
+  const allOpencodeProviders = detectOpencodeProviders(cwd);
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
   if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
@@ -1250,8 +1251,22 @@ function runStatus(cwd: string, logPrefix: string): void {
       opencodeModel = "parse-error";
     }
   }
+  let opencodeProviderDisplay: string;
+  let providerLabel: string;
+  if (allOpencodeProviders.length > 1) {
+    // Multi-provider: list all, mark active
+    const activeKey = activeOpencodeProvider ?? allOpencodeProviders[0];
+    opencodeProviderDisplay = allOpencodeProviders
+      .map((p) => (p === activeKey ? `${p} (active)` : p))
+      .join(", ");
+    providerLabel = "providers";
+  } else {
+    // Single provider: use singular label
+    opencodeProviderDisplay = activeOpencodeProvider ?? allOpencodeProviders[0] ?? "unknown";
+    providerLabel = "provider";
+  }
   const opencodeStatus = opencodePresent
-    ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+    ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
     : "absent (run: bkit install --opencode=<provider>)";
   console.log(`${logPrefix} opencode: ${opencodeStatus}`);
 
@@ -1507,6 +1522,14 @@ async function main() {
       let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
       if (opencodeProvider) detectedProvider = opencodeProvider;
 
+      // Multi-provider: get all installed providers (Task 5 / #281).
+      // If bkit.opencodeProviders is populated, use it; otherwise fall back to the
+      // single detected provider for backward compat with legacy single-provider installs.
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const activeProvider = detectedProvider ?? allProviders[0] ?? null;
+      const providersToCheck =
+        allProviders.length > 0 ? allProviders : activeProvider ? [activeProvider] : [];
+
       // Per-provider cred check (present/absent only — no value echoed).
       // Remote providers each name one API key; ollama-local is local (no key). Any
       // remote provider absent here falls back to `${PROVIDER}_API_KEY` (see below).
@@ -1521,57 +1544,63 @@ async function main() {
       };
       // Local-only providers that use no remote API key
       const LOCAL_PROVIDERS = new Set(["ollama-local"]);
-      if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
-        const keys = PROVIDER_KEYS[detectedProvider] ?? [
-          `${detectedProvider.toUpperCase()}_API_KEY`,
-        ];
-        for (const key of keys) {
-          const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
-          console.log(
-            `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
-          );
-        }
-      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
-        console.log(
-          `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
-        );
-        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
-        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
-        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
-        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
-        if (!maxLoaded) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
-          );
-        } else if (maxLoaded !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
-        }
-        console.log(
-          `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
-        );
-        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
-        // model, parallel requests give no speedup and split the KV cache (more memory).
-        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
-        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
-        if (!numParallel) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
-          );
-        } else if (numParallel !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
-        }
-      } else if (!detectedProvider) {
+
+      if (providersToCheck.length === 0) {
         console.log(
           `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
         );
+      } else {
+        for (const provider of providersToCheck) {
+          const roleLabel = provider === activeProvider ? "(active)" : "(installed)";
+          console.log(`${LOG_PREFIX} --- ${provider} ${roleLabel} ---`);
+          if (!LOCAL_PROVIDERS.has(provider)) {
+            const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
+            for (const key of keys) {
+              const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
+              console.log(
+                `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`,
+              );
+            }
+          } else {
+            // ollama-local: local server, check host and memory-safety vars
+            console.log(
+              `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
+            );
+            // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+            // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+            // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+            const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+            if (!maxLoaded) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
+              );
+            } else if (maxLoaded !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+            }
+            console.log(
+              `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
+            );
+            // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+            // model, parallel requests give no speedup and split the KV cache (more memory).
+            // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+            const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+            if (!numParallel) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
+              );
+            } else if (numParallel !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+            }
+          }
+        }
       }
     }
 
