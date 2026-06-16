@@ -33,3 +33,5 @@
 {"type":"step-done","workflow":"build","step":"build-run-tests","status":"DONE","verdict":"PASS","scope":"pnpm typecheck && pnpm test && pnpm format:check && pnpm lint:slop && pnpm lint:prose","attempt":1,"failures":0,"at":"2026-06-16T02:43:27Z","parentSha":"af89ece01a74b9c58ac80f824a645a7d4d98a756","artifacts":[]}
 {"type":"step-done","workflow":"build","step":"build-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-16T02:46:07Z","parentSha":"51641b02536fd51c35fd4d8939c805075c753150","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/build-summary.md"]}
 {"type":"step-done","workflow":"build","step":"build-create-pr","status":"DONE","at":"2026-06-16T02:49:05Z","parentSha":"da2cc69beef04f848938411eb5b1ca15366f9289","artifacts":["https://github.com/cbartens/bkit/pull/276"]}
+{"type":"step-done","workflow":"build","step":"build-close-workflow","status":"DONE","at":"2026-06-16T02:51:23Z","parentSha":"24a4c0e51674c7a8e66d534cefe8cf961afc357e","artifacts":[],"testsLiveSkipped":"No live tests ran, runtime-only defects not gated (not declared or opted out)."}
+{"type":"workflow-done","workflow":"build","at":"2026-06-16T02:51:23Z"}
