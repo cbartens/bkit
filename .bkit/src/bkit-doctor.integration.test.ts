@@ -715,5 +715,6 @@ describe("bkit doctor — multi-provider cred check (Task 5 / #281)", () => {
     expect(result.status, `doctor crashed:\n${result.stdout}\n${result.stderr}`).toBe(0);
     const combined = result.stdout + result.stderr;
     expect(combined).toMatch(/nvidia.*\(active\)/);
+    expect(combined).toMatch(/ollama-local.*\(installed\)/);
   });
 });
