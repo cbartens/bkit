@@ -1246,9 +1246,9 @@ export function detectOpencodeProviders(cwd) {
         if (Array.isArray(arr)) {
             return arr.filter((v) => typeof v === "string" && OPENCODE_PROVIDERS.includes(v));
         }
-        // Legacy fallback: single-string field only
-        const single = pkg.bkit?.opencodeProvider;
-        if (typeof single === "string" && OPENCODE_PROVIDERS.includes(single)) {
+        // Legacy fallback: call detectOpencodeProvider which checks both package.json and opencode.json
+        const single = detectOpencodeProvider(cwd);
+        if (single !== null) {
             return [single];
         }
     }
