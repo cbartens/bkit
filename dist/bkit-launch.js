@@ -120,8 +120,13 @@ export async function launchApp(app, cwd) {
     }
     const { binPath } = resolved;
     if (isAlreadyRunning(binPath)) {
-        console.error(`[bkit] ${app} is already running. Quit ${app} first, then re-run \`bkit ${app}\` — ` +
-            `a running instance will not inherit the new environment from .bkit/.env.`);
+        console.error(`[bkit] ${app} is already running — the new environment from .bkit/.env only takes\n` +
+            `effect in a freshly-launched process.\n\n` +
+            `  1. Quit ${app} fully (Cmd+Q / File → Quit).\n` +
+            `  2. Run this command from a regular terminal (Terminal.app / iTerm2 / etc.),\n` +
+            `     NOT from a terminal inside ${app} itself (that process is already tainted\n` +
+            `     by the old env — even after reopening a tab).\n` +
+            `  3. Re-run: pnpm bkit ${app}`);
         process.exit(1);
     }
     // Cursor: pass repo dir so it opens the folder. opencode: no positional needed
