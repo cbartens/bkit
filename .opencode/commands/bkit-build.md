@@ -70,7 +70,22 @@
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
 9. `git commit -m "docs({FID}): build aborted bkit [skip build] bkit [skip ci]"`.
-10. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — if push fails, do not claim success on Linear.
+10. Assert `{BRANCH}` non-empty, then push with EC-2 abort-guard (preserve last validated remote HEAD when a live PR exists — never push a `[skip ci]` abort commit onto an open PR):
+    ```bash
+    B=$(git branch --show-current)
+    EXISTING_PR=""
+    if [ -n "$B" ] && [ "$B" != "dev" ] && [ "$B" != "main" ]; then
+      EXISTING_PR=$(gh pr list --head "$B" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "PROBE_FAILED")
+    fi
+    if [ -z "$EXISTING_PR" ]; then
+      # No open PR — plain abort push as normal.
+      case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+    else
+      # Open PR found (or probe failed — inverted safe default: treat as PR exists).
+      echo "[bkit-ci-gate] abort-guard: open PR on branch (or probe failed: $EXISTING_PR) — preserving last validated remote HEAD (no push)"
+    fi
+    ```
+    — if push fails, do not claim success on Linear.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
     ```comment
@@ -872,6 +887,17 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 **Run only if** `SUMMARY_VERDICT` = PASS or CONCERNS.
 
 1. `git fetch origin dev`.
+   **EC-1 pre-flight** — detect a pre-existing open PR on this branch before attempting `gh pr create` (a blind `gh pr create` on a branch with an existing open PR errors, triggers retry, then Failure Path):
+   ```bash
+   # TODO(#261-ec1): future: idempotent-resume — detect and reuse existing PR instead of Failure Path.
+   BRANCH_NOW=$(git branch --show-current)
+   EXISTING_PR_EC1=$(gh pr list --head "$BRANCH_NOW" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   if [ -n "$EXISTING_PR_EC1" ]; then
+     echo "EC-1: feat/{FID} already has open PR #${EXISTING_PR_EC1} to dev — build re-run/resume cannot blind-create. Resume via /bkit-debug or close the stale PR." >&2; exit 1
+   fi
+   # Probe failed (empty/error) → fall through to gh pr create (no regression).
+   ```
+   **If** EC-1 pre-flight exits non-zero → **Failure Path**.
 2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
 3. Create PR:
    ```bash
@@ -914,6 +940,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 ### 🔒 Gate 17 — Create PR
 
+- [ ] EC-1 pre-flight ran (no pre-existing open PR, or probe fell through)
 - [ ] PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] PR base verified (`PR_BASE` = dev)
 - [ ] HEAD-Subject Assertion passed
@@ -936,9 +963,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    PARENT_SHA=$(git rev-parse HEAD)
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
-     '{type:"step-done", workflow:"build", step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
-     >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"build", at:$t}' >> "$STATUS"
    git add -A && git commit --allow-empty -m "chore({FID}): close-workflow${AUTO_ROUTE_SUFFIX}"
    # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
@@ -951,6 +975,75 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+   # CI-Dispatch Gate — confirm bkit-decide run dispatched for pushed HEAD; self-heal once if suppressed.
+   PR_NUMBER=$(gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+   RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
+   PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
+   # --- CI-Dispatch Gate shared kernel ---
+   POLL_BUDGET_S=60; POLL_INTERVAL_S=10            # ATTEMPTS = BUDGET / INTERVAL = 6
+   PUSHED_HEAD=$(git rev-parse HEAD)
+   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
+   echo "[bkit-ci-gate] polling for bkit-decide run on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+   poll_decide() {                                  # echoes "found" / "none" / "err"; never set -e out
+     local out rc
+     out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
+       '[.statusCheckRollup[]? | select(.name // .context // "" | test("decide"; "i"))] | length' 2>/dev/null); rc=$?
+     [ "$rc" -ne 0 ] && { echo "err"; return; }
+     GH_ALL_ERRORED="false"
+     [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
+   }
+   elapsed=0
+   while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+     echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+     [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
+     sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+   done
+   # --- end CI-Dispatch Gate shared kernel ---
+   if [ -z "$CI_OUTCOME" ]; then
+     if [ "$GH_ALL_ERRORED" = "true" ]; then
+       CI_OUTCOME="unresolved"; CI_REASON="gh-error"
+       echo "[bkit-ci-gate] unresolved(gh-error): every poll iteration errored — gh unavailable/unauthed"
+     elif echo "$PUSHED_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+       CI_OUTCOME="unresolved"; CI_REASON="timeout-dirty"
+       echo "[bkit-ci-gate] unresolved(timeout-dirty): no run and pushed HEAD carries a suppressor — refusing to re-trigger a dirty HEAD"
+     else
+       # self-heal cap = 1: assert re-trigger suffix == close-workflow suffix, then clean empty re-trigger
+       [ "$RETRIGGER_SUFFIX" = "$AUTO_ROUTE_SUFFIX" ] || { CI_OUTCOME="unresolved"; CI_REASON="autoroute-mismatch"; }
+       if [ -z "$CI_OUTCOME" ]; then
+         git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
+         B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+         PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
+         echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
+         while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+           echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+           [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
+           sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+         done
+         # After re-trigger push: re-assert the re-trigger HEAD is clean before concluding no-ci
+         RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
+         if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+           CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
+           echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
+         else
+           [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
+             echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+         fi
+       fi
+     fi
+   fi
+   echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
+   # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
+   PARENT_SHA_CLOSE=$(git rev-parse HEAD)
+   jq -nc --arg p "$PARENT_SHA_CLOSE" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
+     --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
+     --arg r "$CI_REASON" --argjson rt "$CI_RETRIGGER" \
+     '{type:"step-done", workflow:"build", step:"build-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[],
+       ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))} +
+       (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
+     >> "$STATUS"
+   case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
    ```
 3. 
    No issue changes.
@@ -985,7 +1078,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
 - [ ] HEAD-Subject Assertion passed
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
-- [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test)
+- [ ] CI-Dispatch gate ran; ciDispatch verdict recorded on step-done (dispatched|self-healed|no-ci)
+- [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test, `ciDispatch` verdict)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`build-summary.md` content verbatim)

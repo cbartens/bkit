@@ -328,7 +328,13 @@ See issue #132 (consumer-reported dashboard noise) and § Renovate activation ab
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.bkit/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token AND must result in a confirmed `bkit-decide` CI run dispatched for the pushed HEAD. Enforcement: the **CI-Dispatch Gate** in `.bkit/workflows.md` § "CI-Dispatch Gate" — a two-part gate: (1) pre-push HEAD-subject deny-list fast-fail (retained from the former HEAD-Subject Assertion, #184); (2) post-push outcome poll that confirms a `bkit-decide` run exists in `statusCheckRollup`, self-heals once with a clean `re-trigger` commit if none appears, and terminates with a named verdict (`dispatched`/`self-healed`/`no-ci`/`unresolved`). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom (#261 closes the gap with this gate).
+
+**Gate sites (2, not 3):** build Gate 18 (close-workflow push); debug Gate 10 PR-mode (close-workflow push, sub-step 3) and LOCAL-mode (create-pr push, sub-step 9). Ship is OUT — ship keeps its pre-existing `SQUASH_SHA`-poll gate at Step 13; adding a CI-Dispatch Gate there would mask the #81 Change C "essential tests skipped" signal.
+
+**EC-1 pre-flight (build Step 17):** before `gh pr create`, probe `gh pr list --head … --base dev`. Open PR found → Failure Path with named message (`EC-1: feat/{FID} already has open PR #N`). Probe failed → fall through to blind create (no regression). Prevents the blind-create → retry → Failure Path chain on build re-run.
+
+**EC-2 abort-guard (build inline Failure Path + shared § Failure Path step 5):** before pushing the `[skip ci]` abort commit, probe `gh pr list --head … --base dev`. Open PR found (or probe failed) → **do NOT push**; preserve last validated remote HEAD. No open PR → push as today. Probe-failure inverts the safe default (pushing onto a live PR is the exact harm; not-pushing on a no-PR branch is harmless).
 
 **Commit-tag taxonomy:**
 
