@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-audit-tests
 description: Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

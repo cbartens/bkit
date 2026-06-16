@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-scope-check-2
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

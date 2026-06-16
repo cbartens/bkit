@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

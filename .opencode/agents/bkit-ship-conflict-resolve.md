@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-conflict-resolve
 description: Senior engineer resolving mechanical rebase conflicts before handover.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

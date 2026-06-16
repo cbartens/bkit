@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

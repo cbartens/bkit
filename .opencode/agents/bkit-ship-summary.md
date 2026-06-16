@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-ship-summary
 description: Senior reviewer evaluating a ship cycle for completion and follow-up needs.
-model: nvidia/openai/gpt-oss-20b
+model: opencode/deepseek-v4-flash
 tools:
   read: true
   write: true

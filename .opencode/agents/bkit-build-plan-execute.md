@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-execute
 description: Senior engineer implementing plan tasks step-by-step against checklists and gates.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

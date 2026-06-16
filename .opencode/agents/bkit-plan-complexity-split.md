@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-complexity-split
 description: Senior architect partitioning a large plan into lossless, self-contained sub-plans.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-remediate
 description: Senior engineer applying diagnosis fixes exactly as written, no reinterpretation.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

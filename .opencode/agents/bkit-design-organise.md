@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-organise
 description: Senior architect decomposing a reviewed design into dependency-annotated workstreams.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

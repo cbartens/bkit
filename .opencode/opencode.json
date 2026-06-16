@@ -50,6 +50,11 @@
   },
   "plugin": [".opencode/plugin/gateguard.js"],
   "provider": {
+    "opencode": {
+      "options": {
+        "apiKey": "{env:OPENCODE_API_KEY}"
+      }
+    },
     "nvidia": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "NVIDIA NIM",

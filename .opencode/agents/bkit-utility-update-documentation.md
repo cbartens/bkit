@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

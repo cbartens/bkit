@@ -163,6 +163,27 @@ The `Check Main Lags Dev` step (in `bkit-tests`) closes that blind spot: on ever
 
 The step reads the default branch from the Actions context at runtime, so it is identical for every repo. It ships as the bkit-managed `main-lag-warning` block (between `# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` raises a non-blocking `tier2-text-drift` advisory if that block is **missing or drifted** — so adoption is nudged everywhere; keep it in sync from the template and do not hand-edit. It is safe to keep in any repo even if you do not gate the default branch behind `dev`: it only runs on `dev` pushes and self-skips when the default branch is `dev`/unset, so it never fires where the flow does not apply.
 
+## Smoke trigger plumbing
+
+Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). Pick the trigger by **where the deploy happens**, not by habit:
+
+- **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed` + `conclusion == 'success'`). Mind the 3-level `workflow_run` chain cap — a fourth chained workflow will not fire.
+- **An external platform deploys after merge** (Vercel / Netlify-style Git integration) → key to a **post-_deploy_** signal — `deployment_status` (`state == 'success'`) or the platform's `repository_dispatch` event — so smoke fires when the deploy is actually **live**, not merely when CI finished. `workflow_run` here smokes a not-yet-serving (or about-to-be-replaced) deployment.
+- Either way: separate workflow, **non-blocking** (never a required check), and wait for the target to be **serving** before probing — READY ≠ serving (`testing.md` § Deploy-reachability).
+- **Not:** smoke wired into branch protection (it gates observability, not merges), or a `workflow_run`-keyed smoke against an externally-deployed app that probes the old build.
+
+## Applying migrations at deploy time
+
+The deploy-time **apply** and the test-time **replay** gate are different jobs with different guarantees — keep both:
+
+- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed.
+- **Replay (test path):** the fresh-DB gate proves from-empty replay + seed load (`testing.md` § Migration-replay + seed). Passing one is not passing the other.
+- **Immutability:** once a migration is merged, never edit it — ship a new corrective migration. Flag any modification to an already-merged migration file in review.
+- **Multiple chains:** apply **every** migration system (e.g. a SQL chain + an ORM / CMS chain), each idempotent and retried independently.
+- **Transient-pooler hardening:** remote applies over a connection pooler can blip (e.g. an IPv4 session pooler's `i/o timeout`); wrap link + apply in a bounded retry — idempotency makes a re-attempt after a mid-apply drop safe.
+- Ordering of apply vs the deploy's build is a **separate** hazard — § Build-vs-migration race.
+- **Not:** assuming the deploy-time apply also validates a clean from-scratch install or the seed — it does neither.
+
 ## Build-vs-migration race
 
 If your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a **separate, unordered** step, the deploy's build and the migration race. A build-time DB read that lands **before** the migration creates its object hard-ERRORs the **first** deploy shipping it. Build-time reads come from: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. Postgres signatures: `42P01` (relation), `42703` (column), `42704` (type), `3F000` (schema).
@@ -262,7 +283,7 @@ The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level s
     bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
     bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
 
-The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`. See issue #109 for the original design.
+The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`.
 
 ### Manual CVE handling (when an alert fires)
 

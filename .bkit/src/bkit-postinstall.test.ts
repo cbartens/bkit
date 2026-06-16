@@ -1513,29 +1513,25 @@ describe("formatChecklist", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderAdvisoriesMarkdown", () => {
-  const fixedTs = "2026-05-18T12:00:00.000Z";
-
   it("renders a 'no advisories' stub when findings is empty", () => {
     const md = renderAdvisoriesMarkdown([], {
       mode: "install",
       version: "2.2.0",
-      timestamp: fixedTs,
     });
     expect(md).toContain("# bkit advisories");
-    expect(md).toContain(`_Generated: ${fixedTs}_`);
+    expect(md).not.toContain("_Generated:");
     expect(md).toContain("_bkit: 2.2.0_");
     expect(md).toContain("_Mode: install_");
     expect(md).toContain("**No advisories.** Last run was clean.");
     expect(md).not.toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose (#195)", () => {
+  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose", () => {
     // Empty and populated render paths must both lead with the marker, since the
     // gitignored artifact is linted on-disk by the shipped lint:prose glob.
     const empty = renderAdvisoriesMarkdown([], {
       mode: "check",
       version: "2.8.2",
-      timestamp: fixedTs,
     });
     expect(empty.startsWith("<!-- vale off -->")).toBe(true);
     const populated = renderAdvisoriesMarkdown(
@@ -1547,7 +1543,7 @@ describe("renderAdvisoriesMarkdown", () => {
           action: "So does this.",
         },
       ],
-      { mode: "check", version: "2.8.2", timestamp: fixedTs },
+      { mode: "check", version: "2.8.2" },
     );
     expect(populated.startsWith("<!-- vale off -->")).toBe(true);
   });
@@ -1560,7 +1556,6 @@ describe("renderAdvisoriesMarkdown", () => {
     const md = renderAdvisoriesMarkdown(findings, {
       mode: "doctor",
       version: "9.9.9",
-      timestamp: fixedTs,
     });
     expect(md).toContain("_Mode: doctor_");
     expect(md).toContain("2 finding(s) — 1 blocker, 1 advisory.");
@@ -1582,7 +1577,6 @@ describe("renderAdvisoriesMarkdown", () => {
     const md = renderAdvisoriesMarkdown(findings, {
       mode: "check",
       version: "1.0.0",
-      timestamp: fixedTs,
     });
     expect(md).toContain("3 finding(s) — 2 blocker, 1 advisory.");
   });

@@ -36,19 +36,19 @@ export const OPENCODE_PROVIDERS = [
   "cerebras",
   "openrouter",
   "ollama",
-  // opencode-native gateway (Zen / "Go" plan). bkit key is "zen"; the underlying opencode
-  // provider id is "opencode" (models are opencode/<id>). Auth is via OPENCODE_API_KEY,
-  // referenced as {env:OPENCODE_API_KEY} in the rendered provider block (see renderOpencodeJson).
-  "zen",
+  // opencode-native gateway. Auth via OPENCODE_API_KEY; models prefixed opencode/<id>.
+  "opencode",
 ] as const;
 
 /**
- * User-facing aliases for `--opencode=<provider>` values, normalised to a canonical
- * OPENCODE_PROVIDERS key before validation. `go` is opencode's plan name for the Zen
- * gateway, so `--opencode=go` and `--opencode=zen` are equivalent.
+ * Hidden backward-compat aliases for `--opencode=<provider>` values (not exposed in
+ * help text). Normalises legacy provider keys stored in package.json or passed on the
+ * CLI to the current canonical key before allowlist validation.
  */
 export const OPENCODE_PROVIDER_ALIASES: Record<string, string> = {
-  go: "zen",
+  // Legacy names kept only for existing installs reading stored "zen"/"go" from package.json.
+  zen: "opencode",
+  go: "opencode",
 };
 
 /** Normalise an `--opencode=` value through OPENCODE_PROVIDER_ALIASES (identity if no alias). */
@@ -99,7 +99,7 @@ export interface ParsedArgs {
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
    * Supported: see OPENCODE_PROVIDERS — strict allowlist (ollama-local, nvidia, groq,
-   * cerebras, openrouter, ollama, zen). Alias: `go` normalises to `zen`.
+   * cerebras, openrouter, ollama, opencode).
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
@@ -292,12 +292,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --opencode=<provider>
       // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
-      // cerebras, openrouter, ollama (cloud), zen (opencode gateway; alias `go`) (strict allowlist).
+      // cerebras, openrouter, ollama (cloud), opencode (opencode-native gateway) (strict allowlist).
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
           console.error(
-            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -309,16 +309,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
         const rawValue = flag.slice("opencode=".length);
         if (!rawValue) {
           console.error(
-            `[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode= requires a provider value (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
-        // Normalise aliases (e.g. `go` → `zen`) before the allowlist check so both spellings
-        // resolve to the same canonical provider key recorded in package.json.
+        // Normalise legacy aliases before the allowlist check so both spellings
+        // resolve to the canonical provider key recorded in package.json.
         const value = normalizeOpencodeProvider(rawValue);
         if (!(OPENCODE_PROVIDERS as readonly string[]).includes(value)) {
           console.error(
-            `[bkit] --opencode= unsupported provider ${JSON.stringify(rawValue)}. Supported: ${OPENCODE_PROVIDERS.join(", ")} (alias: go=zen).`,
+            `[bkit] --opencode= unsupported provider ${JSON.stringify(rawValue)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`,
           );
           process.exit(1);
         }
@@ -491,7 +491,7 @@ Module flags (composable; symmetric install ↔ uninstall):
                   Additive opencode host. Each install ADDS a provider block to
                   opencode.json; agent defaults track the last-installed (active) provider.
                   Provider value is REQUIRED. Supported: ollama-local, nvidia, groq,
-                  cerebras, openrouter, ollama (cloud), zen (opencode gateway, alias \`go\`;
+                  cerebras, openrouter, ollama (cloud), opencode (opencode-native gateway;
                   auth via OPENCODE_API_KEY). Ships .opencode/** (agents, commands,
                   opencode.json, gateguard). Configure your provider key; verify with
                   \`bkit doctor\`. All installed providers tracked in bkit.opencodeProviders.
@@ -540,9 +540,9 @@ Uninstall flags:
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
   bkit install --claude --cursor --tooling    Both hosts + ci/lint/git-hooks + core.
-  bkit install --opencode=nvidia              opencode host (nvidia provider, additive).
-  bkit install --opencode=ollama-local        add ollama-local alongside nvidia.
-  bkit uninstall --opencode=nvidia            remove nvidia block only; keep ollama-local.
+  bkit install --opencode=opencode            opencode host (opencode-native gateway, additive).
+  bkit install --opencode=nvidia              add nvidia alongside opencode gateway.
+  bkit uninstall --opencode=nvidia            remove nvidia block only; keep opencode.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).

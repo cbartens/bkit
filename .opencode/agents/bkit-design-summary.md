@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-summary
 description: Senior reviewer evaluating a design doc for readiness to enter planning.
-model: nvidia/openai/gpt-oss-20b
+model: opencode/deepseek-v4-flash
 tools:
   read: true
   write: true

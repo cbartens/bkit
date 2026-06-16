@@ -77,7 +77,7 @@
 
 ### Derived Test Matrix
 
-> Each row → one Agent Execution Runbook task.
+> Each row → one Agent Execution Runbook task. Assign each behaviour its tier(s) using the **tier-selection rubric** in `docs/testing.md` § "Which tier does a behaviour need?" (a behaviour may need more than one). Boundary rows carry that doc's rigor — reach the real boundary and assert a ground-truth signal, `@live` for external / deployed boundaries; do not restate those rules here.
 
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
@@ -85,6 +85,7 @@
 | [e.g., Happy path: user creates event, sees it in list] | E2E (Playwright) | `apps/web/e2e/[feature].spec.ts` |
 | [e.g., Service correctly parses payload] | Unit (Vitest) | `packages/[pkg]/[module].test.ts` |
 | [e.g., API endpoint enforces RLS] | Integration (Vitest) | `packages/api/[feature].integration.test.ts` |
+| [e.g., Real external API returns expected shape AND identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
 
 ### 👤 ✅ Human Confirmation
 

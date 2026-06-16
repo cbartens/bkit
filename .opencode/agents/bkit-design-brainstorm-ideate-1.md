@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-brainstorm-ideate-1
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-summary
 description: Senior reviewer evaluating a completed build cycle for shippability.
-model: nvidia/openai/gpt-oss-20b
+model: opencode/deepseek-v4-flash
 tools:
   read: true
   write: true

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   glob: true

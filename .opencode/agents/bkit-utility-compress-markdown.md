@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
-model: nvidia/qwen/qwen3-coder-480b-a35b-instruct
+model: opencode/qwen3.6-plus
 tools:
   read: true
   grep: true

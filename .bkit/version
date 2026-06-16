@@ -67,7 +67,7 @@
     "scripts/ci/bkit-protect-main.sh": "b9a9191a85170ed33f00443b62c3c3255cc1fc6c413f8ecdad256a030a311d4e",
     "scripts/tooling/slop-delta.sh": "43ed5d0f8bc0ea4060f0cfca62d340f20fdd0bb29f6b6ffde99534ef1427c2b2",
     ".bkit/bkit-mode.sh": "0e6c5306e92c1e0a396bc355dc70daedc5ecceab5fba6092b91226906b84703f",
-    ".opencode/opencode.json": "2f78b50bda7070773db0040171bc4ed2d839107e597e5a419479201c6d2ee0ef",
+    ".opencode/opencode.json": "5f219abda23d4c22634d3111eade1fcc16160698e1f3ec28d9e6e612dec7bbbb",
     ".opencode/plugin/gateguard.js": "363c3f799dfa104a76910447dbf480ca807924c5b9eacfbbdeeec2389c51b02d",
     ".bkit/scripts/bkit-protect-main.sh": "30759666aa21a4cdf4a3a8211d3e389ceb79cb390724486906e796a7d6ab3a4f",
     ".bkit/scripts/bkit-slop-delta.sh": "0887c339692f20e5c6eabc3443e58bfdf95943900f8af7f6de41d2134e697dab"

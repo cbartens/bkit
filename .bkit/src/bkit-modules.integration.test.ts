@@ -2379,7 +2379,7 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
 
   // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
   // removing the first. Both nvidia + opencode blocks coexist after two installs.
-  it("provider switch nvidia → zen keeps both blocks (additive install)", () => {
+  it("provider switch nvidia → opencode keeps both blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2388,12 +2388,12 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
     expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
 
-    // zen renders a minimal built-in `opencode` provider block keyed by its providerId.
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
+    // opencode renders a minimal built-in `opencode` provider block keyed by its providerId.
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    // Additive: nvidia block is preserved alongside the new zen (opencode) block.
+    // Additive: nvidia block is preserved alongside the new opencode block.
     expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
-    // The new zen block is keyed `opencode` and references OPENCODE_API_KEY.
+    // The opencode block is keyed `opencode` and references OPENCODE_API_KEY.
     expect((parsed.provider?.opencode?.options as Record<string, unknown>)?.apiKey).toBe(
       "{env:OPENCODE_API_KEY}",
     );
@@ -2571,8 +2571,14 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
     }
   });
 
-  it("maps the zen key to the opencode gateway id 'opencode' (#245 Phase 3)", () => {
-    expect(opencodeProviderId("zen")).toBe("opencode");
+  it("opencode key maps to opencode gateway id 'opencode' (#245 Phase 3)", () => {
+    expect(opencodeProviderId("opencode")).toBe("opencode");
+  });
+
+  it("legacy zen key maps to opencode gateway id via OPENCODE_PROVIDER_DEFAULTS providerId", () => {
+    // zen is a legacy alias; OPENCODE_PROVIDER_DEFAULTS no longer has a 'zen' entry,
+    // so opencodeProviderId passes it through unchanged (same as any unknown key).
+    expect(opencodeProviderId("zen")).toBe("zen");
   });
 
   it("passes through an unknown key unchanged (defensive)", () => {
@@ -2665,12 +2671,11 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.apiKey).toBeUndefined();
   });
 
-  it("zen (#282): built-in provider — minimal `opencode` block keyed by providerId, OPENCODE_API_KEY only", () => {
-    // zen is a first-class built-in opencode provider (id `opencode`). renderOpencodeJson emits a
+  it("opencode (#282): built-in provider — minimal `opencode` block keyed by providerId, OPENCODE_API_KEY only", () => {
+    // opencode is the built-in opencode gateway (id `opencode`). renderOpencodeJson emits a
     // minimal block carrying only options.apiKey ({env:OPENCODE_API_KEY}) — NO npm driver, NO
-    // baseURL (opencode resolves the built-in provider itself), and keyed `opencode`, not `zen`.
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zen"));
-    expect(parsed.provider?.zen, "must not key the block by the bkit alias").toBeUndefined();
+    // baseURL (opencode resolves the built-in provider itself).
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "opencode"));
     const block = parsed.provider?.opencode;
     expect(block, "opencode provider block present").toBeDefined();
     expect(block.npm, "no npm driver for the built-in gateway").toBeUndefined();

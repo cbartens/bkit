@@ -522,17 +522,19 @@ describe("parseArgs — --opencode provider strict allowlist", () => {
     });
   }
 
-  // #245 Phase 3 — zen (opencode-native gateway). bkit key is `zen`; the opencode-side
-  // provider id is `opencode`. Accepted at the CLI; render path differs (built-in provider,
+  // #245 Phase 3 — opencode-native gateway. bkit key is `opencode`; the opencode-side
+  // provider id is also `opencode`. Accepted at the CLI; render path differs (built-in provider,
   // auth via OPENCODE_API_KEY).
-  it("--opencode=zen is accepted (#245 Phase 3)", () => {
-    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("zen");
+  it("--opencode=opencode is accepted (#245 Phase 3)", () => {
+    expect(parseArgs(["install", "--opencode=opencode"]).opencodeProvider).toBe("opencode");
   });
 
-  // #282 — `go` is opencode's plan name for the Zen gateway. `--opencode=go` is an alias that
-  // normalises to the canonical `zen` provider key (so package.json records `zen`, not `go`).
-  it("--opencode=go is accepted and normalises to zen (#282)", () => {
-    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("zen");
+  // Legacy aliases — `zen` and `go` normalise to the canonical `opencode` key.
+  it("--opencode=zen normalises to opencode (legacy alias)", () => {
+    expect(parseArgs(["install", "--opencode=zen"]).opencodeProvider).toBe("opencode");
+  });
+  it("--opencode=go normalises to opencode (legacy alias, #282)", () => {
+    expect(parseArgs(["install", "--opencode=go"]).opencodeProvider).toBe("opencode");
   });
 
   const rejected: Array<[string, string]> = [

@@ -218,7 +218,7 @@ bkit wires two MCP servers into `.mcp.json` at the repo root (project-shared, re
 `"type": "http"` is required — without it Claude Code defaults to stdio transport and rejects the entry for missing `command`.
 
 - **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used by workflows when `bkit.issueTracker` is set to `linear`. Authenticates via OAuth (Dynamic Client Registration) — browser flow on first use, no env var needed.
-- **GitHub** — official GitHub MCP server at `api.githubcopilot.com` (not gated by a Copilot subscription). Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider (default once migration #39 lands). The endpoint does **not** support OAuth DCR, so authentication is via `Authorization: Bearer ${GH_TOKEN}` — reusing the same fine-grained PAT bkit already requires for the `gh` CLI surface (see § Environment variables).
+- **GitHub** — official GitHub MCP server at `api.githubcopilot.com` (not gated by a Copilot subscription). Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider. The endpoint does **not** support OAuth DCR, so authentication is via `Authorization: Bearer ${GH_TOKEN}` — reusing the same fine-grained PAT bkit already requires for the `gh` CLI surface (see § Environment variables).
 
 **Auth flow per server:**
 
@@ -422,7 +422,7 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 
 # Decision log
 
-## #245 — opencode provider host (2026-06-09)
+## opencode provider host
 
 **Superseded premise:** The original SP5 out-of-scope note classified opencode as a separate file (`opencode-cloud.yml`) or a separate CLI flag path. The opencode host was considered a "phase 2 post-PR" addition.
 
@@ -441,5 +441,3 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 - Cursor Background Agents: <https://cursor.com/docs/background-agent>
 - Zenn article on Claude env-var/setup-script gotcha: <https://zenn.dev/harieshokunin/articles/b1064354319ce2?locale=en>
 - Managed Agents environments (separate product, similar shape): <https://platform.claude.com/docs/en/managed-agents/environments>
-- Linear BAR-191 (initial research and design)
-- GitHub #245 (opencode provider host + unified bkit-cloud.yml)

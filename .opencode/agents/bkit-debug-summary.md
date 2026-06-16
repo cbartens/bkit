@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-summary
 description: Senior reviewer evaluating debug-loop outcome and remaining risk.
-model: nvidia/openai/gpt-oss-20b
+model: opencode/deepseek-v4-flash
 tools:
   read: true
   write: true

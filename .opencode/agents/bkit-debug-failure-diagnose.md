@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-debug-failure-diagnose
 description: Senior debug engineer specialising in CI/runtime failure root-cause analysis.
-model: nvidia/deepseek-ai/deepseek-v4-pro
+model: opencode/deepseek-v4-pro
 tools:
   read: true
   grep: true

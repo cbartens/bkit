@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-review-3
 description: Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
-model: nvidia/deepseek-ai/deepseek-v4-pro
+model: opencode/deepseek-v4-pro
 tools:
   read: true
   grep: true

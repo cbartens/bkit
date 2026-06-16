@@ -1724,20 +1724,18 @@ export type AdvisoriesMode = "install" | "check" | "doctor";
  */
 export function renderAdvisoriesMarkdown(
   findings: PreflightFinding[],
-  opts: { mode: AdvisoriesMode; version: string; timestamp?: string },
+  opts: { mode: AdvisoriesMode; version: string },
 ): string {
-  const ts = opts.timestamp ?? new Date().toISOString();
   const lines: string[] = [];
   // This is a generated, gitignored artifact — not authored prose. Advisory
   // strings (and reproduced config snippets like `.vale.ini`'s `write-good.So =
   // NO`) legitimately contain sentence-initial "So" and slop tokens. The shipped
   // `lint:prose` globs on-disk `.agents/*.md`, so without this whole-file Vale
-  // skip the husky hooks fail on a file the consumer cannot edit (#195 follow-up).
+  // skip the husky hooks fail on a file the consumer cannot edit.
   lines.push("<!-- vale off -->");
   lines.push("");
   lines.push("# bkit advisories");
   lines.push("");
-  lines.push(`_Generated: ${ts}_  `);
   lines.push(`_bkit: ${opts.version}_  `);
   lines.push(`_Mode: ${opts.mode}_`);
   lines.push("");

@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-plan-generate
 description: Senior architect translating design docs into chronological implementation plans.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

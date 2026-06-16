@@ -1221,7 +1221,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       "cerebras",
       "openrouter",
       "ollama",
-      "zen",
+      "opencode",
     ]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
       for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
@@ -1234,10 +1234,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 
-  it("zen (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
-    // zen ships a curated "Zen" column probed against the live https://opencode.ai/zen/v1/models
-    // endpoint (2026-06-12). Cells are opencode/<id> (the gateway reference format), NEVER zen/<id>.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zen");
+  it("opencode (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
+    // opencode gateway ships a curated "OpenCode" column probed against the live
+    // https://opencode.ai/zen/v1/models endpoint (2026-06-12). Cells are opencode/<id>.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode\//);

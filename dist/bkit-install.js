@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, } from "./bkit-cli.js";
+import { parseArgs, printUsage, OPTIN_MODULES, OPENCODE_PROVIDERS, normalizeOpencodeProvider, } from "./bkit-cli.js";
 import { launchApp, parseDotenv } from "./bkit-launch.js";
 import { dispatchModules, getPkgRoot, renderCloudWorkflow, renderOpencodeJson, reconcileOpencodeJson, buildMcpJson, renderManagedOutputs, opencodeProviderId, } from "./bkit-modules.js";
 import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
@@ -238,9 +238,9 @@ const OPENCODE_PROVIDER_COLUMN = {
     cerebras: "Cerebras",
     openrouter: "OpenRouter",
     ollama: "Ollama (Cloud)",
-    // zen (opencode-native gateway): the bkit key is `zen` but the column header is "Zen" and
-    // the cells are opencode-side ids (opencode/<id>), matching the gateway's reference format.
-    zen: "Zen",
+    // opencode-native gateway: bkit key `opencode`, column header "OpenCode", cells are
+    // opencode-side ids (opencode/<id>), matching the gateway's reference format.
+    opencode: "OpenCode",
 };
 /**
  * Build the per-agent opencode model lookup for the selected provider.
@@ -254,12 +254,11 @@ export function buildOpencodeModelLookup(subagentsMdPath, provider) {
     if (curated)
         return curated;
     // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
-    // openrouter, ollama, zen) ship a curated prompts.md column and never reach here (#245
-    // Phase 2 cloud providers 2026-06-11; Phase 3 zen 2026-06-12). This path is the safety net
-    // for a FUTURE allowlisted provider added before its column lands — every agent gets a
-    // prefix-correct sentinel the consumer replaces with a real model id (see providers.md
-    // § Models for the live-probe recipe). The prefix is the opencode-side provider id (the
-    // gateway key → opencode for zen), not necessarily the bkit key.
+    // openrouter, ollama, opencode) ship a curated prompts.md column and never reach here.
+    // This path is the safety net for a FUTURE allowlisted provider added before its column
+    // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
+    // model id (see providers.md § Models for the live-probe recipe). The prefix is the
+    // opencode-side provider id (opencodeProviderId(provider)), not necessarily the bkit key.
     const names = tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
         parseModelLookupForColumn(subagentsMdPath, "Claude");
     const bare = "set-model-id";
@@ -1079,7 +1078,7 @@ function runStatus(cwd, logPrefix) {
     // --- opencode host ---
     const opencodeDir = path.join(cwd, ".opencode");
     const opencodePresent = fs.existsSync(opencodeDir);
-    // Resolve active provider (manifest-first; covers managed-auth gateways like zen).
+    // Resolve active provider (manifest-first; covers managed-auth gateways like opencode).
     const activeOpencodeProvider = detectOpencodeProvider(cwd);
     // All installed providers (multi-provider tracking, Task 5 / #281).
     const allOpencodeProviders = detectOpencodeProviders(cwd);
@@ -1155,7 +1154,7 @@ function detectInstalledHostModules(cwd) {
  * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
  * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
  * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
- * + the package.json tracker resolution), so an nvidia/zen/… consumer is checked against its own
+ * + the package.json tracker resolution), so an nvidia/opencode/… consumer is checked against its own
  * config — not the ollama-local default — and the dry-run path is read-only (installFile /
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
@@ -1208,8 +1207,8 @@ function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
  *
  * Resolution order:
  *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
- *     This is the ONLY signal for managed-auth gateways (zen) whose opencode.json carries no
- *     custom provider block; without it upgrade would re-render zen as the ollama-local default.
+ *     This is the ONLY signal for managed-auth gateways (opencode) whose opencode.json carries no
+ *     custom provider block; without it upgrade would re-render the provider as the ollama-local default.
  *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
  *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
  *  3. null — caller falls back to the install default so the model lookup still resolves.
@@ -1222,7 +1221,9 @@ function detectOpencodeProvider(cwd) {
     if (fs.existsSync(pkgPath)) {
         try {
             const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
-            const stored = pkg.bkit?.opencodeProvider;
+            const rawStored = pkg.bkit?.opencodeProvider;
+            // Normalize legacy keys (e.g. "zen" → "opencode") before allowlist check.
+            const stored = typeof rawStored === "string" ? normalizeOpencodeProvider(rawStored) : rawStored;
             if (typeof stored === "string" &&
                 OPENCODE_PROVIDERS.includes(stored)) {
                 return stored;
@@ -1260,7 +1261,10 @@ export function detectOpencodeProviders(cwd) {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
         const arr = pkg.bkit?.opencodeProviders;
         if (Array.isArray(arr)) {
-            return arr.filter((v) => typeof v === "string" && OPENCODE_PROVIDERS.includes(v));
+            return arr
+                .filter((v) => typeof v === "string")
+                .map((v) => normalizeOpencodeProvider(v)) // migrate legacy keys (e.g. "zen" → "opencode")
+                .filter((v) => OPENCODE_PROVIDERS.includes(v));
         }
         // Legacy fallback: call detectOpencodeProvider which checks both package.json and opencode.json
         const single = detectOpencodeProvider(cwd);
@@ -1333,8 +1337,8 @@ async function main() {
             const opencodeInstalled = whichResult.status === 0 && whichResult.stdout.trim().length > 0;
             console.log(`${LOG_PREFIX} opencode binary: ${opencodeInstalled ? "FOUND (" + whichResult.stdout.trim() + ")" : "NOT FOUND (install opencode first)"}`);
             // Resolve provider: manifest-first (detectOpencodeProvider) so managed-auth gateways
-            // (zen — no provider block in opencode.json) are still detected; the `--opencode=`
-            // flag, if given this run, overrides.
+            // (opencode — no provider block beyond the minimal apiKey entry) are still detected;
+            // the `--opencode=` flag, if given this run, overrides.
             let detectedProvider = detectOpencodeProvider(process.cwd());
             if (opencodeProvider)
                 detectedProvider = opencodeProvider;
@@ -1353,7 +1357,7 @@ async function main() {
                 cerebras: ["CEREBRAS_API_KEY"],
                 openrouter: ["OPENROUTER_API_KEY"],
                 ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
-                zen: ["OPENCODE_API_KEY"], // opencode-native gateway (Zen / "Go" plan)
+                opencode: ["OPENCODE_API_KEY"], // opencode-native gateway
                 // ollama-local: local server, no API key required
             };
             // Local-only providers that use no remote API key
@@ -1745,7 +1749,7 @@ async function main() {
     // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
     // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
     // the opencode drift check render with the consumer's real provider instead of the
-    // ollama-local default — otherwise an nvidia/groq/zen/… consumer reports false drift. On
+    // ollama-local default — otherwise an nvidia/groq/opencode/… consumer reports false drift. On
     // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
     // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
     // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
@@ -1843,7 +1847,7 @@ async function main() {
         // (the cloud job runs against the committed .opencode/ — no model is hard-coded in YAML).
         if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
             console.error(`[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
-                `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia)\n` +
+                `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode)\n` +
                 `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`);
             process.exit(1);
         }
@@ -1861,7 +1865,7 @@ async function main() {
                     if (detectedId && LOCAL_ONLY_PROVIDERS.has(detectedId)) {
                         console.warn(`[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
                             `The cloud opencode job requires a remote provider with an API key — ` +
-                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`);
+                            `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode) to switch.`);
                     }
                 }
                 catch {
@@ -1875,7 +1879,7 @@ async function main() {
     //   - issueTracker: when a `--tracker=` value was given this run.
     //   - opencodeProvider: when an `--opencode=<provider>` value was given this run. This is
     //     the authoritative provider record detectOpencodeProvider reads on upgrade — REQUIRED
-    //     for managed-auth gateways (zen), whose opencode.json carries no provider block to
+    //     for managed-auth gateways (opencode), whose opencode.json carries no provider block to
     //     detect from. Both are merged in one read-modify-write to avoid double-writing.
     const persistTracker = tracker !== null;
     const persistProvider = opencodeProvider !== null && effectiveModules.has("opencode");

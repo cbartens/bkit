@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-plan-verify
 description: Senior verifier checking that plan deliverables actually exist in the codebase.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true

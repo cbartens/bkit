@@ -80,6 +80,10 @@
     "depUpdater": "renovate",
     "cloudAgents": "claude",
     "githubProject": false,
-    "opencodeProvider": "nvidia"
+    "opencodeProvider": "opencode",
+    "opencodeProviders": [
+      "nvidia",
+      "opencode"
+    ]
   }
 }

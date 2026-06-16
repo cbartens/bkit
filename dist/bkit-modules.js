@@ -880,7 +880,7 @@ export function runClaudeModule(ctx) {
                 detect: ".bkit/scripts/bkit-mode.sh is present but is no longer managed by bkit. The `bkit mode` surface and the ccr router it depended on have been retired. Keeping this file creates a broken shell-rc source call on every new terminal.",
                 action: "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
                     "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
-                    "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama-local` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
+                    "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The claude host is always-on — no flag needed.\n" +
                     "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
             });
         }
@@ -1087,19 +1087,19 @@ const OPENCODE_PROVIDER_DEFAULTS = {
     // opencode provider (id "opencode"; models opencode/<id>). Auth is via OPENCODE_API_KEY,
     // referenced as {env:OPENCODE_API_KEY} — renderOpencodeJson emits a minimal provider block
     // with only that apiKey (no npm driver, no baseURL: opencode resolves the built-in provider).
-    zen: {
+    opencode: {
         envVar: "OPENCODE_API_KEY",
         baseURL: "",
         apiPlaceholder: "{env:OPENCODE_API_KEY}",
         builtin: true,
         providerId: "opencode",
-        displayName: "Zen",
+        displayName: "OpenCode",
     },
 };
 /**
- * The opencode-side provider id for a bkit provider key. Equal to the key for every custom
- * provider (groq → groq); differs only for managed-auth gateways whose opencode id is fixed
- * (zen → opencode). Model ids are `<providerId>/<model>`. Unknown keys pass through unchanged.
+ * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
+ * (opencode → opencode, groq → groq, etc.). Model ids are `<providerId>/<model>`. Unknown
+ * keys pass through unchanged.
  */
 export function opencodeProviderId(providerKey) {
     return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
@@ -1147,7 +1147,7 @@ export function renderOpencodeJson(templatePath, tracker, provider) {
         if (mcp && Object.keys(mcp).length === 0) {
             delete parsed.mcp;
         }
-        // Built-in opencode gateway (zen): opencode resolves the provider itself, so there is no
+        // Built-in opencode gateway: opencode resolves the provider itself, so there is no
         // npm driver and no baseURL to seed — emit a minimal block keyed by the opencode-side
         // provider id carrying only the apiKey ({env:OPENCODE_API_KEY}). Models are opencode/<id>.
         if (providerDefaults.builtin) {
@@ -1233,7 +1233,7 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
  * Remove exactly one bkit-seeded provider block from the consumer's opencode.json.
  * `dst` may be an absolute or relative path (fs.* accepts both).
  * Used by the surgical uninstall path — this is NOT called during install (install is additive).
- * Compares on opencodeProviderId(providerKey) so zen (bkit key) → `opencode` (block key).
+ * Compares on opencodeProviderId(providerKey) to resolve the opencode-side block key.
  * The caller is responsible for passing only bkit-seeded provider keys; this function does not
  * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
  */
@@ -1336,10 +1336,10 @@ export function runOpencodeModule(ctx) {
                     return (`  1. Set ${provider.toUpperCase()}_API_KEY in your environment / .bkit/.env.\n` +
                         `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`);
                 }
-                // Built-in opencode gateway (zen) → keyed via OPENCODE_API_KEY, no baseURL to seed.
+                // Built-in opencode gateway → keyed via OPENCODE_API_KEY, no baseURL to seed.
                 // Checked BEFORE the empty-apiPlaceholder branch so its guidance is gateway-specific.
                 if (pd.builtin) {
-                    return (`  1. zen is the opencode-native gateway. Create an API key at https://opencode.ai/auth.\n` +
+                    return (`  1. opencode is the opencode-native gateway. Create an API key at https://opencode.ai/auth.\n` +
                         `  2. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
                         `     ${pd.envVar}=<your-api-key>\n` +
                         `  3. Models are referenced as opencode/<id>; opencode resolves the built-in provider.\n`);
@@ -1369,8 +1369,8 @@ export function runOpencodeModule(ctx) {
             `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
             `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
             `     running app first (a running instance ignores the new env).\n` +
-            `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zen) install ready-to-run curated per-agent pins. ` +
-            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. zen pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your OPENCODE_API_KEY set.\n` +
+            `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode) install ready-to-run curated per-agent pins. ` +
+            `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode gateway pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your OPENCODE_API_KEY set.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
     });
 }
@@ -2462,7 +2462,7 @@ export function runCloudModule(ctx) {
             detect: "`.github/workflows/bkit-cloud.yml` is in place (unified cloud workflow: claude + opencode jobs, runtime-gated by secret presence). The opencode job runs when `OPENCODE_PROVIDER_KEY` is set.",
             action: "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
                 "REQUIRED ONE-TIME SETUP:\n" +
-                "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
+                "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
                 "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
                 "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
                 "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
