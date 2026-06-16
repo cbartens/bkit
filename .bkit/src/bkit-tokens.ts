@@ -1,6 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
+import { getPkgRoot } from "./bkit-paths.js";
+import { managedVersionMarker } from "./bkit-version.js";
 
 export interface TokenMap {
   NODE_VERSION: string;
@@ -12,6 +14,28 @@ export interface TokenMap {
   // when origin is absent/unparseable; the Renovate flow is origin-gated, so the
   // line self-heals on the re-run that follows pushing to a remote.
   REPO_SLUG: string;
+  // Full `<!-- bkit:managed vX.Y.Z … -->` marker line for the INSTALLING bkit
+  // version (#256 extended to managed docs). Substituted into the first line of
+  // each managed doc's `bkit:start` block so `bkit check` can flag a consumer
+  // running stale doctrine (`detectManagedDocsStale`). Optional so the many
+  // TokenMap literals (tests, the resolveTokens-failure fallback) need not set it
+  // — applyTokens computes the marker on demand when the placeholder is present.
+  BKIT_MANAGED_MARKER?: string;
+}
+
+// Read the INSTALLING bkit version from the package root (NOT the consumer's
+// package.json — that is a different version). Mirrors readInstallingVersion
+// (bkit-modules) / readPkgVersion (bkit-postinstall); kept local to avoid a
+// tokens → modules import cycle. "0.0.0" on any read failure.
+function readInstallingBkitVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8")) as {
+      version?: string;
+    };
+    return pkg.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
 }
 
 // Extract the major version from a node version string.
@@ -130,6 +154,7 @@ export async function resolveTokens(cwd: string): Promise<TokenMap> {
     DEFAULT_BRANCH: resolveDefaultBranch(cwd),
     PROJECT_NAME: name.trim(),
     REPO_SLUG: resolveRepoSlug(cwd),
+    BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
   };
 }
 
@@ -142,9 +167,18 @@ export function applyTokens(content: string, tokens: TokenMap): string {
   const defaultBranch = tokens.DEFAULT_BRANCH;
   const projectName = tokens.PROJECT_NAME;
   const repoSlug = tokens.REPO_SLUG;
-  return content
+  let out = content
     .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
     .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
     .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
     .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
+  // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
+  // placeholder is actually present AND the caller's TokenMap omitted the value
+  // (resolveTokens always sets it; bare literals in tests / the install fallback
+  // do not). Keeps applyTokens IO-free for the overwhelmingly common case.
+  if (out.includes("{{BKIT_MANAGED_MARKER}}")) {
+    const marker = tokens.BKIT_MANAGED_MARKER ?? managedVersionMarker(readInstallingBkitVersion());
+    out = out.replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => marker);
+  }
+  return out;
 }

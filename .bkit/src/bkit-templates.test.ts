@@ -217,7 +217,8 @@ describe("Group B templates — .vale.ini partial-ownership markers", () => {
 
 // ---------------------------------------------------------------------------
 // slop-scan.config.json — JSON deep-containment, NOT markers
-// Ten required core rules must be present with enabled: true
+// Eleven required rules must be present with enabled: true — the ten core
+// built-ins plus the boundary/type-suppression plugin rule (#263).
 // ---------------------------------------------------------------------------
 
 describe("slop-scan.config.json — required core rules (JSON deep-containment)", () => {
@@ -232,9 +233,12 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     "defensive.error-swallowing",
     "defensive.error-obscuring",
     "defensive.async-noise",
+    // Plugin rule (loaded via the `plugins.boundary` ref) — flags unsafe
+    // boundary casts and ts-suppression directives. Wiring asserted below.
+    "boundary/type-suppression",
   ];
 
-  it("template contains all 10 required rule keys", () => {
+  it("template contains all 11 required rule keys", () => {
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { rules?: Record<string, { enabled?: boolean }> };
     const rules = data.rules ?? {};
@@ -260,13 +264,21 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     expect(data.rules?.["comments.placeholder-comments"]?.weight).toBe(1.5);
   });
 
-  it("template has exactly 10 required rules (no extra bkit-mandated rules beyond the ten)", () => {
+  it("template has exactly 11 required rules (no extra bkit-mandated rules beyond the eleven)", () => {
     // This test documents the expected scope — if bkit adds a new required rule,
     // this test must be updated with the new rule's key.
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { rules?: Record<string, unknown> };
     const templateRuleKeys = Object.keys(data.rules ?? {});
     expect(templateRuleKeys.length).toBe(REQUIRED_RULES.length);
+  });
+
+  it("wires the boundary plugin so boundary/type-suppression can load (#263)", () => {
+    // The rule is plugin-provided: without the plugins ref slop-scan throws on
+    // load ("plugin not loaded"), wedging lint:slop. Guard rule+plugin together.
+    const content = readTemplate("slop-scan.config.json");
+    const data = JSON.parse(content) as { plugins?: Record<string, string> };
+    expect(data.plugins?.boundary).toBe("./.bkit/scripts/bkit-slop-type-suppression.mjs");
   });
 });
 

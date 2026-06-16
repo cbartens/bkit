@@ -39,6 +39,7 @@ import {
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   detectRenderedPromptsStale,
+  detectManagedDocsStale,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -46,7 +47,7 @@ import {
   renderAdvisoriesMarkdown,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
-import { stampManagedVersion } from "./bkit-version";
+import { stampManagedVersion, managedVersionMarker } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -2121,6 +2122,129 @@ describe("detectRenderedPromptsStale", () => {
   it("truncates the example list and reports the overflow count", () => {
     for (let i = 0; i < 8; i++) writeRendered(".claude/agents", `bkit-${i}.md`, "3.0.0");
     const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectManagedDocsStale (#256 extension) — managed docs/*.md version gate
+// ---------------------------------------------------------------------------
+
+describe("detectManagedDocsStale", () => {
+  // A separate fake package-templates root so the canonical doc SET is enumerated
+  // from there (mirrors getTemplatesRoot() in production), independent of tmpDir.
+  let templatesRoot: string;
+
+  beforeEach(() => {
+    templatesRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tmpl-"));
+  });
+  afterEach(() => {
+    fs.rmSync(templatesRoot, { recursive: true, force: true });
+  });
+
+  // Declare a doc as bkit-managed by placing it in the template tree.
+  function declareCanonical(rel: string): void {
+    const p = path.join(templatesRoot, "docs", rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# T\n<!-- bkit:end -->\n");
+  }
+
+  // Write a consumer-side doc with (or without) a managed marker as the block's
+  // first line. `markerVersion === undefined` → no bkit:start block at all.
+  function writeConsumerDoc(rel: string, markerVersion: string | null | undefined): void {
+    const p = path.join(tmpDir, "docs", rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    if (markerVersion === undefined) {
+      fs.writeFileSync(p, "# plain consumer doc, no managed block\n");
+      return;
+    }
+    const markerLine = markerVersion ? managedVersionMarker(markerVersion) + "\n" : "";
+    fs.writeFileSync(p, `<!-- bkit:start -->\n${markerLine}\n# T\n<!-- bkit:end -->\n`);
+  }
+
+  it("returns null when every managed doc marker matches the installing version", () => {
+    declareCanonical("testing.md");
+    declareCanonical("plans/template.md");
+    writeConsumerDoc("testing.md", "4.0.0");
+    writeConsumerDoc("plans/template.md", "4.0.0");
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("returns a blocker when a managed doc marker is older than the installing version", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", "4.0.0");
+    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("4.1.0");
+    expect(f?.detect).toContain("docs/testing.md");
+    expect(f?.detect).toContain("(v4.0.0)");
+  });
+
+  it("flags a managed doc whose block carries no marker (pre-feature / hand-edited)", () => {
+    declareCanonical("deployments.md");
+    writeConsumerDoc("deployments.md", null);
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.detect).toContain("docs/deployments.md");
+    expect(f?.detect).toContain("no marker");
+  });
+
+  it("does NOT false-positive on user plans/logs that inherit template.md's bkit:start block", () => {
+    // Only plans/template.md is canonical; a consumer's instantiated plans + logs
+    // under docs/plans/{YYYYMM}/ inherit its bkit:start but are user-owned.
+    declareCanonical("plans/template.md");
+    writeConsumerDoc("plans/template.md", "4.0.0"); // fresh canonical
+    // User plan + log, both stale-looking and marker-less — must be ignored.
+    writeConsumerDoc("plans/202605/143-feature-plan.md", "1.0.0");
+    writeConsumerDoc("plans/202605/logs/143-feature/plan-v1-draft.md", null);
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("skips canonical docs the consumer does not have (no crash, others still checked)", () => {
+    declareCanonical("testing.md");
+    declareCanonical("observability.md"); // consumer never created this one
+    writeConsumerDoc("testing.md", "3.0.0"); // stale
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.detect).toContain("docs/testing.md");
+    expect(f?.detect).not.toContain("observability.md");
+    expect(f?.detect).toContain("1 of 1"); // only testing.md was scanned
+  });
+
+  it("ignores a consumer doc that dropped the managed block entirely", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", undefined); // no bkit:start → not ours to gate
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", "3.0.0");
+    expect(detectManagedDocsStale(tmpDir, "0.0.0", templatesRoot)).toBeNull();
+    expect(detectManagedDocsStale(tmpDir, "", templatesRoot)).toBeNull();
+  });
+
+  it("ignores deeper prose references to the marker, reading only the first in-block stamp", () => {
+    declareCanonical("decisions.md");
+    const p = path.join(tmpDir, "docs", "decisions.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    // Real first-line stamp = current; a prose mention of an example version
+    // appears deeper and must NOT be the one read.
+    fs.writeFileSync(
+      p,
+      `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Decisions\n\n` +
+        "Docs stamp a `<!-- bkit:managed vX.Y.Z … -->` marker.\n<!-- bkit:end -->\n",
+    );
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("truncates the example list and reports the overflow count", () => {
+    for (let i = 0; i < 8; i++) {
+      declareCanonical(`doc-${i}.md`);
+      writeConsumerDoc(`doc-${i}.md`, "3.0.0");
+    }
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
     expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
   });
 });

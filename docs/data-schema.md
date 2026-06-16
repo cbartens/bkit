@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Data Schema
 
 > [!CAUTION]

@@ -27,7 +27,7 @@ tools:
 **Contract:**
 
 - **Read/Update/Create:** Use any appended Read/Update/Create as exact I/O paths.
-- **Mandate:** Write tests ONLY; NO implementation changes. Vitest for API/backend, Playwright for UI E2E. Feature's changed files only.
+- **Mandate:** Write tests ONLY; NO implementation changes. Feature's changed files only.
 - **Blockers:** Append `BLOCKED` log line per blocker; NO out-of-scope deferral.
 - **Output header:** All lines above `<!-- verdict:end -->` MUST be machine-parseable.
 - **Destructive git PROHIBITED:** NEVER run any of these: `git reset` (any flavour), `git checkout -- .`, `git restore .`, `git clean` (any flavour), `git rebase -i`, `git stash drop`, `git push --force` (any flavour).
@@ -36,7 +36,7 @@ tools:
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/testing.md`; skip missing.
 4. Identify untested: Error paths, edge cases (empty/null/boundary/concurrent), security paths from challenge, integration points. **If** fixed bugs → write regression tests that would have caught the original bug.
 5. Write test files: Each `it` block tests ONE edge case, descriptive name. Match co-located conventions — same imports, helpers, naming style as sibling `.test.ts` / `.test.tsx` (Vitest) or `.spec.ts` / `.spec.tsx` (Playwright) files.
 6. Co-locate with existing test files.

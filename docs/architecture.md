@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Architecture
 
 > [!CAUTION]
@@ -115,7 +117,7 @@ Workflow/prompt SOURCES are NOT shipped into the consumer `.agents/`; they live 
 - `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed copies for Cursor compatibility
 - `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`)
 
-Every rendered agent/command file carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install`/`upgrade` (v4.0.0+). `bkit check` hard-fails with `bkit-rendered-prompts-stale` when a marker drifts from the installed version.
+Every rendered agent/command file — and every bkit-managed `docs/*.md` block (the first line of its `bkit:start` region, via the `{{BKIT_MANAGED_MARKER}}` token) — carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install`/`upgrade` (v4.0.0+). `bkit check` hard-fails with `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (docs, scoped to the canonical doc set, never consumer plans) when a marker drifts from the installed version.
 
 ## Distribution
 

@@ -6,7 +6,7 @@ import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detect
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_UPDATER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
-import { getPkgRoot } from "./bkit-paths.js";
+import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 /**
  * Detect whether GH_BKIT_TOKEN is set in the shell environment.
  * - "present"  → set and non-empty
@@ -1769,6 +1769,90 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
     };
 }
 // ---------------------------------------------------------------------------
+// detectManagedDocsStale — managed docs/*.md version gate (#256 extension)
+// ---------------------------------------------------------------------------
+/** Opening delimiter of a bkit-managed block — the signal that a doc is bkit-owned. */
+const MANAGED_REGION_START = "<!-- bkit:start -->";
+/** Recursively collect `*.md` paths under `dir` (docs trees are shallow). */
+function collectManagedDocMarkdown(dir, acc = []) {
+    let ents;
+    try {
+        ents = fs.readdirSync(dir, { withFileTypes: true });
+    }
+    catch {
+        return acc;
+    }
+    for (const ent of ents) {
+        const p = path.join(dir, ent.name);
+        if (ent.isDirectory())
+            collectManagedDocMarkdown(p, acc);
+        else if (ent.isFile() && ent.name.endsWith(".md"))
+            acc.push(p);
+    }
+    return acc;
+}
+/**
+ * Blocker: a bkit-managed doc under `docs/` (any `*.md` carrying a
+ * `<!-- bkit:start -->` block) embeds a managed-version marker that differs from
+ * the installing bkit version — i.e. the consumer bumped the bkit package but did
+ * not re-render, so agents read STALE doctrine (testing.md / deployments.md /
+ * plans/template.md, etc.) even though the prompts that point at them are fresh.
+ *
+ * Mirrors detectRenderedPromptsStale (#256): the marker is stamped into the first
+ * line of each managed block at render (via the {{BKIT_MANAGED_MARKER}} token), so
+ * this read-back gate works identically — fires in `bkit check` (dry-run, on-disk
+ * markers keep their stale value), no-op in real install/upgrade (markers were
+ * just re-stamped in Phase 2 before Phase 3 runs).
+ *
+ * The marker is searched only from the `bkit:start` delimiter onward, so a
+ * consumer-owned line above the block (e.g. template.md's path note) and the prose
+ * references to the marker DEEPER in some docs (architecture.md / decisions.md
+ * document the mechanism) cannot be mistaken for the real first-line stamp.
+ *
+ * The managed-doc SET is enumerated from the package's template tree
+ * (`<templates>/docs`), NOT a glob of the consumer's `docs/` — a consumer's
+ * `docs/plans/{YYYYMM}/…` plans + logs are user-authored instances of
+ * plans/template.md and inherit its `bkit:start` block, so a glob would
+ * false-positive on every plan ever written. Only the canonical docs bkit ships
+ * carry (and are checked for) the marker.
+ *
+ * Guards mirror the prompts gate: dev tree without a readable version → null;
+ * no managed docs scanned → null. `templatesRoot` is injected for testability.
+ */
+export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion(), templatesRoot = getTemplatesRoot()) {
+    if (!installingVersion || installingVersion === "0.0.0")
+        return null;
+    const docsTemplateRoot = path.join(templatesRoot, "docs");
+    const canonicalRelPaths = collectManagedDocMarkdown(docsTemplateRoot).map((p) => path.relative(docsTemplateRoot, p));
+    const stale = [];
+    let scanned = 0;
+    for (const rel of canonicalRelPaths) {
+        const file = path.join(cwd, "docs", rel);
+        if (!fs.existsSync(file))
+            continue; // consumer may not have every doc
+        const content = fs.readFileSync(file, "utf-8");
+        const startIdx = content.indexOf(MANAGED_REGION_START);
+        if (startIdx === -1)
+            continue; // consumer dropped the managed block — not ours to gate
+        scanned++;
+        const region = content.slice(startIdx);
+        const found = region.match(MANAGED_MARKER_VERSION_RE)?.[1] ?? null;
+        if (found !== installingVersion) {
+            stale.push(`docs/${rel}${found ? ` (v${found})` : " (no marker)"}`);
+        }
+    }
+    if (scanned === 0 || stale.length === 0)
+        return null;
+    const examples = stale.slice(0, 5).join(", ");
+    const more = stale.length > 5 ? ` (+${stale.length - 5} more)` : "";
+    return {
+        id: "bkit-managed-docs-stale",
+        severity: "blocker",
+        detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.`,
+        action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the docs/*.md managed blocks (testing.md, deployments.md, plans/template.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
+    };
+}
+// ---------------------------------------------------------------------------
 // runPostInstallCheck — main Phase 3 entry point
 // ---------------------------------------------------------------------------
 /**
@@ -1791,6 +1875,12 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const renderedStale = detectRenderedPromptsStale(cwd);
     if (renderedStale)
         phase3.push(renderedStale);
+    // Managed docs/*.md version gate (#256 extension) — blocker in `bkit check` when a
+    // bkit-owned doc's managed-version marker drifts from the installed version. No-op
+    // in real install/upgrade (markers were just re-stamped in Phase 2).
+    const docsStale = detectManagedDocsStale(cwd);
+    if (docsStale)
+        phase3.push(docsStale);
     // Shell token
     const shellStatus = detectShellToken();
     if (shellStatus === "missing") {

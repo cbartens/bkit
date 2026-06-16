@@ -1,6 +1,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync } from "node:child_process";
+import { getPkgRoot } from "./bkit-paths.js";
+import { managedVersionMarker } from "./bkit-version.js";
+// Read the INSTALLING bkit version from the package root (NOT the consumer's
+// package.json — that is a different version). Mirrors readInstallingVersion
+// (bkit-modules) / readPkgVersion (bkit-postinstall); kept local to avoid a
+// tokens → modules import cycle. "0.0.0" on any read failure.
+function readInstallingBkitVersion() {
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(getPkgRoot(), "package.json"), "utf-8"));
+        return pkg.version ?? "0.0.0";
+    }
+    catch {
+        return "0.0.0";
+    }
+}
 // Extract the major version from a node version string.
 // Accepts: "22", "22.1.0", "v22", "v22.1.0", ">=20", "^18.0.0", "~16"
 // For .nvmrc content, pass the full file contents — blank/comment lines are skipped.
@@ -115,6 +130,7 @@ export async function resolveTokens(cwd) {
         DEFAULT_BRANCH: resolveDefaultBranch(cwd),
         PROJECT_NAME: name.trim(),
         REPO_SLUG: resolveRepoSlug(cwd),
+        BKIT_MANAGED_MARKER: managedVersionMarker(readInstallingBkitVersion()),
     };
 }
 // Substitute {{TOKEN}} placeholders in content string.
@@ -126,9 +142,18 @@ export function applyTokens(content, tokens) {
     const defaultBranch = tokens.DEFAULT_BRANCH;
     const projectName = tokens.PROJECT_NAME;
     const repoSlug = tokens.REPO_SLUG;
-    return content
+    let out = content
         .replace(/\{\{NODE_VERSION\}\}/g, () => nodeVersion)
         .replace(/\{\{DEFAULT_BRANCH\}\}/g, () => defaultBranch)
         .replace(/\{\{PROJECT_NAME\}\}/g, () => projectName)
         .replace(/\{\{REPO_SLUG\}\}/g, () => repoSlug);
+    // BKIT_MANAGED_MARKER is resolved lazily: only touch the filesystem when the
+    // placeholder is actually present AND the caller's TokenMap omitted the value
+    // (resolveTokens always sets it; bare literals in tests / the install fallback
+    // do not). Keeps applyTokens IO-free for the overwhelmingly common case.
+    if (out.includes("{{BKIT_MANAGED_MARKER}}")) {
+        const marker = tokens.BKIT_MANAGED_MARKER ?? managedVersionMarker(readInstallingBkitVersion());
+        out = out.replace(/\{\{BKIT_MANAGED_MARKER\}\}/g, () => marker);
+    }
+    return out;
 }

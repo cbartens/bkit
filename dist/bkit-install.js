@@ -1992,18 +1992,25 @@ async function main() {
     // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
     // Host agent/command mirrors are untracked force-overwrites, so a stale
     // managed-version marker never shows up in ws.writes — it surfaces as the
-    // bkit-rendered-prompts-stale Phase-3 blocker instead. Treat that blocker as
-    // drift here so `bkit check` hard-fails on outdated rendered prompts/workflows
-    // (#256). Other Phase-3 blockers keep their historical install-only semantics.
+    // bkit-rendered-prompts-stale Phase-3 blocker instead. The same is true for the
+    // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
+    // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
+    // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
+    // docs (#256). Other Phase-3 blockers keep their historical install-only semantics.
     if (dryRun) {
         const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale");
-        if (totalWrites > 0 || renderedStale) {
+        const docsStale = postFindings.some((f) => f.id === "bkit-managed-docs-stale");
+        if (totalWrites > 0 || renderedStale || docsStale) {
             if (totalWrites > 0) {
                 console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
             }
             if (renderedStale) {
                 console.error(`${LOG_PREFIX} check: rendered prompts/workflows are stale (managed-version marker drift) — ` +
                     `see the bkit-rendered-prompts-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`);
+            }
+            if (docsStale) {
+                console.error(`${LOG_PREFIX} check: managed docs are stale (managed-version marker drift) — ` +
+                    `see the bkit-managed-docs-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`);
             }
             process.exit(1);
         }

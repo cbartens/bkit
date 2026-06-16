@@ -2,6 +2,8 @@
 
 <!-- bkit:start -->
 
+{{BKIT_MANAGED_MARKER}}
+
 # [Plan Title] Implementation Plan
 
 > [!CAUTION]
@@ -79,13 +81,29 @@
 
 > Each row → one Agent Execution Runbook task. Assign each behaviour its tier(s) using the **tier-selection rubric** in `docs/testing.md` § "Which tier does a behaviour need?" (a behaviour may need more than one). Boundary rows carry that doc's rigor — reach the real boundary and assert a ground-truth signal, `@live` for external / deployed boundaries; do not restate those rules here.
 
+**Tier key** — use these exact tier names in the `Type` column (they MUST match `docs/testing.md`); pick the **lowest tier that actually exercises** the behaviour (a behaviour may need several):
+
+<!-- prettier-ignore -->
+| Tier | Use for | Example behaviour |
+| --- | --- | --- |
+| **Static** | every change — type / lint / format / prose / drift (global gate, not a per-feature row) | `tsc` + lint + `bkit check` pass on the changed files |
+| **Unit** | pure function / single module, no I/O | service parses a payload correctly |
+| **Integration** | crosses a LOCAL stateful boundary (own DB / API), no mocks at the boundary, fresh instance | API endpoint enforces RLS against a fresh local DB |
+| **@live (golden)** | crosses an EXTERNAL / DEPLOYED boundary (3rd-party API, model, payment, deployed schema, RLS) — reach it, assert a ground-truth signal | a real 3rd-party API returns content AND a boundary-only identity |
+| **E2E** | user-visible UI flow / DOM state | user creates an event and sees it in the list |
+| **fresh-DB replay** | new / changed migration or seed (`bkit-tests-migrate`) | migration replays from empty + the seed loads |
+| **Smoke** | post-deploy health of a deployed surface (global observability gate) | deployed health route returns 200 |
+
+One row per behaviour (copy the tier name from the key above verbatim into `Type`):
+
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
 | [e.g., Happy path: user creates event, sees it in list] | E2E (Playwright) | `apps/web/e2e/[feature].spec.ts` |
 | [e.g., Service correctly parses payload] | Unit (Vitest) | `packages/[pkg]/[module].test.ts` |
 | [e.g., API endpoint enforces RLS] | Integration (Vitest) | `packages/api/[feature].integration.test.ts` |
-| [e.g., Real external API returns expected shape AND identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
+| [e.g., Real 3rd-party API returns expected shape AND a boundary-only identity — not "did not throw"] | @live (golden) | `packages/[pkg]/[feature].live.test.ts` |
+| [e.g., New migration replays from empty + seed loads] | fresh-DB replay (bkit-tests-migrate) | `supabase/migrations/*` (replayed by `bkit-tests-migrate`) |
 
 ### 👤 ✅ Human Confirmation
 

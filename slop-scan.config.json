@@ -7,8 +7,12 @@
     "**/.turbo/**",
     "**/*.generated.ts"
   ],
+  "plugins": {
+    "boundary": "./.bkit/scripts/bkit-slop-type-suppression.mjs"
+  },
   "rules": {
     "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
+    "boundary/type-suppression": { "enabled": true },
     "structure.over-fragmentation": { "enabled": true },
     "structure.directory-fanout-hotspot": { "enabled": true },
     "structure.duplicate-function-signatures": { "enabled": true },
@@ -31,7 +35,17 @@
       ],
       "rules": {
         "structure.duplicate-function-signatures": { "enabled": false },
-        "tests.duplicate-mock-setup": { "enabled": false }
+        "tests.duplicate-mock-setup": { "enabled": false },
+        "boundary/type-suppression": { "enabled": false }
+      }
+    },
+    {
+      "files": [
+        ".bkit/scripts/bkit-slop-type-suppression.mjs",
+        ".bkit/templates/.bkit/scripts/bkit-slop-type-suppression.mjs"
+      ],
+      "rules": {
+        "boundary/type-suppression": { "enabled": false }
       }
     },
     {
