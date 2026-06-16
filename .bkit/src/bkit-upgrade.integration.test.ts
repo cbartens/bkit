@@ -649,3 +649,47 @@ describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () 
     expect(afterUpgrade.provider!["nvidia"]!["npm"]).toBe("@ai-sdk/openai-compatible");
   });
 });
+
+// ---------------------------------------------------------------------------
+// #281 AC — `bkit check` exits 0 (no drift) with multiple providers installed
+//
+// Spec: "bkit check exits 0 (no drift) with multiple providers installed; dry-run parity holds."
+// ---------------------------------------------------------------------------
+
+describe("#281 AC — bkit check exits 0 with multiple providers installed", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("bkit check exits 0 after installing two providers (nvidia + ollama-local)", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    // Install both providers
+    expect(runCli(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runCli(["install", "--opencode=ollama-local", "--tracker=github"]).status).toBe(0);
+
+    // `bkit check --opencode` must exit 0 (no drift) — both provider blocks are already present
+    const check = runCli(["check"]);
+    expect(check.status, `bkit check failed:\n${check.stdout}\n${check.stderr}`).toBe(0);
+  });
+});

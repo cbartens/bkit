@@ -1231,17 +1231,18 @@ export function reconcileOpencodeJson(renderedTemplate, relDst, dryRun, ws) {
 }
 /**
  * Remove exactly one bkit-seeded provider block from the consumer's opencode.json.
+ * `dst` may be an absolute or relative path (fs.* accepts both).
  * Used by the surgical uninstall path — this is NOT called during install (install is additive).
  * Compares on opencodeProviderId(providerKey) so zen (bkit key) → `opencode` (block key).
  * The caller is responsible for passing only bkit-seeded provider keys; this function does not
  * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
  */
-export function removeOpencodeProviderBlock(relDst, providerKey, dryRun, ws) {
-    if (!fs.existsSync(relDst))
+export function removeOpencodeProviderBlock(dst, providerKey, dryRun, ws) {
+    if (!fs.existsSync(dst))
         return;
     let existing = null;
     try {
-        existing = JSON.parse(fs.readFileSync(relDst, "utf-8"));
+        existing = JSON.parse(fs.readFileSync(dst, "utf-8"));
     }
     catch {
         return; // malformed — leave it; uninstall should not crash
@@ -1258,9 +1259,9 @@ export function removeOpencodeProviderBlock(relDst, providerKey, dryRun, ws) {
         delete existing.provider;
     const updatedStr = JSON.stringify(existing, null, 2) + "\n";
     if (!dryRun) {
-        fs.writeFileSync(relDst, updatedStr, "utf-8");
+        fs.writeFileSync(dst, updatedStr, "utf-8");
     }
-    ws.writes.push({ path: relDst, action: "update" });
+    ws.writes.push({ path: dst, action: "update" });
 }
 const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
 
