@@ -2377,8 +2377,9 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
   });
 
-  // #255 P2-9 / #282 — a provider switch must not leave a stale bkit provider block behind.
-  it("provider switch nvidia → zen prunes the stale nvidia block, seeds the opencode block", () => {
+  // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
+  // removing the first. Both nvidia + opencode blocks coexist after two installs.
+  it("provider switch nvidia → zen keeps both blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2390,16 +2391,15 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     // zen renders a minimal built-in `opencode` provider block keyed by its providerId.
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.nvidia, "stale nvidia provider must be pruned").toBeUndefined();
-    // No orphan {env:NVIDIA_API_KEY} reference requiring a now-irrelevant secret.
-    expect(fs.readFileSync(jsonPath, "utf-8")).not.toContain("NVIDIA_API_KEY");
+    // Additive: nvidia block is preserved alongside the new zen (opencode) block.
+    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
     // The new zen block is keyed `opencode` and references OPENCODE_API_KEY.
     expect((parsed.provider?.opencode?.options as Record<string, unknown>)?.apiKey).toBe(
       "{env:OPENCODE_API_KEY}",
     );
   });
 
-  it("provider switch nvidia → groq prunes the old keyed provider and seeds the new one", () => {
+  it("provider switch nvidia → groq keeps both provider blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2407,11 +2407,11 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.groq, "new provider present").toBeDefined();
-    expect(parsed.provider?.nvidia, "old provider pruned").toBeUndefined();
+    expect(parsed.provider?.groq, "groq provider present").toBeDefined();
+    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
   });
 
-  it("preserves a consumer-added provider block across a bkit provider switch", () => {
+  it("preserves both consumer-added and bkit provider blocks across a second install", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2428,8 +2428,27 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
     expect(parsed.provider?.["my-custom"], "consumer provider preserved").toBeDefined();
-    expect(parsed.provider?.nvidia, "stale bkit provider pruned").toBeUndefined();
+    // Additive: the prior bkit nvidia block is also preserved.
+    expect(
+      parsed.provider?.nvidia,
+      "prior bkit provider preserved (additive install)",
+    ).toBeDefined();
     expect(parsed.provider?.groq, "new bkit provider present").toBeDefined();
+  });
+
+  it("additive install: nvidia then ollama-local → both provider blocks present", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "ollama-local" }));
+
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "nvidia block present after additive install").toBeDefined();
+    expect(
+      parsed.provider?.["ollama-local"],
+      "ollama-local block present after additive install",
+    ).toBeDefined();
   });
 
   it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
