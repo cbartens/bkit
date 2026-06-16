@@ -62,7 +62,7 @@ The per-tracker call sites are referenced across `.bkit/workflows.md` by these n
 | Interaction | Purpose | github | linear | none |
 | --- | --- | --- | --- | --- |
 | `rule-block` | CAUTION-block tracker/labels/comments rules | rules prose | rules prose | "not configured" stub |
-| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | prompt scan / `issue_write` create | prompt scan / `save_issue` create | scan prompt; else `ISSUE_ID=""` |
+| `issue-id-extraction` | Step 1 `ISSUE_ID` resolution + create-issue fallback | session prompt scan / `issue_write` create | session prompt scan / `save_issue` create | scan session prompt; else `ISSUE_ID=""` |
 | `fid-format` | FID slug regex assertion | `^[0-9]+-[a-z0-9-]+$` | `^[a-z]+-[0-9]+-[a-z0-9-]+$` | no strict assert |
 | `issue-read` | Read state + labels + body + comments | `issue_read` get / get_comments | `get_issue` / `list_comments` | skip (vars empty) |
 | `issue-scan` | Bounded related-issue scan at design/plan/debug entry — writes each hit's body + comments under a `## #{number} — {title} ({state})` heading to a file (advisory, top 10, never gates); broad keyword search in title+body, all states | `search_issues` + per-hit `get_comments` | `list_issues` + per-hit `list_comments` | skip stub (no scan) |

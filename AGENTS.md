@@ -20,7 +20,7 @@
 - `LABELS` ← all `<label name="...">` values in `<labels>` block
 - `COMMENTS` ← all `<comment>` entries from `<comment_thread>` + `<other_comment_threads>`, sorted newest-first by `created` attribute
 
-**Else** scan entire prompt for issue ID — try patterns in order, first match wins:
+**Else** scan entire session prompt for issue ID — try patterns in order, first match wins:
 
 1. `#\d+` → GitHub issue number (e.g. `#123`); strip `#`, set `ISSUE_ID` = `123`
 2. `[A-Z]+-\d+` → prefixed issue ID (e.g. `LIN-123`, `ISSUE-123`, or team-specific prefix)

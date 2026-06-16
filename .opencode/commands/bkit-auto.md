@@ -1,5 +1,11 @@
 <!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
+**Session prompt:**
+
+$ARGUMENTS
+
+---
+
 # Auto
 
 **Role:** Orchestrator — phase-routed auto-dispatcher.

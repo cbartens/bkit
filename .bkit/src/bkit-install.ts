@@ -490,12 +490,24 @@ export function applyOpencodeAgent(
 }
 
 /**
+ * Session-prompt anchor prepended to every opencode command body. OpenCode
+ * substitutes `$ARGUMENTS` with everything typed after the slash command before
+ * the template is sent to the model. Without this, the command body replaces the
+ * user's input and the issue ref / instructions are lost (issue #278). A single
+ * top anchor keeps a large pasted prompt in one place and sits at the head where
+ * the workflows' Step 1 issue-extraction ("scan session prompt") reads it. The
+ * managed-version stamp is prepended afterwards, so this renders just below it.
+ */
+export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
+
+/**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
  * - Rewrites invocation spelling for opencode:
  *   - `Agent` tool → `Task` tool (subagent invocations)
  *   - `Skill` tool → `Task` tool (slash-command invocations)
  *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
@@ -506,6 +518,8 @@ export function applyOpencodeCommand(content: string): string {
   result = result.replace(/`Skill` tool/g, "`Task` tool");
   result = result.replace(/using `Skill` tool/g, "using `Task` tool");
   result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  // Step 3: prepend the session-prompt anchor so the slash-command args survive.
+  result = OPENCODE_SESSION_PROMPT_ANCHOR + result;
   return result;
 }
 

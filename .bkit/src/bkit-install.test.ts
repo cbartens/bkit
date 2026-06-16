@@ -8,6 +8,7 @@ import {
   applyT3,
   applyOpencodeAgent,
   applyOpencodeCommand,
+  OPENCODE_SESSION_PROMPT_ANCHOR,
   parseModelLookup,
   parseOpencodeModelLookup,
   buildOpencodeModelLookup,
@@ -919,17 +920,17 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
 describe("applyOpencodeCommand", () => {
   it("strips leading YAML frontmatter block", () => {
     const input = `---\ndescription: "Build Feature"\n---\n# Body here\n`;
-    expect(applyOpencodeCommand(input)).toBe("# Body here\n");
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Body here\n");
   });
 
   it("strips multi-line frontmatter", () => {
     const input = `---\ndescription: "foo"\nmodel: bar\n---\n# Content\n`;
-    expect(applyOpencodeCommand(input)).toBe("# Content\n");
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Content\n");
   });
 
-  it("leaves content without frontmatter unchanged", () => {
+  it("leaves body content without frontmatter unchanged (anchor prepended)", () => {
     const input = `# No frontmatter\n\nJust body.\n`;
-    expect(applyOpencodeCommand(input)).toBe(input);
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + input);
   });
 
   it("rewrites `Agent` tool → `Task` tool", () => {
@@ -953,12 +954,27 @@ describe("applyOpencodeCommand", () => {
 
   it("does NOT rewrite @name inside body text (not on **Subagent:** line)", () => {
     const input = `---\ndescription: x\n---\nSee @build-plan for details.\n`;
-    expect(applyOpencodeCommand(input)).toBe("See @build-plan for details.\n");
+    expect(applyOpencodeCommand(input)).toBe(
+      OPENCODE_SESSION_PROMPT_ANCHOR + "See @build-plan for details.\n",
+    );
   });
 
   it("rewrites using `Agent` tool form", () => {
     const input = `---\ndescription: x\n---\nInvoke using \`Agent\` tool.\n`;
     expect(applyOpencodeCommand(input)).toContain("using `Task` tool");
+  });
+
+  it("prepends the session-prompt $ARGUMENTS anchor at the very top (issue #278)", () => {
+    const input = `---\ndescription: x\n---\n# Build Feature\n`;
+    const result = applyOpencodeCommand(input);
+    expect(result.startsWith("**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n")).toBe(true);
+    expect(result).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Build Feature\n");
+  });
+
+  it("includes exactly one $ARGUMENTS token (single anchor, not per-reference)", () => {
+    const input = `---\ndescription: x\n---\n**Else** scan session prompt for an issue ref.\n`;
+    const result = applyOpencodeCommand(input);
+    expect(result.match(/\$ARGUMENTS/g)).toHaveLength(1);
   });
 });
 
