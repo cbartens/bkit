@@ -104,7 +104,7 @@ description: "Build Feature — Autonomous implementation"
       # No open PR — plain abort push as normal.
       case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
     else
-      # Open PR found (or probe failed — inverted safe default: treat as PR exists).
+      # Open PR found, or probe failed: treat as PR exists, do not push.
       echo "[bkit-ci-gate] abort-guard: open PR on branch (or probe failed: $EXISTING_PR) — preserving last validated remote HEAD (no push)"
     fi
     ```
@@ -1109,7 +1109,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    if [ -n "$EXISTING_PR_EC1" ]; then
      echo "EC-1: feat/{FID} already has open PR #${EXISTING_PR_EC1} to dev — build re-run/resume cannot blind-create. Resume via /bkit-debug or close the stale PR." >&2; exit 1
    fi
-   # Probe failed (empty/error) → fall through to gh pr create (no regression).
+   # Probe failed (empty/error) → fall through to gh pr create.
    ```
    **If** EC-1 pre-flight exits non-zero → **Failure Path**.
 2. **If** `git diff origin/dev --name-only | grep -q '^supabase/migrations/'` **and** `git show -s --format=%B HEAD | grep -qF '[force build]'` fails → amend or `git commit --allow-empty` with `bkit [force build]` → push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac`.
@@ -1271,9 +1271,6 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    fi
    echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
    # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
-   # NOTE: this record is written to the LOCAL status.jsonl ledger only and is deliberately
-   # NOT committed/pushed. Any post-gate commit changes the PR HEAD: a [skip ci] commit
-   # empties the statusCheckRollup (re-introduces KN-11); a clean commit fires a second CI run.
    PARENT_SHA_CLOSE=$(git rev-parse HEAD)
    jq -nc --arg p "$PARENT_SHA_CLOSE" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
      --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \

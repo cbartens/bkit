@@ -443,61 +443,38 @@ describe("no post-gate verdict-commit push — KN-11 regression guard (FIX B)", 
 });
 
 // ---------------------------------------------------------------------------
-// 8. Intentional-non-push documentation present (FIX B documentation lock-in)
+// 8. Intentional-non-push rationale lives in workflows.md ONLY (FIX B + L48)
 //
-//    Each of the three gate jq-write sites must carry the NOTE explaining the
-//    local-only write and the KN-11/second-run rationale. The workflows.md
-//    § CI-Dispatch Gate must also carry the doctrine paragraph.
-//
-//    This ensures the documentation cannot be silently deleted without
-//    breaking this test.
+//    Per .bkit/workflows.md § "Workflow Authoring Rules" (instructions only:
+//    no inline comments justifying behaviour), the rationale for the
+//    deliberately-not-pushed ciDispatch record belongs in the workflows.md
+//    § CI-Dispatch Gate doctrine paragraph — NOT inline in the per-workflow
+//    files. These assertions lock in both halves: the doctrine is documented
+//    in workflows.md, and the inline justification stays OUT of the gate files.
 // ---------------------------------------------------------------------------
-describe("intentional-non-push NOTE present at all gate sites (FIX B)", () => {
-  // The canonical NOTE anchor phrase present in each inline gate site.
-  const GATE_NOTE_ANCHOR = "written to the LOCAL status.jsonl ledger only and is deliberately";
+describe("intentional-non-push rationale documented in workflows.md, not inline (FIX B + L48)", () => {
+  const workflowsMd = fs.readFileSync(path.resolve(".bkit/workflows.md"), "utf-8");
 
-  it("bkit-build.md: NOTE is present at the ciDispatch jq write site", () => {
-    // The NOTE must appear at least once (one gate site in build).
-    const occurrences = [
-      ...buildMd.matchAll(new RegExp(GATE_NOTE_ANCHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")),
-    ];
-    expect(occurrences.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("bkit-debug.md: NOTE is present at both ciDispatch jq write sites (PR-mode + LOCAL-mode)", () => {
-    // Debug has two gate sites — both must carry the NOTE.
-    const occurrences = [
-      ...debugMd.matchAll(new RegExp(GATE_NOTE_ANCHOR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")),
-    ];
-    expect(occurrences.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it("bkit-build.md: NOTE mentions KN-11 by name", () => {
-    // The NOTE must reference KN-11 so the rationale is self-evident.
-    expect(buildMd).toContain("KN-11");
-  });
-
-  it("bkit-debug.md: NOTE mentions KN-11 by name", () => {
-    expect(debugMd).toContain("KN-11");
-  });
-
-  it("bkit-build.md: NOTE mentions NOT committed/pushed", () => {
-    expect(buildMd).toContain("NOT committed/pushed");
-  });
-
-  it("bkit-debug.md: NOTE mentions NOT committed/pushed at both gate sites", () => {
-    const occurrences = [...debugMd.matchAll(/NOT committed\/pushed/g)];
-    expect(occurrences.length).toBeGreaterThanOrEqual(2);
-  });
+  // The inline rationale anchor that must NOT appear in the per-workflow files.
+  const INLINE_RATIONALE_ANCHOR =
+    "written to the LOCAL status.jsonl ledger only and is deliberately";
 
   it("workflows.md CI-Dispatch Gate section carries the LOCAL-only intentional non-push doctrine", () => {
-    // Read workflows.md from the WORKFLOWS_DIR parent.
-    const workflowsMd = fs.readFileSync(path.resolve(".bkit/workflows.md"), "utf-8");
     // Doctrine paragraph must mention: LOCAL-only, intentional non-push, and KN-11.
     expect(workflowsMd).toContain("LOCAL-only (intentional non-push)");
     expect(workflowsMd).toContain("KN-11");
     // Must explicitly forbid the rejected fix.
     expect(workflowsMd).toContain('Do NOT "fix" this by adding a post-gate commit+push');
+  });
+
+  it("bkit-build.md does NOT inline the non-push rationale (it belongs in workflows.md)", () => {
+    expect(buildMd).not.toContain(INLINE_RATIONALE_ANCHOR);
+    expect(buildMd).not.toContain("re-introduces KN-11");
+  });
+
+  it("bkit-debug.md does NOT inline the non-push rationale at either gate site", () => {
+    expect(debugMd).not.toContain(INLINE_RATIONALE_ANCHOR);
+    expect(debugMd).not.toContain("re-introduces KN-11");
   });
 });
 
