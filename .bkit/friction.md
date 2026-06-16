@@ -106,3 +106,13 @@
 - **Issue:** `build-plan-execute-1-log.md` returned PENDING verdict. Root cause: plan-1 is an empirical spike requiring (a) opencode CLI binary (not found on PATH), (b) a real provider endpoint (Ollama or NVIDIA), and (c) human confirmation of Gate 1 checkboxes (both unchecked). Agent cannot complete the spike without these preconditions.
 - **Recovery:** Install opencode (`npm i -g opencode` or equivalent), start a provider (Ollama with model pulled, or set NVIDIA_API_KEY), check both Gate 1 human-confirmation boxes in `plan-1.md`, then re-run `/bkit-build #245`.
 - **Status:** Failure Path triggered; handover written.
+
+## [2026-06-16] Build #261 WS-7 mirror render — `pnpm bkit install` silently flips opencodeProvider + `--opencode` scopes install
+
+- **Workflow:** build
+- **Step:** 5 — Plan Execute (WS-7 mirror re-render); recurred at Step 11 remediate re-render
+- **Source:** orchestrator
+- **Description:** Plain `pnpm bkit install` (no host flags) defaulted `bkit.opencodeProvider` to `ollama-local` (`bkit-modules.ts` `?? "ollama-local"`) instead of preserving the committed dev value `nvidia` — silently rewriting `package.json`, re-rendering every `.opencode/agents/*.md` `model:` line to `ollama-local/...`, flipping `.opencode/opencode.json`, and updating `.bkit/version`'s opencode.json canonicalHash — all out-of-scope drift for an authoring-only feature. Compounding: `pnpm bkit install --opencode=nvidia` does NOT do a full render — `--opencode=<provider>` SCOPES the install to the opencode module only (adds `opencode` to `moduleFlags`), so `.claude/`/`.cursor/` command mirrors are never re-rendered and silently went stale (a later NOTE-comment edit reached `.opencode` but not `.claude`/`.cursor`).
+- **Suggested fix:** WS-7 mirror re-render in bkit-repo builds must pin the provider AND select all hosts: `pnpm bkit install --claude --cursor --opencode=<committed bkit.opencodeProvider>`. Better: make install preserve an existing `package.json` `bkit.opencodeProvider` (read-existing-then-default) so a plain dogfood install is idempotent on the provider.
+- **Recovery:** Reverted the flip (`git checkout HEAD -- package.json .opencode/opencode.json .bkit/version`), then full-host re-render with the committed provider: `pnpm bkit install --claude --cursor --opencode=nvidia`. Verified `.opencode/agents` 0-diff, provider `nvidia`, all 6 command mirrors carry the gate + NOTE, `pnpm bkit check` exit 0.
+- **Status:** RECOVERED

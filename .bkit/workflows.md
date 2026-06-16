@@ -503,7 +503,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 **Conditional handover** — runs ONLY if failure was triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **and** the worktree exists (the handover agent `cd`s into `.worktrees/{FID}`; `/bkit-debug` decides `DEBUG_MODE` in Step 1 before the worktree exists, so its Failure Path guards on `.worktrees/{FID}` existence before routing a mode-triggered handover — a pre-worktree failure with the mode already set goes straight to STOP):
 
 4. Invoke `@bkit-debug-abort-handover` with all relevant prior logs as Read context; Write `docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md`.
-5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip build] bkit [skip ci]` → push.
+5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip build] bkit [skip ci]` → push with **EC-2 abort-guard**: before pushing, probe `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'`. Open PR found (non-empty result) → **do NOT push** the `[skip ci]` abort commit; preserve last validated remote HEAD and log `[bkit-ci-gate] abort-guard: open PR on branch — preserving last validated remote HEAD (no push)`. No open PR → push as normal. **Probe failed (non-zero exit) → inverted safe default: treat as "PR exists, do NOT push"** (cost-asymmetry: pushing a `[skip ci]` abort HEAD onto a live PR silently empties the PR's rollup; not-pushing on a no-PR branch is harmless) — log the probe failure with the `[bkit-ci-gate]` prefix.
 6. Append `### Workflow Handover` block to workflow comment with handover blob link and verbatim body.
 
 7. **STOP** — no further downstream steps.
@@ -933,16 +933,65 @@ Precedence: `bkit [force build]` on head commit wins.
 | `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
 
-**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject. The shared HEAD-subject assertion below is the enforcement mechanism — see § HEAD-Subject Assertion.
+**CI trigger mechanic (build / debug / ship aligned):** every workflow's last push to a CI-validated ref must leave a HEAD without `bkit [skip ci]`, else GitHub's `pull_request` (build/debug) or `push` (ship) synchronize is suppressed and `statusCheckRollup` stays empty — Ship Step 2's fail-fast gate would then admit a vacuously green PR. Trigger lives in the close-workflow step (the natural final-push location for build & debug); ship triggers via the squash merge subject. The CI-Dispatch Gate below is the enforcement mechanism — see § CI-Dispatch Gate.
 
-### HEAD-Subject Assertion (shared, single source — #184)
+### CI-Dispatch Gate (shared, single source — #184, #261)
 
-A single deterministic assertion enforces the CI-trigger contract at the orchestrator layer. It is **invoked by orchestrators** (NOT a git hook — the invariant is contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
+An outcome-verification gate enforces the CI-trigger contract at the orchestrator layer. After the final loud push, it confirms a `bkit-decide` run was dispatched for the exact pushed HEAD; if none appears within a bounded poll it self-heals once with a clean `re-trigger` commit, then terminates with a named verdict. The pre-push HEAD-subject string clause (retained below) is the fast-fail component; the post-push poll is the outcome-verification component. The gate fires **post-final-push only** — zero additional mid-build CI triggers; D2 invariant (KN-30 / §141) is preserved.
 
-- **Build Gate 18 (HEAD clause):** fires on the close-workflow final push (HEAD must be clean and may carry `bkit [auto route]`).
-- **Build Step 17 + Debug Step 12 create-pr (PR-title clause):** fires on PR creation — HEAD is the `[skip ci]` create-pr commit by D2 design, so the HEAD clause does NOT run here; only PR title is checked.
-- **Debug Gate 12 (HEAD clause):** fires on the close-workflow commit / create-pr commit per mode (see § `bkit [auto route]` Marker Propagation).
+It is **invoked by orchestrators** (NOT a git hook — the invariant is contextual; bkit intentionally pushes `[skip ci]` HEADs intermediately):
+
+- **Build Gate 18 (HEAD clause + CI-Dispatch poll):** fires on the close-workflow final push. HEAD-subject pre-push fast-fail + post-push poll for `bkit-decide` dispatch.
+- **Build Step 17 + Debug Step 10 create-pr (PR-title clause):** fires on PR creation — HEAD is the `[skip ci]` create-pr commit by D2 design, so the HEAD clause does NOT run here; only PR title is checked. No CI-Dispatch poll (create-pr is not the CI-triggering push in build; in debug LOCAL-mode it IS — see below).
+- **Debug Gate 10, PR-mode (HEAD clause + CI-Dispatch poll):** fires on the close-workflow push (sub-step 3) — this is the CI-triggering push in PR-mode. Poll appended inside the close-workflow shell block.
+- **Debug Gate 10, LOCAL-mode (HEAD clause + CI-Dispatch poll):** fires on the create-pr push (sub-step 9) — this is the CI-triggering push in LOCAL-mode. Poll appended inside the create-pr shell block. AUTO_ROUTE sourcing: reuse the in-block `AUTO_ROUTE_SUFFIX` shell var materialised from `BKIT_AUTO_ROUTE_FILE` before the `rm`; `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` (do NOT reorder the `rm` or re-read the removed file).
+- **Ship:** OUT of scope. Ship keeps its pre-existing `SQUASH_SHA`-poll gate at Step 13 (`gh run list --branch dev --commit "$SQUASH_SHA"`). Adding a CI-Dispatch Gate at ship would mask the #81 Change C "essential tests skipped" signal that ship is the designed backstop for.
 - **Ship Gate 5 + squash `--body ""` (PR-title clause):** fires at merge — squash subject becomes `dev` HEAD.
+
+**Gate outcomes (4-state terminal verdict):**
+
+- `dispatched` — a `bkit-decide` run found on the pushed HEAD within the poll budget. Step proceeds normally.
+- `self-healed` — poll exhausted budget, HEAD was clean; gate pushed one clean empty `re-trigger` commit (carrying the same `AUTO_ROUTE_SUFFIX`) and re-polled; a run appeared. Step proceeds normally.
+- `no-ci` — poll exhausted budget, HEAD was clean, re-trigger ALSO dispatched nothing — consumer repo has no CI workflow for this event. Logged pass; NOT Failure Path.
+- `unresolved` — one of the sub-reasons below; routes to **Failure Path** after the verdict is recorded.
+
+**Sub-reason codes (always map to `unresolved`):**
+
+- `timeout-dirty` — poll exhausted budget AND pushed HEAD carries a CI suppressor; refuse to re-trigger a dirty HEAD.
+- `retrigger-suppressed` — re-trigger commit's HEAD itself carries a suppressor; cannot discriminate `no-ci` vs. suppression. Maps to `unresolved`, NOT `no-ci`.
+- `autoroute-mismatch` — `RETRIGGER_SUFFIX` != `AUTO_ROUTE_SUFFIX` (assert-equal backstop before re-trigger push).
+- `gh-error` — every poll iteration errored (gh unavailable/unauthed).
+
+**Named symbols (both gate sites — must be identical):**
+
+- `POLL_BUDGET_S=60`, `POLL_INTERVAL_S=10` (derived `ATTEMPTS=6`).
+- Log prefix `[bkit-ci-gate]` on every poll/verdict line.
+- Self-heal cap = 1 (one `re-trigger` commit maximum).
+- `bkit-decide` probe: case-insensitive fuzzy match `test("decide"; "i")` on the `statusCheckRollup` check-run shape — NOT an exact literal name match (consumer-renamed `bkit-decide` would otherwise produce permanent self-heal → `no-ci`/`unresolved`). Build/debug use the PR `statusCheckRollup` check-run shape; ship's existing `gh run list` probe uses the workflow-run shape and cannot share the jq filter.
+
+**`ciDispatch` NDJSON field (additive on `step-done` records — backward-compatible with #209 FOLD):**
+
+```json
+{
+  "outcome": "dispatched|self-healed|no-ci|unresolved",
+  "head": "<sha>",
+  "attempts": 3,
+  "retrigger": false,
+  "reason": "timeout-dirty|retrigger-suppressed|autoroute-mismatch|gh-error"
+}
+```
+
+`reason` is omitted when outcome is `dispatched`/`self-healed`/`no-ci`. The #209 FOLD reducer does `del(.type,.workflow)` then merges remainder — extra keys pass through untouched (additive, backward-compatible).
+
+**`ciDispatch` step-done record is LOCAL-only (intentional non-push):** the `jq ... >> "$STATUS"` write that appends the `ciDispatch`-bearing `step-done` record is written to the local `status.jsonl` ledger only and is deliberately NOT committed or pushed afterward. Pushing any commit after the confirmed-loud close-workflow HEAD changes the PR HEAD: a `[skip ci]` verdict commit empties the `statusCheckRollup` (re-introduces KN-11); a clean commit fires a second CI run. Do NOT "fix" this by adding a post-gate commit+push.
+
+**Per-site AUTO_ROUTE sourcing:**
+
+- **Build (Step 18):** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — re-use the in-block `AUTO_ROUTE_SUFFIX` already derived from `LABELS`. Assert-equal is trivially satisfied; the assert line stays for cross-site symmetry.
+- **Debug LOCAL-mode (Step 10 sub-step 9):** gate reuses the in-block `AUTO_ROUTE_SUFFIX` shell var materialised from `BKIT_AUTO_ROUTE_FILE` (read + `rm` happens before the create-pr commit/push; `AUTO_ROUTE_SUFFIX` stays in scope for the rest of the block and for the gate appended after the push). `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — do NOT reorder the `rm` or re-read the removed file.
+- **Debug PR-mode (Step 10 sub-step 3):** `RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"` — re-use the in-block `AUTO_ROUTE_SUFFIX` derived from `LABELS` at sub-step 3 entry.
+
+**Re-trigger commit carries the same `AUTO_ROUTE_SUFFIX`:** `chore({FID}): re-trigger${RETRIGGER_SUFFIX}` — so an opted-in issue's re-trigger carries `bkit [auto route]` automatically. The `bkit [auto route]` Marker Propagation rule (§ below) applies unchanged to re-trigger commits.
 
 **Contract (DENY-LIST — never an allow-list):**
 
@@ -978,9 +1027,10 @@ Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip 
 <!-- prettier-ignore -->
 | Workflow | Step | Mechanic | Why this form |
 | --- | --- | --- | --- |
-| `/bkit-build` | 18 (close-workflow) | Final commit `chore({FID}): close-workflow`, no skip tags + `git push` | Drops `bkit [skip ci]` from the existing status commit; final commit before push fires PR `pull_request` synchronize |
-| `/bkit-debug` | 12 (close-workflow) | Final commit `chore({FID}): close-workflow`, no skip tags + `git push` | Same form as build — single commit doubles as status update + CI trigger |
-| `/bkit-ship` | 4 (merge-pr) | `gh pr merge --squash --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Followed by CI-trigger verification gate (`gh run list` captures `RUN_ID`) |
+| `/bkit-build` | 18 (close-workflow) | Final commit `chore({FID}): close-workflow`, no skip tags + `git push` + CI-Dispatch poll | Drops `bkit [skip ci]` from the existing status commit; final commit before push fires PR `pull_request` synchronize; gate confirms dispatch |
+| `/bkit-debug` | 10 (close-workflow) PR-mode | Final commit `chore({FID}): close-workflow`, no skip tags + `git push` + CI-Dispatch poll | PR-mode: close-workflow push IS the CI-triggering push; gate appended in sub-step 3 |
+| `/bkit-debug` | 10 (close-workflow) LOCAL-mode | Separate create-pr push in sub-step 9 + CI-Dispatch poll | LOCAL-mode: create-pr push IS the CI-triggering push; gate appended in sub-step 9 |
+| `/bkit-ship` | 4 (merge-pr) | `gh pr merge --squash --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Followed by pre-existing `gh run list --branch dev --commit "$SQUASH_SHA"` gate (not a CI-Dispatch Gate) |
 | `/bkit-ship` | 10 / 11 / 13 (post-merge dev pushes) | Step 10 `docs({FID}): update-docs-summary`, Step 11 `chore({FID}): prune-skills`, Step 13 `docs({FID}): ship DONE bkit [skip ci]` | Post-merge docs-only; PR already merged, dev's CI fired by Step 6, no re-trigger needed. Per-step commits batched locally; single push to `dev` at Step 13 close-workflow. |
 
 All intermediate workflow commits (start-workflow, summary, create-pr, etc.) retain `bkit [skip build] bkit [skip ci]` — only the trailing `close-workflow` commit is unmarked, and it is the LAST commit before the final `git push`. This also fixes the prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
