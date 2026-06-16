@@ -32,6 +32,36 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 
 ---
 
+## macOS GUI-isolation — `bkit cursor` / `bkit opencode`
+
+**Root cause (#279/#280):** macOS GUI apps launched from the Dock, Finder, or Spotlight run under `launchd` and do **not** inherit the login-shell environment. `direnv` exports from `.bkit/.env` stay shell-only. Token placeholders in config files (`${GH_TOKEN}` in `.cursor/mcp.json`, `{env:NVIDIA_API_KEY}` in `.opencode/opencode.json`) resolve empty → MCP auth failures.
+
+**Fix — launcher verbs:** `bkit cursor` and `bkit opencode` exec the app binary directly with `.bkit/.env` merged into the child process environment. Dynamic, per-repo, zero global state.
+
+```
+bkit cursor    # /Applications/Cursor.app/Contents/MacOS/Cursor
+bkit opencode  # /Applications/opencode.app/Contents/MacOS/opencode
+```
+
+- **Quit first.** A running instance inherits its env from launch time; re-exec is required for the new env to take effect.
+- **Binary override:** `BKIT_CURSOR_BIN=<path>` / `BKIT_OPENCODE_BIN=<path>` for non-standard install paths.
+- **Cursor:** passes the repo `cwd` as a positional arg so it opens the right folder.
+- **opencode:** no positional arg; reads `opencode.json` from `cwd` automatically.
+
+**`bkit doctor` check:** reports any `.bkit/.env` keys that have a non-empty file value but are absent from `process.env` (= Dock/Finder-launched session) with an advisory pointing at `bkit cursor` / `bkit opencode`.
+
+**launchctl fallback (opt-in, not recommended):** makes a key visible to launchd-launched apps for the current session only (not persistent across reboots). Requires manual re-run after restart and manual rotation on token change — prefer the launcher verbs.
+
+```bash
+launchctl setenv GH_TOKEN "$GH_TOKEN"
+launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"
+# then relaunch from Dock — values survive until next reboot
+```
+
+Persistent variant: add a `RunAtLoad` LaunchAgent plist (`~/Library/LaunchAgents/`) with one `setenv` key per token. Same rotation caveat.
+
+---
+
 ## Subagent invocation (tool + prefix)
 
 <!-- prettier-ignore -->

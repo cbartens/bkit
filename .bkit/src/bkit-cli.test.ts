@@ -564,6 +564,74 @@ describe("parseArgs — status verb", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// parseArgs — launcher verbs (cursor / opencode)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — launcher verbs", () => {
+  it("cursor verb is parsed correctly", () => {
+    expect(parseArgs(["cursor"]).verb).toBe("cursor");
+  });
+
+  it("opencode verb (launcher) is parsed correctly", () => {
+    expect(parseArgs(["opencode"]).verb).toBe("opencode");
+  });
+
+  it("cursor with no flags → empty moduleFlags", () => {
+    const result = parseArgs(["cursor"]);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("opencode with no flags → empty moduleFlags", () => {
+    const result = parseArgs(["opencode"]);
+    expect(result.moduleFlags.size).toBe(0);
+  });
+
+  it("cursor with a flag → exit 1 (no flags allowed)", () => {
+    const msg = expectExit(() => parseArgs(["cursor", "--claude"]));
+    expect(msg).toMatch(/takes no flags/);
+  });
+
+  it("opencode with a flag → exit 1 (no flags allowed)", () => {
+    const msg = expectExit(() => parseArgs(["opencode", "--nvidia"]));
+    expect(msg).toMatch(/takes no flags/);
+  });
+});
+
+describe("printUsage — launcher verbs in help text", () => {
+  function usage(): string {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      printUsage();
+      return logSpy.mock.calls[0]?.[0] as string;
+    } finally {
+      logSpy.mockRestore();
+    }
+  }
+
+  it("documents bkit cursor", () => {
+    expect(usage()).toContain("bkit cursor");
+  });
+
+  it("documents bkit opencode as a launcher", () => {
+    const output = usage();
+    // Distinct from --opencode= module flag — checks that the launcher verb appears
+    expect(output).toMatch(/bkit opencode\s/);
+  });
+
+  it("documents BKIT_CURSOR_BIN override", () => {
+    expect(usage()).toContain("BKIT_CURSOR_BIN");
+  });
+
+  it("documents BKIT_OPENCODE_BIN override", () => {
+    expect(usage()).toContain("BKIT_OPENCODE_BIN");
+  });
+
+  it("mentions launchctl fallback", () => {
+    expect(usage()).toContain("launchctl");
+  });
+});
+
 describe("printUsage — status + opencode in help text", () => {
   function usage(): string {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

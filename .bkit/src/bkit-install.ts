@@ -10,6 +10,7 @@ import {
   type ModuleFlag,
   type CloudVariant,
 } from "./bkit-cli.js";
+import { launchApp, parseDotenv } from "./bkit-launch.js";
 import {
   dispatchModules,
   getPkgRoot,
@@ -1382,6 +1383,14 @@ async function main() {
     return;
   }
 
+  // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
+  // so that MCP token placeholders (GH_TOKEN, NVIDIA_API_KEY, …) resolve correctly
+  // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
+  if (verb === "cursor" || verb === "opencode") {
+    await launchApp(verb, process.cwd());
+    return;
+  }
+
   // #252 Step 2 — install requires ≥1 module flag (bare install errors; replaces the
   // old implicit empty→full). `--tracker` / `--auto-revert` are modifiers and do not
   // count. moduleFlags holds only the explicitly-named modules (core is implicit).
@@ -1536,6 +1545,41 @@ async function main() {
         console.log(
           `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
         );
+      }
+    }
+
+    // GUI-isolation check: flag any .bkit/.env keys that are set (non-empty) in the
+    // file but absent or empty in process.env. This happens when the app was launched
+    // via Dock/Finder (launchd) rather than from a direnv-active terminal — the env
+    // vars never make it into the process. Pointing at `bkit cursor` / `bkit opencode`
+    // is the actionable fix. (#279/#280)
+    const bkitEnvPath = path.join(process.cwd(), ".bkit", ".env");
+    if (fs.existsSync(bkitEnvPath)) {
+      const fileVars = parseDotenv(fs.readFileSync(bkitEnvPath, "utf-8"));
+      const guiMissing: string[] = [];
+      for (const [key, value] of fileVars) {
+        if (!value || value.trim() === "") continue; // skip blank placeholders
+        const inProcess = process.env[key] && process.env[key]!.trim().length > 0;
+        if (!inProcess) guiMissing.push(key);
+      }
+      if (guiMissing.length > 0) {
+        console.log(
+          `${LOG_PREFIX} --- GUI-isolation advisory ---\n` +
+            `${LOG_PREFIX} The following keys are set in .bkit/.env but are NOT present in this\n` +
+            `${LOG_PREFIX} process environment (GUI apps launched from Dock/Finder do not\n` +
+            `${LOG_PREFIX} inherit the login shell / direnv env):\n` +
+            guiMissing.map((k) => `${LOG_PREFIX}   ${k}`).join("\n") +
+            "\n" +
+            `${LOG_PREFIX} Fix: launch the app via \`bkit cursor\` or \`bkit opencode\` — these\n` +
+            `${LOG_PREFIX} verbs exec the binary directly with .bkit/.env merged in.`,
+        );
+      } else {
+        const nonBlankCount = [...fileVars.values()].filter((v) => v.trim() !== "").length;
+        if (nonBlankCount > 0) {
+          console.log(
+            `${LOG_PREFIX} GUI-isolation: all .bkit/.env keys are present in this process env (OK)`,
+          );
+        }
       }
     }
 

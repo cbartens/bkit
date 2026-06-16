@@ -996,6 +996,22 @@ export function runCursorModule(ctx) {
             console.log(`${logPrefix} ${tag}cursor: ${cursorMcpDst} (exists; AI merge instructions printed)`);
         }
     }
+    // Post-install advisory: macOS GUI-isolation note.
+    // MCP token placeholders (${GH_TOKEN}, ${LINEAR_API_KEY}, …) in .cursor/mcp.json are
+    // expanded by Cursor from the process environment. When Cursor is launched from the
+    // Dock/Finder (launchd), it does NOT inherit the login-shell / direnv env — tokens
+    // resolve empty and MCP calls fail with auth errors (#279/#280).
+    advisories.push({
+        id: "cursor-gui-isolation",
+        severity: "advisory",
+        detect: "Cursor's MCP token placeholders (${GH_TOKEN}, …) resolve from process.env. " +
+            "Dock/Finder-launched Cursor does not inherit the login-shell / direnv env.",
+        action: "[cursor] Use `bkit cursor` to launch Cursor — it execs the binary directly with " +
+            ".bkit/.env merged into the environment so MCP tokens resolve correctly. " +
+            "Quit Cursor first (a running instance will not see the new env). " +
+            'Alternative: `launchctl setenv GH_TOKEN "$GH_TOKEN"` (session-scoped; must re-run after reboot) ' +
+            "then relaunch from Dock.",
+    });
 }
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
 // ---------------------------------------------------------------------------
@@ -1331,7 +1347,11 @@ export function runOpencodeModule(ctx) {
                     `     ${pd.envVar}=<your-api-key>\n` +
                     `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`);
             })() +
-            `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
+            `  3. Launch opencode: \`opencode\` (CLI, reads .opencode/opencode.json automatically), or\n` +
+            `     \`bkit opencode\` to launch the desktop app with .bkit/.env merged into its environment.\n` +
+            `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
+            `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
+            `     running app first (a running instance ignores the new env).\n` +
             `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zen) install ready-to-run curated per-agent pins. ` +
             `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. zen pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your \`opencode auth login\`.\n` +
             `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,

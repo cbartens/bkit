@@ -399,8 +399,8 @@ Use `bkit doctor` to:
 - Surface `bkit-version-pin-stale` advisory (installed version ahead of `.bkit/version`).
 - Preview all advisories that `bkit install` would show post-install, without triggering writes.
 - Verify the environment is ready before running `bkit install` on a new machine.
-
-`bkit doctor` always exits 0. Advisories found → printed in the same checklist banner format as `bkit install`. None found → prints `[bkit-doctor] No advisories found.`
+- Detect macOS GUI-isolation (`bkit cursor` / `bkit opencode`): see `.bkit/providers.md` § macOS GUI-isolation.
+  `bkit doctor` always exits 0. Advisories found → printed in the same checklist banner format as `bkit install`. None found → prints `[bkit-doctor] No advisories found.`
 
 ## Uninstall
 

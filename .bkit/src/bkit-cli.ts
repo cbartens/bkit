@@ -49,7 +49,16 @@ export function parseCloudVariant(value: unknown): CloudVariant | null {
     : null;
 }
 
-export type Verb = "install" | "check" | "doctor" | "status" | "uninstall" | "upgrade" | "help";
+export type Verb =
+  | "install"
+  | "check"
+  | "doctor"
+  | "status"
+  | "uninstall"
+  | "upgrade"
+  | "cursor"
+  | "opencode"
+  | "help";
 
 export interface ParsedArgs {
   verb: Verb;
@@ -186,6 +195,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
   ) {
     verb = firstArg as Verb;
     args.shift();
+  } else if (firstArg === "cursor" || firstArg === "opencode") {
+    verb = firstArg as Verb;
+    args.shift();
+    // Launcher verbs take no flags — reject any remaining args up-front.
+    if (args.length > 0) {
+      console.error(`[bkit] \`bkit ${firstArg}\` takes no flags. Run \`bkit help\` for usage.`);
+      process.exit(1);
+    }
   } else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
     verb = "help";
     args.shift();
@@ -433,6 +450,15 @@ Usage:
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.
+  bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
+                                 macOS GUI apps launched from the Dock/Finder do not inherit
+                                 the login shell env (direnv stays shell-only), so MCP token
+                                 placeholders resolve empty. This verb execs the app binary
+                                 directly with the per-repo .bkit/.env merged in. Quit Cursor
+                                 before running — a running instance ignores the new env.
+                                 Override binary path via BKIT_CURSOR_BIN=<path>.
+  bkit opencode                 Same as \`bkit cursor\` but for the opencode desktop app.
+                                 Override binary path via BKIT_OPENCODE_BIN=<path>.
   bkit help                     Print this message.
 
 Core (implicit — no flag; installed/upgraded on every install):
@@ -497,6 +523,18 @@ Examples:
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
   bkit uninstall                              Full uninstall (all modules, zero footprint).
   bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
+  bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
+  bkit opencode                               Launch opencode with .bkit/.env (API key).
+
+macOS GUI-isolation note (launchctl fallback):
+  If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
+  make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
+  survive reboot — must re-run after each restart):
+    launchctl setenv GH_TOKEN "$GH_TOKEN"
+    launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"   # etc.
+  For a persistent approach, add a RunAtLoad LaunchAgent plist under
+  ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
+  whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
 Consumer CI auth:
   Set GH_BKIT_TOKEN in GitHub Actions secrets (classic PAT with read:packages scope —
