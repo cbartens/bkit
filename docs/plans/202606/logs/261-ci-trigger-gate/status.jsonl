@@ -22,3 +22,4 @@
 {"type":"workflow-started","workflow":"build","at":"2026-06-16T01:34:17Z"}
 {"type":"step-done","workflow":"build","step":"build-start-workflow","status":"DONE","at":"2026-06-16T01:34:17Z","parentSha":"41803ebc93aa2b17dad6bd4efb32e43db5055cf2","artifacts":[]}
 {"type":"step-done","workflow":"build","step":"build-worktree-setup","status":"DONE","at":"2026-06-16T01:34:17Z","parentSha":"41803ebc93aa2b17dad6bd4efb32e43db5055cf2","artifacts":["docs/plans/202606/logs/261-ci-trigger-gate/build-input.md"]}
+{"type":"step-done","workflow":"build","step":"build-branch-sync","status":"DONE","at":"2026-06-16T01:36:59Z","parentSha":"26e1340e0810ee61761691cf4b69bd8038e806b8","artifacts":[]}
