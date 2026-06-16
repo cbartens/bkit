@@ -31,7 +31,11 @@ import {
   readChangelogVersionDelta,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall.js";
-import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import {
+  runUninstall,
+  runSurgicalOpencodeUninstall,
+  type UninstallContext,
+} from "./bkit-uninstall.js";
 import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
@@ -1912,6 +1916,17 @@ async function main() {
 
   if (verb === "uninstall") {
     LOG_PREFIX = "[bkit-uninstall]";
+
+    // Surgical single-provider removal: `uninstall --opencode=<provider>`
+    if (modules.has("opencode") && opencodeProvider !== null) {
+      const tag = uninstallFlags.dryRun ? " (dry-run)" : "";
+      console.log(
+        `${LOG_PREFIX} Surgical opencode uninstall: removing provider "${opencodeProvider}"${tag}...`,
+      );
+      await runSurgicalOpencodeUninstall(opencodeProvider, uninstallFlags.dryRun, process.cwd());
+      return;
+    }
+
     const uninstallCtx: UninstallContext = {
       cwd: process.cwd(),
       dryRun: uninstallFlags.dryRun,

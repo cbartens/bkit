@@ -9,7 +9,7 @@ import { getTemplatesRoot, getBkitDocsRoot, isDogfood } from "./bkit-paths.js";
 import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
-import { runUninstall } from "./bkit-uninstall.js";
+import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
 import { runUpgrade, updateCanonicalHashesAfterUpgrade, migrateStrayGitattributes, } from "./bkit-upgrade.js";
 import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, getInstallManifest, getModuleManifest, } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
@@ -1675,6 +1675,13 @@ async function main() {
     }
     if (verb === "uninstall") {
         LOG_PREFIX = "[bkit-uninstall]";
+        // Surgical single-provider removal: `uninstall --opencode=<provider>`
+        if (modules.has("opencode") && opencodeProvider !== null) {
+            const tag = uninstallFlags.dryRun ? " (dry-run)" : "";
+            console.log(`${LOG_PREFIX} Surgical opencode uninstall: removing provider "${opencodeProvider}"${tag}...`);
+            await runSurgicalOpencodeUninstall(opencodeProvider, uninstallFlags.dryRun, process.cwd());
+            return;
+        }
         const uninstallCtx = {
             cwd: process.cwd(),
             dryRun: uninstallFlags.dryRun,

@@ -21,11 +21,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
-import { stripManagedBlock } from "./bkit-tiers.js";
+import { stripManagedBlock, } from "./bkit-tiers.js";
 import { getInstallManifest } from "./bkit-manifest.js";
 import { readBkitVersion, shouldDeleteTier3 } from "./bkit-version.js";
 import { stripManagedKeys } from "./bkit-package-json.js";
 import { getTemplatesRoot } from "./bkit-paths.js";
+import { removeOpencodeProviderBlock } from "./bkit-modules.js";
 // ---------------------------------------------------------------------------
 // Tier-2 file strip helper
 // ---------------------------------------------------------------------------
@@ -454,4 +455,89 @@ export async function runUninstall(modules, ctx) {
         }
     }
     return result;
+}
+// ---------------------------------------------------------------------------
+// runSurgicalOpencodeUninstall — remove exactly ONE provider block (#281 Task 4)
+// ---------------------------------------------------------------------------
+/**
+ * Surgical removal of a single opencode provider installed by bkit.
+ *
+ * Distinct from bare `bkit uninstall --opencode` (full host teardown):
+ *   - Removes the provider block from `.opencode/opencode.json`
+ *   - Updates `bkit.opencodeProviders` in `package.json`
+ *   - If the removed provider was the active one, re-points `bkit.opencodeProvider`
+ *     to the first remaining provider and emits a re-render advisory
+ *   - If no providers remain, falls through to full host teardown via `runUninstall`
+ */
+export async function runSurgicalOpencodeUninstall(providerKey, dryRun, cwd) {
+    const LOG_PREFIX = "[bkit-uninstall]";
+    const tag = dryRun ? " (dry-run)" : "";
+    const jsonDst = path.join(cwd, ".opencode", "opencode.json");
+    const ws = { writes: [] };
+    // 1. Remove provider block from opencode.json
+    removeOpencodeProviderBlock(jsonDst, providerKey, dryRun, ws);
+    if (ws.writes.length > 0) {
+        console.log(`${LOG_PREFIX}${tag} removed provider block "${providerKey}" from opencode.json`);
+    }
+    // 2. Update bkit.opencodeProviders in package.json (read inline — no detectOpencodeProviders import)
+    const pkgPath = path.join(cwd, "package.json");
+    let remainingProviders = [];
+    let wasActive = false;
+    let newActive = null;
+    if (fs.existsSync(pkgPath)) {
+        const raw = fs.readFileSync(pkgPath, "utf-8");
+        let pkg;
+        try {
+            pkg = JSON.parse(raw);
+        }
+        catch {
+            console.warn(`${LOG_PREFIX} package.json is malformed — skipping bkit section update`);
+            return;
+        }
+        const bkit = (pkg.bkit ?? {});
+        const arr = Array.isArray(bkit.opencodeProviders)
+            ? [...bkit.opencodeProviders]
+            : [];
+        remainingProviders = arr.filter((p) => p !== providerKey);
+        wasActive = bkit.opencodeProvider === providerKey;
+        if (wasActive && remainingProviders.length > 0) {
+            newActive = remainingProviders[0];
+        }
+        if (!dryRun) {
+            bkit.opencodeProviders = remainingProviders;
+            if (wasActive) {
+                if (newActive !== null) {
+                    bkit.opencodeProvider = newActive;
+                }
+                else {
+                    delete bkit.opencodeProvider;
+                }
+            }
+            pkg.bkit = bkit;
+            const indentMatch = raw.match(/\n([ \t]+)"/);
+            const indent = indentMatch ? indentMatch[1] : "  ";
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n", "utf-8");
+            console.log(`${LOG_PREFIX} updated package.json: opencodeProviders=[${remainingProviders.join(", ")}]` +
+                (wasActive ? ` opencodeProvider=${newActive ?? "(removed)"}` : ""));
+        }
+    }
+    // 3. If none remain → full host teardown
+    if (remainingProviders.length === 0) {
+        console.log(`${LOG_PREFIX}${tag} no providers remain — triggering full opencode host teardown...`);
+        await runUninstall(["opencode"], {
+            cwd,
+            dryRun,
+            force: false,
+            nuke: false,
+            yes: false,
+            stripPackage: false,
+            logPrefix: LOG_PREFIX,
+        });
+        return;
+    }
+    // 4. If was active → emit advisory (re-rendering agents requires full ModuleContext)
+    if (wasActive && newActive !== null) {
+        console.log(`${LOG_PREFIX}${tag} active provider switched to "${newActive}". ` +
+            `Run \`bkit install --opencode=${newActive}\` or \`bkit upgrade\` to re-render agent frontmatter.`);
+    }
 }
