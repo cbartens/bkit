@@ -8,13 +8,14 @@ Verdict: PASS
 
 ## Sub-plan final verdicts
 
-| SP  | Final verify log              | Verdict |
-| --- | ----------------------------- | ------- |
-| 1   | build-plan-verify-1-1.md      | PASS    |
-| 2   | build-plan-verify-2-2.md (a2) | PASS    |
-| 3   | build-plan-verify-3-3.md (a3) | PASS    |
-| 4   | build-plan-verify-4-log.md    | PASS    |
-| 5   | build-plan-verify-5-1.md      | PASS    |
+<!-- prettier-ignore -->
+| SP | Final verify log | Verdict |
+| --- | --- | --- |
+| 1 | build-plan-verify-1-1.md | PASS |
+| 2 | build-plan-verify-2-2.md (a2) | PASS |
+| 3 | build-plan-verify-3-3.md (a3) | PASS |
+| 4 | build-plan-verify-4-log.md | PASS |
+| 5 | build-plan-verify-5-1.md | PASS |
 
 ## Cross-plan coherence checks
 
@@ -31,17 +32,18 @@ Verdict: PASS
 
 ## Feature surface summary
 
-| Area                                | What changed                                                      | SP  |
-| ----------------------------------- | ----------------------------------------------------------------- | --- |
-| opencode.json + plugin/gateguard.js | new provider config template + opencode GateGuard                 | SP3 |
-| bkit-gateguard-opencode.test.ts     | 492-line test suite for opencode GateGuard                        | SP3 |
-| bkit-cloud.yml                      | renamed from bkit-auto.yml; additive dual-job (claude + opencode) | SP5 |
-| bkit-cli.ts / bkit-manifest.ts      | opencode added to CLOUD_VARIANTS + manifest                       | SP5 |
-| bkit-install.ts                     | --cloud=opencode flow; .opencode/ precondition; orphan cleanup    | SP5 |
-| bkit-modules.ts                     | runCloudModule opencode branch + advisory                         | SP5 |
-| bkit-mode.sh                        | removed (shell mode selection deleted)                            | SP4 |
-| .bkit/cloud.md                      | support matrix + unified-file + secrets + decision log            | SP5 |
-| Skills installed                    | opencode-qa, github-actions-docs                                  | SP1 |
+<!-- prettier-ignore -->
+| Area | What changed | SP |
+| --- | --- | --- |
+| opencode.json + plugin/gateguard.js | new provider config template + opencode GateGuard | SP3 |
+| bkit-gateguard-opencode.test.ts | 492-line test suite for opencode GateGuard | SP3 |
+| bkit-cloud.yml | renamed from bkit-auto.yml; additive dual-job (claude + opencode) | SP5 |
+| bkit-cli.ts / bkit-manifest.ts | opencode added to CLOUD_VARIANTS + manifest | SP5 |
+| bkit-install.ts | --cloud=opencode flow; .opencode/ precondition; orphan cleanup | SP5 |
+| bkit-modules.ts | runCloudModule opencode branch + advisory | SP5 |
+| bkit-mode.sh | removed (shell mode selection deleted) | SP4 |
+| .bkit/cloud.md | support matrix + unified-file + secrets + decision log | SP5 |
+| Skills installed | opencode-qa, github-actions-docs | SP1 |
 
 ## Deferred (documented, not blocking)
 

@@ -11,11 +11,12 @@
 
 Three distinct specialised subagents were dispatched concurrently via the Task tool. All three started within 476ms of each other:
 
-| Subagent        | Model (Ollama)              | Start timestamp | End timestamp | Duration                      |
-| --------------- | --------------------------- | --------------- | ------------- | ----------------------------- |
-| spike-wordcount | `ollama/qwen2.5-coder:1.5b` | 1781006853868   | 1781006858680 | ~4.8s                         |
-| spike-reverse   | `ollama/gemma4:12b`         | 1781006854164   | 1781006921102 | ~67s                          |
-| spike-uppercase | `ollama/deepseek-r1:14b`    | 1781006854344   | 1781016605098 | ~2.7h (reasoning model, slow) |
+<!-- prettier-ignore -->
+| Subagent | Model (Ollama) | Start timestamp | End timestamp | Duration |
+| --- | --- | --- | --- | --- |
+| spike-wordcount | `ollama/qwen2.5-coder:1.5b` | 1781006853868 | 1781006858680 | ~4.8s |
+| spike-reverse | `ollama/gemma4:12b` | 1781006854164 | 1781006921102 | ~67s |
+| spike-uppercase | `ollama/deepseek-r1:14b` | 1781006854344 | 1781016605098 | ~2.7h (reasoning model, slow) |
 
 **Concurrency proof:**
 
@@ -60,11 +61,12 @@ Collection is deterministic: each task result is keyed to its `callID` and retur
 
 Each agent's `model:` frontmatter pin was honoured by opencode. Confirmed via `state.metadata.model` in the task output:
 
-| Agent file                           | Frontmatter `model:`        | Model served (from metadata)                      |
-| ------------------------------------ | --------------------------- | ------------------------------------------------- |
+<!-- prettier-ignore -->
+| Agent file | Frontmatter `model:` | Model served (from metadata) |
+| --- | --- | --- |
 | `.opencode/agent/spike-wordcount.md` | `ollama/qwen2.5-coder:1.5b` | `providerID: ollama, modelID: qwen2.5-coder:1.5b` |
-| `.opencode/agent/spike-reverse.md`   | `ollama/gemma4:12b`         | `providerID: ollama, modelID: gemma4:12b`         |
-| `.opencode/agent/spike-uppercase.md` | `ollama/deepseek-r1:14b`    | `providerID: ollama, modelID: deepseek-r1:14b`    |
+| `.opencode/agent/spike-reverse.md` | `ollama/gemma4:12b` | `providerID: ollama, modelID: gemma4:12b` |
+| `.opencode/agent/spike-uppercase.md` | `ollama/deepseek-r1:14b` | `providerID: ollama, modelID: deepseek-r1:14b` |
 
 DB confirmation: `session.model` column for each subagent session stores `{"id":"<modelID>","providerID":"ollama","variant":"default"}` matching the agent's frontmatter pin.
 
@@ -151,11 +153,12 @@ The GateGuard plugin has access to the opencode `client` (via `PluginInput`) and
 
 Confirmed from the `tmp/spike-245/.opencode/` directory structure and `opencode agent list` output:
 
-| Directory            | Name (singular or plural?) | Usage                                      |
-| -------------------- | -------------------------- | ------------------------------------------ |
-| `.opencode/agent/`   | **singular** (`agent`)     | Agent markdown files (one per named agent) |
-| `.opencode/command/` | **singular** (`command`)   | Command markdown files (slash commands)    |
-| `.opencode/plugin/`  | **singular** (`plugin`)    | Plugin JS/TS files                         |
+<!-- prettier-ignore -->
+| Directory | Name (singular or plural?) | Usage |
+| --- | --- | --- |
+| `.opencode/agent/` | **singular** (`agent`) | Agent markdown files (one per named agent) |
+| `.opencode/command/` | **singular** (`command`) | Command markdown files (slash commands) |
+| `.opencode/plugin/` | **singular** (`plugin`) | Plugin JS/TS files |
 
 **Confirmed by `opencode agent list` output** which listed agents from `.opencode/agent/*.md` files.  
 **Confirmed by `opencode debug paths` output** showing `data /Users/christian/.local/share/opencode`.  
@@ -200,13 +203,14 @@ Agent frontmatter uses provider-prefixed model IDs: `model: ollama/qwen2.5-coder
 
 All 5 spike criteria are satisfied:
 
-| Criterion                                  | Result                                                                                                                                                                |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| (a) Concurrent execution                   | PASS — 3 subagents dispatched within 476ms, wordcount completed while others still ran                                                                                |
-| (b) Deterministic result collection        | PASS — all 3 task results collected with `status=completed`, stable across runs                                                                                       |
-| (c) Per-agent model pin honoured           | PASS — DB `session.model` confirms each subagent ran on its pinned Ollama model                                                                                       |
+<!-- prettier-ignore -->
+| Criterion | Result |
+| --- | --- |
+| (a) Concurrent execution | PASS — 3 subagents dispatched within 476ms, wordcount completed while others still ran |
+| (b) Deterministic result collection | PASS — all 3 task results collected with `status=completed`, stable across runs |
+| (c) Per-agent model pin honoured | PASS — DB `session.model` confirms each subagent ran on its pinned Ollama model |
 | (d) `tool.execute.before` payload captured | PASS — verbatim payload: `{ tool, sessionID, callID }` input + `{ args }` output; no direct agent_id; subagent identity via `sessionID → session.parent_id` DB lookup |
-| (e) Dir names confirmed                    | PASS — `.opencode/agent/` (singular), `.opencode/command/` (singular), `.opencode/plugin/` (singular)                                                                 |
+| (e) Dir names confirmed | PASS — `.opencode/agent/` (singular), `.opencode/command/` (singular), `.opencode/plugin/` (singular) |
 
 <!-- verdict:start -->
 

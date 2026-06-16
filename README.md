@@ -361,11 +361,12 @@ For the four-surface token sweep, see [§ Consumer CI auth](#consumer-ci-auth).
 
 Three capabilities are **opt-in** and never wired by a plain host/tooling install. A default install never enables them — instead, the post-install advisory banner nudges you to choose, once. Each is recorded in `package.json` (`bkit.issueTracker`, `bkit.depUpdater`, `bkit.cloudAgents`) so the nudge knows whether you've decided or deliberately opted out.
 
-| Decision               | Default                                          | Opt-in command                                                                                                                                                                                     | Advisory when unset  |
-| ---------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| **Issue tracker**      | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`)                                                                                                   | `tracker-setup-none` |
-| **Dependency updater** | none (no auto dep PRs)                           | `bkit install --dependency=renovate` (recommended) **or** `--dependency=dependabot` — mutually exclusive                                                                                           | `dep-updater-none`   |
-| **Cloud agents**       | none (zero cloud footprint)                      | `bkit install --auto=claude\|cursor\|opencode` — installs `bkit-cloud.yml` (claude + opencode jobs, secret-gated) + cloud env scaffolding (cloud-bootstrap.sh, Cursor Dockerfile/environment.json) | `cloud-router-none`  |
+<!-- prettier-ignore -->
+| Decision | Default | Opt-in command | Advisory when unset |
+| --- | --- | --- | --- |
+| **Issue tracker** | `none` (workflows run; tracker calls are no-ops) | `bkit install --tracker=github` (browser OAuth, no PAT) or `--tracker=linear` (`LINEAR_API_KEY`) | `tracker-setup-none` |
+| **Dependency updater** | none (no auto dep PRs) | `bkit install --dependency=renovate` (recommended) **or** `--dependency=dependabot` — mutually exclusive | `dep-updater-none` |
+| **Cloud agents** | none (zero cloud footprint) | `bkit install --auto=claude\ | cursor\ | opencode` — installs `bkit-cloud.yml` (claude + opencode jobs, secret-gated) + cloud env scaffolding (cloud-bootstrap.sh, Cursor Dockerfile/environment.json) | `cloud-router-none` |
 
 **Why opt-in, not part of a default install:**
 

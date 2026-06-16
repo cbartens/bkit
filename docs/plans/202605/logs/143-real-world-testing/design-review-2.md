@@ -87,25 +87,26 @@ The design's primary observability surface is status.json with the new `realStac
 
 ### Per-failure-mode observability gap assessment
 
-| Failure Mode                                          | Structured log                                    | Metric | Trace | Gap Severity                                               |
-| ----------------------------------------------------- | ------------------------------------------------- | ------ | ----- | ---------------------------------------------------------- |
-| FM-A1: `[real-stack=off]` silently ignored            | `realStack` field in status.json                  | None   | None  | CRITICAL — `realStack` will show incorrect value; no alert |
-| FM-A2: turbo dry-run detection skew                   | `realStack: absent` in status.json                | None   | None  | Moderate — detectable from status.json                     |
-| FM-A3: credential failure → `repro: fail`             | `repro: fail` with no infra-fail flag             | None   | None  | Moderate — ambiguous signal                                |
-| FM-B1: infra failure treated as repro failure         | `repro: fail`                                     | None   | None  | Moderate — wrong routing                                   |
-| FM-B2: turbo filter skips task, exit 0                | `repro: pass`                                     | None   | None  | Moderate — silent vacuous pass                             |
-| FM-B3: soak skips reproduce-first gate                | No `repro: fail` on soak entry                    | None   | None  | CRITICAL — vacuous-pass detection unavailable for soak     |
-| FM-C1: soak exhaustion routing                        | `debug-soak` step; no explicit exhaustion verdict | None   | None  | CRITICAL — soak loop can end without actionable verdict    |
-| FM-C2: cost blast radius under soak                   | None in-workflow                                  | None   | None  | Operational — external billing only                        |
-| FM-C3: vacuous pass in soak first iteration           | `repro: pass` without prior `repro: fail`         | None   | None  | CRITICAL — mirrors FM-B3                                   |
-| FM-D1: soak fallback to diagnose path broken          | `realStack` CONCERNS entry; no diagnose steps     | None   | None  | CRITICAL — silent no-op                                    |
-| FM-D2: OBSERVE_MODE guards not updated                | Workflow falls through; no recorded steps         | None   | None  | CRITICAL — workflow is non-functional for soak             |
-| FM-D3: soak resume duplication                        | Duplicate iteration entries in soak artifact      | None   | None  | Low — no data loss                                         |
-| FM-E1: CONCERNS on absent stack not surfaced in PR    | `realStackReason` in status.json only             | None   | None  | CRITICAL — no-tracker repos get no human-visible signal    |
-| FM-E2: build Step 13 missing integration tests        | Pre-existing gap                                  | —      | —     | Out of scope for this review                               |
-| FM-F1: plan mandate skippable                         | Depends on plan-review being run                  | None   | None  | Low — downstream gates still enforce                       |
-| FM-G1: close-comment audit line missing on no-tracker | status.json only                                  | None   | None  | CRITICAL — "loud audit" fails silently                     |
-| FM-G2: `[real-stack=off]` silently abusable           | `realStack: off` in status.json                   | None   | None  | Moderate — no aggregation or alert                         |
+<!-- prettier-ignore -->
+| Failure Mode | Structured log | Metric | Trace | Gap Severity |
+| --- | --- | --- | --- | --- |
+| FM-A1: `[real-stack=off]` silently ignored | `realStack` field in status.json | None | None | CRITICAL — `realStack` will show incorrect value; no alert |
+| FM-A2: turbo dry-run detection skew | `realStack: absent` in status.json | None | None | Moderate — detectable from status.json |
+| FM-A3: credential failure → `repro: fail` | `repro: fail` with no infra-fail flag | None | None | Moderate — ambiguous signal |
+| FM-B1: infra failure treated as repro failure | `repro: fail` | None | None | Moderate — wrong routing |
+| FM-B2: turbo filter skips task, exit 0 | `repro: pass` | None | None | Moderate — silent vacuous pass |
+| FM-B3: soak skips reproduce-first gate | No `repro: fail` on soak entry | None | None | CRITICAL — vacuous-pass detection unavailable for soak |
+| FM-C1: soak exhaustion routing | `debug-soak` step; no explicit exhaustion verdict | None | None | CRITICAL — soak loop can end without actionable verdict |
+| FM-C2: cost blast radius under soak | None in-workflow | None | None | Operational — external billing only |
+| FM-C3: vacuous pass in soak first iteration | `repro: pass` without prior `repro: fail` | None | None | CRITICAL — mirrors FM-B3 |
+| FM-D1: soak fallback to diagnose path broken | `realStack` CONCERNS entry; no diagnose steps | None | None | CRITICAL — silent no-op |
+| FM-D2: OBSERVE_MODE guards not updated | Workflow falls through; no recorded steps | None | None | CRITICAL — workflow is non-functional for soak |
+| FM-D3: soak resume duplication | Duplicate iteration entries in soak artifact | None | None | Low — no data loss |
+| FM-E1: CONCERNS on absent stack not surfaced in PR | `realStackReason` in status.json only | None | None | CRITICAL — no-tracker repos get no human-visible signal |
+| FM-E2: build Step 13 missing integration tests | Pre-existing gap | — | — | Out of scope for this review |
+| FM-F1: plan mandate skippable | Depends on plan-review being run | None | None | Low — downstream gates still enforce |
+| FM-G1: close-comment audit line missing on no-tracker | status.json only | None | None | CRITICAL — "loud audit" fails silently |
+| FM-G2: `[real-stack=off]` silently abusable | `realStack: off` in status.json | None | None | Moderate — no aggregation or alert |
 
 ---
 

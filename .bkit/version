@@ -8,8 +8,8 @@
     ".opencode/plugin/gateguard.js": "363c3f799dfa104a76910447dbf480ca807924c5b9eacfbbdeeec2389c51b02d"
   },
   "canonicalHashes": {
-    "docs/deployments.md": "48c78209f76933e33ffcbebc9f0da2ade5cfcc7f931de1d70ae065610d3f13e9",
-    "docs/testing.md": "599c7058985ab6baa29f4fd58b90a052fd04b675a00510d2e24650ea962393d0",
+    "docs/deployments.md": "1d7b992e658baaa19d7c6c7d4c18d83e314f082e186b6c3a45b6767a49740e34",
+    "docs/testing.md": "c4d4af6cbe9823977e48eb906c9a97601d85c51c7d8d8e8c55d527e16e4c2d51",
     ".claude/settings.json": "9fd0c032b2f5b90c6d793647f736fb01968b22daf2cdd0e5e1e01ad5a357a6df",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",

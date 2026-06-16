@@ -40,10 +40,11 @@ Follow-up to #119 (Phase 1 shipped in #139). Phase 1 built the phase-agnostic `b
 
 The two cloud stacks are **not symmetric** — each pairs with one tracker:
 
-| Agent (the agent, not the editor)         | Trigger paths                                                                                                                                                                                                                                   | Tracker                         | NOT supported              |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------- |
-| **Claude Code** (terminal — any IDE host) | A) Claude iOS/desktop app → Claude-on-web env (`.claude/hooks/cloud-bootstrap.sh` + claude.ai env) · B) manual `workflow_dispatch` · C) **GitHub issue label/state → webhook → `bkit-cloud` GH Action** · D) GitHub CI pass/fail → `bkit-cloud` | **GitHub**                      | **Linear**                 |
-| **Cursor** (native agent)                 | A) Cursor's built-in cloud-agent launch · B) GitHub integration on PR events (CI pass/fail) · C) **Linear → Cursor integration**                                                                                                                | **Linear** (+ GitHub PR events) | **GitHub Projects/Issues** |
+<!-- prettier-ignore -->
+| Agent (the agent, not the editor) | Trigger paths | Tracker | NOT supported |
+| --- | --- | --- | --- |
+| **Claude Code** (terminal — any IDE host) | A) Claude iOS/desktop app → Claude-on-web env (`.claude/hooks/cloud-bootstrap.sh` + claude.ai env) · B) manual `workflow_dispatch` · C) **GitHub issue label/state → webhook → `bkit-cloud` GH Action** · D) GitHub CI pass/fail → `bkit-cloud` | **GitHub** | **Linear** |
+| **Cursor** (native agent) | A) Cursor's built-in cloud-agent launch · B) GitHub integration on PR events (CI pass/fail) · C) **Linear → Cursor integration** | **Linear** (+ GitHub PR events) | **GitHub Projects/Issues** |
 
 **Claude cloud ↔ GitHub; Cursor cloud ↔ Linear.** They overlap only on GitHub CI/PR events.
 
@@ -177,15 +178,16 @@ Master record of everything decided in this thread. **Nothing deferred** — all
 
 #### In-scope surfaces
 
-| Layer                   | Files                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Auth / install          | `.github/workflows/bkit-cloud.yml` + `.agents/templates/.github/workflows/bkit-cloud.yml`; `renderCloudWorkflow` (id-token, drop Linear render branch + github.token framing); `bkit-modules.ts` (`runCloudModule` split, `MODULE_REGISTRY`, advisories, tracker/cloud enforcement); `bkit-cli.ts` (`--cloud=claude\|cursor` parsing, help, OPTIN_MODULES); manifest |
-| CI trigger discipline   | `bkit-build.md` (`[skip ci]` on worktree-setup/create-pr; `bkit [auto route]` on close-workflow); `bkit-debug.md` (re-trigger marker + loud); `bkit-cloud.yml` (two-tier `if:` gate + in-job label re-check + concurrency key); `.agents/workflows/bkit-cloud.md` orchestrator (gates move to YAML; routing/status/comments stay)                                    |
-| Shared invariant (#184) | new HEAD-subject assertion snippet; build/debug/ship close-workflow + PR-create steps invoke it                                                                                                                                                                                                                                                                      |
-| Triggers                | `.github/workflows/claude.yml` — `@claude /bkit-<phase>` dispatch as the App                                                                                                                                                                                                                                                                                         |
-| Labels                  | migrate Linear bare `Auto` → `bkit:auto` in preflight hooks + `.agents/trackers.md` snippets (gate + @claude paths read `bkit:auto` — consistency required)                                                                                                                                                                                                          |
-| Docs                    | `.agents/cloud.md` (matrix, path E, Post-CI section, setup); generated `.agents/advisories.md`                                                                                                                                                                                                                                                                       |
-| Tests                   | `bkit-modules.integration.test.ts` (advisory asserts), render/`renderCloudWorkflow` tests, dry-run parity, manifest, preflight if touched                                                                                                                                                                                                                            |
+<!-- prettier-ignore -->
+| Layer | Files |
+| --- | --- |
+| Auth / install | `.github/workflows/bkit-cloud.yml` + `.agents/templates/.github/workflows/bkit-cloud.yml`; `renderCloudWorkflow` (id-token, drop Linear render branch + github.token framing); `bkit-modules.ts` (`runCloudModule` split, `MODULE_REGISTRY`, advisories, tracker/cloud enforcement); `bkit-cli.ts` (`--cloud=claude\ | cursor` parsing, help, OPTIN_MODULES); manifest |
+| CI trigger discipline | `bkit-build.md` (`[skip ci]` on worktree-setup/create-pr; `bkit [auto route]` on close-workflow); `bkit-debug.md` (re-trigger marker + loud); `bkit-cloud.yml` (two-tier `if:` gate + in-job label re-check + concurrency key); `.agents/workflows/bkit-cloud.md` orchestrator (gates move to YAML; routing/status/comments stay) |
+| Shared invariant (#184) | new HEAD-subject assertion snippet; build/debug/ship close-workflow + PR-create steps invoke it |
+| Triggers | `.github/workflows/claude.yml` — `@claude /bkit-<phase>` dispatch as the App |
+| Labels | migrate Linear bare `Auto` → `bkit:auto` in preflight hooks + `.agents/trackers.md` snippets (gate + @claude paths read `bkit:auto` — consistency required) |
+| Docs | `.agents/cloud.md` (matrix, path E, Post-CI section, setup); generated `.agents/advisories.md` |
+| Tests | `bkit-modules.integration.test.ts` (advisory asserts), render/`renderCloudWorkflow` tests, dry-run parity, manifest, preflight if touched |
 
 #### Internal ordering
 

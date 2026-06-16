@@ -33,16 +33,17 @@
 
 **Accepted tier vocabulary (synthesised), mapped to the bkit stack:**
 
-| Tier                            | What it validates                                                                                                                         | bkit name / runner                                     |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| **Static**                      | Types, lint, format, prose, drift                                                                                                         | `typecheck` + `format:check` + `lint:*` + `bkit check` |
-| **Unit**                        | Pure function / single module, no I/O                                                                                                     | `*.test.ts` (Vitest)                                   |
-| **Integration / component**     | Multi-module wiring; crosses a _local_ stateful boundary (own DB/API), no 3rd party, **no mocks at the boundary**                         | `*.integration.test.ts` (Vitest)                       |
-| **Contract**                    | Producer/consumer API compatibility without full E2E (Pact-style)                                                                         | _not present in bkit_ — see §5                         |
-| **E2E**                         | User-visible UI flow / DOM state                                                                                                          | Playwright (template scaffold)                         |
-| **@live (golden)**              | Crosses an _external/deployed_ boundary (3rd-party API, model/LLM, payment, deployed schema, RLS/tenancy); asserts a boundary-only signal | `test:live` → `bkit-tests-live`                        |
-| **Migration-replay / fresh-DB** | Every migration replays from an **empty** DB + seed loads                                                                                 | `bkit-tests-migrate`                                   |
-| **Smoke (post-deploy)**         | Health of a deployed surface after release                                                                                                | separate `workflow_run` workflow                       |
+<!-- prettier-ignore -->
+| Tier | What it validates | bkit name / runner |
+| --- | --- | --- |
+| **Static** | Types, lint, format, prose, drift | `typecheck` + `format:check` + `lint:*` + `bkit check` |
+| **Unit** | Pure function / single module, no I/O | `*.test.ts` (Vitest) |
+| **Integration / component** | Multi-module wiring; crosses a _local_ stateful boundary (own DB/API), no 3rd party, **no mocks at the boundary** | `*.integration.test.ts` (Vitest) |
+| **Contract** | Producer/consumer API compatibility without full E2E (Pact-style) | _not present in bkit_ — see §5 |
+| **E2E** | User-visible UI flow / DOM state | Playwright (template scaffold) |
+| **@live (golden)** | Crosses an _external/deployed_ boundary (3rd-party API, model/LLM, payment, deployed schema, RLS/tenancy); asserts a boundary-only signal | `test:live` → `bkit-tests-live` |
+| **Migration-replay / fresh-DB** | Every migration replays from an **empty** DB + seed loads | `bkit-tests-migrate` |
+| **Smoke (post-deploy)** | Health of a deployed surface after release | separate `workflow_run` workflow |
 
 > **bkit alignment:** bkit already runs strict Unit/Integration/E2E/@live/Smoke separation **plus** static-as-base at pre-push (`typecheck + unit + bkit check`) — exactly the Trophy's base layer. The "integration-as-highest-ROI" doctrine is the theoretical backing for bkit's **lowest-sufficient-tier assignment** rule. The one gap vs. taxonomy: bkit has **no contract-test tier** (acceptable — bkit is not a multi-service producer/consumer system; flagged for consumers that are).
 
@@ -54,14 +55,15 @@
 
 **The trade-off curve.** The deeper a tier sits, the more _realistic_ and the more _expensive/flaky_ it is — so place each tier where the cost is justified by the confidence it buys:
 
-| Tier                                  | Speed / cost        | Determinism          | Where it runs                                 | Gates merge?                                |
-| ------------------------------------- | ------------------- | -------------------- | --------------------------------------------- | ------------------------------------------- |
-| Static, Unit                          | seconds, ~free      | high                 | **pre-push** + every PR                       | **Yes**                                     |
-| Integration (fresh local backing svc) | tens of seconds     | high                 | every PR (affected)                           | **Yes**                                     |
-| Migration-replay                      | tens of seconds     | high                 | every PR (self-skips if no migration changed) | **Yes** (folds into capstone)               |
-| E2E (Playwright)                      | minutes, costly     | medium (flaky-prone) | PR when `web_affected`/`run_e2e`; else async  | Conditionally                               |
-| @live (golden)                        | slow, network-bound | low (external)       | merge-to-main / scheduled / `[force live]`    | **No** (degrades to CONCERNS)               |
-| Smoke (post-deploy)                   | fast probe          | medium               | **after** deploy, `workflow_run`              | **No** (observability gate, not merge gate) |
+<!-- prettier-ignore -->
+| Tier | Speed / cost | Determinism | Where it runs | Gates merge? |
+| --- | --- | --- | --- | --- |
+| Static, Unit | seconds, ~free | high | **pre-push** + every PR | **Yes** |
+| Integration (fresh local backing svc) | tens of seconds | high | every PR (affected) | **Yes** |
+| Migration-replay | tens of seconds | high | every PR (self-skips if no migration changed) | **Yes** (folds into capstone) |
+| E2E (Playwright) | minutes, costly | medium (flaky-prone) | PR when `web_affected`/`run_e2e`; else async | Conditionally |
+| @live (golden) | slow, network-bound | low (external) | merge-to-main / scheduled / `[force live]` | **No** (degrades to CONCERNS) |
+| Smoke (post-deploy) | fast probe | medium | **after** deploy, `workflow_run` | **No** (observability gate, not merge gate) |
 
 **Post-deploy trigger mechanics `[grounded — follow-up]`.** Three native GitHub Actions hooks, with a sharp distinction between _post-CI_ and _post-deploy_: ([gh-events], [vercel-smoke])
 
@@ -197,23 +199,24 @@ The first pass came back thin here (one claim genuinely refuted 0-3, the rest dr
 
 ## 6. bkit alignment scorecard
 
-| Best practice (industry)                                  | bkit status                                                      | Action                                                          |
-| --------------------------------------------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------- |
-| Static analysis as base tier                              | ✅ pre-push `typecheck` + `bkit check`                           | none                                                            |
-| Strict tier separation U/I/E2E/@live/Smoke                | ✅ explicit in testing.md                                        | none                                                            |
-| Integration = highest-ROI / lowest-sufficient-tier        | ✅ rubric in testing.md                                          | none                                                            |
-| Fast/deterministic tiers gate merge; slow async           | ✅ run-level matrix (`none`/`partial`/`full`)                    | none                                                            |
-| Smoke async via `workflow_run`, non-blocking              | ✅ separate workflow                                             | refine: `deployment_status` for external deploys                |
-| Fresh-provisioned backing services                        | ✅ `bkit-tests-migrate`, `supabase db reset`                     | none                                                            |
-| Executed-count gate (>0 tests per planned tier)           | ✅ `bkit-tests-check` capstone (stronger than `passWithNoTests`) | keep; ban `passWithNoTests=true`                                |
-| `executed ≠ exercised` / boundary-only signal             | ✅ hollow-boundary rule + `boundary/unsafe-cast` slop gate       | none                                                            |
-| Affected-graph selection (`turbo`/`nx affected`)          | ◑ tier-level `web_affected`/`run_e2e`; n/a for bkit's single pkg | document `fetch-depth: 0` + `--affected` for consumers          |
-| Playwright sharding (`--shard` matrix + blob-merge)       | ✗ not documented                                                 | **add optional scaffold block** (needs data isolation — §3d)    |
-| Automated flaky classification + bounded retry            | ✗ none (has SHA-cache only)                                      | **add Playwright `retries` + flake tracking**                   |
-| Mutation testing (StrykerJS)                              | ✗ none (manual analog only)                                      | **add nightly StrykerJS w/ survival threshold**                 |
-| E2E tiering by trigger (`@smoke` PR subset, full on push) | ✗ run-level matrix only                                          | document tag + event-keyed-grep pattern (gether-life #523/#524) |
-| Parallel CI job lanes (vs serial `bkit-tests` monolith)   | ◑ single serial `bkit-tests` job                                 | **consider lane-split in scaffold** (gether-life #523)          |
-| Contract tests (Pact)                                     | ✗ none                                                           | flag for multi-service consumers only                           |
+<!-- prettier-ignore -->
+| Best practice (industry) | bkit status | Action |
+| --- | --- | --- |
+| Static analysis as base tier | ✅ pre-push `typecheck` + `bkit check` | none |
+| Strict tier separation U/I/E2E/@live/Smoke | ✅ explicit in testing.md | none |
+| Integration = highest-ROI / lowest-sufficient-tier | ✅ rubric in testing.md | none |
+| Fast/deterministic tiers gate merge; slow async | ✅ run-level matrix (`none`/`partial`/`full`) | none |
+| Smoke async via `workflow_run`, non-blocking | ✅ separate workflow | refine: `deployment_status` for external deploys |
+| Fresh-provisioned backing services | ✅ `bkit-tests-migrate`, `supabase db reset` | none |
+| Executed-count gate (>0 tests per planned tier) | ✅ `bkit-tests-check` capstone (stronger than `passWithNoTests`) | keep; ban `passWithNoTests=true` |
+| `executed ≠ exercised` / boundary-only signal | ✅ hollow-boundary rule + `boundary/unsafe-cast` slop gate | none |
+| Affected-graph selection (`turbo`/`nx affected`) | ◑ tier-level `web_affected`/`run_e2e`; n/a for bkit's single pkg | document `fetch-depth: 0` + `--affected` for consumers |
+| Playwright sharding (`--shard` matrix + blob-merge) | ✗ not documented | **add optional scaffold block** (needs data isolation — §3d) |
+| Automated flaky classification + bounded retry | ✗ none (has SHA-cache only) | **add Playwright `retries` + flake tracking** |
+| Mutation testing (StrykerJS) | ✗ none (manual analog only) | **add nightly StrykerJS w/ survival threshold** |
+| E2E tiering by trigger (`@smoke` PR subset, full on push) | ✅ documented `testing.md` § "E2E on PRs" (2026-06-16) | done — tag + project-scoped-grep pattern (gether-life #523/#524) |
+| Parallel CI job lanes (vs serial `bkit-tests` monolith) | ✅ documented `deployments.md` § Parallel test lanes (2026-06-16) | done — lane-split in scaffold reference + doctrine (#523/#525) |
+| Contract tests (Pact) | ✗ none | flag for multi-service consumers only |
 
 **Five candidate improvements, in priority order:**
 
@@ -242,6 +245,23 @@ The four first-pass gaps are now grounded:
 - **Whether to actually adopt** Stryker / Playwright sharding / retries in the bkit scaffold is an implementation decision for a separate design issue, not a research question.
 
 ---
+
+## Folded into bkit (2026-06-16) — deploy-hazard findings from #526 / #527 / #280 / #301
+
+The #523/#524 worked example above covered E2E tiering + the lane split. Re-reading the rest of the gether-life and Fraser-Coast consumer thread surfaced three further findings — all **deploy/CI-pipeline hazards**, all now folded into the bkit scaffold.
+
+**Placement rule (decided this pass).** `.github/workflows/ci.yml` is **Tier-3 seed-or-print** — written once per consumer, never rewritten, not drift-gated; `testing.md` / `deployments.md` are **100 % inside `bkit:start/end`** — drift-gated and delivered on every `bkit upgrade`. So the _substance_ lives once in the canonical drift-gated doc (correctable, reaches existing consumers); `ci.yml` carries only the load-bearing gotcha + a `§` pointer. This matches #263's "canonical doc + thin enforcers" and the pointers `ci.yml` already uses.
+
+<!-- prettier-ignore -->
+| Finding (source) | What it is | Canonical home (drift-gated) | `ci.yml` pointer |
+| --- | --- | --- | --- |
+| **Build-vs-migration race** (#527, Fraser #280) | Host auto-deploy build runs *unordered* vs the CI migrate step; a build-time DB read (`sitemap`/`generateStaticParams`/static page read) landing first ERRORs the first deploy (PG `42P01`/`42703`/`42704`/`3F000`); redeploy-same-SHA self-heals. Fix: serialise migrate → deploy. | `deployments.md` § Build-vs-migration race | `bkit-stub:supabase-migrate` + JOB 2 Apply-Migrations |
+| **Migration-coupled-PR E2E** (#526, Fraser #301) | Preview E2E hits the shared `dev` DB, blind to a PR's unmerged migration → a PR that adds+uses a column 500s pre-merge (`[force e2e]` won't help). Fix: feature→`dev` PRs run E2E vs a local DB carrying the PR's migrations; pushes keep preview E2E. | `testing.md` § "E2E on PRs" | `bkit-stub:vercel-await` + JOB 2 Playwright |
+| **Multi-chain fresh-replay** (#280 Gap 2, #301) | `bkit-tests-migrate` must replay *every* migration chain (e.g. Supabase public **and** Payload/Prisma) and trigger on every migration dir; an un-replayed chain is an unverified hole. | `testing.md` § Provision backing services fresh | JOB 2b `bkit-stub:bkit-tests-migrate` |
+| **E2E `@smoke` PR-tiering** (#523/#524) | promoted from worked-example to doctrine | `testing.md` § "E2E on PRs" | `bkit-stub:e2e` + JOB 2 Playwright |
+| **Parallel lane split** (#523/#525) | promoted from worked-example to doctrine | `deployments.md` § Parallel test lanes | JOB 2 SCALING note |
+
+Fraser #301 is the cross-repo confirmation: a second consumer adopting the same standard, with the multi-chain (Supabase **+** Payload) twist that generalised the migrate-gate finding. Not folded: the Vercel-CLI team-mis-resolution workaround (#280) — too vendor-specific; lives in the consumer incident record.
 
 ## Sources
 

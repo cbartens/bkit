@@ -14,12 +14,13 @@ opencode is bkit's **universal, provider-agnostic execution host** — the rende
 
 ### Host taxonomy
 
-| Models                                                | Native host     | Status              |
-| ----------------------------------------------------- | --------------- | ------------------- |
-| Anthropic (Claude)                                    | Claude Code CLI | shipped (canonical) |
-| Multi-model IDE                                       | Cursor          | shipped (derived)   |
-| OpenAI (gpt / o / codex)                              | Codex CLI       | #247 (later)        |
-| **NVIDIA / Ollama / OpenRouter / Gemini / any other** | **opencode**    | **THIS issue**      |
+<!-- prettier-ignore -->
+| Models | Native host | Status |
+| --- | --- | --- |
+| Anthropic (Claude) | Claude Code CLI | shipped (canonical) |
+| Multi-model IDE | Cursor | shipped (derived) |
+| OpenAI (gpt / o / codex) | Codex CLI | #247 (later) |
+| **NVIDIA / Ollama / OpenRouter / Gemini / any other** | **opencode** | **THIS issue** |
 
 ## Approach A is a STOPGAP — it gets removed here, not kept
 

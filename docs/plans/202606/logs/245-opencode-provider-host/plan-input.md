@@ -20,12 +20,13 @@ opencode is bkit's **universal, provider-agnostic execution host** — the rende
 
 ### Host taxonomy
 
-| Models                                                | Native host     | Status              |
-| ----------------------------------------------------- | --------------- | ------------------- |
-| Anthropic (Claude)                                    | Claude Code CLI | shipped (canonical) |
-| Multi-model IDE                                       | Cursor          | shipped (derived)   |
-| OpenAI (gpt / o / codex)                              | Codex CLI       | #247 (later)        |
-| **NVIDIA / Ollama / OpenRouter / Gemini / any other** | **opencode**    | **THIS issue**      |
+<!-- prettier-ignore -->
+| Models | Native host | Status |
+| --- | --- | --- |
+| Anthropic (Claude) | Claude Code CLI | shipped (canonical) |
+| Multi-model IDE | Cursor | shipped (derived) |
+| OpenAI (gpt / o / codex) | Codex CLI | #247 (later) |
+| **NVIDIA / Ollama / OpenRouter / Gemini / any other** | **opencode** | **THIS issue** |
 
 ## Approach A is a STOPGAP — it gets removed here, not kept
 
@@ -75,17 +76,18 @@ Pre-design recon against the gate this issue sets ("prove the chosen harness can
 
 **Primitive → opencode mapping:**
 
-| bkit primitive                                          | opencode mechanism                                                                                                      | Status                                    |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Subagents (`.claude/agents/*.md` + frontmatter)         | `.opencode/agents/*.md` — `mode: subagent`, `model`, `permission`, `temperature`, `hidden`, `description`               | ✅ near-isomorphic; new render target     |
-| Per-agent `model:` + `effort:`                          | per-agent `model:` + provider pass-through (`reasoningEffort: high`)                                                    | ✅ effort → provider param (transform)    |
-| Slash-commands / workflows                              | `.opencode/commands/*.md` — `agent`, `model`, `subtask`; `$ARGUMENTS`/`$1`; `` !`shell` `` injection                    | ✅ tool-name transform needed             |
-| **GateGuard** (pre-edit deny + model-visible checklist) | plugin hook `tool.execute.before` — **can `throw` to block**; thrown error text returns to the model as the tool result | ✅ MORE faithful than Cursor              |
-| MCP (GitHub / Linear)                                   | native `mcp` config, local + remote servers                                                                             | ✅                                        |
-| Permissions (per-tool / bash globs)                     | `permission: { edit, bash, read, grep, task }` = allow/ask/deny + bash glob patterns                                    | ✅                                        |
-| Rules                                                   | native `AGENTS.md`                                                                                                      | ✅ bkit already ships it                  |
-| Hooks plumbing                                          | plugins are JS/TS in `.opencode/plugins/`, `(input, output)` async                                                      | ⚠️ port `gateguard.cjs` → opencode plugin |
-| **Parallel subagent fan-out**                           | subagents invoked via the Task tool (`permission.task`); concurrency not fully documented                               | 🟡 one narrow unknown                     |
+<!-- prettier-ignore -->
+| bkit primitive | opencode mechanism | Status |
+| --- | --- | --- |
+| Subagents (`.claude/agents/*.md` + frontmatter) | `.opencode/agents/*.md` — `mode: subagent`, `model`, `permission`, `temperature`, `hidden`, `description` | ✅ near-isomorphic; new render target |
+| Per-agent `model:` + `effort:` | per-agent `model:` + provider pass-through (`reasoningEffort: high`) | ✅ effort → provider param (transform) |
+| Slash-commands / workflows | `.opencode/commands/*.md` — `agent`, `model`, `subtask`; `$ARGUMENTS`/`$1`; `` !`shell` `` injection | ✅ tool-name transform needed |
+| **GateGuard** (pre-edit deny + model-visible checklist) | plugin hook `tool.execute.before` — **can `throw` to block**; thrown error text returns to the model as the tool result | ✅ MORE faithful than Cursor |
+| MCP (GitHub / Linear) | native `mcp` config, local + remote servers | ✅ |
+| Permissions (per-tool / bash globs) | `permission: { edit, bash, read, grep, task }` = allow/ask/deny + bash glob patterns | ✅ |
+| Rules | native `AGENTS.md` | ✅ bkit already ships it |
+| Hooks plumbing | plugins are JS/TS in `.opencode/plugins/`, `(input, output)` async | ⚠️ port `gateguard.cjs` → opencode plugin |
+| **Parallel subagent fan-out** | subagents invoked via the Task tool (`permission.task`); concurrency not fully documented | 🟡 one narrow unknown |
 
 **The one blocking unknown — and the spike that settles it:**
 bkit's orchestrators (design-brainstorm ×3, plan-review ×3, build-challenge ×2, plan-scope-check ×2) depend on **concurrent** subagent execution. opencode invokes subagents through a Task tool — but opencode's docs do not confirm the runtime executes them concurrently rather than serially.
