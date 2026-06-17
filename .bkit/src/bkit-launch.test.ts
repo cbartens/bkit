@@ -272,18 +272,23 @@ describe("launchApp — exit 1 when binary not found", () => {
   });
 });
 
-describe("launchApp — exit 1 when app already running", () => {
-  it("warns and exits when pgrep reports a running instance", async () => {
+describe("launchApp — warns but still launches when app already running", () => {
+  it("warns about env but still spawns the app", async () => {
     const fakeBin = makeFakeBin("fake-app");
     process.env["BKIT_CURSOR_BIN"] = fakeBin;
-    // pgrep returns running
     mockSpawnSync.mockReturnValue({ status: 0, stdout: "99999\n", stderr: "" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
-      const errors = await withExit(() => launchApp("cursor", tmpDir));
-      expect(errors).toMatch(/already running/i);
-      expect(errors).toMatch(/quit/i);
+      await launchApp("cursor", tmpDir);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0]![0]).toMatch(/already running/i);
+      expect(warnSpy.mock.calls[0]![0]).toMatch(/will NOT take effect/i);
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
     } finally {
       delete process.env["BKIT_CURSOR_BIN"];
+      warnSpy.mockRestore();
+      logSpy.mockRestore();
     }
   });
 });
