@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer specialising in CI/runtime failure root-cause analysis.
 **Scope:** As specified by input and Read/Update/Create section.

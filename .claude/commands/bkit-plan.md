@@ -1,7 +1,7 @@
 ---
 description: "Plan Feature — Autonomous plan generation"
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Plan Feature (Workflow 2/6)
 
