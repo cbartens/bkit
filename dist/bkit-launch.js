@@ -120,14 +120,10 @@ export async function launchApp(app, cwd) {
     }
     const { binPath } = resolved;
     if (isAlreadyRunning(binPath)) {
-        console.error(`[bkit] ${app} is already running — the new environment from .bkit/.env only takes\n` +
-            `effect in a freshly-launched process.\n\n` +
-            `  1. Quit ${app} fully (Cmd+Q / File → Quit).\n` +
-            `  2. Run this command from a regular terminal (Terminal.app / iTerm2 / etc.),\n` +
-            `     NOT from a terminal inside ${app} itself (that process is already tainted\n` +
-            `     by the old env — even after reopening a tab).\n` +
-            `  3. Re-run: pnpm bkit ${app}`);
-        process.exit(1);
+        console.warn(`[bkit] ${app} is already running — opening folder in a new window, but the\n` +
+            `environment from .bkit/.env will NOT take effect (the running process keeps\n` +
+            `its original env). If you need per-repo tokens, quit ${app} fully (Cmd+Q)\n` +
+            `and re-run: pnpm bkit ${app}`);
     }
     // Cursor: pass repo dir so it opens the folder. opencode: no positional needed
     // (it reads opencode.json from cwd, and cwd is inherited via { cwd } spawn option).

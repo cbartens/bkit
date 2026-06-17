@@ -851,14 +851,11 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 });
 
 // ---------------------------------------------------------------------------
-// B6 — advisory auth shape (BAR-142 §B6 + #274 user-level relocation)
+// B6 — advisory auth shape (BAR-142 §B6 + .npmrc auth token restoration)
 //
-// #274: pnpm >=10.34.3 no longer authenticates a project-.npmrc `${GH_BKIT_TOKEN}`
-// env-substitution (it 401s on download), and via config precedence a project-.npmrc
-// auth line shadows the user-level token. So advisory text must prescribe the
-// user-level shape — `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
-// (a shell var, not an .npmrc `${VAR}` interpolation) — and must NOT prescribe a
-// project-.npmrc `_authToken=${GH_BKIT_TOKEN}` line.
+// Advisory text must prescribe BOTH:
+//   (1) the .npmrc auth token line: `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`
+//   (2) the belt-and-braces CI shape: `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
 //
 // The BAR-142 §B6 invariant still holds permanently: the broken POSIX-fallback
 // `${VAR:-default}` form must never appear (pnpm cannot parse it; it 401s).
@@ -866,25 +863,19 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 
 describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-liner", () => {
   it("gh-bkit-token-secret-unknown action text instructs `export GH_BKIT_TOKEN=$(gh auth token)`", () => {
-    // Source-level check: the GH_BKIT_TOKEN_UNKNOWN_ACTION constant in bkit-postinstall.ts
-    // must contain the exact concrete one-liner for obtaining the token.
     const src = fs.readFileSync(path.join(__dirname, "bkit-postinstall.ts"), "utf-8");
     expect(src).toContain("export GH_BKIT_TOKEN=$(gh auth token)");
   });
 
-  it("advisory strings prescribe the user-level `pnpm config set` shape, not a project-.npmrc auth line (#274)", () => {
+  it("advisory strings prescribe both .npmrc auth token and pnpm config set shapes", () => {
     for (const f of ["bkit-modules.ts", "bkit-postinstall.ts"]) {
       const src = fs.readFileSync(path.join(__dirname, f), "utf-8");
-      // New canonical shape present: pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
       expect(src, `${f} must prescribe the user-level pnpm config set auth shape`).toMatch(
         /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
       );
-      // Broken project-.npmrc auth line (env-substituted token) must NOT be prescribed:
-      // pnpm >=10.34.3 401s on it and it shadows the user-level token.
-      expect(
-        src,
-        `${f} must NOT prescribe a project-.npmrc _authToken=\${GH_BKIT_TOKEN} line`,
-      ).not.toMatch(/_authToken=\\?\$\{GH_BKIT_TOKEN\}/);
+      expect(src, `${f} must prescribe the .npmrc auth token line`).toContain(
+        "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}",
+      );
     }
   });
 

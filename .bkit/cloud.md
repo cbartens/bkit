@@ -78,7 +78,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. The th
 ## In-repo side
 
 - `.claude/hooks/preflight.sh` — Tracker opt-in guard. Skips silently when the tracker issue ID env var is unset (i.e. IDE sessions). Non-zero exit is informational only on Claude (`SessionStart` cannot block); the agent reads the `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/cloud-bootstrap.sh` — writes the GH Packages auth token to pnpm's user-level config (from the `GH_BKIT_TOKEN` env var), then runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally. (The token step is required: pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution — so set `GH_BKIT_TOKEN` in the cloud dashboard env.)
+- `.claude/hooks/cloud-bootstrap.sh` — writes the GH Packages auth token to pnpm's user-level config (from the `GH_BKIT_TOKEN` env var) as belt-and-braces, then runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally. Set `GH_BKIT_TOKEN` in the cloud dashboard env.
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 Ships with the repo — you don't paste these into the app.

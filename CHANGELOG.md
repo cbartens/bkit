@@ -6,6 +6,18 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.2] — 2026-06-17
+
+Fix breaking `.npmrc` auth regression — restore the `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line that #274 incorrectly removed.
+
+### Fixed
+
+- **`.npmrc` auth token line restored.** The `_authToken=${GH_BKIT_TOKEN}` reference is required — pnpm interpolates it from the environment at runtime. Without it, Vercel builds (and any environment without a `pnpm config set` pre-step) fail with `ERR_PNPM_FETCH_401`. The `pnpm config set` in CI is now documented as belt-and-braces rather than the sole auth mechanism.
+- **`detectNpmrcLegacyAuthToken` removed.** This function incorrectly flagged the auth token line as "legacy" and advised its removal. Advisories now prescribe both `.npmrc` lines (registry mapping + auth token).
+- **Vercel advisory simplified.** Vercel reads `.npmrc` directly with `${GH_BKIT_TOKEN}` from the project env var — no `installCommand` workaround needed.
+
+---
+
 ## [4.1.1] — 2026-06-17
 
 Split bkit's own CI and the consumer CI template into parallel test lanes, dogfooding the pattern recommended in the scaffold reference.
