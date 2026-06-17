@@ -852,7 +852,7 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
     const REQUIRED_KEYS = [
         {
             key: "GH_MCP_TOKEN",
-            description: "fine-grained PAT for the GitHub MCP server only (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write). Use `gh auth login` for the gh CLI — do not set GH_TOKEN in .bkit/.env",
+            description: "fine-grained PAT for the GitHub MCP server (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write)",
         },
         {
             key: "GH_BKIT_TOKEN",
@@ -885,44 +885,6 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
         });
     }
     return findings;
-}
-/**
- * Advisory: .bkit/.env still uses legacy GH_TOKEN (pre-#287) instead of GH_MCP_TOKEN.
- * GH_TOKEN in the shell overrides `gh auth login` keyring auth — the rename decouples MCP from gh CLI.
- */
-export function detectLegacyGhTokenInDotenv(cwd) {
-    if (isCloudOrCi())
-        return null;
-    const envPath = path.join(cwd, ".bkit", ".env");
-    if (!fs.existsSync(envPath))
-        return null;
-    const content = fs.readFileSync(envPath, "utf-8");
-    const kvMap = new Map();
-    for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#"))
-            continue;
-        const eqIdx = trimmed.indexOf("=");
-        if (eqIdx === -1)
-            continue;
-        const key = trimmed.slice(0, eqIdx).trim();
-        let value = trimmed.slice(eqIdx + 1).trim();
-        if ((value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1);
-        }
-        kvMap.set(key, value);
-    }
-    const legacy = kvMap.get("GH_TOKEN") ?? "";
-    const mcp = kvMap.get("GH_MCP_TOKEN") ?? "";
-    if (!legacy || mcp)
-        return null;
-    return {
-        id: "mcp-env-legacy-gh-token",
-        severity: "advisory",
-        detect: ".bkit/.env still defines GH_TOKEN but not GH_MCP_TOKEN. Exporting GH_TOKEN overrides `gh auth login` keyring credentials — bkit now uses GH_MCP_TOKEN for the GitHub MCP server only.",
-        action: "[mcp-env] Rename GH_TOKEN → GH_MCP_TOKEN in .bkit/.env (keep the same PAT value), remove the GH_TOKEN line, run `bkit install` to refresh MCP configs, then `direnv allow` and restart your editor. Use `gh auth login` for the gh CLI.",
-    };
 }
 /**
  * Advisory: `bkit` is not on PATH.

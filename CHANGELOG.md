@@ -12,7 +12,7 @@ Rename local GitHub MCP PAT from `GH_TOKEN` to `GH_MCP_TOKEN` so direnv no longe
 
 ### Changed
 
-- **`.bkit/.env.example` → `GH_MCP_TOKEN`.** MCP-only fine-grained PAT; `gh` CLI uses keyring locally. Migration advisory `mcp-env-legacy-gh-token` when `.env` still has `GH_TOKEN`.
+- **`.bkit/.env.example` → `GH_MCP_TOKEN`.** MCP-only fine-grained PAT for the GitHub MCP server.
 - **MCP configs** (`.mcp.json`, `.cursor/mcp.json`, OpenCode template) reference `${GH_MCP_TOKEN}` / `{env:GH_MCP_TOKEN}`.
 - **Preflight/postinstall advisories** renamed to `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell`.
 - **Docs:** `KN-CORE-8`, updated setup/cloud/README copy.

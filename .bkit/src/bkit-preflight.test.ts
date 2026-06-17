@@ -25,7 +25,6 @@ import {
   REQUIRED_MCP_SERVERS,
   detectMissingDotenv,
   detectBlankDotenvKeys,
-  detectLegacyGhTokenInDotenv,
   detectDirenvMissing,
   detectDirenvNotAllowed,
   detectBkitNotOnPath,
@@ -1498,52 +1497,6 @@ describe("detectDirenvNotAllowed", () => {
     } finally {
       process.env.PATH = savedPath;
     }
-  });
-});
-
-describe("detectLegacyGhTokenInDotenv", () => {
-  const origEnv = { ...process.env };
-
-  afterEach(() => {
-    Object.keys(process.env).forEach((k) => delete process.env[k]);
-    Object.assign(process.env, origEnv);
-  });
-
-  it("flags when GH_TOKEN is set but GH_MCP_TOKEN is absent", () => {
-    delete process.env.CI;
-    delete process.env.CLAUDE_CODE_REMOTE;
-    delete process.env.CURSOR_REMOTE_AGENT;
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_legacy\nGH_BKIT_TOKEN=ghp_bkit\n",
-      "utf-8",
-    );
-    const finding = detectLegacyGhTokenInDotenv(tmpDir);
-    expect(finding?.id).toBe("mcp-env-legacy-gh-token");
-    expect(finding?.action).toContain("GH_MCP_TOKEN");
-  });
-
-  it("does NOT flag when GH_MCP_TOKEN is already set", () => {
-    delete process.env.CI;
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_legacy\nGH_MCP_TOKEN=ghp_mcp\n",
-      "utf-8",
-    );
-    expect(detectLegacyGhTokenInDotenv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when CI=true (cloud/CI short-circuit)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_legacy\nGH_BKIT_TOKEN=ghp_bkit\n",
-      "utf-8",
-    );
-    process.env.CI = "true";
-    expect(detectLegacyGhTokenInDotenv(tmpDir)).toBeNull();
   });
 });
 

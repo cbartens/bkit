@@ -139,16 +139,15 @@ bkit check
 
 ### Local env setup
 
-Two flows — pick one. Both end with `GH_BKIT_TOKEN` and `GH_MCP_TOKEN` in your shell for pnpm and GitHub MCP; use `gh auth login` for the CLI (do not export `GH_TOKEN` — it overrides the keyring). Linear repos also need `LINEAR_API_KEY`.
+Two flows — pick one. Both end with `GH_BKIT_TOKEN` and `GH_MCP_TOKEN` in your shell for pnpm and GitHub MCP. Linear repos also need `LINEAR_API_KEY`. Use `gh auth login` for the CLI.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
 export GH_BKIT_TOKEN=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
-export GH_MCP_TOKEN=<fine-grained PAT>                 # GitHub MCP only
+export GH_MCP_TOKEN=<fine-grained PAT>                 # GitHub MCP
 export LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
-# gh CLI: run `gh auth login` — do NOT export GH_TOKEN (overrides keyring)
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
@@ -336,7 +335,6 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
 | `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `GH_MCP_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
-| `mcp-env-legacy-gh-token` | `.bkit/.env` still defines `GH_TOKEN` but not `GH_MCP_TOKEN` — rename per #287 so `gh auth login` keyring is not overridden. |
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step lacks the `pnpm config set` auth step and/or the `GH_BKIT_TOKEN` env mapping |
