@@ -237,7 +237,7 @@ Canonical per-agent metadata lookup — **the single source of truth for which m
 | `bkit-design-brainstorm-ideate-1` | Independent design exploration — pragmatic lens; effort slot 1 (`high`). Runs parallel with `-2` and `-3`; writes `design-brainstorm-ideate-1.md`. Never references sibling output (circular reasoning guard). |
 | `bkit-design-brainstorm-ideate-2` | Same as `-1` — optimal-tradeoff lens; effort slot 2 (`medium`). Effort-diversity within the parallel triplet (Sonnet on Claude, GPT on Cursor). |
 | `bkit-design-brainstorm-ideate-3` | Same as `-1` — risk-premortem lens; effort slot 3 (`high`). Restores Opus depth for the failure-mode side of the brainstorm triplet. |
-| `bkit-design-generate` | Generate unified design draft from brainstorms; append `decisions.md`/`pending.md` if applicable. |
+| `bkit-design-generate` | Generate unified design draft from brainstorms; append `pending.md` if applicable. Does NOT write `docs/decisions.md` — the design phase reads ADRs but never authors them (decisions land via debug remediation or build/ship doc-integration). |
 | `bkit-design-review-1` | Feasibility research with `WebFetch`/`WebSearch`; ecosystem search per capability; writes review log. |
 | `bkit-design-review-2` | Same as `-1`; runs in parallel with cross-tier model diversity. |
 | `bkit-design-update` | Apply CRITICAL + merit-OPTIONAL items from both reviews; whole-doc rewrite of design. |

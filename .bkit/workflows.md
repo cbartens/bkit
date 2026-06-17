@@ -1148,7 +1148,7 @@ Pipeline writes to five structured docs at `docs/` root. Each has strict sole-wr
 | Doc | ID prefix | Sole writer(s) | Source step |
 | --- | --- | --- | --- |
 | `docs/knowledge.md` | `KN-` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
-| `docs/decisions.md` | `DE-` | `@bkit-design-generate`, `@bkit-debug-failure-remediate` (forced arch) | At decision time |
+| `docs/decisions.md` | `DE-` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs but no longer authors them |
 | `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
 | `docs/pending.md` | — | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 7), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 7, Failure Path handover |
 

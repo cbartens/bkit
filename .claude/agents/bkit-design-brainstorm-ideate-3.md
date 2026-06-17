@@ -36,7 +36,7 @@ maxTurns: 50
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
 2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
-3. Propose 2–3 approaches framed by failure-mode (NOT happy-path shape). Lead with recommended. Per approach, include additive risk-mitigation guidance to layer onto whichever approach is picked (NOT a separate "safer" approach). Do NOT contradict existing approved decisions. Per approach, run premortems across:
+3. Propose 2–3 approaches framed by failure-mode - NOT happy-path shape. Lead with recommended. Per approach, include additive risk-mitigation guidance to layer onto whichever approach is picked (NOT a separate "safer" approach). Per approach, run premortems across:
    - 10x scale: Bottlenecks, hotspots, fan-out, blast radius.
    - 6 months later: Drift, undocumented invariants, magic numbers, brittle integrations.
    - On-call at 3am: Page shape, diagnosability, recovery path, observability.
