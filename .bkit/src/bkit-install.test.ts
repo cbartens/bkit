@@ -8,6 +8,7 @@ import {
   applyT3,
   applyOpencodeAgent,
   applyOpencodeCommand,
+  OPENCODE_SESSION_PROMPT_ANCHOR,
   parseModelLookup,
   parseOpencodeModelLookup,
   buildOpencodeModelLookup,
@@ -16,6 +17,7 @@ import {
   parseModelLookupForColumn,
   extractFullManagedBlock,
   extractManagedBlock,
+  extractNamedBlocks,
   parseFrontmatter,
   remapTemplateDest,
   updateManagedBlock,
@@ -595,6 +597,69 @@ describe("hash-comment marker round-trip (markerStyle: 'hash-comment')", () => {
 });
 
 // ---------------------------------------------------------------------------
+// extractNamedBlocks — named/optional/multi-block parser (template-driven drift)
+// ---------------------------------------------------------------------------
+
+describe("extractNamedBlocks", () => {
+  it("parses a bare (unnamed) hash block under the empty-string key", () => {
+    const m = extractNamedBlocks("a.txt\n# bkit:start\nb.txt\n# bkit:end\n");
+    expect([...m.keys()]).toEqual([""]);
+    expect(m.get("")?.body).toBe("b.txt");
+    expect(m.get("")?.optional).toBe(false);
+  });
+
+  it("parses a bare HTML block under the empty-string key", () => {
+    const m = extractNamedBlocks("# Title\n<!-- bkit:start -->\nbody\n<!-- bkit:end -->\n");
+    expect(m.get("")?.body).toBe("body");
+  });
+
+  it("parses multiple INDENTED named blocks in one file", () => {
+    const yaml =
+      "jobs:\n" +
+      "  t:\n" +
+      "    # bkit:start verbose-ci-env\n" +
+      "    env:\n" +
+      "      V: '1'\n" +
+      "    # bkit:end verbose-ci-env\n" +
+      "    steps:\n" +
+      "      # bkit:start main-lag-warning optional\n" +
+      "      - run: echo lag\n" +
+      "      # bkit:end main-lag-warning\n";
+    const m = extractNamedBlocks(yaml);
+    expect(new Set(m.keys())).toEqual(new Set(["verbose-ci-env", "main-lag-warning"]));
+    // Raw line indentation is preserved (same contract as extractManagedBlock) — both the
+    // template and consumer blocks carry identical indentation, so the comparison is exact.
+    expect(m.get("verbose-ci-env")?.body).toBe("    env:\n      V: '1'");
+    expect(m.get("verbose-ci-env")?.optional).toBe(false);
+    expect(m.get("main-lag-warning")?.body).toBe("      - run: echo lag");
+    expect(m.get("main-lag-warning")?.optional).toBe(true);
+  });
+
+  it("ignores backtick-quoted prose mentions of markers (line-anchored matching)", () => {
+    const content =
+      "# The one exception is the `# bkit:start verbose-ci-env` block below.\n" +
+      "jobs:\n  t:\n    # bkit:start verbose-ci-env\n    env: {}\n    # bkit:end verbose-ci-env\n";
+    const m = extractNamedBlocks(content);
+    expect([...m.keys()]).toEqual(["verbose-ci-env"]);
+    expect(m.get("verbose-ci-env")?.body).toBe("    env: {}");
+  });
+
+  it("drops an unterminated block (no matching end)", () => {
+    const m = extractNamedBlocks("  # bkit:start orphan\n  body line\n  steps:\n");
+    expect(m.size).toBe(0);
+  });
+
+  it("closes a named block with a bare `# bkit:end` too (lenient end matching)", () => {
+    const m = extractNamedBlocks("# bkit:start foo\nx\n# bkit:end\n");
+    expect(m.get("foo")?.body).toBe("x");
+  });
+
+  it("returns an empty map when no markers are present", () => {
+    expect(extractNamedBlocks("jobs:\n  t:\n    steps:\n      - run: a\n").size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Task 2.1b — HTML-comment round-trip + default-arg backward compat
 // ---------------------------------------------------------------------------
 
@@ -855,17 +920,17 @@ describe("ci.yml template registry-auth assertion (Task 6.1 — updated BAR-138)
 describe("applyOpencodeCommand", () => {
   it("strips leading YAML frontmatter block", () => {
     const input = `---\ndescription: "Build Feature"\n---\n# Body here\n`;
-    expect(applyOpencodeCommand(input)).toBe("# Body here\n");
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Body here\n");
   });
 
   it("strips multi-line frontmatter", () => {
     const input = `---\ndescription: "foo"\nmodel: bar\n---\n# Content\n`;
-    expect(applyOpencodeCommand(input)).toBe("# Content\n");
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Content\n");
   });
 
-  it("leaves content without frontmatter unchanged", () => {
+  it("leaves body content without frontmatter unchanged (anchor prepended)", () => {
     const input = `# No frontmatter\n\nJust body.\n`;
-    expect(applyOpencodeCommand(input)).toBe(input);
+    expect(applyOpencodeCommand(input)).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + input);
   });
 
   it("rewrites `Agent` tool → `Task` tool", () => {
@@ -889,12 +954,27 @@ describe("applyOpencodeCommand", () => {
 
   it("does NOT rewrite @name inside body text (not on **Subagent:** line)", () => {
     const input = `---\ndescription: x\n---\nSee @build-plan for details.\n`;
-    expect(applyOpencodeCommand(input)).toBe("See @build-plan for details.\n");
+    expect(applyOpencodeCommand(input)).toBe(
+      OPENCODE_SESSION_PROMPT_ANCHOR + "See @build-plan for details.\n",
+    );
   });
 
   it("rewrites using `Agent` tool form", () => {
     const input = `---\ndescription: x\n---\nInvoke using \`Agent\` tool.\n`;
     expect(applyOpencodeCommand(input)).toContain("using `Task` tool");
+  });
+
+  it("prepends the session-prompt $ARGUMENTS anchor at the very top (issue #278)", () => {
+    const input = `---\ndescription: x\n---\n# Build Feature\n`;
+    const result = applyOpencodeCommand(input);
+    expect(result.startsWith("**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n")).toBe(true);
+    expect(result).toBe(OPENCODE_SESSION_PROMPT_ANCHOR + "# Build Feature\n");
+  });
+
+  it("includes exactly one $ARGUMENTS token (single anchor, not per-reference)", () => {
+    const input = `---\ndescription: x\n---\n**Else** scan session prompt for an issue ref.\n`;
+    const result = applyOpencodeCommand(input);
+    expect(result.match(/\$ARGUMENTS/g)).toHaveLength(1);
   });
 });
 
@@ -1141,7 +1221,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
       "cerebras",
       "openrouter",
       "ollama",
-      "zen",
+      "opencode",
     ]) {
       const lookup = buildOpencodeModelLookup(".bkit/prompts.md", provider);
       for (const [, model] of lookup) expect(model).not.toContain("set-model-id");
@@ -1154,10 +1234,10 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     for (const [, model] of lookup) expect(model).toBe("acme/set-model-id");
   });
 
-  it("zen (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
-    // zen ships a curated "Zen" column probed against the live https://opencode.ai/zen/v1/models
-    // endpoint (2026-06-12). Cells are opencode/<id> (the gateway reference format), NEVER zen/<id>.
-    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "zen");
+  it("opencode (#245 Phase 3): curated column with opencode-side ids (cross-platform tier reuse)", () => {
+    // opencode gateway ships a curated "OpenCode" column probed against the live
+    // https://opencode.ai/zen/v1/models endpoint (2026-06-12). Cells are opencode/<id>.
+    const lookup = buildOpencodeModelLookup(".bkit/prompts.md", "opencode");
     expect(lookup.size).toBeGreaterThan(0);
     for (const [, model] of lookup) {
       expect(model).toMatch(/^opencode\//);
@@ -1166,7 +1246,7 @@ describe("buildOpencodeModelLookup — per-provider model resolution", () => {
     // Tier identities reused from the cross-platform map (opus=kimi-k2.6, convergent=deepseek-v4-pro).
     expect(lookup.get("bkit-design-brainstorm-ideate-1")).toBe("opencode/kimi-k2.6"); // opus
     expect(lookup.get("bkit-design-brainstorm-ideate-2")).toBe("opencode/qwen3.6-plus"); // sonnet
-    expect(lookup.get("bkit-design-summary")).toBe("opencode/gemini-3-flash"); // haiku
+    expect(lookup.get("bkit-design-summary")).toBe("opencode/deepseek-v4-flash"); // haiku
     expect(lookup.get("bkit-build-challenge-2")).toBe("opencode/deepseek-v4-pro"); // convergent
   });
 });

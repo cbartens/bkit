@@ -453,3 +453,169 @@ describe("opencode uninstall — zero footprint after uninstall", () => {
     expect(after).not.toContain("bkit content");
   });
 });
+
+// ---------------------------------------------------------------------------
+// surgical --opencode=<provider> removal (#281 Task 4)
+// ---------------------------------------------------------------------------
+
+import { runSurgicalOpencodeUninstall } from "./bkit-uninstall";
+
+describe("surgical --opencode=<provider> removal (#281 Task 4)", () => {
+  const OPENCODE_JSON_TWO_PROVIDERS =
+    JSON.stringify(
+      {
+        provider: {
+          groq: {
+            npm: "@ai-sdk/openai-compatible",
+            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+          },
+          "ollama-local": {
+            npm: "@ai-sdk/openai-compatible",
+            options: { baseURL: "http://localhost:11434/v1", apiKey: "" },
+          },
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+
+  const OPENCODE_JSON_ONE_PROVIDER =
+    JSON.stringify(
+      {
+        provider: {
+          groq: {
+            npm: "@ai-sdk/openai-compatible",
+            options: { baseURL: "https://api.groq.com/openai/v1", apiKey: "{env:GROQ_API_KEY}" },
+          },
+        },
+      },
+      null,
+      2,
+    ) + "\n";
+
+  function seedOpencode(content: string): void {
+    const dir = path.join(tmpDir, ".opencode");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "opencode.json"), content, "utf-8");
+  }
+
+  function seedPackageJson(bkitSection: Record<string, unknown>): void {
+    const pkg = { name: "test-project", version: "1.0.0", bkit: bkitSection };
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify(pkg, null, 2) + "\n",
+      "utf-8",
+    );
+  }
+
+  function readPackageJsonBkit(): Record<string, unknown> {
+    const raw = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
+    const pkg = JSON.parse(raw) as { bkit?: Record<string, unknown> };
+    return pkg.bkit ?? {};
+  }
+
+  function readOpencodeJson(): Record<string, unknown> {
+    const raw = fs.readFileSync(path.join(tmpDir, ".opencode", "opencode.json"), "utf-8");
+    return JSON.parse(raw) as Record<string, unknown>;
+  }
+
+  it("removes exactly ONE provider block; the other provider remains intact", async () => {
+    seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
+    seedPackageJson({
+      opencodeProviders: ["groq", "ollama-local"],
+      opencodeProvider: "ollama-local",
+    });
+
+    // Seed a bkit-prefix agent mirror so we can detect if full teardown was (wrongly) triggered
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(path.join(agentDir, "bkit-build-plan-execute.md"), "# agent", "utf-8");
+
+    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+
+    const oJson = readOpencodeJson();
+    const providers = (oJson.provider ?? {}) as Record<string, unknown>;
+
+    // groq block removed
+    expect(providers.groq, "groq provider block should be removed").toBeUndefined();
+    // ollama-local block preserved
+    expect(
+      providers["ollama-local"],
+      "ollama-local provider block should be preserved",
+    ).toBeDefined();
+
+    // Full teardown must NOT have been triggered
+    expect(
+      fs.existsSync(path.join(agentDir, "bkit-build-plan-execute.md")),
+      "bkit-prefix agent mirror must NOT be deleted when other providers remain",
+    ).toBe(true);
+  });
+
+  it("updates bkit.opencodeProviders array in package.json", async () => {
+    seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
+    seedPackageJson({
+      opencodeProviders: ["groq", "ollama-local"],
+      opencodeProvider: "ollama-local",
+    });
+
+    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+
+    const bkit = readPackageJsonBkit();
+    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
+    // Active provider unchanged (groq was not active)
+    expect(bkit.opencodeProvider).toBe("ollama-local");
+  });
+
+  it("re-points bkit.opencodeProvider when the active provider is removed", async () => {
+    seedOpencode(OPENCODE_JSON_TWO_PROVIDERS);
+    // groq is the ACTIVE provider
+    seedPackageJson({
+      opencodeProviders: ["groq", "ollama-local"],
+      opencodeProvider: "groq",
+    });
+
+    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+
+    const bkit = readPackageJsonBkit();
+    // opencodeProviders updated
+    expect(bkit.opencodeProviders).toEqual(["ollama-local"]);
+    // Active provider re-pointed to first remaining
+    expect(bkit.opencodeProvider).toBe("ollama-local");
+  });
+
+  it("falls through to full teardown when the last provider is removed", async () => {
+    seedOpencode(OPENCODE_JSON_ONE_PROVIDER);
+    seedPackageJson({ opencodeProviders: ["groq"], opencodeProvider: "groq" });
+
+    // Seed bkit-prefix mirrors so we can verify full teardown was triggered
+    const agentDir = path.join(tmpDir, ".opencode", "agents");
+    const cmdDir = path.join(tmpDir, ".opencode", "commands");
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(cmdDir, { recursive: true });
+    const agentFile = path.join(agentDir, "bkit-build-plan-execute.md");
+    const cmdFile = path.join(cmdDir, "bkit-build.md");
+    fs.writeFileSync(agentFile, "# agent", "utf-8");
+    fs.writeFileSync(cmdFile, "# cmd", "utf-8");
+
+    // Write .bkit/version so runUninstall can run
+    const versionPath = path.join(tmpDir, ".bkit", "version");
+    fs.mkdirSync(path.dirname(versionPath), { recursive: true });
+    fs.writeFileSync(
+      versionPath,
+      serializeBkitVersion({ pinnedVersion: "3.0.0", tier3Hashes: {}, canonicalHashes: {} }),
+      "utf-8",
+    );
+
+    await runSurgicalOpencodeUninstall("groq", false, tmpDir);
+
+    // Full teardown: bkit-prefix mirrors deleted
+    expect(
+      fs.existsSync(agentFile),
+      "bkit-prefix agent mirror should be deleted on full teardown",
+    ).toBe(false);
+    expect(
+      fs.existsSync(cmdFile),
+      "bkit-prefix command mirror should be deleted on full teardown",
+    ).toBe(false);
+  });
+});

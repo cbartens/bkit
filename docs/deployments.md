@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Deployments
 
 > [!CAUTION]
@@ -147,6 +149,56 @@ Composition guidance:
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
 - The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
 
+### Parallel test lanes (scaling `bkit-tests`)
+
+`bkit-tests` is one job, so its tiers run **serially** — wall-clock is the **sum** of steps. On a monorepo where that dominates, split it into parallel sibling lanes (`bkit-tests-static` / `-unit` / `-integration` / `-e2e`) so wall-clock becomes `max(lane)` not the sum. Cost: each lane re-runs setup (checkout / install) and any shared infra (e.g. a local DB), so setup duplicates per lane — mitigate with the turbo remote cache + a DB service container. The capstone then `needs:` **all** lanes, and **each** lane emits its own executed-count output for the non-hollow assertion (see `testing.md` § Validated means executed). Keep the single-job form until serial CI time actually hurts — the split adds runner cost + wiring. For the E2E lane's PR-subset tiering and local-vs-preview DB routing, see `testing.md` § "E2E on PRs".
+
+### Promotion-lag warning (`Check Main Lags Dev`)
+
+CI on `dev` proves the code is good; nothing otherwise checks that good code ever reached the default branch. That gap bites because several surfaces are read LIVE from the default branch, not from `dev` and not from the validated tip:
+
+- **Renovate** resolves its config only from the default branch (see § Customizing Renovate). A `renovate.json5` edit on `dev` is inert until promoted — `useBaseBranchConfig: "merge"` softens this for the config file but is itself read from the default branch.
+- **Scheduled / default-branch-triggered Actions** run the default-branch copy of each workflow, so a `.github/workflows/` fix on `dev` does not take effect on those runs until promoted.
+- **The published package / production deploy** are cut from the default branch, so unpromoted `dev` work is invisible to consumers.
+
+The `Check Main Lags Dev` step (in `bkit-tests`) closes that blind spot: on every push to `dev` it diffs `renovate.json5`, `renovate.json`, and `.github/workflows/**` between the default branch and `dev`, and if any differ it emits a `::warning::` plus a `$GITHUB_STEP_SUMMARY` block naming the stale files and how far the default branch lags. It is **non-blocking** (a nudge — those surfaces may legitimately sit on `dev` between releases) and keys ONLY on those consumed-from-default-branch surfaces, so ordinary app-code `dev` pushes stay quiet. Clear it by opening a `dev` → default-branch PR.
+
+The step reads the default branch from the Actions context at runtime, so it is identical for every repo. It ships as the bkit-managed `main-lag-warning` block (between `# bkit:start main-lag-warning` / `# bkit:end main-lag-warning`): `bkit check` raises a non-blocking `tier2-text-drift` advisory if that block is **missing or drifted** — so adoption is nudged everywhere; keep it in sync from the template and do not hand-edit. It is safe to keep in any repo even if you do not gate the default branch behind `dev`: it only runs on `dev` pushes and self-skips when the default branch is `dev`/unset, so it never fires where the flow does not apply.
+
+## Smoke trigger plumbing
+
+Smoke runs **after** deploy, in its own workflow, off the merge gate (what it actually probes → `testing.md` § Smoke). Pick the trigger by **where the deploy happens**, not by habit:
+
+- **Deploy happens inside CI** → key smoke to **`workflow_run`** (the CI workflow `completed` + `conclusion == 'success'`). Mind the 3-level `workflow_run` chain cap — a fourth chained workflow will not fire.
+- **An external platform deploys after merge** (Vercel / Netlify-style Git integration) → key to a **post-_deploy_** signal — `deployment_status` (`state == 'success'`) or the platform's `repository_dispatch` event — so smoke fires when the deploy is actually **live**, not merely when CI finished. `workflow_run` here smokes a not-yet-serving (or about-to-be-replaced) deployment.
+- Either way: separate workflow, **non-blocking** (never a required check), and wait for the target to be **serving** before probing — READY ≠ serving (`testing.md` § Deploy-reachability).
+- **Not:** smoke wired into branch protection (it gates observability, not merges), or a `workflow_run`-keyed smoke against an externally-deployed app that probes the old build.
+
+## Applying migrations at deploy time
+
+The deploy-time **apply** and the test-time **replay** gate are different jobs with different guarantees — keep both:
+
+- **Apply (deploy path):** push only the **new** migrations onto the already-migrated remote — idempotent (applies what's not yet in the ledger; safe to retry), and it **never** replays from empty or runs the seed.
+- **Replay (test path):** the fresh-DB gate proves from-empty replay + seed load (`testing.md` § Migration-replay + seed). Passing one is not passing the other.
+- **Immutability:** once a migration is merged, never edit it — ship a new corrective migration. Flag any modification to an already-merged migration file in review.
+- **Multiple chains:** apply **every** migration system (e.g. a SQL chain + an ORM / CMS chain), each idempotent and retried independently.
+- **Transient-pooler hardening:** remote applies over a connection pooler can blip (e.g. an IPv4 session pooler's `i/o timeout`); wrap link + apply in a bounded retry — idempotency makes a re-attempt after a mid-apply drop safe.
+- Ordering of apply vs the deploy's build is a **separate** hazard — § Build-vs-migration race.
+- **Not:** assuming the deploy-time apply also validates a clean from-scratch install or the seed — it does neither.
+
+## Build-vs-migration race
+
+If your host auto-deploys on push (Vercel / Netlify Git integration) while CI applies migrations as a **separate, unordered** step, the deploy's build and the migration race. A build-time DB read that lands **before** the migration creates its object hard-ERRORs the **first** deploy shipping it. Build-time reads come from: `sitemap.ts` / `robots.ts`, `generateStaticParams` / `generateMetadata`, an OG-image route, a static (non-dynamic) page's server read, or marking a DB route `force-static` / ISR. Postgres signatures: `42P01` (relation), `42703` (column), `42704` (type), `3F000` (schema).
+
+**Fingerprint:** prod keeps serving the prior deployment, and a redeploy of the **same SHA** clears it — a genuine bad migration would not self-heal on redeploy.
+
+**Fix, strongest first:**
+
+1. **Serialise migrate → deploy.** Disable host auto-deploy for the production branch (keep preview auto-deploys); have CI trigger the prod deploy **after** the migration step succeeds. Schema-before-build by construction.
+2. **Belt-and-braces.** Narrowly catch those PG codes in build-time queries (return empty + `dynamicParams` / ISR so the route self-heals on first request) while keeping request-time reads strict (a missing object at request time is a real incident, not a race).
+
+Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migrate` proves migrations _replay_ from empty; it does nothing for build-vs-deploy _ordering_ — this race is orthogonal to that gate.
+
 ## GitHub Actions pinning
 
 Workflows with elevated permissions (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) MUST pin `uses:` to a 40-character commit SHA — never `@v{N}` floating tags. Floating tags are forgeable: a compromised maintainer can re-point `v4` at malicious code that runs on the next push.
@@ -233,7 +285,7 @@ The bkit-shipped `.bkit/scripts/bkit-set-dependabot.sh` handles the repo-level s
     bash .bkit/scripts/bkit-set-dependabot.sh --dry-run    # preview
     bash .bkit/scripts/bkit-set-dependabot.sh --print      # inspect current state
 
-The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`. See issue #109 for the original design.
+The script is bkit-owned and consumers do not edit it. New policy changes ship via `bkit install --dependency=dependabot`.
 
 ### Manual CVE handling (when an alert fires)
 
@@ -257,9 +309,9 @@ Renovate's `osvVulnerabilityAlerts: true` opens CVE-driven PRs immediately again
 | Surface | Where to set | Symptom if missing | bkit detector |
 | --- | --- | --- | --- |
 | Local shell | `.bkit/.env` (gitignored, scaffolded by `bkit install`) → `GH_BKIT_TOKEN=<classic PAT>`; auto-loaded via direnv (`brew install direnv` + shell hook + `direnv allow`) | `pnpm install` 401 against `npm.pkg.github.com` (sometimes opaque against `npmjs.org` — see KN-1) | `detectShellToken` + `detectMissingDotenv` + `detectBlankDotenvKeys` (Phase 3) |
-| `.npmrc` | `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` (env-var ref, **never** literal) plus `@cbartens:registry=https://npm.pkg.github.com` | Same 401, more opaque (pnpm v7.20+ silently ignores entire `.npmrc` — see KN-1) | `detectNpmrcAuth` (Phase 3) |
-| GitHub Actions secret | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` on every install step | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` references `${GH_BKIT_TOKEN}`) |
-| Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production` | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance | `detectVercelEnv("preview" \ | "production")` (Phase 3) |
+| `.npmrc` (registry mapping only) | `@cbartens:registry=https://npm.pkg.github.com` — the auth token is **NOT** stored here; write it once to pnpm's user-level config: `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` (pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` ref — see KN-CORE-7) | Missing registry mapping → 401; a leftover `_authToken` line → 401 + shadows the user-level token | `detectNpmrcAuth` + `detectNpmrcLegacyAuthToken` (Phase 3) |
+| GitHub Actions secret | `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN` AND an install step that runs `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` before `pnpm install`, with `env: { GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }} }` | CI 401 on `@cbartens/bkit` fetch on next push | `detectGhSecret` + `detectCiYmlMissingTokenEnv` (Phase 3, blocker when `.npmrc` authenticates to GH Packages but the step is unwired) |
+| Vercel env (preview + production) | `vercel env add GH_BKIT_TOKEN preview` and `vercel env add GH_BKIT_TOKEN production`, **plus** a `vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install` (Vercel cannot run a pre-install shell step) | Vercel preview / production deploy 401 — Vercel runs `pnpm install` in a separate container, no GH-secret inheritance; without the installCommand the token never reaches pnpm's auth config | `detectVercelEnv("preview" \ | "production")` (Phase 3) |
 | Renovate (Mend hosted, **only if `--renovate`**) | Mend repository secret at https://developer.mend.io/github/&lt;owner&gt;/&lt;repo&gt; → Settings → Secrets, then uncomment `token` in `renovate-local.json5`'s `hostRules` (consumer-owned, survives `bkit upgrade`). Self-hosted: `RENOVATE_HOST_RULES` env | Every Renovate dependency PR fails CI with `ERR_PNPM_OUTDATED_LOCKFILE` — Renovate can't regenerate `pnpm-lock.yaml` without resolving the private `@cbartens/bkit`. The CI Actions secret is NOT visible to Mend's runner | None — off-repo (Mend dashboard); surfaced in the `--renovate` Phase B checklist + § Renovate read-auth above |
 
 Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: read` permission (fine-grained). Generate at <https://github.com/settings/tokens>.
@@ -279,7 +331,7 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 | 6 | bkit self-check | `pnpm bkit check` | consumer template (Tier 3 seed-or-print — bkit seeds the file once; consumer owns it thereafter); source-repo appends the same gate directly in its copy | Drift detected (writes > 0) → run `pnpm bkit install` and commit the result. Advisories alone don't fail; only writes do. |
 | 7 | Dist freshness | `pnpm check:dist` | source-repo only (appended directly to the source-repo copy; not in the consumer template) | dist drift → run `pnpm build` and commit `dist/`. Consumers do not have this gate. |
 
-**Revert-branch bypass (BAR-170):** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–7 (prose, slop:delta, bkit check, and source-repo check:dist) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
+**Revert-branch bypass:** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–7 (prose, slop:delta, bkit check, and source-repo check:dist) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
 
 Pre-commit (`.husky/pre-commit`) runs `pnpm lint-staged && pnpm lint:prose` — fast staged-file gates that fire earlier in the cycle, not at push time. The enforcing slop gate moved to pre-push (`pnpm slop:delta`, Gate 5); `pnpm lint:slop` (`slop-scan scan`) is report-only and is no longer wired into a hook. CI re-runs prose + slop:delta in the `bkit-tests` job for belt-and-braces.
 
@@ -310,13 +362,19 @@ The bkit-shipped `renovate.json5` fences Renovate off the bkit footprint that la
 
 **Consequence for this repo (deliberate):** the SHA-pinned `uses:` inside the _template_ workflows (`.bkit/templates/.github/workflows/*.yml`) and the Cursor Dockerfile base image are **not** Renovate-bumped here — they sit under an ignored path. That is acceptable: they are seeds, and (a) this repo's _real_ `.github/workflows/*.yml` (outside `.bkit/templates/`) uses the same actions and stays Renovate-covered, so no CVE blind spot is introduced; (b) consumers' own Renovate maintains the installed copies post-install. Refresh the template pins by hand when revising CI.
 
-See issue #132 (consumer-reported dashboard noise) and § Renovate activation above.
+See § Renovate activation above for consumer-reported dashboard noise.
 
 ### CI trigger on final workflow push
 
 GitHub Actions suppresses both `pull_request` and `push` workflow runs when the HEAD commit message contains `[skip ci]` or `[skip actions]` (GitHub substring check). When that happens on a PR branch, `gh pr view --json statusCheckRollup` returns empty — downstream fail-fast gates that check rollup status will admit a vacuously green PR.
 
-**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token. Enforcement: the **shared HEAD-Subject Assertion** in `.bkit/workflows.md` § "HEAD-Subject Assertion" — a deterministic `git log -1 --pretty=%s` / `gh pr view --json title` + `grep -iE` of the suppressor set; exit code is the verdict. Invoked by build Gate 18 (HEAD clause), build Step 17 + debug Step 12 create-pr (PR-title clause only — the create-pr commit is intentionally `[skip ci]` per D2), debug Gate 12 (HEAD clause), and ship Gate 5 + squash (PR-title clause). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+**Rule:** every workflow's last push to a CI-validated ref MUST leave HEAD without a CI-suppressing token AND must result in a confirmed `bkit-decide` CI run dispatched for the pushed HEAD. Enforcement: the **CI-Dispatch Gate** in `.bkit/workflows.md` § "CI-Dispatch Gate" — a two-part gate: (1) pre-push HEAD-subject deny-list fast-fail; (2) post-push outcome poll that confirms a `bkit-decide` run exists in `statusCheckRollup`, self-heals once with a clean `re-trigger` commit if none appears, and terminates with a named verdict (`dispatched`/`self-healed`/`no-ci`/`unresolved`). See KN-11 for the `[skip ci]` HEAD → empty rollup symptom.
+
+**Gate sites (2, not 3):** build Gate 18 (close-workflow push); debug Gate 10 PR-mode (close-workflow push, sub-step 3) and LOCAL-mode (create-pr push, sub-step 9). Ship is OUT — ship keeps its pre-existing `SQUASH_SHA`-poll gate at Step 13; adding a CI-Dispatch Gate there would mask the "essential tests skipped" signal.
+
+**EC-1 pre-flight (build Step 17):** before `gh pr create`, probe `gh pr list --head … --base dev`. Open PR found → Failure Path with named message (`EC-1: feat/{FID} already has open PR #N`). Probe failed → fall through to blind create (no regression). Prevents the blind-create → retry → Failure Path chain on build re-run.
+
+**EC-2 abort-guard (build inline Failure Path + shared § Failure Path step 5):** before pushing the `[skip ci]` abort commit, probe `gh pr list --head … --base dev`. Open PR found (or probe failed) → **do NOT push**; preserve last validated remote HEAD. No open PR → push as today. Probe-failure inverts the safe default (pushing onto a live PR is the exact harm; not-pushing on a no-PR branch is harmless).
 
 **Commit-tag taxonomy:**
 
@@ -366,16 +424,16 @@ bkit's installer runs in three phases:
 2. **Phase 2 — Install (writes — staged).** Module dispatch writes to `.bkit-staging/<module>/` (v0.9.0+). Modules append further structured advisories to `ctx.advisories`. On any error before commit, `discardAllStaging` removes staging dirs — consumer files left byte-identical to pre-install state (see KN-12, DE-9).
 3. **Phase 3 — Post-install (re-detect + commit).** Re-runs token-surface, `ci.yml`, vale-sync, devDeps detectors after writes. Cross-phase dedupe: Phase 3 wins on id conflict. In `bkit check` (v2.2.3+), Phase 3 runs in read-only mode — same advisory set as install, no writes. See KN-4. **Phase 3 blockers exit 1** (v0.7.0+) with a single-line recovery command (`pnpm bkit uninstall <flags> && <fix> && pnpm bkit install <flags>`); pass `--auto-revert` to in-process invoke `runUninstall` before exit.
 
-`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict). `bkit upgrade` ALSO re-renders the bkit-managed OUTPUT that lives outside `.bkit/templates/` (#251) — host agents/commands (source-rendered from `.bkit/prompts` + `.bkit/workflows`) and the `.bkit/*.md` canonical docs (`runBkitDocs`) — for every host the consumer has installed (detected by each host's `agents/` dir, so an opt-in host is never force-created). These are bkit-owned, force-overwritten output, so a version bump delivers new prompts/agents/commands/docs without a follow-up `bkit install`; `.bkit/prompts.md` is markered, so its managed block refreshes while consumer overrides below `bkit:end` are block-merge-preserved.
+`pnpm bkit install` always runs all three phases. `pnpm bkit check` runs Phase 1 + Phase 3 (read-only, v2.2.3+); exits 1 if any Tier-1/Tier-2 drift is detected; no writes. `pnpm bkit doctor` (v0.6.0+) runs Phase 1 + Phase 3 detection without writing — read-only diagnostic. `pnpm bkit upgrade` (v0.9.0+) compares old vs new template content against `canonicalHashes` to detect consumer drift; non-conflicting changes apply automatically, conflicts emit to stderr (`--non-interactive` exits non-zero on any conflict). `bkit upgrade` ALSO re-renders the bkit-managed OUTPUT that lives outside `.bkit/templates/` — host agents/commands (source-rendered from `.bkit/prompts` + `.bkit/workflows`) and the `.bkit/*.md` canonical docs (`runBkitDocs`) — for every host the consumer has installed (detected by each host's `agents/` dir, so an opt-in host is never force-created). These are bkit-owned, force-overwritten output, so a version bump delivers new prompts/agents/commands/docs without a follow-up `bkit install`; `.bkit/prompts.md` is markered, so its managed block refreshes while consumer overrides below `bkit:end` are block-merge-preserved.
 
-### `bkit-cloud.yml` — dual-job cloud-agent lane (#245)
+### `bkit-cloud.yml` — dual-job cloud-agent lane
 
-`bkit install --auto=…` ships a single `.github/workflows/bkit-cloud.yml` (renamed from `bkit-auto.yml`, #245) carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
+`bkit install --auto=…` ships a single `.github/workflows/bkit-cloud.yml` carrying TWO runtime-gated dispatch jobs so one GitHub-tracker repo can run claude AND opencode cloud agents from one file (additive):
 
 <!-- prettier-ignore -->
 | Job | Dispatch | Gated on | LLM secret |
 | --- | --- | --- | --- |
-| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App, #141) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
+| `claude` | `claude-code-action@v1` (OIDC via Claude GitHub App) | first step exports `enabled=true` only when `ANTHROPIC_API_KEY` is non-empty; absent → `::notice::… no-op` | `ANTHROPIC_API_KEY` |
 | `opencode` | `opencode run` CLI (installed in-job) | first step exports `enabled=true` only when `OPENCODE_PROVIDER_KEY` is non-empty; absent → no-op | `OPENCODE_PROVIDER_KEY` |
 
 **Rules:**
@@ -385,9 +443,9 @@ bkit's installer runs in three phases:
 - **Single fanned-out provider key.** `OPENCODE_PROVIDER_KEY` is exported under the env-var name the committed `opencode.json` references (the configured provider's `envVar`) so the job resolves regardless of which remote provider is installed; ANTHROPIC_API_KEY is absent in the opencode job (no Claude identity leak). GHA-injection hardened — `PHASE`/`ARG` pass via `env:` + shell-var refs, `ARG` validated against `^[0-9A-Za-z.*/-]+$` (KN-37).
 - **Renovate exemption** (`bkit-cloud.yml` in `ignorePaths`) and the **`bkit [auto route]` free-tier gate** are unchanged by the rename — see § GitHub Actions pinning and the commit-tag taxonomy above.
 
-### Consumer CI auth — env-var pattern (canonical)
+### Consumer CI auth — user-level `pnpm config set` (canonical)
 
-Consumer CI workflows authenticate `@cbartens/bkit` via the `GH_BKIT_TOKEN` env var on the `pnpm install` step. The consumer's `.npmrc` (`//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`) picks it up at registry-resolution time. No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape (BAR-164).
+Consumer CI workflows authenticate `@cbartens/bkit` by writing the token into pnpm's user-level config **before** install — `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` then `pnpm install` — with `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` on the step. The committed `.npmrc` carries ONLY the registry mapping (`@cbartens:registry=https://npm.pkg.github.com`); pnpm >=10.34.3 no longer authenticates a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution (it 401s on download — see KN-CORE-7). No composite action, no cross-org `uses:` reference — `bkit` stays private without affecting any consumer's auth context. See README §"Adding a new consumer — checklist" and §"Consumer CI auth" for the consumer-side detail; the canonical `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` is the authoritative source for the install-step shape.
 
 ### Sliding major-version tag
 

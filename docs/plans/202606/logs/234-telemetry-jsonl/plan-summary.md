@@ -10,13 +10,14 @@ Issue #234 consolidates four closed-as-duplicate issues (#232, #183, #233, #58) 
 
 The plan is decomposed into **5 independently shippable sub-plans (A–E)** mapping 1:1 onto design's locked P1–P5 phasing:
 
-| Sub-plan             | Workstream | Phase | Scope                                                             | Dependencies                   |
-| -------------------- | ---------- | ----- | ----------------------------------------------------------------- | ------------------------------ |
-| **A** (plan-v4-1.md) | WS-1       | P1    | JSONL substrate: codec, data files, exemptions, inline-jq writers | None (root)                    |
-| **B** (plan-v4-2.md) | WS-2       | P2    | Compliance grader: deterministic advisory rules + CLI plumbing    | WS-1 shipped                   |
-| **C** (plan-v4-3.md) | WS-3       | P3    | #58 counter refactor: prose→shell + invariant check               | WS-1 shipped                   |
-| **D** (plan-v4-4.md) | WS-4       | P4    | Harvest + analysis + ship-chain rollup                            | WS-1 + WS-2 + WS-3 shipped     |
-| **E** (plan-v4-5.md) | WS-5       | P5    | knowledge/decisions migration + consumer-upgrade path             | WS-1 shipped + WS2-T1 recorded |
+<!-- prettier-ignore -->
+| Sub-plan | Workstream | Phase | Scope | Dependencies |
+| --- | --- | --- | --- | --- |
+| **A** (plan-v4-1.md) | WS-1 | P1 | JSONL substrate: codec, data files, exemptions, inline-jq writers | None (root) |
+| **B** (plan-v4-2.md) | WS-2 | P2 | Compliance grader: deterministic advisory rules + CLI plumbing | WS-1 shipped |
+| **C** (plan-v4-3.md) | WS-3 | P3 | #58 counter refactor: prose→shell + invariant check | WS-1 shipped |
+| **D** (plan-v4-4.md) | WS-4 | P4 | Harvest + analysis + ship-chain rollup | WS-1 + WS-2 + WS-3 shipped |
+| **E** (plan-v4-5.md) | WS-5 | P5 | knowledge/decisions migration + consumer-upgrade path | WS-1 shipped + WS2-T1 recorded |
 
 **Success Criteria (master design, inherited by all sub-plans):**
 
@@ -137,13 +138,14 @@ All aspects of the design are mapped into the five sub-plans:
 
 No statement labeled "Breaking Changes & Naming Review" exists in the plan file headers. However, the master design document and the `plan-input.md` include a `Post-review decision addendum` (A1–A7) that documents breaking changes:
 
-| Change                                                                                                                                                          | Impact                                                                                                                                        | Mitigation                                                                                                                      |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| **File placement change (A1):** `deferrals.jsonl` and `failures.jsonl` move from `.bkit/` to `docs/`; `knowledge.jsonl`/`decisions.jsonl` land in `docs/`       | Consumer template inherit new `merge=union` lines; users reading docs guide migrated                                                          | Documentation update in WS-1 + WS-5; old `.md` files readable in history                                                        |
-| **Ledger format change:** `.bkit/friction.md` → `.bkit/friction.jsonl`, `docs/pending.md` → `docs/deferrals.jsonl` (new)                                        | Workflows + agents stop reading `.md` ledgers; new entries use `ts` ids in `aliases[]`                                                        | WS-1 sweeps all read/write sites; A7 audit; legacy ids preserved in `aliases[]`                                                 |
-| **Counter model change:** inline prose `*_ATTEMPT`/`MAX_*` → shell `counter_init/inc/get/check_max` + `decide_next`                                             | All 5 workflows' prose refactored; loop control-flow changes; mode-matched counters (DEBUG/NORMAL/SOAK) relocated to shell                    | WS-3 stages migration (build → debug → plan/design); WS3-T1 reconciles with `dev` mode-matched work; invariant check gates ship |
-| **P5 migration (A5):** Code cutover automatic on upgrade (non-destructive), but `.md` deletion destructive + parity-gated                                       | Consumers' `.md` ledgers deleted by explicit `bkit telemetry migrate` AFTER parity verify (idempotent); `bkit upgrade` leaves `.md` untouched | WS5-T2b pins isolation (mechanical boundary test); KN-8 bricking-class guard                                                    |
-| **CLI entrypoint (WS2-T1):** Existing `bkit-cli.ts` hard-codes install verbs; net-new `comply`/`harvest`/`analysis`/`telemetry migrate` dispatch/parse plumbing | Consumers inherit new `bkit` verbs with no automatic invocation (opt-in on install/upgrade); CLI architecture is a single source, not forked  | Entrypoint decision recorded in `docs/decisions.md` (then `.jsonl`) before WS-2-T5 wires; WS-4/WS-5 inherit the same design     |
+<!-- prettier-ignore -->
+| Change | Impact | Mitigation |
+| --- | --- | --- |
+| **File placement change (A1):** `deferrals.jsonl` and `failures.jsonl` move from `.bkit/` to `docs/`; `knowledge.jsonl`/`decisions.jsonl` land in `docs/` | Consumer template inherit new `merge=union` lines; users reading docs guide migrated | Documentation update in WS-1 + WS-5; old `.md` files readable in history |
+| **Ledger format change:** `.bkit/friction.md` → `.bkit/friction.jsonl`, `docs/pending.md` → `docs/deferrals.jsonl` (new) | Workflows + agents stop reading `.md` ledgers; new entries use `ts` ids in `aliases[]` | WS-1 sweeps all read/write sites; A7 audit; legacy ids preserved in `aliases[]` |
+| **Counter model change:** inline prose `*_ATTEMPT`/`MAX_*` → shell `counter_init/inc/get/check_max` + `decide_next` | All 5 workflows' prose refactored; loop control-flow changes; mode-matched counters (DEBUG/NORMAL/SOAK) relocated to shell | WS-3 stages migration (build → debug → plan/design); WS3-T1 reconciles with `dev` mode-matched work; invariant check gates ship |
+| **P5 migration (A5):** Code cutover automatic on upgrade (non-destructive), but `.md` deletion destructive + parity-gated | Consumers' `.md` ledgers deleted by explicit `bkit telemetry migrate` AFTER parity verify (idempotent); `bkit upgrade` leaves `.md` untouched | WS5-T2b pins isolation (mechanical boundary test); KN-8 bricking-class guard |
+| **CLI entrypoint (WS2-T1):** Existing `bkit-cli.ts` hard-codes install verbs; net-new `comply`/`harvest`/`analysis`/`telemetry migrate` dispatch/parse plumbing | Consumers inherit new `bkit` verbs with no automatic invocation (opt-in on install/upgrade); CLI architecture is a single source, not forked | Entrypoint decision recorded in `docs/decisions.md` (then `.jsonl`) before WS-2-T5 wires; WS-4/WS-5 inherit the same design |
 
 **Verdict:** Breaking changes are documented in the design, post-review addendum, and distributed appropriately across sub-plans. The master `plan-v3-checked.md` and `plan-v4-split.md` carry the full context. No CRITICAL breaking changes are undeclared; all are scheduled for agent implementation under control gates. Human confirmation gates (Gate 1 per sub-plan) reference the master design's breaking-changes section — this is correct per the contract ("Human confirmed the master `⚠️ Breaking Changes & Naming Review` section").
 
@@ -175,18 +177,19 @@ No statement labeled "Breaking Changes & Naming Review" exists in the plan file 
 
 **Known risks identified in plan:**
 
-| Risk                                            | Mitigation                                                                                                                                                                                                                      | Owner                                                                             |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| **`merge=union` blanket-glob footgun**          | Each file gets ONE explicit scoped line; `git check-attr` boundary test validates NO blanket glob                                                                                                                               | WS-1-T4 + integration test                                                        |
-| **Inline-jq ↔ TS reducer drift**                | TS canonical + parity test (inline-jq row parses identically); treat jq as generated-from-spec                                                                                                                                  | WS-1-T2 test                                                                      |
-| **Telemetry/grader failure must degrade**       | Fail-open idiom `… >> "$FILE" \|\| echo "[bkit-telemetry] append failed"` pinned on EVERY append; `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable"` pinned on EVERY gate                              | WS-1-T6/T8, WS-2-T6 + bats test                                                   |
-| **Half-written tail line during harvest**       | Tolerant reader per-line try/catch + skip + `malformedLineCount` (NEW behaviour, not inherited from `parseStatus` throw); truncated-line fixture test in P1                                                                     | WS-1-T2 test, WS-4 tolerant read                                                  |
-| **Trust boundary on free-text + pre-P3 counts** | `counterSource` field (`model-self-report` pre-P3, `shell-bus` post-P3) on every counter row; analysis filters/labels trust tier per row, not by date inference                                                                 | WS-1 design, WS-3 implementation, WS-4 analysis                                   |
-| **P5 consumer migration (bricking class KN-8)** | Destructive delete is ONLY reachable via explicit `bkit telemetry migrate`, NEVER from `bkit upgrade`; parity-gate + `.md.bak` transient; `bkit upgrade` isolation proven mechanically (WS5-T2b boundary test)                  | WS-5-T2, WS5-T2b + integration test                                               |
-| **Control-flow blast radius (WS-3)**            | Staged migration (build → debug → plan/design) + `status.jsonl` invariant check as canary + fail-open degradation                                                                                                               | WS-3 staged rollout + invariant check                                             |
-| **Unbounded growth of `stats.jsonl`**           | P1 ship-summary emits `MAX_ROWS_BEFORE_ROLLUP` WARNING when threshold exceeded; `foldFrom` reads pinned archive-shard path so P4 rollup cannot break readers                                                                    | WS-1-T8 warning, WS-4 rollup writer                                               |
-| **CLI architecture fork**                       | Single entrypoint decision (WS2-T1) recorded BEFORE WS-2-T5, WS-4, or WS-5 wire verbs; prevents separate CLI registration                                                                                                       | WS2-T1 gate, WS4-T5 + WS5-T2 gates                                                |
-| **Authoring-constraint regression**             | Canonical-source rule: edit only `.bkit/`/`.agents/`/root config; templates always regenerated; four data files stay OUT of manifest; ASCII operators in workflow/prompt files; no Linear/KN-/BAR- refs in consumer-facing text | Listed in every sub-plan's CRITICAL note; enforced by repo structure + lint rules |
+<!-- prettier-ignore -->
+| Risk | Mitigation | Owner |
+| --- | --- | --- |
+| **`merge=union` blanket-glob footgun** | Each file gets ONE explicit scoped line; `git check-attr` boundary test validates NO blanket glob | WS-1-T4 + integration test |
+| **Inline-jq ↔ TS reducer drift** | TS canonical + parity test (inline-jq row parses identically); treat jq as generated-from-spec | WS-1-T2 test |
+| **Telemetry/grader failure must degrade** | Fail-open idiom `… >> "$FILE" \ | \ | echo "[bkit-telemetry] append failed"` pinned on EVERY append; `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable"` pinned on EVERY gate | WS-1-T6/T8, WS-2-T6 + bats test |
+| **Half-written tail line during harvest** | Tolerant reader per-line try/catch + skip + `malformedLineCount` (NEW behaviour, not inherited from `parseStatus` throw); truncated-line fixture test in P1 | WS-1-T2 test, WS-4 tolerant read |
+| **Trust boundary on free-text + pre-P3 counts** | `counterSource` field (`model-self-report` pre-P3, `shell-bus` post-P3) on every counter row; analysis filters/labels trust tier per row, not by date inference | WS-1 design, WS-3 implementation, WS-4 analysis |
+| **P5 consumer migration (bricking class KN-8)** | Destructive delete is ONLY reachable via explicit `bkit telemetry migrate`, NEVER from `bkit upgrade`; parity-gate + `.md.bak` transient; `bkit upgrade` isolation proven mechanically (WS5-T2b boundary test) | WS-5-T2, WS5-T2b + integration test |
+| **Control-flow blast radius (WS-3)** | Staged migration (build → debug → plan/design) + `status.jsonl` invariant check as canary + fail-open degradation | WS-3 staged rollout + invariant check |
+| **Unbounded growth of `stats.jsonl`** | P1 ship-summary emits `MAX_ROWS_BEFORE_ROLLUP` WARNING when threshold exceeded; `foldFrom` reads pinned archive-shard path so P4 rollup cannot break readers | WS-1-T8 warning, WS-4 rollup writer |
+| **CLI architecture fork** | Single entrypoint decision (WS2-T1) recorded BEFORE WS-2-T5, WS-4, or WS-5 wire verbs; prevents separate CLI registration | WS2-T1 gate, WS4-T5 + WS5-T2 gates |
+| **Authoring-constraint regression** | Canonical-source rule: edit only `.bkit/`/`.agents/`/root config; templates always regenerated; four data files stay OUT of manifest; ASCII operators in workflow/prompt files; no Linear/KN-/BAR- refs in consumer-facing text | Listed in every sub-plan's CRITICAL note; enforced by repo structure + lint rules |
 
 **All risks are either mitigated by design or scheduled for implementation under explicit control gates.** No unmitigated critical risks remain.
 

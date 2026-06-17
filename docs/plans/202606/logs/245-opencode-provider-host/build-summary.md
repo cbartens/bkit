@@ -6,13 +6,14 @@ Verdict: PASS
 
 ## Status
 
-| Dimension            | Result                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------- |
-| Sub-plan executions  | **PASS** — SP1–SP5 all individually PASS                                                                |
-| Plan verify holistic | **PASS** — all 5 sub-plans final verdicts PASS; cross-plan coherence confirmed                          |
-| Build challenge      | **PASS (post-remediation)** — P0: none; P1: 5 items found + all fixed (Step 9); P2+: 4 items deferred   |
-| Tests                | **PASS** — 1383 passed &#124; 2 skipped &#124; 1 todo (37 test files); 14 new P1 regression tests added |
-| Deferred items       | **Documented** — manual live-run verification (opencode job, claude job gating, dogfood install)        |
+<!-- prettier-ignore -->
+| Dimension | Result |
+| --- | --- |
+| Sub-plan executions | **PASS** — SP1–SP5 all individually PASS |
+| Plan verify holistic | **PASS** — all 5 sub-plans final verdicts PASS; cross-plan coherence confirmed |
+| Build challenge | **PASS (post-remediation)** — P0: none; P1: 5 items found + all fixed (Step 9); P2+: 4 items deferred |
+| Tests | **PASS** — 1383 passed &#124; 2 skipped &#124; 1 todo (37 test files); 14 new P1 regression tests added |
+| Deferred items | **Documented** — manual live-run verification (opencode job, claude job gating, dogfood install) |
 
 ## Verdict: SHIP
 

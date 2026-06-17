@@ -219,7 +219,7 @@ describe("stripManagedKeys — cleanup", () => {
       },
     });
 
-    const result = stripManagedKeys(["ci"]);
+    const result = stripManagedKeys(["lint"]);
     expect(result.removedScripts).toContain("typecheck");
 
     const pkg = readPkg();
@@ -243,7 +243,7 @@ describe("stripManagedKeys — cleanup", () => {
 // ---------------------------------------------------------------------------
 
 describe("stripManagedKeys — manifest-driven key list", () => {
-  it("key list driven from manifest — typecheck script from ci module", () => {
+  it("key list driven from manifest — typecheck script from lint module (#265)", () => {
     writePkg({
       name: "test",
       scripts: {
@@ -252,8 +252,8 @@ describe("stripManagedKeys — manifest-driven key list", () => {
       },
     });
 
-    // ci module declares typecheck; should be removed if default value
-    const result = stripManagedKeys(["ci"]);
+    // lint module declares typecheck (moved ci→lint in #265); should be removed if default value
+    const result = stripManagedKeys(["lint"]);
     expect(result.removedScripts).toContain("typecheck");
 
     const pkg = readPkg();
@@ -265,16 +265,16 @@ describe("stripManagedKeys — manifest-driven key list", () => {
     writePkg({
       name: "test",
       scripts: {
-        typecheck: "tsc --noEmit", // ci module
+        typecheck: "tsc --noEmit", // lint module (#265)
         "lint:slop": "slop-scan scan .", // lint module
         prepare: "husky", // git-hooks module
       },
     });
 
-    // Only lint module — should only remove lint scripts
+    // Only lint module — removes its own scripts (lint:slop + typecheck) but not git-hooks' prepare
     const result = stripManagedKeys(["lint"]);
     expect(result.removedScripts).toContain("lint:slop");
-    expect(result.removedScripts).not.toContain("typecheck");
+    expect(result.removedScripts).toContain("typecheck");
     expect(result.removedScripts).not.toContain("prepare");
   });
 });

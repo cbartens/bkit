@@ -562,3 +562,134 @@ describe("#255 follow-up — upgrade does not force-create uninstalled host/tool
     expect(check.stdout).toContain("0 write(s) would occur");
   });
 });
+
+// ---------------------------------------------------------------------------
+// #281 Task 3 — upgrade re-renders ALL installed provider blocks into opencode.json
+//
+// When multiple providers are installed (e.g. nvidia + ollama-local), `bkit upgrade`
+// must re-render and reconverge EVERY provider's block into opencode.json — not just
+// the active one. This ensures template changes (new keys, updated placeholders) reach
+// all installed providers' blocks on every upgrade.
+// ---------------------------------------------------------------------------
+
+describe("#281 Task 3 — upgrade re-renders all installed provider blocks", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("upgrade reconverges ALL provider blocks — nvidia (active) + ollama-local (secondary)", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    // Install first provider (ollama-local) — becomes initial active
+    expect(runCli(["install", "--opencode=ollama-local", "--tracker=github"]).status).toBe(0);
+
+    // Install second provider (nvidia) — becomes the active provider (last installed)
+    expect(runCli(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+
+    const opencodePath = path.join(tmpDir, ".opencode", "opencode.json");
+    expect(fs.existsSync(opencodePath)).toBe(true);
+
+    // Both provider blocks must be present after install
+    const afterInstall = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
+      provider?: Record<string, unknown>;
+    };
+    expect(afterInstall.provider!["nvidia"]).toBeDefined();
+    expect(afterInstall.provider!["ollama-local"]).toBeDefined();
+
+    // Simulate template drift for the NON-active (ollama-local) block:
+    // remove its `npm` field so we can verify upgrade reconverges it.
+    const drifted = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
+      provider?: Record<string, Record<string, unknown>>;
+    };
+    delete drifted.provider!["ollama-local"]!["npm"];
+    fs.writeFileSync(opencodePath, JSON.stringify(drifted, null, 2) + "\n", "utf-8");
+
+    // Confirm the npm field is gone before upgrade
+    const withDrift = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
+      provider?: Record<string, Record<string, unknown>>;
+    };
+    expect(withDrift.provider!["ollama-local"]!["npm"]).toBeUndefined();
+
+    // Run upgrade — Task 3 should reconverge the ollama-local block
+    const upgrade = runCli(["upgrade", "--auto-apply"]);
+    expect(upgrade.status).toBe(0);
+
+    // After upgrade: the ollama-local block must have its `npm` field restored (re-rendered)
+    const afterUpgrade = JSON.parse(fs.readFileSync(opencodePath, "utf-8")) as {
+      provider?: Record<string, Record<string, unknown>>;
+    };
+    expect(afterUpgrade.provider).toBeDefined();
+    expect(afterUpgrade.provider!["nvidia"]).toBeDefined();
+    expect(afterUpgrade.provider!["ollama-local"]).toBeDefined();
+
+    // The reconverged ollama-local block must carry the template-rendered `npm` field
+    expect(afterUpgrade.provider!["ollama-local"]!["npm"]).toBe("@ai-sdk/openai-compatible");
+
+    // The nvidia (active) block must also be intact (handled by the candidates walk)
+    expect(afterUpgrade.provider!["nvidia"]!["npm"]).toBe("@ai-sdk/openai-compatible");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #281 AC — `bkit check` exits 0 (no drift) with multiple providers installed
+//
+// Spec: "bkit check exits 0 (no drift) with multiple providers installed; dry-run parity holds."
+// ---------------------------------------------------------------------------
+
+describe("#281 AC — bkit check exits 0 with multiple providers installed", () => {
+  const bkitInstallPath = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "bkit-install.ts",
+  );
+  const tsxBin = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "../../node_modules/.bin/tsx",
+  );
+
+  function runCli(args: string[]) {
+    return spawnSync(tsxBin, [bkitInstallPath, ...args], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      timeout: 90_000,
+    });
+  }
+
+  it("bkit check exits 0 after installing two providers (nvidia + ollama-local)", () => {
+    if (!fs.existsSync(tsxBin)) return; // CI without devDeps
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2) + "\n",
+      "utf-8",
+    );
+
+    // Install both providers
+    expect(runCli(["install", "--opencode=nvidia", "--tracker=github"]).status).toBe(0);
+    expect(runCli(["install", "--opencode=ollama-local", "--tracker=github"]).status).toBe(0);
+
+    // `bkit check --opencode` must exit 0 (no drift) — both provider blocks are already present
+    const check = runCli(["check"]);
+    expect(check.status, `bkit check failed:\n${check.stdout}\n${check.stderr}`).toBe(0);
+  });
+});

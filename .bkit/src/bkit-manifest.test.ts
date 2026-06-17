@@ -220,8 +220,8 @@ describe("getInstallManifest", () => {
     expect(ciEntry!.format).toBe("byte-equal-text");
   });
 
-  it("lint manifest includes .vale.ini as byte-equal-text", () => {
-    const entries = getInstallManifest(["lint"]);
+  it("ci manifest includes .vale.ini as byte-equal-text (vale is stack-agnostic, #265)", () => {
+    const entries = getInstallManifest(["ci"]);
     const valeEntry = entries.find((e) => e.path === ".vale.ini");
     expect(valeEntry).toBeDefined();
     expect(valeEntry!.format).toBe("byte-equal-text");
@@ -242,7 +242,7 @@ describe("getInstallManifest", () => {
     expect(entry!.seedOrPrint).toBe(true);
   });
 
-  it("lint manifest enumerates every .vale/styles/House/*.yml file in the template (#255)", () => {
+  it("ci manifest enumerates every .vale/styles/House/*.yml file in the template (#255/#265)", () => {
     const houseDir = path.resolve(".bkit/templates/.vale/styles/House");
     const templateFiles = fs
       .readdirSync(houseDir)
@@ -250,14 +250,14 @@ describe("getInstallManifest", () => {
       .map((f) => `.vale/styles/House/${f}`)
       .sort();
     expect(templateFiles.length).toBeGreaterThan(0);
-    const manifestHouse = getInstallManifest(["lint"])
+    const manifestHouse = getInstallManifest(["ci"])
       .filter((e) => e.path.startsWith(".vale/styles/House/"))
       .map((e) => e.path)
       .sort();
     // Exact parity: a House rule added to the template without a manifest entry would
-    // otherwise silently survive uninstall again.
+    // otherwise silently survive uninstall again. Vale moved lint→ci in #265.
     expect(manifestHouse).toEqual(templateFiles);
-    for (const e of getInstallManifest(["lint"]).filter((x) =>
+    for (const e of getInstallManifest(["ci"]).filter((x) =>
       x.path.startsWith(".vale/styles/House/"),
     )) {
       expect(e.format).toBe("byte-equal-text");
@@ -509,10 +509,13 @@ describe("getManagedPackageJsonKeys", () => {
     expect(Object.keys(scripts)).toContain("lint:slop");
   });
 
-  it("aggregates devDependencies from lint module: prettier, slop-scan", () => {
+  it("aggregates devDependencies from lint module: prettier, slop-scan, lint-staged", () => {
     const { devDependencies } = getManagedPackageJsonKeys(["lint"]);
     expect(Object.keys(devDependencies)).toContain("prettier");
     expect(Object.keys(devDependencies)).toContain("slop-scan");
+    // lint-staged is injected by runLintModule; it must be manifest-declared so the
+    // uninstall stripper reclaims a default-only lint-staged devDep (regression #265).
+    expect(Object.keys(devDependencies)).toContain("lint-staged");
   });
 
   it("aggregates prepare script from git-hooks module", () => {
@@ -525,9 +528,15 @@ describe("getManagedPackageJsonKeys", () => {
     expect(Object.keys(devDependencies)).toContain("husky");
   });
 
-  it("aggregates typecheck from ci module", () => {
-    const { scripts } = getManagedPackageJsonKeys(["ci"]);
+  it("aggregates typecheck from lint module (moved ci→lint, #265)", () => {
+    const { scripts } = getManagedPackageJsonKeys(["lint"]);
     expect(Object.keys(scripts)).toContain("typecheck");
+  });
+
+  it("ci module has NO package.json footprint (stack-agnostic, #265)", () => {
+    const { scripts, devDependencies } = getManagedPackageJsonKeys(["ci"]);
+    expect(scripts).toEqual({});
+    expect(devDependencies).toEqual({});
   });
 
   it("returns empty objects when no packageJsonKeys entries present", () => {

@@ -51,12 +51,13 @@ The work routes every source lookup (~19 inline `path.join(PKG_ROOT, ".agents", 
 
 ## Sub-Plan Inventory
 
-| Sub-plan                          | File                                                                               | Sub-issues | Workstreams | Tasks       | Gates                     | Est. tokens |
-| --------------------------------- | ---------------------------------------------------------------------------------- | ---------- | ----------- | ----------- | ------------------------- | ----------- |
-| 1 — Seam + Baseline               | [`160-centralise-install-code-plan-1.md`](./160-centralise-install-code-plan-1.md) | #161, #162 | WS-1, WS-2  | 12 (7 + 5)  | Gate WS-1, Gate WS-2      | ~70K        |
-| 2 — Physical Move + Observability | [`160-centralise-install-code-plan-2.md`](./160-centralise-install-code-plan-2.md) | #163, #165 | WS-3, WS-5  | 12 (11 + 1) | Gate WS-3                 | ~95K        |
-| 3 — Two-Axis Verification         | [`160-centralise-install-code-plan-3.md`](./160-centralise-install-code-plan-3.md) | #164       | WS-4        | 6           | Gate WS-4                 | ~55K        |
-| 4 — Docs/Prose + rules.md gate    | [`160-centralise-install-code-plan-4.md`](./160-centralise-install-code-plan-4.md) | #166, #167 | WS-6, WS-7  | 5 (3 + 2)   | Gate WS-6, Gate 2, Gate 3 | ~60K        |
+<!-- prettier-ignore -->
+| Sub-plan | File | Sub-issues | Workstreams | Tasks | Gates | Est. tokens |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 — Seam + Baseline | [`160-centralise-install-code-plan-1.md`](./160-centralise-install-code-plan-1.md) | #161, #162 | WS-1, WS-2 | 12 (7 + 5) | Gate WS-1, Gate WS-2 | ~70K |
+| 2 — Physical Move + Observability | [`160-centralise-install-code-plan-2.md`](./160-centralise-install-code-plan-2.md) | #163, #165 | WS-3, WS-5 | 12 (11 + 1) | Gate WS-3 | ~95K |
+| 3 — Two-Axis Verification | [`160-centralise-install-code-plan-3.md`](./160-centralise-install-code-plan-3.md) | #164 | WS-4 | 6 | Gate WS-4 | ~55K |
+| 4 — Docs/Prose + rules.md gate | [`160-centralise-install-code-plan-4.md`](./160-centralise-install-code-plan-4.md) | #166, #167 | WS-6, WS-7 | 5 (3 + 2) | Gate WS-6, Gate 2, Gate 3 | ~60K |
 
 **Total WS-T execution tasks across children: 12 + 12 + 6 + 5 = 35** (== umbrella's 35 — lossless).
 
@@ -100,18 +101,19 @@ Child 3 (WS-4 verify) ──┐    Child 4 (WS-6 docs + WS-7 gate) ──┐
 
 A build agent executing one child reads ONLY the named hand-off artifacts produced by its dependency — it does NOT need to read the other children's full text.
 
-| Artifact                                                                                           | Produced by              | Consumed by                                 | Purpose                                                                            |
-| -------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `bkit-paths.ts` seam: `BKIT_SRC_SUBPATH`, `getTemplatesRoot()`, `isDogfood()` (OLD `.agents` form) | Child 1 (WS1-T1, WS1-T2) | Child 2 (WS3-T2 flips them)                 | The single resolver seam Child 2 re-points to `.bkit`.                             |
-| Fail-loud guard + path-agnostic test (`bkit-modules.ts`, `bkit-modules.test.ts`)                   | Child 1 (WS1-T5)         | Child 2 (WS3-T2 re-verifies post-flip)      | Must still fire for ANY non-existent root after the move.                          |
-| `bkit-paths.test.ts` (getPkgRoot 3-context) + dogfood-noop integration test                        | Child 1 (WS1-T6, WS1-T7) | Child 2 (WS3-T2 re-verifies post-flip)      | Both lands under `.agents/scripts/` pre-move, move with WS3-T1 `git mv`.           |
-| `baseline/bkit-version-hashes.json`                                                                | Child 1 (WS2-T2)         | Child 3 (WS4-T1, WS4-T3)                    | Axis-1 install/upgrade hash oracle.                                                |
-| `baseline/agents-tree.txt`                                                                         | Child 1 (WS2-T3)         | Child 3 (WS4-T2, WS4-T4)                    | Axis-2 recursive `.agents/` tree oracle.                                           |
-| `baseline/pack-filelist.txt`                                                                       | Child 1 (WS2-T4)         | Child 3 (WS4-T5)                            | `npm pack --dry-run` removals-only oracle.                                         |
-| `baseline/stale-consumer-setup.md`                                                                 | Child 1 (WS2-T5)         | Child 3 (WS4-T4)                            | Deterministic stale-consumer construction for D1 orphan-removal upgrade assertion. |
-| `.bkit/src/` + `.bkit/templates/` relocated trees, flipped seam, re-pointed config                 | Child 2 (WS3-T1..T11)    | Child 3 (all), Child 4 (WS-6 prose targets) | The completed move all downstream children operate on.                             |
-| D1 upgrade orphan-removal in `bkit upgrade`                                                        | Child 2 (WS3-T5)         | Child 3 (WS4-T4 asserts orphan gone)        | The behaviour Child 3's axis-2 upgrade diff confirms.                              |
-| `.agents/rules.md` managed block + `.bkit/templates/.agents/rules.md`                              | Child 4 (WS6-T1)         | Child 4 (WS7-T1 byte-equality gate)         | The two-way sync the CI gate enforces (block-scoped, D3).                          |
+<!-- prettier-ignore -->
+| Artifact | Produced by | Consumed by | Purpose |
+| --- | --- | --- | --- |
+| `bkit-paths.ts` seam: `BKIT_SRC_SUBPATH`, `getTemplatesRoot()`, `isDogfood()` (OLD `.agents` form) | Child 1 (WS1-T1, WS1-T2) | Child 2 (WS3-T2 flips them) | The single resolver seam Child 2 re-points to `.bkit`. |
+| Fail-loud guard + path-agnostic test (`bkit-modules.ts`, `bkit-modules.test.ts`) | Child 1 (WS1-T5) | Child 2 (WS3-T2 re-verifies post-flip) | Must still fire for ANY non-existent root after the move. |
+| `bkit-paths.test.ts` (getPkgRoot 3-context) + dogfood-noop integration test | Child 1 (WS1-T6, WS1-T7) | Child 2 (WS3-T2 re-verifies post-flip) | Both lands under `.agents/scripts/` pre-move, move with WS3-T1 `git mv`. |
+| `baseline/bkit-version-hashes.json` | Child 1 (WS2-T2) | Child 3 (WS4-T1, WS4-T3) | Axis-1 install/upgrade hash oracle. |
+| `baseline/agents-tree.txt` | Child 1 (WS2-T3) | Child 3 (WS4-T2, WS4-T4) | Axis-2 recursive `.agents/` tree oracle. |
+| `baseline/pack-filelist.txt` | Child 1 (WS2-T4) | Child 3 (WS4-T5) | `npm pack --dry-run` removals-only oracle. |
+| `baseline/stale-consumer-setup.md` | Child 1 (WS2-T5) | Child 3 (WS4-T4) | Deterministic stale-consumer construction for D1 orphan-removal upgrade assertion. |
+| `.bkit/src/` + `.bkit/templates/` relocated trees, flipped seam, re-pointed config | Child 2 (WS3-T1..T11) | Child 3 (all), Child 4 (WS-6 prose targets) | The completed move all downstream children operate on. |
+| D1 upgrade orphan-removal in `bkit upgrade` | Child 2 (WS3-T5) | Child 3 (WS4-T4 asserts orphan gone) | The behaviour Child 3's axis-2 upgrade diff confirms. |
+| `.agents/rules.md` managed block + `.bkit/templates/.agents/rules.md` | Child 4 (WS6-T1) | Child 4 (WS7-T1 byte-equality gate) | The two-way sync the CI gate enforces (block-scoped, D3). |
 
 ## Byte-Identical Guarantee & Load-Bearing Ordering — preservation across the split
 
@@ -132,8 +134,9 @@ The split preserves the umbrella's central oracle without loss:
 
 ## Rollback Strategy
 
-| Axis            | Action                          | Notes                                                                                                                                                    |
-| --------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **DB**          | N/A                             | No database.                                                                                                                                             |
-| **Code**        | `git revert {squash-merge SHA}` | Single squashed PR → one revert restores `.agents/scripts`/`.agents/templates` and all re-points atomically.                                             |
-| **Risk window** | None within a release           | Consumers only see the new layout after they `pnpm update`; `.bkit-version` schema unchanged. D1 auto-clean is one-directional but harmless on rollback. |
+<!-- prettier-ignore -->
+| Axis | Action | Notes |
+| --- | --- | --- |
+| **DB** | N/A | No database. |
+| **Code** | `git revert {squash-merge SHA}` | Single squashed PR → one revert restores `.agents/scripts`/`.agents/templates` and all re-points atomically. |
+| **Risk window** | None within a release | Consumers only see the new layout after they `pnpm update`; `.bkit-version` schema unchanged. D1 auto-clean is one-directional but harmless on rollback. |

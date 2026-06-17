@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-build-challenge-2
 description: Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
-model: nvidia/deepseek-ai/deepseek-v4-pro
+model: opencode/deepseek-v4-pro
 tools:
   read: true
   grep: true
@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran security researcher probing diffs for auth holes, exploits, and data exposure.
 **Scope:** As specified by input and Read/Update/Create section.

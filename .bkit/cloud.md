@@ -78,7 +78,7 @@ Open `claude.ai/code` → environment selector → **+ Add environment**. The th
 ## In-repo side
 
 - `.claude/hooks/preflight.sh` — Tracker opt-in guard. Skips silently when the tracker issue ID env var is unset (i.e. IDE sessions). Non-zero exit is informational only on Claude (`SessionStart` cannot block); the agent reads the `HARD STOP` text from `additionalContext`.
-- `.claude/hooks/cloud-bootstrap.sh` — runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally.
+- `.claude/hooks/cloud-bootstrap.sh` — writes the GH Packages auth token to pnpm's user-level config (from the `GH_BKIT_TOKEN` env var), then runs `pnpm install --frozen-lockfile` and `vale sync` when `CLAUDE_CODE_REMOTE=true`. No-op locally. (The token step is required: pnpm >=10.34.3 401s on a project-`.npmrc` `${GH_BKIT_TOKEN}` env-substitution — so set `GH_BKIT_TOKEN` in the cloud dashboard env.)
 - Both registered in `.claude/settings.json` under `hooks.SessionStart`.
 
 Ships with the repo — you don't paste these into the app.
@@ -218,7 +218,7 @@ bkit wires two MCP servers into `.mcp.json` at the repo root (project-shared, re
 `"type": "http"` is required — without it Claude Code defaults to stdio transport and rejects the entry for missing `command`.
 
 - **Linear** — full Linear workspace surface (`get_issue`, `save_issue`, `save_comment`, `list_*`). Used by workflows when `bkit.issueTracker` is set to `linear`. Authenticates via OAuth (Dynamic Client Registration) — browser flow on first use, no env var needed.
-- **GitHub** — official GitHub MCP server at `api.githubcopilot.com` (not gated by a Copilot subscription). Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider (default once migration #39 lands). The endpoint does **not** support OAuth DCR, so authentication is via `Authorization: Bearer ${GH_TOKEN}` — reusing the same fine-grained PAT bkit already requires for the `gh` CLI surface (see § Environment variables).
+- **GitHub** — official GitHub MCP server at `api.githubcopilot.com` (not gated by a Copilot subscription). Surface includes `issue_write`, `add_issue_comment`, `label_write`, `projects_write`, etc. Used by workflows under the GitHub provider. The endpoint does **not** support OAuth DCR, so authentication is via `Authorization: Bearer ${GH_TOKEN}` — reusing the same fine-grained PAT bkit already requires for the `gh` CLI surface (see § Environment variables).
 
 **Auth flow per server:**
 
@@ -247,7 +247,7 @@ Everything sits **in the repo** under `.cursor/`. bkit ships canonical content f
 | File | Role | bkit ownership |
 | --- | --- | --- |
 | `.cursor/Dockerfile` | Cloud image — vale + gh + Node 24 + pnpm `10.34.1` + Playwright chromium | Tier 3 seed; consumer-owned after first install |
-| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
+| `.cursor/environment.json` | Build pointer + per-snapshot `install` hook (`pnpm config set …:_authToken=$GH_BKIT_TOKEN` + `pnpm install --frozen-lockfile` + `vale sync` if `.vale.ini`) | Tier 3 seed |
 | `.cursor/hooks.json` | Wires `sessionStart` → `preflight.sh` (`failClosed: true`) | Tier 2 contained JSON |
 | `.cursor/hooks/preflight.sh` | Tracker opt-in guard — `bkit:auto` label + non-terminal status. Skips silently on IDE sessions | Tier 2 contained (bkit:start/end markers) |
 
@@ -422,7 +422,7 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 
 # Decision log
 
-## #245 — opencode provider host (2026-06-09)
+## opencode provider host
 
 **Superseded premise:** The original SP5 out-of-scope note classified opencode as a separate file (`opencode-cloud.yml`) or a separate CLI flag path. The opencode host was considered a "phase 2 post-PR" addition.
 
@@ -441,5 +441,3 @@ Skip conditions emit a single GitHub-comment no-op line and exit 0 — only real
 - Cursor Background Agents: <https://cursor.com/docs/background-agent>
 - Zenn article on Claude env-var/setup-script gotcha: <https://zenn.dev/harieshokunin/articles/b1064354319ce2?locale=en>
 - Managed Agents environments (separate product, similar shape): <https://platform.claude.com/docs/en/managed-agents/environments>
-- Linear BAR-191 (initial research and design)
-- GitHub #245 (opencode provider host + unified bkit-cloud.yml)

@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.0.1",
+  "version": "4.1.0",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",
@@ -26,7 +26,7 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "pnpm@10.34.1",
+  "packageManager": "pnpm@10.34.3",
   "repository": {
     "type": "git",
     "url": "https://github.com/cbartens/bkit.git"
@@ -37,12 +37,12 @@
   },
   "license": "MIT",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && chmod +x dist/bkit-install.js",
     "bkit": "node dist/bkit-install.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check:dist": "rm -rf dist && tsc && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
+    "check:dist": "rm -rf dist && tsc && chmod +x dist/bkit-install.js && git diff --exit-code dist/ || (echo '[bkit] dist/ is stale — run pnpm build and commit the result' && exit 1)",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint:slop": "slop-scan scan .",
@@ -79,6 +79,11 @@
     "issueTracker": "github",
     "depUpdater": "renovate",
     "cloudAgents": "claude",
-    "githubProject": false
+    "githubProject": false,
+    "opencodeProvider": "opencode",
+    "opencodeProviders": [
+      "nvidia",
+      "opencode"
+    ]
   }
 }

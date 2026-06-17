@@ -14,9 +14,13 @@ export type ModuleFlag =
   | "renovate"
   | "dependabot"
   | "cloud"
-  // `tooling` is an accepted CLI token only — parseArgs expands it to ci/lint/git-hooks,
-  // so it never appears in a resolved module set or the dispatch registry.
-  | "tooling";
+  // `tooling` and `typescript` are accepted CLI tokens only — parseArgs expands them
+  // (tooling → ci/lint/git-hooks; typescript → ci+lint+git-hooks on install, lint/git-hooks
+  // on uninstall), so they never appear in a resolved module set or the dispatch registry.
+  // `ci` IS a real internal module (the stack-agnostic CI/vale foundation) and is accepted
+  // bare; `lint`/`git-hooks` are reachable only via --typescript/--tooling, never bare.
+  | "tooling"
+  | "typescript";
 export type { IssueTracker };
 
 /** Cloud-agent variant chosen via `--auto=<variant>`. */
@@ -36,11 +40,25 @@ export const OPENCODE_PROVIDERS = [
   "cerebras",
   "openrouter",
   "ollama",
-  // opencode-native gateway (Zen). bkit key is "zen"; the underlying opencode provider id
-  // is "opencode" (models are opencode/<id>). Auth is opencode-managed (`opencode auth login`),
-  // NOT a {env:KEY} block — so it renders without a custom provider block (see renderOpencodeJson).
-  "zen",
+  // opencode-native gateway. Auth via OPENCODE_API_KEY; models prefixed opencode/<id>.
+  "opencode",
 ] as const;
+
+/**
+ * Hidden backward-compat aliases for `--opencode=<provider>` values (not exposed in
+ * help text). Normalises legacy provider keys stored in package.json or passed on the
+ * CLI to the current canonical key before allowlist validation.
+ */
+export const OPENCODE_PROVIDER_ALIASES: Record<string, string> = {
+  // Legacy names kept only for existing installs reading stored "zen"/"go" from package.json.
+  zen: "opencode",
+  go: "opencode",
+};
+
+/** Normalise an `--opencode=` value through OPENCODE_PROVIDER_ALIASES (identity if no alias). */
+export function normalizeOpencodeProvider(value: string): string {
+  return OPENCODE_PROVIDER_ALIASES[value] ?? value;
+}
 
 /** Narrow an unknown string to `CloudVariant` or return `null` if invalid. */
 export function parseCloudVariant(value: unknown): CloudVariant | null {
@@ -49,7 +67,16 @@ export function parseCloudVariant(value: unknown): CloudVariant | null {
     : null;
 }
 
-export type Verb = "install" | "check" | "doctor" | "status" | "uninstall" | "upgrade" | "help";
+export type Verb =
+  | "install"
+  | "check"
+  | "doctor"
+  | "status"
+  | "uninstall"
+  | "upgrade"
+  | "cursor"
+  | "opencode"
+  | "help";
 
 export interface ParsedArgs {
   verb: Verb;
@@ -76,7 +103,7 @@ export interface ParsedArgs {
   /**
    * opencode provider selected via `--opencode=<provider>`. null = not specified.
    * Supported: see OPENCODE_PROVIDERS — strict allowlist (ollama-local, nvidia, groq,
-   * cerebras, openrouter, ollama, zen).
+   * cerebras, openrouter, ollama, opencode).
    * Required when installing the opencode module (additive host, opt-in).
    */
   opencodeProvider: string | null;
@@ -101,13 +128,20 @@ export interface UpgradeFlags {
   dryRun: boolean;
 }
 
-// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
-// `tooling` (expands to ci/lint/git-hooks) are intercepted by dedicated branches in
-// parseArgs before this set is consulted; the generic check only ever validates
-// claude/cursor. `full`, `core`, `ci`, `lint`, `git-hooks`, `renovate`, `dependabot`
-// and `cloud` are NO LONGER accepted as bare flags (#252): use `--tooling`,
-// `--dependency=<renovate|dependabot>`, and `--auto=<claude|cursor>`; core is implicit.
-const MODULE_FLAGS = new Set<ModuleFlag>(["claude", "cursor", "opencode", "tooling"]);
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing), `tooling`,
+// `ci`, and `typescript` are intercepted by dedicated branches in parseArgs before this
+// set is consulted; the generic check only ever validates claude/cursor. `full`, `core`,
+// `lint`, `git-hooks`, `renovate`, `dependabot` and `cloud` are NOT accepted as bare flags
+// (#252/#265): use `--ci`/`--typescript`/`--tooling`, `--dependency=<renovate|dependabot>`,
+// and `--auto=<claude|cursor>`; core is implicit.
+const MODULE_FLAGS = new Set<ModuleFlag>([
+  "claude",
+  "cursor",
+  "opencode",
+  "tooling",
+  "ci",
+  "typescript",
+]);
 
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
@@ -186,6 +220,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
   ) {
     verb = firstArg as Verb;
     args.shift();
+  } else if (firstArg === "cursor" || firstArg === "opencode") {
+    verb = firstArg as Verb;
+    args.shift();
+    // Launcher verbs take no flags — reject any remaining args up-front.
+    if (args.length > 0) {
+      console.error(`[bkit] \`bkit ${firstArg}\` takes no flags. Run \`bkit help\` for usage.`);
+      process.exit(1);
+    }
   } else if (firstArg === "help" || firstArg === "--help" || firstArg === "-h") {
     verb = "help";
     args.shift();
@@ -261,12 +303,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
       // Value-bearing flag: --opencode=<provider>
       // Additive opencode host opt-in. Supported providers: ollama-local, nvidia, groq,
-      // cerebras, openrouter, ollama (cloud), zen (opencode gateway) (strict allowlist).
+      // cerebras, openrouter, ollama (cloud), opencode (opencode-native gateway) (strict allowlist).
       // A value is required (provider identifies which API key + base URL to configure).
       if (flag === "opencode") {
         if (verb !== "uninstall") {
           console.error(
-            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode requires an explicit provider: --opencode=<provider> (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
@@ -275,16 +317,19 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
       if (flag.startsWith("opencode=")) {
-        const value = flag.slice("opencode=".length);
-        if (!value) {
+        const rawValue = flag.slice("opencode=".length);
+        if (!rawValue) {
           console.error(
-            `[bkit] --opencode= requires a provider value (e.g. --opencode=ollama-local). Run \`bkit help\` for usage.`,
+            `[bkit] --opencode= requires a provider value (e.g. --opencode=opencode). Run \`bkit help\` for usage.`,
           );
           process.exit(1);
         }
+        // Normalise legacy aliases before the allowlist check so both spellings
+        // resolve to the canonical provider key recorded in package.json.
+        const value = normalizeOpencodeProvider(rawValue);
         if (!(OPENCODE_PROVIDERS as readonly string[]).includes(value)) {
           console.error(
-            `[bkit] --opencode= unsupported provider ${JSON.stringify(value)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`,
+            `[bkit] --opencode= unsupported provider ${JSON.stringify(rawValue)}. Supported: ${OPENCODE_PROVIDERS.join(", ")}.`,
           );
           process.exit(1);
         }
@@ -353,12 +398,33 @@ export function parseArgs(argv: string[]): ParsedArgs {
         continue;
       }
 
-      // --tooling (#252): CLI-level alias expanding to the interdependent ci+lint+git-hooks
-      // bundle (husky hooks run vale/slop; CI runs lint+check). Symmetric install↔uninstall.
+      // --tooling (#252): back-compat alias = --ci --typescript. Expands to the
+      // interdependent ci+lint+git-hooks bundle (husky hooks run vale/slop; CI runs
+      // lint+check). Symmetric install↔uninstall (removes all three).
       if (flag === "tooling") {
         moduleFlags.add("ci");
         moduleFlags.add("lint");
         moduleFlags.add("git-hooks");
+        continue;
+      }
+
+      // --ci (#265): the stack-agnostic CI/quality foundation — ci.yml skeleton + vale
+      // prose-lint. No Node/TS footprint. Maps to the internal `ci` module only.
+      if (flag === "ci") {
+        moduleFlags.add("ci");
+        continue;
+      }
+
+      // --typescript (#265): the Node/TS toolchain — slop-scan (+ type-suppression rule),
+      // prettier, tsc typecheck, husky + lint-staged, and the WIRED ci.yml step bodies.
+      // Depends-on --ci: on install we auto-add `ci` so the wired ci.yml is seeded. On
+      // uninstall we DROP only the TS bits (lint + git-hooks), leaving the agnostic ci
+      // foundation in place (a downgrade to --ci, not a full teardown). `--tooling`
+      // remains the symmetric remove-all-three alias for legacy consumers.
+      if (flag === "typescript") {
+        moduleFlags.add("lint");
+        moduleFlags.add("git-hooks");
+        if (verb !== "uninstall") moduleFlags.add("ci");
         continue;
       }
 
@@ -433,6 +499,15 @@ Usage:
   bkit status                   Read-only host/provider status. Reports current host+provider
                                  (sampled from .opencode/opencode.json, .claude/, .cursor/).
                                  Writes nothing. Exits 0.
+  bkit cursor                   Launch Cursor with .bkit/.env loaded into its environment.
+                                 macOS GUI apps launched from the Dock/Finder do not inherit
+                                 the login shell env (direnv stays shell-only), so MCP token
+                                 placeholders resolve empty. This verb execs the app binary
+                                 directly with the per-repo .bkit/.env merged in. Quit Cursor
+                                 before running — a running instance ignores the new env.
+                                 Override binary path via BKIT_CURSOR_BIN=<path>.
+  bkit opencode                 Same as \`bkit cursor\` but for the opencode desktop app.
+                                 Override binary path via BKIT_OPENCODE_BIN=<path>.
   bkit help                     Print this message.
 
 Core (implicit — no flag; installed/upgraded on every install):
@@ -445,14 +520,22 @@ Module flags (composable; symmetric install ↔ uninstall):
   --cursor        .cursor/agents/ + .cursor/commands/ (T1/T2/T3 transforms) +
                   .cursor/rules/00-shared-rules.mdc + .cursor settings.
   --opencode=<provider>
-                  Additive opencode host. A provider value is REQUIRED (names the API key
-                  env var + base URL seeded into opencode.json). Supported: ollama-local,
-                  nvidia, groq, cerebras, openrouter, ollama (cloud), zen (opencode gateway,
-                  managed auth — \`opencode auth login\`, no API key). Ships .opencode/**
-                  (agents, commands, opencode.json, gateguard). Configure your provider key
-                  after install; verify with \`bkit doctor\`.
-  --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent
-                  bundle (husky runs vale/slop; CI runs lint+check). Tier-3 seed-or-print.
+                  Additive opencode host. Each install ADDS a provider block to
+                  opencode.json; agent defaults track the last-installed (active) provider.
+                  Provider value is REQUIRED. Supported: ollama-local, nvidia, groq,
+                  cerebras, openrouter, ollama (cloud), opencode (opencode-native gateway;
+                  auth via OPENCODE_API_KEY). Ships .opencode/** (agents, commands,
+                  opencode.json, gateguard). Configure your provider key; verify with
+                  \`bkit doctor\`. All installed providers tracked in bkit.opencodeProviders.
+  --ci            Stack-agnostic CI/quality foundation: the ci.yml SKELETON (gate graph +
+                  capstone contract + branch-protection, with Node/TS build/test steps as
+                  commented examples) + Vale prose-lint. No Node/TS footprint — runs green
+                  on any repo. Tier-3 seed-or-print.
+  --typescript    Node/TS toolchain (implies --ci): tsc typecheck, slop-scan (+ the
+                  boundary/type-suppression rule), prettier, husky + lint-staged, and the
+                  WIRED ci.yml step bodies. Most of it is plain Node; name is colloquial.
+  --tooling       Back-compat alias for \`--ci --typescript\` (the full ci+lint+git-hooks
+                  bundle). Symmetric install↔uninstall (removes all three).
   --dependency=<renovate|dependabot>
                   Dependency updater (opt-in, mutually exclusive — both open PRs against
                   the same packages). renovate is phase-gated against the default branch;
@@ -480,6 +563,12 @@ Upgrade flags:
 
 Uninstall flags:
   --dry-run       Print decision table (FILE / DECISION / REASON) without writing.
+  --opencode=<provider>
+                  Surgical provider removal: removes that provider's block from
+                  opencode.json + drops it from bkit.opencodeProviders. Does NOT remove
+                  agents/commands/gateguard. If the removed provider was active, re-render
+                  agents by running bkit install --opencode=<remaining> or bkit upgrade.
+                  Bare --opencode (no value) tears down the entire opencode host.
   --force         Force-delete Tier-3 files even if consumer modified them.
   --nuke          Delete ALL bkit-managed files regardless of tier/hash (requires confirm).
   --yes           Skip interactive confirm for --nuke.
@@ -489,14 +578,31 @@ Uninstall flags:
 
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
-  bkit install --claude --cursor --tooling    Both hosts + ci/lint/git-hooks + core.
-  bkit install --opencode=nvidia              opencode host (nvidia provider) + core.
+  bkit install --claude --ci                  Claude host + stack-agnostic CI skeleton + core.
+  bkit install --claude --cursor --typescript Both hosts + full Node/TS toolchain (implies --ci).
+  bkit install --claude --cursor --tooling    Same as --ci --typescript (back-compat alias).
+  bkit install --opencode=opencode            opencode host (opencode-native gateway, additive).
+  bkit install --opencode=nvidia              add nvidia alongside opencode gateway.
+  bkit uninstall --opencode=nvidia            remove nvidia block only; keep opencode.
   bkit install --claude --dependency=renovate Claude host + Renovate config (opt-in).
   bkit install --tracker=github --auto=claude Claude cloud integration (GitHub tracker).
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
   bkit uninstall                              Full uninstall (all modules, zero footprint).
+  bkit uninstall --typescript                 Remove Node/TS toolchain only (keep --ci + core).
   bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
+  bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
+  bkit opencode                               Launch opencode with .bkit/.env (API key).
+
+macOS GUI-isolation note (launchctl fallback):
+  If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
+  make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
+  survive reboot — must re-run after each restart):
+    launchctl setenv GH_TOKEN "$GH_TOKEN"
+    launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"   # etc.
+  For a persistent approach, add a RunAtLoad LaunchAgent plist under
+  ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
+  whenever tokens change — prefer \`bkit cursor\` / \`bkit opencode\` for the dynamic model.
 
 Consumer CI auth:
   Set GH_BKIT_TOKEN in GitHub Actions secrets (classic PAT with read:packages scope —

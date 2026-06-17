@@ -25,13 +25,14 @@ Counting attempts/retries/failures is prime telemetry. The attempt count is **to
 
 ### Phasing (design should produce dependency-ordered workstreams along these lines)
 
-| Phase  | Scope                                                                                                                                                                                                                                       | Blast radius                  |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| **P1** | JSONL substrate (envelope / `kind` / `references` / `aliases`) + `.gitattributes merge=union` + install-mirror/slop/Vale exemptions + friction + pending→deferrals + failures + basic stats (attempt/failure counts at existing boundaries) | bkit-local, additive          |
-| **P2** | Compliance grader (#232 core, deterministic, advisory)                                                                                                                                                                                      | bkit-local                    |
-| **P3** | **#58 counter refactor** (prose→shell) — trustworthy attempt stats + can't-silently-exceed-`MAX`; staged + invariant check                                                                                                                  | all 5 workflows, control-flow |
-| **P4** | Harvest script (replaces friction utility prompt) + analysis CLI + #183 size↔outcome regression + ship-chain rollup                                                                                                                         | bkit-local + consumer read    |
-| **P5** | knowledge/decisions migration + consumer-upgrade path                                                                                                                                                                                       | install engine + consumers    |
+<!-- prettier-ignore -->
+| Phase | Scope | Blast radius |
+| --- | --- | --- |
+| **P1** | JSONL substrate (envelope / `kind` / `references` / `aliases`) + `.gitattributes merge=union` + install-mirror/slop/Vale exemptions + friction + pending→deferrals + failures + basic stats (attempt/failure counts at existing boundaries) | bkit-local, additive |
+| **P2** | Compliance grader (#232 core, deterministic, advisory) | bkit-local |
+| **P3** | **#58 counter refactor** (prose→shell) — trustworthy attempt stats + can't-silently-exceed-`MAX`; staged + invariant check | all 5 workflows, control-flow |
+| **P4** | Harvest script (replaces friction utility prompt) + analysis CLI + #183 size↔outcome regression + ship-chain rollup | bkit-local + consumer read |
+| **P5** | knowledge/decisions migration + consumer-upgrade path | install engine + consumers |
 
 ### Sequencing note
 

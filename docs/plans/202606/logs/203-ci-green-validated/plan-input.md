@@ -138,12 +138,13 @@ Lessons:
 
 ### Where the green/red decision is made today (the holes)
 
-| Site                                     | Current logic                                                              | Hole                                                              |
-| ---------------------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| `bkit-ship.md` Gate 2                    | `gh pr view --json statusCheckRollup` -> "if any failures -> Failure Path" | `skipped` is not a failure; partial run is all-`success` -> green |
-| `bkit-ship.md` Gate 3 (Regression Guard) | re-asserts only previously-failing steps                                   | skipped-by-design tiers invisible                                 |
-| `bkit-debug.md`                          | `RUN_CONCLUSION == success` -> healthy                                     | a run with E2E/Vercel-await skipped still concludes `success`     |
-| consumer `ci.yml`                        | partial-on-dev emits a `::warning::`                                       | trivially ignored — not a hard signal                             |
+<!-- prettier-ignore -->
+| Site | Current logic | Hole |
+| --- | --- | --- |
+| `bkit-ship.md` Gate 2 | `gh pr view --json statusCheckRollup` -> "if any failures -> Failure Path" | `skipped` is not a failure; partial run is all-`success` -> green |
+| `bkit-ship.md` Gate 3 (Regression Guard) | re-asserts only previously-failing steps | skipped-by-design tiers invisible |
+| `bkit-debug.md` | `RUN_CONCLUSION == success` -> healthy | a run with E2E/Vercel-await skipped still concludes `success` |
+| consumer `ci.yml` | partial-on-dev emits a `::warning::` | trivially ignored — not a hard signal |
 
 Also: E2E is a _step_ inside `bkit-tests`, not its own check — so `statusCheckRollup` (check-level)
 physically cannot see a skipped E2E. The assertion must come from CI itself.

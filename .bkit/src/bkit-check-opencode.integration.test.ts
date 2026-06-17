@@ -6,10 +6,10 @@
 //
 // The trap this guards (the reason the gate was deferred until the render inputs were fixed):
 // `bkit check` takes no `--opencode=` flag, so without a provider/tracker FALLBACK the check
-// would re-render with the ollama-local/default and report FALSE drift for an nvidia/zen/…
+// would re-render with the ollama-local/default and report FALSE drift for an nvidia/opencode/…
 // consumer. The render inputs now fall back to the installed provider (package.json
-// `bkit.opencodeProvider`, the only signal for managed-auth zen which ships no provider block)
-// and the recorded tracker — so a clean install checks green across providers.
+// `bkit.opencodeProvider`, the authoritative signal for the opencode gateway whose on-disk block
+// is keyed `opencode`) and the recorded tracker — so a clean install checks green across providers.
 //
 // Strategy (in-test dogfood): spawn the real install + check binaries against a tmpdir
 // consumer. getPkgRoot resolves to THIS repo, so install renders the real sources into the
@@ -74,16 +74,17 @@ describe("#255 #8 — bkit check gates opencode drift (no false positives)", () 
     expect(`${check.stdout}${check.stderr}`).not.toContain("DRIFT DETECTED");
   });
 
-  // zen is managed-auth: opencode.json carries NO provider block, so the provider is only
-  // recoverable from package.json `bkit.opencodeProvider`. This is the case that false-drifts
-  // if detection regresses to the opencode.json-only path.
-  it("clean install (zen, managed-auth, no provider block) → check exits 0, no false drift", () => {
+  // opencode renders an `opencode`-keyed provider block. This is the case that false-drifts if
+  // detection regresses to mapping the opencode.json provider-block key straight to a bkit key.
+  it("clean install (opencode gateway, opencode block keyed by providerId) → check exits 0, no false drift", () => {
     if (!fs.existsSync(getTsxBin())) return;
-    const install = runBkit(["install", "--claude", "--opencode=zen", "--tracker=github"]);
+    const install = runBkit(["install", "--claude", "--opencode=opencode", "--tracker=github"]);
     expect(install.status).toBe(0);
-    // zen ships no provider block — confirm the fixture really exercises the managed-auth path.
-    const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as { provider?: unknown };
-    expect(cfg.provider).toBeUndefined();
+    // opencode ships a built-in `opencode` block — confirm the fixture exercises the providerId path.
+    const cfg = JSON.parse(fs.readFileSync(opencodeJsonPath(), "utf-8")) as {
+      provider?: Record<string, unknown>;
+    };
+    expect(cfg.provider?.opencode).toBeDefined();
 
     const check = runBkit(["check"]);
     expect(check.status).toBe(0);

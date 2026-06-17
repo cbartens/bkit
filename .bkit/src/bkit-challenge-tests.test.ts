@@ -27,8 +27,8 @@ const { formatChecklist, runPostInstallCheck, detectShellToken } = postinstall;
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process (required by bkit-postinstall.ts)
 // ---------------------------------------------------------------------------
-const { execSync } = vi.hoisted(() => ({ execSync: vi.fn() }));
-vi.mock("node:child_process", () => ({ execSync }));
+const { execSync, spawnSync } = vi.hoisted(() => ({ execSync: vi.fn(), spawnSync: vi.fn() }));
+vi.mock("node:child_process", () => ({ execSync, spawnSync }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -43,6 +43,9 @@ beforeEach(() => {
   originalEnv = { ...process.env };
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-challenge-tests-"));
   process.chdir(tmpDir);
+  // detectBkitNotOnPath() calls spawnSync("which", ["bkit"]); default to "found"
+  // so the advisory does not fire and pollute findings during unrelated assertions.
+  spawnSync.mockReturnValue({ status: 0, stdout: "/usr/local/bin/bkit\n", stderr: "" });
 });
 
 afterEach(() => {
@@ -51,6 +54,7 @@ afterEach(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
   vi.restoreAllMocks();
   execSync.mockReset();
+  spawnSync.mockReset();
 });
 
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {

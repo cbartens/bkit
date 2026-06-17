@@ -181,45 +181,52 @@ describe("#251 — bkit upgrade re-renders agents/commands + .bkit docs", () => 
     expect(parsed.theme).toBe("consumer-custom-theme");
   }, 180_000);
 
-  it("zen (#245 Phase 3): install records the manifest provider; upgrade keeps it block-free (no ollama-local re-render)", () => {
+  it("opencode gateway (#282): install records the manifest provider; upgrade re-renders the opencode block (no ollama-local fallback)", () => {
     const tsxBin = getTsxBin();
     if (!fs.existsSync(tsxBin)) return; // tsx not available — skip (matches sibling suites)
 
-    // Install the opencode host as the zen gateway (managed auth, no provider block).
-    const install = runBkit(["install", "--opencode=zen"]);
+    type OpencodeDoc = {
+      provider?: Record<string, { npm?: string; options?: Record<string, unknown> }>;
+    };
+
+    // Install the opencode host as the opencode-native gateway (built-in provider, OPENCODE_API_KEY auth).
+    const install = runBkit(["install", "--opencode=opencode"]);
     expect(`${install.stdout}\n${install.stderr}`).toMatch(/\[bkit-install\]/);
 
-    // (1) opencode.json has NO custom provider block — zen is built into opencode.
+    // (1) opencode.json has a minimal built-in `opencode` provider block keyed by providerId —
+    //     no npm driver, only the OPENCODE_API_KEY apiKey.
     const opencodeJsonPath = path.join(tmpDir, ".opencode", "opencode.json");
     expect(fs.existsSync(opencodeJsonPath)).toBe(true);
-    const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as {
-      provider?: unknown;
-    };
-    expect(installed.provider).toBeUndefined();
+    const installed = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+    expect(
+      installed.provider?.opencode,
+      "opencode gateway seeds an `opencode` provider block",
+    ).toBeDefined();
+    expect(installed.provider?.opencode?.npm).toBeUndefined();
+    expect(installed.provider?.opencode?.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
 
-    // (2) The provider is recorded in the manifest — the ONLY upgrade-time detection signal
-    //     for a block-free gateway.
+    // (2) The provider is recorded in the manifest — the authoritative upgrade-time detection signal.
     const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8")) as {
       bkit?: { opencodeProvider?: string };
     };
-    expect(pkg.bkit?.opencodeProvider).toBe("zen");
+    expect(pkg.bkit?.opencodeProvider).toBe("opencode");
 
-    // (3) Agents seeded with the opencode-side prefix (opencode/…), never the bkit key zen/….
+    // (3) Agents seeded with the opencode-side prefix (opencode/…).
     const agentsDir = path.join(tmpDir, ".opencode", "agents");
     const anAgent = fs.readdirSync(agentsDir).find((f) => f.endsWith(".md"));
     expect(anAgent).toBeTruthy();
     const agentBody = fs.readFileSync(path.join(agentsDir, anAgent!), "utf-8");
     expect(agentBody).toMatch(/model:\s*opencode\//);
-    expect(agentBody).not.toMatch(/model:\s*zen\//);
 
-    // (4) Upgrade must re-render opencode.json from the manifest provider (zen) — NOT fall back
-    //     to ollama-local and inject a stray provider block (the bug manifest-detection fixes).
+    // (4) Upgrade must re-render opencode.json from the manifest provider — keeping the
+    //     `opencode` block, NOT falling back to ollama-local.
     const upgrade = runBkit(["upgrade", "--auto-apply"]);
     expect(`${upgrade.stdout}\n${upgrade.stderr}`).toMatch(/\[bkit-upgrade\]/);
-    const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as { provider?: unknown };
+    const after = JSON.parse(fs.readFileSync(opencodeJsonPath, "utf-8")) as OpencodeDoc;
+    expect(after.provider?.opencode?.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
     expect(
-      after.provider,
-      "upgrade must keep zen block-free, not re-render as ollama-local",
+      after.provider?.["ollama-local"],
+      "upgrade must NOT re-render opencode as ollama-local",
     ).toBeUndefined();
   }, 180_000);
 });

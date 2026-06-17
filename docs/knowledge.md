@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Knowledge
 
 > [!CAUTION]
@@ -51,12 +53,12 @@
 - **Category:** infra
 - **Symptom:** `pnpm install` (local, CI, or Vercel build) fails with a generic 401 against `registry.npmjs.org` — NOT against `npm.pkg.github.com`. The error reads as a plain auth failure with no "token missing" wording, and `@cbartens/bkit` is reported as not found.
 - **Root cause:** pnpm v7.20+ silently discards the ENTIRE `.npmrc` the moment any `${VAR}` in it resolves to an unset env var. The `@cbartens:registry=https://npm.pkg.github.com` scope mapping is dropped, pnpm falls back to npmjs.org, which has no `@cbartens/bkit` → 401. The unset variable is almost always `GH_BKIT_TOKEN`. Separately, pnpm does NOT parse POSIX fallback syntax: `${VAR:-default}` sends no auth at all and 401s — use bare `${VAR}` only.
-- **Fix or rule:** `GH_BKIT_TOKEN` must be present on every surface that runs `pnpm install`: (1) exported in your shell before local installs; (2) an Actions secret on the repo; (3) a Vercel env var on BOTH preview and production (Vercel-deployed consumers). Diagnose with `echo "${GH_BKIT_TOKEN:-MISSING}"` immediately before `pnpm install`. Keep `.npmrc` to bare `${VAR}` form — never `${VAR:-default}`.
+- **Fix or rule:** `GH_BKIT_TOKEN` must be present on every surface that runs `pnpm install` (shell for local installs, an Actions secret, a Vercel env var on preview + production). Diagnose with `echo "${GH_BKIT_TOKEN:-MISSING}"` immediately before `pnpm install`. **Update (pnpm >=10.34.3):** bkit no longer stores any auth token in the project `.npmrc` — the `${VAR}` env-substitution path 401s on download even when the token is set; the token now goes into pnpm's user-level config via `pnpm config set`. See KN-CORE-7.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
 - **Source:** human
-- **Related:** `.npmrc`, `package.json`, `security.md`
+- **Related:** KN-CORE-7, `.npmrc`, `package.json`, `security.md`
 
 ## KN-CORE-3: GitHub Apps & CI integrations read config from the DEFAULT branch — land config on `main` before activating (2026-05-24)
 
@@ -106,6 +108,18 @@
 - **Source:** human
 - **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/renovate-local.json5`, `package.json` (`pnpm.overrides`)
 
+## KN-CORE-7: pnpm >=10.34.3 auth rework — project `.npmrc` `${GH_BKIT_TOKEN}` 401s on download; use user-level `pnpm config set` (2026-06-15)
+
+- **Category:** infra
+- **Symptom:** `pnpm install` / `pnpm add @cbartens/bkit` fails with `ERR_PNPM_FETCH_401` (`GET https://npm.pkg.github.com/@cbartens%2Fbkit: Unauthorized`) on pnpm >=10.34.3 even though `GH_BKIT_TOKEN` is correctly set in the environment. Metadata calls (`pnpm view @cbartens/bkit`) still resolve, so "it works locally" via `view` is misleading — only the actual download 401s. pnpm 10.34.1 is unaffected (the regression boundary is between 10.34.1 and 10.34.3).
+- **Root cause:** pnpm's auth-handling rework stopped honouring a project-level `.npmrc` env-substitution `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` at install fetch time. The token must instead live in pnpm's user-level auth config. Independently, config precedence is project `.npmrc` > user config, so a leftover project auth line also shadows a correct user-level token.
+- **Fix or rule:** Commit ONLY the registry mapping in the project `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com`) — NEVER an `_authToken` line. Write the token into pnpm's user-level config with `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), Vercel (`vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install`). `pnpm config set` is version-aware — it writes `~/.npmrc` on pnpm 10.x and `~/.config/pnpm/auth.ini` on pnpm 11.x (whichever location that pnpm reads at install time), so prefer it over a hand-written `~/.npmrc`.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** critical
+- **Source:** human
+- **Related:** KN-CORE-2, `.npmrc`, `deployments.md` (§ Consumer CI auth)
+
 <!-- bkit:end -->
 
 ## KN-1: pnpm v7.20+ silently ignores entire `.npmrc` when `${VAR}` env-var is unset (2026-05-06)
@@ -113,7 +127,7 @@
 - **Category:** infra
 - **Symptom:** `pnpm install` fails with opaque 401 against npmjs.org (NOT `npm.pkg.github.com`). Error reads as generic auth failure — no "token missing" language. `@cbartens/bkit` not found on npmjs.org.
 - **Root cause:** Any `${VAR}` in `.npmrc` resolving to an unset env-var causes pnpm v7.20+ to silently ignore the entire `.npmrc` and fall back to defaults. `@cbartens:registry=https://npm.pkg.github.com` is dropped; pnpm hits npmjs.org; npmjs.org has no `@cbartens/bkit`; 401.
-- **Fix or rule:** Ensure `GH_BKIT_TOKEN` is: (1) exported in maintainer's shell before local `pnpm install`; (2) set as a GHA secret on the consumer repo; (3) set as a Vercel env var (preview + production) for Vercel-deployed consumers. Verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install` when troubleshooting.
+- **Fix or rule:** Ensure `GH_BKIT_TOKEN` is: (1) exported in maintainer's shell before local `pnpm install`; (2) set as a GHA secret on the consumer repo; (3) set as a Vercel env var (preview + production) for Vercel-deployed consumers. Verify with `echo "${GH_BKIT_TOKEN:-MISSING}"` before `pnpm install` when troubleshooting. **Superseded by KN-CORE-7 (#274):** as of pnpm >=10.34.3 the project-`.npmrc` `${VAR}` auth path is no longer used at all (it 401s on download even with the token set); the token now lives in pnpm's user-level config via `pnpm config set`.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
@@ -232,13 +246,13 @@
 
 - **Category:** agentic
 - **Symptom:** PR opens with no Actions runs visible — `gh pr view --json statusCheckRollup` returns empty. Ship Step 2's CI fail-fast gate (`if ANY failures → Failure Path`) admits the PR despite no CI verification. First observed on PR #7 (BAR-131 consumer-friction suite) — CI only triggered after manually pushing an empty commit without `[skip ci]`.
-- **Root cause:** GitHub suppresses both `pull_request` and `push` workflow runs when HEAD commit message contains `[skip ci]` (or `[skip actions]`). Build's Step 15 summary push left `summary status [skip build] [skip ci]` as remote HEAD, so when `gh pr create` opened the PR (Step 16), no `pull_request` event fired. Same shape in debug Step 7 summary push, which would overwrite a previously-clean HEAD with `[skip ci]` and silently empty the PR's rollup. Build Step 17 / debug Step 11 close-workflow commits also never reached remote — no explicit `git push` in either step.
-- **Fix or rule:** Final commit before `git push` in build / debug close-workflow renamed to `chore({FID}): close-workflow status trigger CI` (no skip tags). Explicit `git push` added to close-workflow (also fixes the missing-push side bug). Ship Step 5 already used `gh pr merge --body ""` (empty body strips `[skip ci]` from the squash subject). Identical gate phrasing across all three workflows: `HEAD on remote does NOT contain [skip ci]`. Codified in `.agents/rules.md` § Git block as "Last push to PR / `dev` (validated): HEAD MUST NOT contain `[skip ci]`."
+- **Root cause:** GitHub suppresses both `pull_request` and `push` workflow runs when HEAD commit message contains `[skip ci]` (or `[skip actions]`). Build's Step 15 summary push left `summary status [skip build] [skip ci]` as remote HEAD, so when `gh pr create` opened the PR (Step 16), no `pull_request` event fired. Same shape in debug Step 7 summary push, which would overwrite a previously-clean HEAD with `[skip ci]` and silently empty the PR's rollup. Build Step 17 / debug Step 11 close-workflow commits also never reached remote — no explicit `git push` in either step. Recurs intermittently when the clean final commit does not end up as the dispatched HEAD (e.g. EC-2: Failure Path pushes a `[skip ci]` abort commit onto a live PR).
+- **Fix or rule:** Final commit before `git push` in build / debug close-workflow renamed to `chore({FID}): close-workflow status trigger CI` (no skip tags). Explicit `git push` added to close-workflow (also fixes the missing-push side bug). Ship Step 5 already used `gh pr merge --body ""` (empty body strips `[skip ci]` from the squash subject). The **CI-Dispatch Gate** (`docs/plans/202606/261-ci-trigger-gate-plan.md`, #261) closes the residual gap: after the final loud push it polls `gh pr view --json statusCheckRollup` for a `bkit-decide` run, self-heals once with a clean `re-trigger` commit if none appears, and terminates with a named verdict (`dispatched`/`self-healed`/`no-ci`/`unresolved`). The outcome-verification gate is now the enforcement mechanism — not just the pre-push string clause. EC-2 abort-guard prevents Failure-Path abort commits from pushing a `[skip ci]` HEAD onto a live PR.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** high
 - **Source:** phase
-- **Related:** BAR-146, BAR-131 (PR #7 first observation), `.bkit/workflows/bkit-build.md` Step 17, `.bkit/workflows/bkit-debug.md` Step 11, `.bkit/workflows/bkit-ship.md` Step 5 + Gate 5, `.bkit/docs/workflows.md` § CI / Vercel commit tags
+- **Related:** BAR-146, BAR-131 (PR #7 first observation), #261 (CI-Dispatch Gate — outcome-based verification), `.bkit/workflows/bkit-build.md` Step 18 Gate 18, `.bkit/workflows/bkit-debug.md` Step 10 Gate 10, `.bkit/workflows/bkit-ship.md` Step 5 + Gate 5, `.bkit/workflows.md` § CI-Dispatch Gate
 
 ## KN-12: Transactional install via staging dir — zero-overwrite mid-failure guarantee (2026-05-07)
 

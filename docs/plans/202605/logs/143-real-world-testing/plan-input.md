@@ -470,14 +470,15 @@ tags, and the `LIVE_API` mode flag. The tier table:
 
 ```
 
-| Tier        | Script                  | Liveness            | Tag      | What it exercises                                    | Where it runs                                |
-| ----------- | ----------------------- | ------------------- | -------- | ---------------------------------------------------- | -------------------------------------------- |
-| Unit        | `test:unit`             | mocked              | —        | Pure units, fast.                                    | CI on every PR (folded into `test`).         |
-| Integration | `test:integration`      | mocked              | —        | Component seams with deps mocked.                    | CI on every PR (folded into `test`).         |
-| E2E         | `test:e2e`              | mocked              | —        | End-to-end paths with external deps mocked.          | CI on every PR (folded into `test`).         |
-| Integration | `test:integration:live` | live (`LIVE_API=1`) | `@live`  | The integration assertions re-run against real APIs. | debug live gate; not in bare `test`.         |
-| E2E         | `test:e2e:live`         | live (`LIVE_API=1`) | `@live`  | The e2e assertions re-run against real APIs.         | debug live gate; not in bare `test`.         |
-| Smoke       | `test:smoke`            | live (`LIVE_API=1`) | `@smoke` | A curated `@smoke` subset of the live tests.         | main/dev push + build gate; agent-invocable. |
+<!-- prettier-ignore -->
+| Tier | Script | Liveness | Tag | What it exercises | Where it runs |
+| --- | --- | --- | --- | --- | --- |
+| Unit | `test:unit` | mocked | — | Pure units, fast. | CI on every PR (folded into `test`). |
+| Integration | `test:integration` | mocked | — | Component seams with deps mocked. | CI on every PR (folded into `test`). |
+| E2E | `test:e2e` | mocked | — | End-to-end paths with external deps mocked. | CI on every PR (folded into `test`). |
+| Integration | `test:integration:live` | live (`LIVE_API=1`) | `@live` | The integration assertions re-run against real APIs. | debug live gate; not in bare `test`. |
+| E2E | `test:e2e:live` | live (`LIVE_API=1`) | `@live` | The e2e assertions re-run against real APIs. | debug live gate; not in bare `test`. |
+| Smoke | `test:smoke` | live (`LIVE_API=1`) | `@smoke` | A curated `@smoke` subset of the live tests. | main/dev push + build gate; agent-invocable. |
 
 ````
 

@@ -107,11 +107,12 @@ describe("Group A templates — hash-comment markers (YAML files)", () => {
 // ---------------------------------------------------------------------------
 // Group B — Partial-ownership templates
 // ci.yml: Tier-3 (seed-or-print). Consumer-owned; bkit seeds once and never
-//   rewrites. The only marker is the NAMED `verbose-ci-env` block, which the
-//   preflight (detectCiYmlVerboseCiBlockMissing) checks by name. The bare
-//   whole-file `# bkit:start`/`# bkit:end` markers were removed in the
-//   v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because consumers
-//   misread them as "bkit owns/syncs these steps".
+//   rewrites. It carries NAMED bkit-managed blocks (`verbose-ci-env`,
+//   `main-lag-warning`), whose drift/absence is surfaced generically by the
+//   preflight `detectTier2TextDrift` advisory (named-block-aware — no per-block
+//   detector). The bare whole-file `# bkit:start`/`# bkit:end` markers were
+//   removed in the v0.2.1 Tier-2 -> Tier-3 migration (commit 7fcb8d3) because
+//   consumers misread them as "bkit owns/syncs these steps".
 // .vale.ini: markers wrap StylesPath, Packages, MinAlertLevel, House style enable
 // ---------------------------------------------------------------------------
 
@@ -163,6 +164,17 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block!).toContain("TURBO_LOG_LEVEL");
     expect(block!).toContain("GH_BKIT_TOKEN");
   });
+
+  it("ci.yml install step writes the GH Packages auth token via pnpm config set (#274)", () => {
+    const content = readTemplate(".github/workflows/ci.yml");
+    // #274: token goes into pnpm user-level config before install (pnpm >=10.34.3 401s
+    // on a project-.npmrc ${GH_BKIT_TOKEN} env-substitution).
+    expect(content).toMatch(
+      /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
+    );
+    // The broken project-.npmrc env-substituted token line must NOT be seeded.
+    expect(content).not.toMatch(/_authToken=\$\{GH_BKIT_TOKEN\}/);
+  });
 });
 
 describe("Group B templates — .vale.ini partial-ownership markers", () => {
@@ -205,7 +217,8 @@ describe("Group B templates — .vale.ini partial-ownership markers", () => {
 
 // ---------------------------------------------------------------------------
 // slop-scan.config.json — JSON deep-containment, NOT markers
-// Ten required core rules must be present with enabled: true
+// Eleven required rules must be present with enabled: true — the ten core
+// built-ins plus the boundary/type-suppression plugin rule (#263).
 // ---------------------------------------------------------------------------
 
 describe("slop-scan.config.json — required core rules (JSON deep-containment)", () => {
@@ -220,9 +233,12 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     "defensive.error-swallowing",
     "defensive.error-obscuring",
     "defensive.async-noise",
+    // Plugin rule (loaded via the `plugins.boundary` ref) — flags unsafe
+    // boundary casts and ts-suppression directives. Wiring asserted below.
+    "boundary/type-suppression",
   ];
 
-  it("template contains all 10 required rule keys", () => {
+  it("template contains all 11 required rule keys", () => {
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { rules?: Record<string, { enabled?: boolean }> };
     const rules = data.rules ?? {};
@@ -248,13 +264,21 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     expect(data.rules?.["comments.placeholder-comments"]?.weight).toBe(1.5);
   });
 
-  it("template has exactly 10 required rules (no extra bkit-mandated rules beyond the ten)", () => {
+  it("template has exactly 11 required rules (no extra bkit-mandated rules beyond the eleven)", () => {
     // This test documents the expected scope — if bkit adds a new required rule,
     // this test must be updated with the new rule's key.
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { rules?: Record<string, unknown> };
     const templateRuleKeys = Object.keys(data.rules ?? {});
     expect(templateRuleKeys.length).toBe(REQUIRED_RULES.length);
+  });
+
+  it("wires the boundary plugin so boundary/type-suppression can load (#263)", () => {
+    // The rule is plugin-provided: without the plugins ref slop-scan throws on
+    // load ("plugin not loaded"), wedging lint:slop. Guard rule+plugin together.
+    const content = readTemplate("slop-scan.config.json");
+    const data = JSON.parse(content) as { plugins?: Record<string, string> };
+    expect(data.plugins?.boundary).toBe("./.bkit/scripts/bkit-slop-type-suppression.mjs");
   });
 });
 

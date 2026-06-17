@@ -42,11 +42,12 @@ The plan exceeds both the task-count limit (24 > 15) and the token ceiling (~180
 
 **Proposed sub-plan groupings (each fits one session):**
 
-| Sub-plan                                                                               | Scope                                                                                                                                                                                                                          | Approx tasks                 |
-| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------- |
-| **A — Human confirmations + prereqs**                                                  | Gate 1 human sign-off (Acceptance Scenario + Breaking Changes), #184 coordination (exact assertion snippet), preflight review                                                                                                  | 0 runbook tasks; human-gated |
-| **B — Block 1: D1 + cloud split + enforcement + advisories**                           | T1.1–T1.11 (template/rendered YAML, renderCloudWorkflow, CLI flag, module/manifest split, bkit.cloud field, install constraints, advisory flip, check assertion, postinstall reconciliation, dry-run parity, advisories regen) | 11 tasks                     |
-| **C — Block 2 + 3: #184 assertion + D2 skip-tags + two-tier CI gate + D3 concurrency** | T2.1–T2.7, T3.1 (depends on #184 shape known; depends on Block 1 YAML edits for the gate template)                                                                                                                             | 8 tasks                      |
-| **D — Block 4 + verification pass**                                                    | T4.1–T4.3, full Vitest run, typecheck, render-parity, live install/upgrade dogfood, Gate 4 sign-off, documentation completion                                                                                                  | 3 tasks + verification       |
+<!-- prettier-ignore -->
+| Sub-plan | Scope | Approx tasks |
+| --- | --- | --- |
+| **A — Human confirmations + prereqs** | Gate 1 human sign-off (Acceptance Scenario + Breaking Changes), #184 coordination (exact assertion snippet), preflight review | 0 runbook tasks; human-gated |
+| **B — Block 1: D1 + cloud split + enforcement + advisories** | T1.1–T1.11 (template/rendered YAML, renderCloudWorkflow, CLI flag, module/manifest split, bkit.cloud field, install constraints, advisory flip, check assertion, postinstall reconciliation, dry-run parity, advisories regen) | 11 tasks |
+| **C — Block 2 + 3: #184 assertion + D2 skip-tags + two-tier CI gate + D3 concurrency** | T2.1–T2.7, T3.1 (depends on #184 shape known; depends on Block 1 YAML edits for the gate template) | 8 tasks |
+| **D — Block 4 + verification pass** | T4.1–T4.3, full Vitest run, typecheck, render-parity, live install/upgrade dogfood, Gate 4 sign-off, documentation completion | 3 tasks + verification |
 
 Sub-plan B is the largest at 11 tasks but stays under 15 and its token demand (reading ~10 TypeScript source files + editing them) is bounded below 100 K. Sub-plan C is the most coordination-sensitive; it must not start until sub-plan A delivers the #184 snippet and sub-plan B has landed its YAML edits.

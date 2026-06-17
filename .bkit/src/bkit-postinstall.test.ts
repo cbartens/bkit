@@ -15,6 +15,7 @@ import {
   buildGithubProjectAdvisory,
   detectGithubProjectFieldIdFormat,
   detectNpmrcAuth,
+  detectNpmrcLegacyAuthToken,
   detectGhSecret,
   detectMainBranchProtection,
   detectVercelProject,
@@ -38,6 +39,7 @@ import {
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   detectRenderedPromptsStale,
+  detectManagedDocsStale,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -45,7 +47,7 @@ import {
   renderAdvisoriesMarkdown,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall";
-import { stampManagedVersion } from "./bkit-version";
+import { stampManagedVersion, managedVersionMarker } from "./bkit-version";
 
 // ---------------------------------------------------------------------------
 // Module-level mock for node:child_process
@@ -425,7 +427,19 @@ describe("detectGithubProjectFieldIdFormat", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectNpmrcAuth", () => {
-  it("returns 'present' when .npmrc has both required lines", () => {
+  // #274: registry-mapping-only is the correct shape — the auth token lives in
+  // pnpm's user-level config (pnpm config set), NOT in the project .npmrc.
+  it("returns 'present' when .npmrc has only the @cbartens registry mapping", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n",
+      "utf-8",
+    );
+    expect(detectNpmrcAuth(tmpDir)).toBe("present");
+  });
+
+  it("returns 'present' when .npmrc has the registry mapping plus a legacy authToken line", () => {
+    // Still 'present' for the registry check; the legacy line is flagged separately.
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
@@ -434,7 +448,7 @@ describe("detectNpmrcAuth", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("present");
   });
 
-  it("returns 'missing' when .npmrc exists but lacks registry line", () => {
+  it("returns 'missing' when .npmrc exists but lacks the @cbartens registry mapping", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
@@ -443,16 +457,7 @@ describe("detectNpmrcAuth", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("missing");
   });
 
-  it("returns 'missing' when .npmrc exists but lacks authToken line", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("missing");
-  });
-
-  it("returns 'missing' when .npmrc exists but lacks both lines", () => {
+  it("returns 'missing' when .npmrc has only an unrelated registry", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "registry=https://registry.npmjs.org/\n",
@@ -463,6 +468,30 @@ describe("detectNpmrcAuth", () => {
 
   it("returns 'unknown' (silent skip) when .npmrc is absent", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("unknown");
+  });
+});
+
+describe("detectNpmrcLegacyAuthToken", () => {
+  it("returns true when .npmrc carries a legacy GH Packages auth-token line", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "utf-8",
+    );
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(true);
+  });
+
+  it("returns false for a registry-only .npmrc (the correct shape)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n",
+      "utf-8",
+    );
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
+  });
+
+  it("returns false when .npmrc is absent", () => {
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
   });
 });
 
@@ -604,99 +633,72 @@ describe("detectVercelEnv", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectCiYmlMissingTokenEnv", () => {
-  it("returns finding when ci.yml has pnpm install but no GH_BKIT_TOKEN env mapping", () => {
+  const writeCi = (steps: string) => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-`,
+      `\njobs:\n  build:\n    steps:\n${steps}\n`,
       "utf-8",
     );
+  };
+  // #274 canonical correct install step: pnpm config set (user-level auth) + env mapping.
+  const CONFIG_SET = '          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"';
+  const INSTALL = "          pnpm install --frozen-lockfile";
+  const ENV_BLOCK = "        env:\n          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}";
+  const correctStep = `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n${ENV_BLOCK}`;
+
+  it("returns null when install step has both pnpm config set and env mapping", () => {
+    writeCi(correctStep);
+    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when env mapping uses quotes (with config set)", () => {
+    writeCi(
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN: "\${{ secrets.GH_BKIT_TOKEN }}"`,
+    );
+    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns null when env mapping has no inner spaces (with config set)", () => {
+    writeCi(
+      `      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}\n        env:\n          GH_BKIT_TOKEN: \${{secrets.GH_BKIT_TOKEN}}`,
+    );
+    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  });
+
+  it("returns advisory finding when install step has neither config set nor env mapping", () => {
+    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     const result = detectCiYmlMissingTokenEnv(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("ci-yml-missing-token-env");
     expect(result!.severity).toBe("advisory");
   });
 
-  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping (standard form)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
-`,
-      "utf-8",
+  it("flags when env mapping present but the pnpm config set auth step is missing (#274 new-shape gap)", () => {
+    writeCi(
+      `      - name: Install Dependencies\n${INSTALL.replace(/^ {10}/, "        run: ")}\n${ENV_BLOCK}`,
     );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("pnpm config set");
   });
 
-  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping with quotes", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          GH_BKIT_TOKEN: "\${{ secrets.GH_BKIT_TOKEN }}"
-`,
-      "utf-8",
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
-  });
-
-  it("returns null when ci.yml has GH_BKIT_TOKEN env mapping with no inner spaces", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-        env:
-          GH_BKIT_TOKEN: \${{secrets.GH_BKIT_TOKEN}}
-`,
-      "utf-8",
-    );
-    expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
+  it("flags when pnpm config set present but env mapping is missing", () => {
+    writeCi(`      - name: Install Dependencies\n        run: |\n${CONFIG_SET}\n${INSTALL}`);
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.detect).toContain("GH_BKIT_TOKEN env mapping");
   });
 
   it("returns null when ci.yml is absent", () => {
     expect(detectCiYmlMissingTokenEnv(tmpDir)).toBeNull();
   });
 
-  it("elevates severity to blocker when .npmrc references ${GH_BKIT_TOKEN}", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-`,
-      "utf-8",
-    );
+  it("elevates to blocker when .npmrc maps the @cbartens registry and wiring is incomplete", () => {
+    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "@cbartens:registry=https://npm.pkg.github.com\n",
       "utf-8",
     );
     const result = detectCiYmlMissingTokenEnv(tmpDir);
@@ -705,40 +707,27 @@ jobs:
     expect(result!.detect).toContain("401");
   });
 
-  it("stays advisory when .npmrc has no ${GH_BKIT_TOKEN} reference", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+  it("elevates to blocker when .npmrc carries a legacy ${GH_BKIT_TOKEN} ref and wiring is incomplete", () => {
+    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-`,
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
       "utf-8",
     );
+    const result = detectCiYmlMissingTokenEnv(tmpDir);
+    expect(result!.severity).toBe("blocker");
+  });
+
+  it("stays advisory when .npmrc has no GH Packages signal", () => {
+    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     fs.writeFileSync(path.join(tmpDir, ".npmrc"), "save-exact=true\n", "utf-8");
     const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
     expect(result!.severity).toBe("advisory");
   });
 
-  it("stays advisory when .npmrc is absent (no token reference to break)", () => {
-    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, ".github", "workflows", "ci.yml"),
-      `
-jobs:
-  build:
-    steps:
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-`,
-      "utf-8",
-    );
+  it("stays advisory when .npmrc is absent", () => {
+    writeCi("      - name: Install Dependencies\n        run: pnpm install --frozen-lockfile");
     const result = detectCiYmlMissingTokenEnv(tmpDir);
-    expect(result).not.toBeNull();
     expect(result!.severity).toBe("advisory");
   });
 });
@@ -1525,29 +1514,25 @@ describe("formatChecklist", () => {
 // ---------------------------------------------------------------------------
 
 describe("renderAdvisoriesMarkdown", () => {
-  const fixedTs = "2026-05-18T12:00:00.000Z";
-
   it("renders a 'no advisories' stub when findings is empty", () => {
     const md = renderAdvisoriesMarkdown([], {
       mode: "install",
       version: "2.2.0",
-      timestamp: fixedTs,
     });
     expect(md).toContain("# bkit advisories");
-    expect(md).toContain(`_Generated: ${fixedTs}_`);
+    expect(md).not.toContain("_Generated:");
     expect(md).toContain("_bkit: 2.2.0_");
     expect(md).toContain("_Mode: install_");
     expect(md).toContain("**No advisories.** Last run was clean.");
     expect(md).not.toContain("INSTRUCTIONS FOR AN AI AGENT");
   });
 
-  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose (#195)", () => {
+  it("starts with a Vale whole-file skip marker — generated artifact must not fail consumer lint:prose", () => {
     // Empty and populated render paths must both lead with the marker, since the
     // gitignored artifact is linted on-disk by the shipped lint:prose glob.
     const empty = renderAdvisoriesMarkdown([], {
       mode: "check",
       version: "2.8.2",
-      timestamp: fixedTs,
     });
     expect(empty.startsWith("<!-- vale off -->")).toBe(true);
     const populated = renderAdvisoriesMarkdown(
@@ -1559,7 +1544,7 @@ describe("renderAdvisoriesMarkdown", () => {
           action: "So does this.",
         },
       ],
-      { mode: "check", version: "2.8.2", timestamp: fixedTs },
+      { mode: "check", version: "2.8.2" },
     );
     expect(populated.startsWith("<!-- vale off -->")).toBe(true);
   });
@@ -1572,7 +1557,6 @@ describe("renderAdvisoriesMarkdown", () => {
     const md = renderAdvisoriesMarkdown(findings, {
       mode: "doctor",
       version: "9.9.9",
-      timestamp: fixedTs,
     });
     expect(md).toContain("_Mode: doctor_");
     expect(md).toContain("2 finding(s) — 1 blocker, 1 advisory.");
@@ -1594,7 +1578,6 @@ describe("renderAdvisoriesMarkdown", () => {
     const md = renderAdvisoriesMarkdown(findings, {
       mode: "check",
       version: "1.0.0",
-      timestamp: fixedTs,
     });
     expect(md).toContain("3 finding(s) — 2 blocker, 1 advisory.");
   });
@@ -2139,6 +2122,129 @@ describe("detectRenderedPromptsStale", () => {
   it("truncates the example list and reports the overflow count", () => {
     for (let i = 0; i < 8; i++) writeRendered(".claude/agents", `bkit-${i}.md`, "3.0.0");
     const f = detectRenderedPromptsStale(tmpDir, "4.0.0");
+    expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectManagedDocsStale (#256 extension) — managed docs/*.md version gate
+// ---------------------------------------------------------------------------
+
+describe("detectManagedDocsStale", () => {
+  // A separate fake package-templates root so the canonical doc SET is enumerated
+  // from there (mirrors getTemplatesRoot() in production), independent of tmpDir.
+  let templatesRoot: string;
+
+  beforeEach(() => {
+    templatesRoot = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-tmpl-"));
+  });
+  afterEach(() => {
+    fs.rmSync(templatesRoot, { recursive: true, force: true });
+  });
+
+  // Declare a doc as bkit-managed by placing it in the template tree.
+  function declareCanonical(rel: string): void {
+    const p = path.join(templatesRoot, "docs", rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, "<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n\n# T\n<!-- bkit:end -->\n");
+  }
+
+  // Write a consumer-side doc with (or without) a managed marker as the block's
+  // first line. `markerVersion === undefined` → no bkit:start block at all.
+  function writeConsumerDoc(rel: string, markerVersion: string | null | undefined): void {
+    const p = path.join(tmpDir, "docs", rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    if (markerVersion === undefined) {
+      fs.writeFileSync(p, "# plain consumer doc, no managed block\n");
+      return;
+    }
+    const markerLine = markerVersion ? managedVersionMarker(markerVersion) + "\n" : "";
+    fs.writeFileSync(p, `<!-- bkit:start -->\n${markerLine}\n# T\n<!-- bkit:end -->\n`);
+  }
+
+  it("returns null when every managed doc marker matches the installing version", () => {
+    declareCanonical("testing.md");
+    declareCanonical("plans/template.md");
+    writeConsumerDoc("testing.md", "4.0.0");
+    writeConsumerDoc("plans/template.md", "4.0.0");
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("returns a blocker when a managed doc marker is older than the installing version", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", "4.0.0");
+    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.severity).toBe("blocker");
+    expect(f?.detect).toContain("4.1.0");
+    expect(f?.detect).toContain("docs/testing.md");
+    expect(f?.detect).toContain("(v4.0.0)");
+  });
+
+  it("flags a managed doc whose block carries no marker (pre-feature / hand-edited)", () => {
+    declareCanonical("deployments.md");
+    writeConsumerDoc("deployments.md", null);
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.detect).toContain("docs/deployments.md");
+    expect(f?.detect).toContain("no marker");
+  });
+
+  it("does NOT false-positive on user plans/logs that inherit template.md's bkit:start block", () => {
+    // Only plans/template.md is canonical; a consumer's instantiated plans + logs
+    // under docs/plans/{YYYYMM}/ inherit its bkit:start but are user-owned.
+    declareCanonical("plans/template.md");
+    writeConsumerDoc("plans/template.md", "4.0.0"); // fresh canonical
+    // User plan + log, both stale-looking and marker-less — must be ignored.
+    writeConsumerDoc("plans/202605/143-feature-plan.md", "1.0.0");
+    writeConsumerDoc("plans/202605/logs/143-feature/plan-v1-draft.md", null);
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("skips canonical docs the consumer does not have (no crash, others still checked)", () => {
+    declareCanonical("testing.md");
+    declareCanonical("observability.md"); // consumer never created this one
+    writeConsumerDoc("testing.md", "3.0.0"); // stale
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
+    expect(f?.detect).toContain("docs/testing.md");
+    expect(f?.detect).not.toContain("observability.md");
+    expect(f?.detect).toContain("1 of 1"); // only testing.md was scanned
+  });
+
+  it("ignores a consumer doc that dropped the managed block entirely", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", undefined); // no bkit:start → not ours to gate
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("guards against a 0.0.0 / empty installing version (no false blocker)", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", "3.0.0");
+    expect(detectManagedDocsStale(tmpDir, "0.0.0", templatesRoot)).toBeNull();
+    expect(detectManagedDocsStale(tmpDir, "", templatesRoot)).toBeNull();
+  });
+
+  it("ignores deeper prose references to the marker, reading only the first in-block stamp", () => {
+    declareCanonical("decisions.md");
+    const p = path.join(tmpDir, "docs", "decisions.md");
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    // Real first-line stamp = current; a prose mention of an example version
+    // appears deeper and must NOT be the one read.
+    fs.writeFileSync(
+      p,
+      `<!-- bkit:start -->\n${managedVersionMarker("4.0.0")}\n\n# Decisions\n\n` +
+        "Docs stamp a `<!-- bkit:managed vX.Y.Z … -->` marker.\n<!-- bkit:end -->\n",
+    );
+    expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
+  });
+
+  it("truncates the example list and reports the overflow count", () => {
+    for (let i = 0; i < 8; i++) {
+      declareCanonical(`doc-${i}.md`);
+      writeConsumerDoc(`doc-${i}.md`, "3.0.0");
+    }
+    const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
     expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
   });
 });

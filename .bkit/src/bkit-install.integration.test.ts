@@ -21,6 +21,7 @@ import {
   getStagingDir,
   runPayload,
   STAGING_ROOT,
+  detectOpencodeProviders,
 } from "./bkit-install";
 import type { WriteSet } from "./bkit-tiers";
 import type { ModuleFlag } from "./bkit-cli";
@@ -1662,5 +1663,141 @@ describe("#252 — install requires ≥1 module flag; check/upgrade take none", 
     expect(run(["install", "--cursor"]).status).toBe(0);
     const r = run(["check"]);
     expect(r.status, `check should be clean:\n${r.stdout}\n${r.stderr}`).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)
+// ---------------------------------------------------------------------------
+
+describe("detectOpencodeProviders — multi-provider tracking (issue #281 Task 2)", () => {
+  it("reads opencodeProviders array from package.json", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        bkit: { opencodeProvider: "groq", opencodeProviders: ["nvidia", "groq"] },
+      }),
+      "utf-8",
+    );
+    const providers = detectOpencodeProviders(tmpDir);
+    expect(providers).toEqual(["nvidia", "groq"]);
+  });
+
+  it("falls back to [opencodeProvider] for legacy single-string installs", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", bkit: { opencodeProvider: "nvidia" } }),
+      "utf-8",
+    );
+    const providers = detectOpencodeProviders(tmpDir);
+    expect(providers).toEqual(["nvidia"]);
+  });
+
+  it("returns [] when no bkit opencode fields present", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
+    const providers = detectOpencodeProviders(tmpDir);
+    expect(providers).toEqual([]);
+  });
+
+  it("filters invalid providers from the array", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({
+        name: "x",
+        bkit: { opencodeProviders: ["nvidia", "bad-provider", "groq"] },
+      }),
+      "utf-8",
+    );
+    const providers = detectOpencodeProviders(tmpDir);
+    expect(providers).toEqual(["nvidia", "groq"]);
+  });
+
+  it("returns [] when package.json does not exist", () => {
+    // tmpDir has no package.json
+    const providers = detectOpencodeProviders(tmpDir);
+    expect(providers).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// opencodeProviders persist block — two sequential installs + legacy migration
+// (issue #281 Task 2)
+// ---------------------------------------------------------------------------
+
+describe("opencodeProviders persist block — sequential installs + legacy migration (issue #281 Task 2)", () => {
+  let tmp: string;
+  const installPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "bkit-install.ts");
+  const tsxPath = () =>
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../node_modules/.bin/tsx");
+
+  function run(args: string[]) {
+    return spawnSync(tsxPath(), [installPath(), ...args], {
+      cwd: tmp,
+      encoding: "utf-8",
+      env: { ...process.env, NODE_NO_WARNINGS: "1", GH_BKIT_TOKEN: "fake-token-for-test" },
+      timeout: 60_000,
+    });
+  }
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-281-task2-"));
+    fs.writeFileSync(
+      path.join(tmp, "package.json"),
+      JSON.stringify({ name: "consumer", version: "0.0.0" }, null, 2),
+    );
+    fs.mkdirSync(path.join(tmp, ".git"), { recursive: true });
+  });
+  afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+  it("two sequential installs: opencodeProviders = both, opencodeProvider = second", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    // First install: nvidia
+    const r1 = run(["install", "--opencode=nvidia"]);
+    expect(r1.status, `first install failed:\n${r1.stdout}\n${r1.stderr}`).toBe(0);
+
+    const pkg1 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
+      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
+    };
+    expect(pkg1.bkit?.opencodeProvider).toBe("nvidia");
+    expect(pkg1.bkit?.opencodeProviders).toEqual(["nvidia"]);
+
+    // Second install: groq
+    const r2 = run(["install", "--opencode=groq"]);
+    expect(r2.status, `second install failed:\n${r2.stdout}\n${r2.stderr}`).toBe(0);
+
+    const pkg2 = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
+      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
+    };
+    expect(pkg2.bkit?.opencodeProvider).toBe("groq");
+    expect(pkg2.bkit?.opencodeProviders).toContain("nvidia");
+    expect(pkg2.bkit?.opencodeProviders).toContain("groq");
+    expect(pkg2.bkit?.opencodeProviders).toHaveLength(2);
+  });
+
+  it("legacy single-string install migrates to opencodeProviders array on next install", () => {
+    if (!fs.existsSync(tsxPath())) return;
+    // Simulate a legacy install: only bkit.opencodeProvider, no opencodeProviders
+    fs.writeFileSync(
+      path.join(tmp, "package.json"),
+      JSON.stringify(
+        { name: "consumer", version: "0.0.0", bkit: { opencodeProvider: "nvidia" } },
+        null,
+        2,
+      ),
+    );
+
+    // Run a new install with groq — should migrate nvidia into the array
+    const r = run(["install", "--opencode=groq"]);
+    expect(r.status, `install failed:\n${r.stdout}\n${r.stderr}`).toBe(0);
+
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmp, "package.json"), "utf-8")) as {
+      bkit?: { opencodeProvider?: string; opencodeProviders?: string[] };
+    };
+    expect(pkg.bkit?.opencodeProvider).toBe("groq");
+    expect(pkg.bkit?.opencodeProviders).toContain("nvidia");
+    expect(pkg.bkit?.opencodeProviders).toContain("groq");
+    expect(pkg.bkit?.opencodeProviders).toHaveLength(2);
   });
 });

@@ -394,9 +394,13 @@ export function writeTier2(srcPath, dstPath, tokens, markerStyle, dryRun, ws) {
  * the AI message. Used by callers whose templates contain {{TOKEN}}
  * placeholders (e.g. ci.yml).
  */
-export function writeTier3(srcPath, dstPath, dryRun, advisories, ws, aiMessage, tokens) {
+export function writeTier3(srcPath, dstPath, dryRun, advisories, ws, aiMessage, tokens, transform) {
     const srcRaw = fs.readFileSync(srcPath, "utf-8");
-    const srcContent = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+    const srcTokens = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+    // `transform` runs AFTER token substitution so it sees fully-resolved content
+    // (used by the ci.yml skeleton derivation for --ci-only installs, #265). It is
+    // applied to BOTH the written file and the {{TEMPLATE_CONTENT}} merge suggestion.
+    const srcContent = transform ? transform(srcTokens) : srcTokens;
     const dstBasename = path.basename(dstPath);
     if (fs.existsSync(dstPath)) {
         // Present → suggest diff, don't write

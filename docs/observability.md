@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Observability
 
 > [!CAUTION]
@@ -114,7 +116,8 @@ Phase 3 detects missing/misconfigured `GH_BKIT_TOKEN` at four surfaces and emits
 | Detector | Surface |
 | --- | --- |
 | `detectShellToken` | Local shell env var |
-| `detectNpmrcAuth` | `.npmrc` auth token line |
+| `detectNpmrcAuth` | `.npmrc` `@cbartens` registry mapping (token lives in pnpm user-level config, not here) |
+| `detectNpmrcLegacyAuthToken` | `.npmrc` legacy `_authToken` line — migration nudge (401s on pnpm >=10.34.3) |
 | `detectGhSecret` | GitHub Actions secret |
 | `detectVercelEnv` | Vercel preview + production env vars |
 

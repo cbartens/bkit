@@ -193,6 +193,13 @@ export interface ModuleContext {
    * older ctx builders keep working — production install/upgrade set it explicitly.
    */
   version?: string;
+  /**
+   * Whether the `ci` module should seed the WIRED ci.yml (Node/TS step bodies active) vs
+   * the stack-agnostic SKELETON (#265). Set by dispatchModules to `modules.has("lint")`
+   * (i.e. --typescript/--tooling co-installed). Optional: when absent, runCiModule treats
+   * it as false (skeleton) — but production dispatch always sets it.
+   */
+  wiredCi?: boolean;
 }
 
 export type ModuleFn = (ctx: ModuleContext) => void;
@@ -221,6 +228,10 @@ const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
   path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
+  // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
+  // consumer never receives them (#265). runLintModule emits them as Tier 1.
+  path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
+  path.join(".bkit", "scripts", "bkit-slop-delta.sh"),
 ]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
@@ -876,13 +887,16 @@ export function runCoreModule(ctx: ModuleContext): void {
         "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
         "   - Name: GH_BKIT_TOKEN\n" +
         "   - See README.md ## Consumer CI auth for full setup.\n\n" +
-        "2. Add a `.npmrc` at your repo root so pnpm can authenticate to GH Packages:\n" +
-        "     @cbartens:registry=https://npm.pkg.github.com\n" +
-        "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
-        "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+        "2. Add a `.npmrc` at your repo root with the @cbartens registry mapping (the\n" +
+        "   auth token is NOT stored here — it goes in pnpm's user-level config):\n" +
+        "     @cbartens:registry=https://npm.pkg.github.com\n\n" +
+        "3. Write the token into pnpm's user-level config (run once; CI does this in its\n" +
+        "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN} ref:\n" +
+        '     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
+        "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
         "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
         "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
-        "`pnpm bkit install --tooling` to seed them all. Existing scripts are preserved\n" +
+        "`pnpm bkit install --typescript` to seed them all. Existing scripts are preserved\n" +
         "(consumer values always win).",
     });
   }
@@ -1094,7 +1108,7 @@ export function runClaudeModule(ctx: ModuleContext): void {
         action:
           "1. Delete the orphan script: rm .bkit/scripts/bkit-mode.sh\n" +
           "2. Remove the source line from your shell rc (~/.zshrc or ~/.bashrc): delete or comment out the line that reads `source <repo-path>/.bkit/scripts/bkit-mode.sh`.\n" +
-          "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=ollama-local` or `--opencode=nvidia`). The claude host is always-on — no flag needed.\n" +
+          "3. Provider selection is now an install operation: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The claude host is always-on — no flag needed.\n" +
           "4. Check your installed hosts and credentials: `bkit doctor` (credentials + tools) and `bkit status` (installed hosts + providers).",
       });
     }
@@ -1223,6 +1237,25 @@ export function runCursorModule(ctx: ModuleContext): void {
       );
     }
   }
+
+  // Post-install advisory: macOS GUI-isolation note.
+  // MCP token placeholders (${GH_TOKEN}, ${LINEAR_API_KEY}, …) in .cursor/mcp.json are
+  // expanded by Cursor from the process environment. When Cursor is launched from the
+  // Dock/Finder (launchd), it does NOT inherit the login-shell / direnv env — tokens
+  // resolve empty and MCP calls fail with auth errors (#279/#280).
+  advisories.push({
+    id: "cursor-gui-isolation",
+    severity: "advisory",
+    detect:
+      "Cursor's MCP token placeholders (${GH_TOKEN}, …) resolve from process.env. " +
+      "Dock/Finder-launched Cursor does not inherit the login-shell / direnv env.",
+    action:
+      "[cursor] Use `bkit cursor` to launch Cursor — it execs the binary directly with " +
+      ".bkit/.env merged into the environment so MCP tokens resolve correctly. " +
+      "Quit Cursor first (a running instance will not see the new env). " +
+      'Alternative: `launchctl setenv GH_TOKEN "$GH_TOKEN"` (session-scoped; must re-run after reboot) ' +
+      "then relaunch from Dock.",
+  });
 }
 
 // checkBkitTokenSecret and detectVercelProject moved to bkit-postinstall.ts (Phase 3 owns them).
@@ -1254,12 +1287,11 @@ const OPENCODE_PROVIDER_DEFAULTS: Record<
     apiPlaceholder: string;
     npmPackage?: string;
     displayName?: string;
-    // managedAuth: opencode-native gateway whose credentials are held by opencode itself
-    // (`opencode auth login`), NOT a {env:KEY} block. renderOpencodeJson emits NO custom
-    // provider block for these (the provider is built into opencode).
-    managedAuth?: boolean;
-    // providerId: the opencode-side provider id when it differs from the bkit key (zen → opencode;
-    // model ids are providerId/<model>). Defaults to the bkit key elsewhere.
+    // builtin: opencode-native provider (the Zen gateway) that opencode resolves itself — no
+    // npm driver and no baseURL to seed. renderOpencodeJson emits a minimal provider block
+    // carrying only `options.apiKey` ({env:OPENCODE_API_KEY}), keyed by `providerId`.
+    builtin?: boolean;
+    // providerId: the opencode-side provider id (defaults to the bkit key; model ids are providerId/<model>).
     providerId?: string;
   }
 > = {
@@ -1313,25 +1345,24 @@ const OPENCODE_PROVIDER_DEFAULTS: Record<
     npmPackage: "@ai-sdk/openai-compatible",
     displayName: "Ollama (Cloud)",
   },
-  // opencode-native gateway. First-class built-in opencode provider (id "opencode";
-  // models opencode/<id>). Auth is opencode-managed (`opencode auth login`) — there is no
-  // env key and no baseURL to seed, so renderOpencodeJson emits NO custom provider block
-  // (managedAuth). Curated prompts.md column is deferred until the catalog is probed under
-  // a live login (#245 Phase 3); installs fall back to the opencode/set-model-id sentinel.
-  zen: {
-    envVar: "",
+  // opencode-native gateway (Zen; opencode's "Go" plan, alias `go`). First-class built-in
+  // opencode provider (id "opencode"; models opencode/<id>). Auth is via OPENCODE_API_KEY,
+  // referenced as {env:OPENCODE_API_KEY} — renderOpencodeJson emits a minimal provider block
+  // with only that apiKey (no npm driver, no baseURL: opencode resolves the built-in provider).
+  opencode: {
+    envVar: "OPENCODE_API_KEY",
     baseURL: "",
-    apiPlaceholder: "",
-    managedAuth: true,
+    apiPlaceholder: "{env:OPENCODE_API_KEY}",
+    builtin: true,
     providerId: "opencode",
-    displayName: "Zen",
+    displayName: "OpenCode",
   },
 };
 
 /**
- * The opencode-side provider id for a bkit provider key. Equal to the key for every custom
- * provider (groq → groq); differs only for managed-auth gateways whose opencode id is fixed
- * (zen → opencode). Model ids are `<providerId>/<model>`. Unknown keys pass through unchanged.
+ * The opencode-side provider id for a bkit provider key. Equal to the key for all providers
+ * (opencode → opencode, groq → groq, etc.). Model ids are `<providerId>/<model>`. Unknown
+ * keys pass through unchanged.
  */
 export function opencodeProviderId(providerKey: string): string {
   return OPENCODE_PROVIDER_DEFAULTS[providerKey]?.providerId ?? providerKey;
@@ -1387,11 +1418,14 @@ export function renderOpencodeJson(
     if (mcp && Object.keys(mcp).length === 0) {
       delete parsed.mcp;
     }
-    // Managed-auth gateways (zen): the provider is built into opencode and authenticated via
-    // `opencode auth login`, so there is NO custom provider block to seed — drop it entirely.
-    // Models are referenced as opencode/<id>; opencode resolves the built-in provider itself.
-    if (providerDefaults.managedAuth) {
-      delete parsed.provider;
+    // Built-in opencode gateway: opencode resolves the provider itself, so there is no
+    // npm driver and no baseURL to seed — emit a minimal block keyed by the opencode-side
+    // provider id carrying only the apiKey ({env:OPENCODE_API_KEY}). Models are opencode/<id>.
+    if (providerDefaults.builtin) {
+      const pid = providerDefaults.providerId ?? provider;
+      const options: Record<string, unknown> = {};
+      if (providerDefaults.apiPlaceholder) options.apiKey = providerDefaults.apiPlaceholder;
+      (parsed.provider as Record<string, unknown>) = { [pid]: { options } };
       return JSON.stringify(parsed, null, 2) + "\n";
     }
     // For npm-based custom providers (e.g. ollama-local), replace the api-openai provider
@@ -1417,24 +1451,19 @@ export function renderOpencodeJson(
 }
 
 /**
- * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template:
- * prune stale bkit-owned provider blocks, then deep-merge the template in.
+ * Reconcile a consumer's `.opencode/opencode.json` against the freshly-rendered template.
+ * Install is purely additive: existing provider blocks (bkit-seeded or consumer-added) are
+ * preserved unchanged. Only the current provider's template block is deep-merged in.
  *
- * The plain Tier-2 deep-merge (writeTier2JsonContained) keeps the consumer's existing
- * `provider.<x>` block because the new template has no key to override it — so switching
- * provider (e.g. nvidia -> zen, which is managed-auth and ships NO provider block) leaves a
- * stale `{env:NVIDIA_API_KEY}` provider behind. Here we delete any provider key bkit itself
- * could have seeded (a key in OPENCODE_PROVIDER_DEFAULTS) that is not the current provider,
- * leaving consumer-added providers (keys outside that set) untouched. (#255 P2-9)
+ * To remove a stale bkit provider block (e.g. after switching providers), use the surgical
+ * `removeOpencodeProviderBlock` below — called by the uninstall path, not install.
  *
  * Mirrors writeTier2JsonContained's contract (first-install write, idempotent no-op via
- * deepContains, else merge) with the pre-merge prune folded in, so dry-run and real runs
- * compute the identical writeset.
+ * deepContains, else merge), so dry-run and real runs compute the identical writeset.
  */
-function reconcileOpencodeJson(
+export function reconcileOpencodeJson(
   renderedTemplate: string,
   relDst: string,
-  currentProvider: string,
   dryRun: boolean,
   ws: WriteSet,
 ): void {
@@ -1465,26 +1494,8 @@ function reconcileOpencodeJson(
     );
   }
 
-  // Prune stale bkit-owned provider blocks (keep the current provider + any consumer-added ones).
-  let pruned = false;
-  const providerObj = existing.provider;
-  if (providerObj !== null && typeof providerObj === "object" && !Array.isArray(providerObj)) {
-    const pObj = providerObj as Record<string, JsonValue>;
-    for (const key of Object.keys(pObj)) {
-      if (key !== currentProvider && OPENCODE_PROVIDER_DEFAULTS[key] !== undefined) {
-        delete pObj[key];
-        pruned = true;
-      }
-    }
-    // Managed-auth switch (zen) leaves no bkit provider — drop an emptied provider object.
-    if (Object.keys(pObj).length === 0) {
-      delete existing.provider;
-      pruned = true;
-    }
-  }
-
-  // Idempotent no-op only when nothing was pruned AND the template is already contained.
-  if (!pruned && deepContains(template as JsonValue, existing as JsonValue).ok) {
+  // Idempotent no-op: skip write if existing already contains the template.
+  if (deepContains(template as JsonValue, existing as JsonValue).ok) {
     return;
   }
 
@@ -1495,6 +1506,46 @@ function reconcileOpencodeJson(
     fs.writeFileSync(relDst, mergedStr, "utf-8");
   }
   ws.writes.push({ path: relDst, action: "update" });
+}
+
+/**
+ * Remove exactly one bkit-seeded provider block from the consumer's opencode.json.
+ * `dst` may be an absolute or relative path (fs.* accepts both).
+ * Used by the surgical uninstall path — this is NOT called during install (install is additive).
+ * Compares on opencodeProviderId(providerKey) to resolve the opencode-side block key.
+ * The caller is responsible for passing only bkit-seeded provider keys; this function does not
+ * validate providerKey against OPENCODE_PROVIDER_DEFAULTS.
+ */
+export function removeOpencodeProviderBlock(
+  dst: string,
+  providerKey: string,
+  dryRun: boolean,
+  ws: WriteSet,
+): void {
+  if (!fs.existsSync(dst)) return;
+  // Parse-or-sentinel idiom: keep the early-return outside the catch body.
+  let existing: Record<string, JsonValue> | null = null;
+  try {
+    existing = JSON.parse(fs.readFileSync(dst, "utf-8")) as Record<string, JsonValue>;
+  } catch {
+    existing = null;
+  }
+  if (existing === null) {
+    console.warn(`[bkit] ${dst} is malformed — leaving as-is`);
+    return;
+  }
+  const blockKey = opencodeProviderId(providerKey);
+  const providerObj = existing.provider;
+  if (providerObj === null || typeof providerObj !== "object" || Array.isArray(providerObj)) return;
+  const pObj = providerObj as Record<string, JsonValue>;
+  if (!(blockKey in pObj)) return; // already absent — idempotent
+  delete pObj[blockKey];
+  if (Object.keys(pObj).length === 0) delete existing.provider;
+  const updatedStr = JSON.stringify(existing, null, 2) + "\n";
+  if (!dryRun) {
+    fs.writeFileSync(dst, updatedStr, "utf-8");
+  }
+  ws.writes.push({ path: dst, action: "update" });
 }
 
 const OPENCODE_JSON_MERGE_INSTRUCTIONS = `[bkit] .opencode/opencode.json exists — bkit will reconverge its managed keys (Tier-2 deep-contained). Manual review recommended after upgrade.
@@ -1534,12 +1585,12 @@ export function runOpencodeModule(ctx: ModuleContext): void {
     const jsonDst = ".opencode/opencode.json";
     if (fs.existsSync(jsonSrc)) {
       // Render the template with tracker-filtered mcp + provider config, then reconcile it into
-      // the consumer file. reconcileOpencodeJson prunes a stale prior provider block before the
-      // deep-merge (so a provider switch doesn't leave an orphan `{env:VAR}` block) and computes
-      // an identical writeset for dry-run vs real runs — no `.bkit-staging` scratch file. (#255 P2-9)
+      // the consumer file. Install is additive: existing provider blocks are preserved.
+      // reconcileOpencodeJson computes an identical writeset for dry-run vs real runs — no
+      // `.bkit-staging` scratch file.
       const rendered = renderOpencodeJson(jsonSrc, issueTracker, provider);
       const prevLen = ws.writes.length;
-      reconcileOpencodeJson(rendered, jsonDst, provider, dryRun, ws);
+      reconcileOpencodeJson(rendered, jsonDst, dryRun, ws);
       if (ws.writes.length > prevLen) {
         console.log(`${logPrefix} ${tag}opencode: ${jsonDst}`);
       }
@@ -1578,13 +1629,14 @@ export function runOpencodeModule(ctx: ModuleContext): void {
             `  2. Update .opencode/opencode.json provider.${provider}.options.baseURL for your endpoint.\n`
           );
         }
-        // Managed-auth gateway (zen) → opencode holds the credential; no API key, no baseURL.
-        // Checked BEFORE the empty-apiPlaceholder branch (zen also has an empty apiPlaceholder
-        // but is NOT a local Ollama server).
-        if (pd.managedAuth) {
+        // Built-in opencode gateway → keyed via OPENCODE_API_KEY, no baseURL to seed.
+        // Checked BEFORE the empty-apiPlaceholder branch so its guidance is gateway-specific.
+        if (pd.builtin) {
           return (
-            `  1. zen is the opencode-native gateway — auth is opencode-managed, no API key.\n` +
-            `  2. Log in once: \`opencode auth login\` (opencode.ai sign-in). Models are referenced as opencode/<id>.\n`
+            `  1. opencode is the opencode-native gateway. Create an API key at https://opencode.ai/auth.\n` +
+            `  2. Set ${pd.envVar} in your environment / .bkit/.env:\n` +
+            `     ${pd.envVar}=<your-api-key>\n` +
+            `  3. Models are referenced as opencode/<id>; opencode resolves the built-in provider.\n`
           );
         }
         // Local keyless provider (ollama-local) → local-setup guidance. Every provider uses
@@ -1611,9 +1663,13 @@ export function runOpencodeModule(ctx: ModuleContext): void {
           `  2. Provider base URL is pre-seeded: ${pd.baseURL}.\n`
         );
       })() +
-      `  3. Launch opencode: \`opencode\` (the CLI reads .opencode/opencode.json automatically).\n` +
-      `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, zen) install ready-to-run curated per-agent pins. ` +
-      `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. zen pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your \`opencode auth login\`.\n` +
+      `  3. Launch opencode: \`opencode\` (CLI, reads .opencode/opencode.json automatically), or\n` +
+      `     \`bkit opencode\` to launch the desktop app with .bkit/.env merged into its environment.\n` +
+      `     macOS GUI apps launched from the Dock/Finder do not inherit the login-shell / direnv\n` +
+      `     env — {env:KEY} placeholders in opencode.json resolve empty without this. Quit the\n` +
+      `     running app first (a running instance ignores the new env).\n` +
+      `  4. Model IDs: all seven providers (nvidia, ollama-local, groq, cerebras, openrouter, ollama, opencode) install ready-to-run curated per-agent pins. ` +
+      `Re-pin any agent via .bkit/prompts.md § Model Overrides or by probing the provider's live /v1/models — see .bkit/providers.md § Models. NOTE: ollama (cloud) opus/convergent pins (kimi-k2.6, deepseek-v4-pro) need a paid Ollama plan; its sonnet/haiku pins run on the free tier. opencode gateway pins are existence-validated against the live gateway catalog (https://opencode.ai/zen/v1/models); the per-model tool-call smoke needs your OPENCODE_API_KEY set.\n` +
       `  5. Verify with: \`bkit doctor\` (credentials + tools) and \`bkit status\` (installed hosts + providers).`,
   });
 }
@@ -1631,9 +1687,9 @@ export function runOpencodeModule(ctx: ModuleContext): void {
 // scanForeignBkitUses — BAR-164 installer guard. Returns every
 // `uses: cbartens/bkit/...@<ref>` line in the canonical CI template. While
 // `cbartens/bkit` stays private and consumers live in other GitHub orgs, such
-// references cannot be resolved by the runner's GITHUB_TOKEN. The env-var
-// pattern (GH_BKIT_TOKEN env on the install step) is the canonical install
-// flow — see README §"Consumer CI auth". `runCiModule` calls this and throws
+// references cannot be resolved by the runner's GITHUB_TOKEN. The canonical
+// install flow is the install step's `pnpm config set` + GH_BKIT_TOKEN env —
+// see README §"Consumer CI auth". `runCiModule` calls this and throws
 // before writing if any matches are found, so a regression is caught at
 // dev/CI time, never in a consumer repo.
 export function scanForeignBkitUses(content: string): string[] {
@@ -1656,23 +1712,27 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   jobs and triggers — preserve those.
 
   Required merge actions:
-  1. Ensure a .npmrc file exists at the repo root with these two lines:
+  1. Ensure a .npmrc file exists at the repo root with ONLY the registry mapping
+     (the auth token is NOT stored here):
 
         @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
      Commit this .npmrc file — the CI runner reads it during pnpm install.
 
-  2. Ensure the install step passes GH_BKIT_TOKEN from the repo secret:
+  2. Ensure the install step writes the auth token into pnpm's user-level config
+     BEFORE install. pnpm >=10.34.3 no longer authenticates a project-.npmrc
+     \${GH_BKIT_TOKEN} env-substitution (it 401s on download):
 
-        - name: Install dependencies
-          run: pnpm install --frozen-lockfile
+        - name: Install Dependencies
+          run: |
+            pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+            pnpm install --frozen-lockfile
           env:
             GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
   3. Remove any 'Configure private-repo auth' step (git config --global
      url."...cbartens/bkit...".insteadOf "...") — this git auth-shim is
-     obsolete. The .npmrc + env var approach replaces it entirely.
+     obsolete. The .npmrc + \`pnpm config set\` approach replaces it entirely.
 
   4. Ensure the GitHub repo secret GH_BKIT_TOKEN is set with a PAT that has
      read:packages scope (classic) or Packages: read permission (fine-grained).
@@ -2034,9 +2094,46 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // merge instructions when present.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// deriveCiSkeleton — turn the WIRED ci.yml template into the stack-agnostic SKELETON
+// by commenting out every line inside each `# bkit:start ts-ci-steps` … `# bkit:end
+// ts-ci-steps` region. The wired template is the single source of truth (bkit dogfoods
+// it); the skeleton is purely derived, so the two never drift (#265). The result is
+// valid YAML whose Node/TS step bodies are inert, copy-to-adapt examples — a non-Node
+// consumer (`--ci` without `--typescript`) gets a workflow that runs trivially green.
+// ---------------------------------------------------------------------------
+
+const CI_TS_REGION_START = /^\s*#\s*bkit:start ts-ci-steps\s*$/;
+const CI_TS_REGION_END = /^\s*#\s*bkit:end ts-ci-steps\s*$/;
+
+export function deriveCiSkeleton(content: string): string {
+  const lines = content.split("\n");
+  let inRegion = false;
+  const out = lines.map((line) => {
+    if (CI_TS_REGION_START.test(line)) {
+      inRegion = true;
+      return line;
+    }
+    if (CI_TS_REGION_END.test(line)) {
+      inRegion = false;
+      return line;
+    }
+    if (inRegion && line.trim() !== "") {
+      // Insert "# " after the leading whitespace so indentation is preserved.
+      const m = /^(\s*)(.*)$/.exec(line);
+      return m ? `${m[1]}# ${m[2]}` : `# ${line}`;
+    }
+    return line;
+  });
+  return out.join("\n");
+}
+
 export function runCiModule(ctx: ModuleContext): void {
   const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
   const tag = dryRun ? "[dry-run] " : "";
+  // Wired (Node/TS step bodies active) when the TS toolchain is co-installed
+  // (--typescript/--tooling ⇒ `lint` present). Otherwise seed the agnostic skeleton.
+  const wiredCi = ctx.wiredCi === true;
 
   const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "ci.yml");
   if (!fs.existsSync(templatePath)) {
@@ -2048,10 +2145,10 @@ export function runCiModule(ctx: ModuleContext): void {
   // `uses: cbartens/bkit/...@<ref>` reference. While `cbartens/bkit` stays
   // private and consumers live in other GitHub orgs, the runner's GITHUB_TOKEN
   // cannot resolve such a reference and CI fails with "repository not found"
-  // before any install step runs. The env-var pattern (GH_BKIT_TOKEN on the
-  // install step + .npmrc substitution) is the canonical install flow — see
-  // README §"Consumer CI auth". Hard error so the regression is caught at
-  // dev/CI time, never written into a consumer repo.
+  // before any install step runs. The canonical install flow is the install
+  // step's `pnpm config set` (writes the token to pnpm's user-level config) +
+  // GH_BKIT_TOKEN env — see README §"Consumer CI auth". Hard error so the
+  // regression is caught at dev/CI time, never written into a consumer repo.
   const templateContent = fs.readFileSync(templatePath, "utf-8");
   const foreignUses = scanForeignBkitUses(templateContent);
   if (foreignUses.length > 0) {
@@ -2070,9 +2167,12 @@ export function runCiModule(ctx: ModuleContext): void {
     ws,
     CI_YML_MERGE_INSTRUCTIONS,
     tokens,
+    wiredCi ? undefined : deriveCiSkeleton,
   );
   if (ws.writes.length > prevLen) {
-    console.log(`${logPrefix} ${tag}ci: ${dstPath}`);
+    console.log(
+      `${logPrefix} ${tag}ci: ${dstPath}${wiredCi ? "" : " (skeleton — no --typescript)"}`,
+    );
   } else if (result.suggested) {
     console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
   }
@@ -2091,52 +2191,49 @@ export function runCiModule(ctx: ModuleContext): void {
   // the default branch, so the file must reach `main` before App install —
   // default install can't sequence that).
 
-  // Ensure the typecheck script the workflow calls exists in package.json.
-  // `test` is deliberately not managed — too opinionated for a default.
-  const typecheckDefault = fs.existsSync("tsconfig.json")
-    ? "tsc --noEmit"
-    : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
-  const ciScripts = ensurePackageJsonScripts({ typecheck: typecheckDefault }, dryRun, ws);
-  if (ciScripts.added.length > 0) {
-    console.log(
-      `${logPrefix} ${tag}ci: package.json scripts added [${ciScripts.added.join(", ")}]`,
+  // Vale prose-lint config is stack-agnostic (external binary, lints .md) → ships with
+  // --ci (#265). The `lint:prose` npm wrapper + typecheck/test package.json footprint live
+  // under --typescript (runLintModule); --ci has NO package.json footprint so a non-Node
+  // consumer can install it and stay green.
+  const templatesBase = getTemplatesRoot();
+
+  // .vale.ini — Tier 3 (seed-or-print).
+  const valeIniSrc = path.join(templatesBase, ".vale.ini");
+  if (fs.existsSync(valeIniSrc)) {
+    const valeDst = ".vale.ini";
+    const prevValeLen = ws.writes.length;
+    const valeRes = writeTier3(
+      valeIniSrc,
+      valeDst,
+      dryRun,
+      advisories,
+      ws,
+      VALE_INI_MERGE_INSTRUCTIONS,
     );
-  }
-  if (ciScripts.missingPkg) {
-    advisories.push({
-      id: "ci-package-json-missing",
-      severity: "advisory",
-      detect: "package.json not found — cannot ensure `typecheck` script.",
-      action:
-        "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --tooling` after creating package.json.",
-    });
-  } else if (ciScripts.malformed) {
-    advisories.push({
-      id: "ci-package-json-malformed",
-      severity: "advisory",
-      detect: "package.json failed to parse — cannot ensure `typecheck` script.",
-      action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
-    });
-  }
-  // The `test` script is the consumer's responsibility — flag if absent so they know.
-  if (!dryRun && !ciScripts.missingPkg && !ciScripts.malformed) {
-    try {
-      const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
-        scripts?: Record<string, string>;
-      };
-      if (!pkg.scripts || !pkg.scripts.test) {
-        advisories.push({
-          id: "ci-no-test-script",
-          severity: "advisory",
-          detect: "package.json has no `test` script.",
-          action:
-            'The seeded ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
-        });
-      }
-    } catch {
-      // Already handled above
+    if (ws.writes.length > prevValeLen) {
+      console.log(`${logPrefix} ${tag}ci: ${valeDst}`);
+    } else if (valeRes.suggested) {
+      console.log(`${logPrefix} ${tag}ci: ${valeDst} (exists; AI merge instructions printed)`);
     }
   }
+
+  // .vale/styles/House/ — Tier 1 (fully managed).
+  const valeStylesSrc = path.join(templatesBase, ".vale", "styles", "House");
+  if (fs.existsSync(valeStylesSrc)) {
+    const valeStylesDst = path.join(".vale", "styles", "House");
+    ensureDir(valeStylesDst);
+    for (const file of fs.readdirSync(valeStylesSrc)) {
+      const srcPath = path.join(valeStylesSrc, file);
+      const dstFilePath = path.join(valeStylesDst, file);
+      if (!fs.statSync(srcPath).isFile()) continue;
+      const prevStyleLen = ws.writes.length;
+      writeTier1(srcPath, dstFilePath, tokens, dryRun, ws);
+      if (ws.writes.length > prevStyleLen) {
+        console.log(`${logPrefix} ${tag}ci: ${dstFilePath}`);
+      }
+    }
+  }
+
   // Note: GH_BKIT_TOKEN secret check and Vercel detection are now Phase 3 responsibilities.
   // runPostInstallCheck in bkit-postinstall.ts handles them after writes complete.
 }
@@ -2150,45 +2247,10 @@ export function runLintModule(ctx: ModuleContext): void {
   const tag = dryRun ? "[dry-run] " : "";
   const templatesBase = getTemplatesRoot();
 
-  // .vale.ini — Tier 3 (seed-or-print) since v0.2.1
-  // Was Tier 2 but appending a managed-block at EOF puts core options after
-  // [glob] sections, which Vale rejects (E201). Tier 3 seeds the whole file
-  // when absent and prints AI-actionable merge instructions when present.
-  const valeIniSrc = path.join(templatesBase, ".vale.ini");
-  if (fs.existsSync(valeIniSrc)) {
-    const valeDst = ".vale.ini";
-    const prevLen = ws.writes.length;
-    const valeRes = writeTier3(
-      valeIniSrc,
-      valeDst,
-      dryRun,
-      advisories,
-      ws,
-      VALE_INI_MERGE_INSTRUCTIONS,
-    );
-    if (ws.writes.length > prevLen) {
-      console.log(`${logPrefix} ${tag}lint: ${valeDst}`);
-    } else if (valeRes.suggested) {
-      console.log(`${logPrefix} ${tag}lint: ${valeDst} (exists; AI merge instructions printed)`);
-    }
-  }
-
-  // .vale/styles/House/ — Tier 1 (fully managed)
-  const valeStylesSrc = path.join(templatesBase, ".vale", "styles", "House");
-  if (fs.existsSync(valeStylesSrc)) {
-    const valeStylesDst = path.join(".vale", "styles", "House");
-    ensureDir(valeStylesDst);
-    for (const file of fs.readdirSync(valeStylesSrc)) {
-      const srcPath = path.join(valeStylesSrc, file);
-      const dstPath = path.join(valeStylesDst, file);
-      if (!fs.statSync(srcPath).isFile()) continue;
-      const prevLen = ws.writes.length;
-      writeTier1(srcPath, dstPath, tokens, dryRun, ws);
-      if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}lint: ${dstPath}`);
-      }
-    }
-  }
+  // Vale config (.vale.ini + .vale/styles/House) moved to the stack-agnostic `ci` module
+  // (#265) — vale is an external binary that lints .md, so it is not Node/TS-coupled. The
+  // `lint:prose` npm wrapper stays here (a package.json/Node convenience). --typescript
+  // always co-installs `ci`, so a --typescript consumer still gets the vale config.
 
   // slop-scan.config.json — Tier 3 (seed-or-print)
   const slopSrc = path.join(templatesBase, "slop-scan.config.json");
@@ -2245,14 +2307,31 @@ export function runLintModule(ctx: ModuleContext): void {
     }
   }
 
-  // Note: .bkit/scripts/bkit-slop-delta.sh (the `slop:delta` gate helper) ships via the core
-  // templates pass (.bkit/ is a core template dir), like .bkit/scripts/bkit-protect-main.sh —
-  // no per-module copy needed; the core pass preserves its +x bit.
+  // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
+  // ONLY with the TS toolchain (--typescript), never to a non-Node --ci consumer. Tier 1
+  // (bkit-owned, force-overwritten; core pass would preserve the +x bit, writeTier1 copies
+  // the source mode). Listed in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips them.
+  for (const script of ["bkit-slop-type-suppression.mjs", "bkit-slop-delta.sh"]) {
+    const scriptSrc = path.join(templatesBase, ".bkit", "scripts", script);
+    if (!fs.existsSync(scriptSrc)) continue;
+    const scriptDst = path.join(".bkit", "scripts", script);
+    ensureDir(path.dirname(scriptDst));
+    const prevLen = ws.writes.length;
+    writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
+    if (ws.writes.length > prevLen) {
+      console.log(`${logPrefix} ${tag}lint: ${scriptDst}`);
+    }
+  }
 
-  // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
-  // expect actually exist in package.json. Add-if-missing; consumer values win.
+  // Ensure the package.json scripts the seeded configs + wired ci.yml expect actually
+  // exist. Add-if-missing; consumer values win. `typecheck` moved here from the (now
+  // agnostic) ci module (#265) — it is TS-exclusive; default is tsconfig-aware.
+  const typecheckDefault = fs.existsSync("tsconfig.json")
+    ? "tsc --noEmit"
+    : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
   const lintScripts = ensurePackageJsonScripts(
     {
+      typecheck: typecheckDefault,
       "format:check": "prettier --check .",
       "lint:prose":
         // F9 (BAR-138): symmetric soft-skip — protect against missing vale
@@ -2288,6 +2367,28 @@ export function runLintModule(ctx: ModuleContext): void {
       detect: "package.json failed to parse — cannot ensure lint scripts.",
       action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
     });
+  }
+  // The `test` script is the consumer's responsibility — flag if absent so they know
+  // (the wired ci.yml step bodies call `pnpm test`). Moved here from runCiModule (#265):
+  // the agnostic --ci skeleton has the test step commented, so the advisory belongs with
+  // the TS toolchain that activates it.
+  if (!dryRun && !lintScripts.missingPkg && !lintScripts.malformed) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8")) as {
+        scripts?: Record<string, string>;
+      };
+      if (!pkg.scripts || !pkg.scripts.test) {
+        advisories.push({
+          id: "ci-no-test-script",
+          severity: "advisory",
+          detect: "package.json has no `test` script.",
+          action:
+            'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
+        });
+      }
+    } catch {
+      // Already handled above
+    }
   }
 
   // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
@@ -2862,8 +2963,8 @@ export function runCloudModule(ctx: ModuleContext): void {
       action:
         "Full recipe in bkit's `cloud.md` § Post-CI auto-routing.\n\n" +
         "REQUIRED ONE-TIME SETUP:\n" +
-        "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=nvidia`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
-        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
+        "  - Install the local opencode host first: `bkit install --opencode=<provider>` (e.g. `--opencode=opencode`). The cloud opencode job runs against the committed `.opencode/` config — provider and model pins come from there, not from this YAML.\n" +
+        "  - Add `OPENCODE_PROVIDER_KEY` to repo secrets (Settings → Secrets and variables → Actions). Set it to your configured provider's API key. The workflow fans this one secret out to every supported provider env var name (`NVIDIA_API_KEY`/`GROQ_API_KEY`/`CEREBRAS_API_KEY`/`OPENROUTER_API_KEY`/`OLLAMA_API_KEY`/`OPENCODE_API_KEY`) so the `.opencode/opencode.json` `{env:VAR}` reference resolves whichever provider you installed.\n" +
         "  - GitHub Actions permissions — flip BOTH org AND repo: Settings → Actions → General → Workflow permissions = **Read and write permissions** + tick **Allow GitHub Actions to create and approve pull requests**.\n" +
         "  - The opencode job does NOT use a Claude API key — it runs the opencode runner with your chosen provider key only. If you also install the claude job (separate secret), both jobs coexist on the same event.\n" +
         "  - Label the issue `bkit:auto` before pushing the build commit — without the label the CI auto-route exits no-op.\n\n" +
@@ -2984,6 +3085,9 @@ export const MODULE_DISPATCH_ORDER: ModuleFlag[] = [
  * After all modules complete, ctx.postDispatch callbacks are run in order.
  */
 export function dispatchModules(modules: Set<ModuleFlag>, ctx: ModuleContext): void {
+  // The `ci` module seeds the WIRED ci.yml when the TS toolchain is co-installed
+  // (`lint` present ⇒ --typescript/--tooling), else the agnostic skeleton (#265).
+  ctx.wiredCi = modules.has("lint");
   for (const flag of MODULE_DISPATCH_ORDER) {
     if (!modules.has(flag)) continue;
     const fn = MODULE_REGISTRY[flag];

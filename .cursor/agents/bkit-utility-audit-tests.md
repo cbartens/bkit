@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE auditor evaluating backend, integration, and UI test coverage gaps.
 **Scope:** As specified by input or session prompt.
@@ -32,11 +32,11 @@ tools:
 **Process:**
 
 1. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-2. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+2. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/testing.md`; skip missing.
 3. Run `pnpm outdated` filtered to test deps (vitest, jest, playwright, jest-expo).
-4. Backend: Vitest only. No Playwright for APIs. Mock HTTP, assert DB.
-5. Integration: >=1 test hitting API vs local DB without ORM mocking (`npm run test:integration`).
-6. UI: Playwright for visual DOM only.
+4. Tier names + selection: Audit against best practice tiers: Static / Unit / Integration / E2E / @live / fresh-DB replay / Smoke.
+5. Backend → Unit / Integration (Vitest, no Playwright for APIs); >=1 Integration test hits the API vs a fresh local DB with no mocks at the boundary (`npm run test:integration`).
+6. UI → E2E (Playwright, visual DOM only); external / deployed boundary → @live (reach real boundaries, assert ground-truth signals). Flag under-tiering (boundary mocked, missing @live / E2E).
 7. Review core workflows/routes/components for coverage.
 8. Per finding, ALL four required: severity (CRITICAL/HIGH/MEDIUM/LOW), location (file:line), description, suggested fix. **If** incomplete findings → not counted.
 9. Create/update report → `docs/audits/tests-audit.md`. Existing file = baseline → preserve human annotations (`✅ RESOLVED`, `⚠️ MONITORING`, `🔧 IN PROGRESS`, free-text). Sort: **CRITICAL** → **HIGH** → **MEDIUM** → **LOW**.

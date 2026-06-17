@@ -1,5 +1,7 @@
 <!-- bkit:start -->
 
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+
 # Notifications
 
 > [!CAUTION]

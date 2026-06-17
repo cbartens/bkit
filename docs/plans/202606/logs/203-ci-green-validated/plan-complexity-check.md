@@ -24,19 +24,20 @@ Verdict: SPLIT
 
 Rough token budget breakdown:
 
-| Work item                                                                           | Est. tokens |
-| ----------------------------------------------------------------------------------- | ----------- |
-| Read gether ci.yml (~1100 lines) + both bkit ci.yml files                           | ~15K        |
-| Write/rewrite template ci.yml (~1100-line near-verbatim copy with parameterization) | ~20K        |
-| Write bkit-own ci.yml (degenerate 3-job shape)                                      | ~8K         |
-| Protection script renames + postinstall.ts edits                                    | ~5K         |
-| bkit-ship.md + bkit-debug.md MCP gate rewrites                                      | ~6K         |
-| 2 new test files + 4 extended test files + snapshot regen                           | ~15K        |
-| Fixture upgrade (heavy-customised-ci ci.yml, 4-job shape)                           | ~5K         |
-| Docs edits (6 files)                                                                | ~4K         |
-| Verification loops (actionlint, pnpm test, grep assertions)                         | ~8K         |
-| Reasoning + planning overhead                                                       | ~10K        |
-| **Total**                                                                           | **~96K**    |
+<!-- prettier-ignore -->
+| Work item | Est. tokens |
+| --- | --- |
+| Read gether ci.yml (~1100 lines) + both bkit ci.yml files | ~15K |
+| Write/rewrite template ci.yml (~1100-line near-verbatim copy with parameterization) | ~20K |
+| Write bkit-own ci.yml (degenerate 3-job shape) | ~8K |
+| Protection script renames + postinstall.ts edits | ~5K |
+| bkit-ship.md + bkit-debug.md MCP gate rewrites | ~6K |
+| 2 new test files + 4 extended test files + snapshot regen | ~15K |
+| Fixture upgrade (heavy-customised-ci ci.yml, 4-job shape) | ~5K |
+| Docs edits (6 files) | ~4K |
+| Verification loops (actionlint, pnpm test, grep assertions) | ~8K |
+| Reasoning + planning overhead | ~10K |
+| **Total** | **~96K** |
 
 This estimate lands just under the 100K threshold — but the regression-trap density makes that number optimistic. Three factors push the effective cost past the threshold:
 

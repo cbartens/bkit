@@ -2,14 +2,14 @@
 mode: subagent
 name: bkit-plan-summary
 description: Senior reviewer evaluating a completed plan for build-readiness.
-model: nvidia/openai/gpt-oss-20b
+model: opencode/deepseek-v4-flash
 tools:
   read: true
   write: true
   edit: true
 reasoningEffort: none
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a completed plan for build-readiness.
 **Scope:** As specified by input and Read/Update/Create section.

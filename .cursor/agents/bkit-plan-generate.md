@@ -9,7 +9,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect translating design docs into chronological implementation plans.
 **Scope:** As specified by input and Read/Update/Create section.
@@ -33,10 +33,10 @@ tools:
 
 1. Initialise **Create** output stub with `PENDING` placeholders per `docs/plans/template.md` sections.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow/step/task; skip missing.
+3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/testing.md`; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Build chronological steps and strict 🔒 Gates per `docs/plans/template.md`.
-6. Every `Agent Execution Runbook` task MUST carry a `Done when` entry — terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Tasks without it are rejected. Derive from matching `Derived Test Matrix` row where applicable. Any task crossing an external boundary (DB / API / model / network / migration), MUST also define a paired non-mock test in its `Done when` entry that names the boundary AND ground-truth signal it observes (no mocks at boundary); pure-function tasks are exempt.
+6. Every `Agent Execution Runbook` task MUST carry a `Done when` entry — terse, testable, codebase-verifiable (file exists / function signature matches / test passes / observable behaviour). Tasks without it are rejected. Derive each task's test from its `Derived Test Matrix` row, following the tier-selection + boundary rules the matrix defines: Boundary-crossing tasks (DB / API / model / network / migration) carry paired non-mock `Done when` tests; pure-function tasks are exempt.
 7. `Related Issues` per template section (if any); do NOT expand scope.
 8. `Acceptance Scenario` per template section; expand NOT replace on design if provided.
 9. `Supersession Inventory` per template section. If plan adds without replacing then `None`.

@@ -1,7 +1,7 @@
 ---
 description: "Debug Feature — Autonomous diagnosis and remediation"
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Debug Feature (Workflow 4/6)
 
@@ -123,7 +123,7 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
-4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:debug"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
+4. **If** `ISSUE_ID` already set by AGENTS.md → skip. **Else** extract from session prompt: `<id>{N}</id>`, `<github_issue>{N}</github_issue>`, `GitHub issue: #{N}`, `ISSUE-{N}`, or bare `#{N}` → numeric N → `ISSUE_ID`. **If** no `ID` found → create new issue → `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{task}", body: "{input}", labels: ["bkit:debug"] })` → extract `number` and use as `ISSUE_ID`. **If** `number` empty → **Failure Path**.
 5. **If** `LABELS`, `DESCRIPTION`, `COMMENTS` already set by AGENTS.md → skip. **Else**:
    `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `state` (`open`/`closed`) → `STATE`, `labels[].name` → `LABELS`, `body` → `DESCRIPTION`, `title` → `TITLE`, `html_url` → `URL`. Then `mcp__github__issue_read({ method: "get_comments", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract comments → `COMMENTS`.
 6. `gh pr list --head $(git branch --show-current) --base dev --json number --jq '.[0].number'` → extract `PR_NUMBER`. Decide `PUSH_MODE`:
@@ -727,9 +727,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    PARENT_SHA=$(git rev-parse HEAD)
    TESTS_LIVE_SKIPPED=""
    echo "$TEST_SCOPE" | grep -qw live || TESTS_LIVE_SKIPPED="No live tests ran, runtime-only defects not gated (not declared or opted out)."
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
-     '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
-     >> "$STATUS"
    jq -nc --arg t "$(date -u +%FT%TZ)" '{type:"workflow-done", workflow:"debug", at:$t}' >> "$STATUS"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    PR_MODE_AUTO_SUFFIX=""; [ "$PUSH_MODE" = "PR" ] && PR_MODE_AUTO_SUFFIX="$AUTO_ROUTE_SUFFIX"
@@ -745,6 +742,81 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
    rm -f "$LOCK"
    [ ! -f "$LOCK" ] || { echo "Lock removal failed: $LOCK" >&2; exit 1; }
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+   # CI-Dispatch Gate (PR-mode: close-workflow is the CI-triggering push) — runs only when TRIGGER_PR = 0 and PUSH_MODE = PR.
+   if [ "$PUSH_MODE" = "PR" ]; then
+     PR_NUMBER=$(gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number' 2>/dev/null || echo "")
+     RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
+     PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
+     # --- CI-Dispatch Gate shared kernel ---
+     POLL_BUDGET_S=60; POLL_INTERVAL_S=10            # ATTEMPTS = BUDGET / INTERVAL = 6
+     PUSHED_HEAD=$(git rev-parse HEAD)
+     CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
+     echo "[bkit-ci-gate] polling for bkit-decide run on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+     poll_decide() {                                  # echoes "found" / "none" / "err"; never set -e out
+       local out rc
+       out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
+         '[.statusCheckRollup[]? | select(.name // .context // "" | test("decide"; "i"))] | length' 2>/dev/null); rc=$?
+       [ "$rc" -ne 0 ] && { echo "err"; return; }
+       GH_ALL_ERRORED="false"
+       [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
+     }
+     elapsed=0
+     while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+       CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+       echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+       [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
+       sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+     done
+     # --- end CI-Dispatch Gate shared kernel ---
+     if [ -z "$CI_OUTCOME" ]; then
+       if [ "$GH_ALL_ERRORED" = "true" ]; then
+         CI_OUTCOME="unresolved"; CI_REASON="gh-error"
+         echo "[bkit-ci-gate] unresolved(gh-error): every poll iteration errored — gh unavailable/unauthed"
+       elif echo "$PUSHED_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+         CI_OUTCOME="unresolved"; CI_REASON="timeout-dirty"
+         echo "[bkit-ci-gate] unresolved(timeout-dirty): no run and pushed HEAD carries a suppressor — refusing to re-trigger a dirty HEAD"
+       else
+         # self-heal cap = 1: assert re-trigger suffix == close-workflow suffix, then clean empty re-trigger
+         [ "$RETRIGGER_SUFFIX" = "$AUTO_ROUTE_SUFFIX" ] || { CI_OUTCOME="unresolved"; CI_REASON="autoroute-mismatch"; }
+         if [ -z "$CI_OUTCOME" ]; then
+           git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
+           B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+           PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
+           echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
+           while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+             CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+             echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+             [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
+             sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+           done
+           # After re-trigger push: re-assert the re-trigger HEAD is clean before concluding no-ci
+           RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
+           if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+             CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
+             echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
+           else
+             [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
+               echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+           fi
+         fi
+       fi
+     fi
+     echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
+     # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
+     PARENT_SHA_CLOSE=$(git rev-parse HEAD)
+     jq -nc --arg p "$PARENT_SHA_CLOSE" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
+       --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
+       --arg r "$CI_REASON" --argjson rt "$CI_RETRIGGER" \
+       '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[],
+         ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))} +
+         (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
+       >> "$STATUS"
+     case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
+   else
+     jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg lr "$TESTS_LIVE_SKIPPED" \
+       '{type:"step-done", workflow:"debug", step:"debug-close-workflow", status:"DONE", at:$t, parentSha:$p, artifacts:[]} + (if $lr == "" then {} else {testsLiveSkipped:$lr} end)' \
+       >> "$STATUS"
+   fi
    ```
 4. Capture branch state:
    ```bash
@@ -775,9 +847,6 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 9. **If** `TRIGGER_PR` = 1 → update status, commit, run HEAD-Subject Assertion, and push in one block (set and use `AUTO_ROUTE_SUFFIX` in same shell):
    ```bash
    PARENT_SHA=$(git rev-parse HEAD)
-   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
-     '{type:"step-done", workflow:"debug", step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u]}' \
-     >> "$STATUS"
    VERBOSE_SUFFIX=""; [ "$PUSH_MODE" = "LOCAL" ] && VERBOSE_SUFFIX=" bkit [verbose ci]"
    AUTO_ROUTE_SUFFIX=""
    if [ -n "${BKIT_AUTO_ROUTE_FILE:-}" ] && [ -f "$BKIT_AUTO_ROUTE_FILE" ]; then
@@ -793,6 +862,73 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
      echo "HEAD-Subject Assertion FAILED: create-pr HEAD message contains a CI-suppressing token." >&2; exit 1
    fi
    B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+   # CI-Dispatch Gate (LOCAL-mode: create-pr is the CI-triggering push).
+   # AUTO_ROUTE_SUFFIX is already materialised above (before rm); reuse it directly.
+   RETRIGGER_SUFFIX="$AUTO_ROUTE_SUFFIX"
+   PUSHED_HEAD_MSG=$(git log -1 --pretty=%B)
+   # --- CI-Dispatch Gate shared kernel ---
+   POLL_BUDGET_S=60; POLL_INTERVAL_S=10            # ATTEMPTS = BUDGET / INTERVAL = 6
+   PUSHED_HEAD=$(git rev-parse HEAD)
+   CI_OUTCOME=""; CI_REASON=""; CI_RETRIGGER="false"; CI_ATTEMPTS=0; GH_ALL_ERRORED="true"
+   echo "[bkit-ci-gate] polling for bkit-decide run on $PUSHED_HEAD (budget ${POLL_BUDGET_S}s, interval ${POLL_INTERVAL_S}s)"
+   poll_decide() {                                  # echoes "found" / "none" / "err"; never set -e out
+     local out rc
+     out=$(gh pr view "$PR_NUMBER" --json statusCheckRollup --jq \
+       '[.statusCheckRollup[]? | select(.name // .context // "" | test("decide"; "i"))] | length' 2>/dev/null); rc=$?
+     [ "$rc" -ne 0 ] && { echo "err"; return; }
+     GH_ALL_ERRORED="false"
+     [ "${out:-0}" -gt 0 ] 2>/dev/null && echo "found" || echo "none"
+   }
+   elapsed=0
+   while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+     CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+     echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+     [ "$R" = "found" ] && { CI_OUTCOME="dispatched"; break; }
+     sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+   done
+   # --- end CI-Dispatch Gate shared kernel ---
+   if [ -z "$CI_OUTCOME" ]; then
+     if [ "$GH_ALL_ERRORED" = "true" ]; then
+       CI_OUTCOME="unresolved"; CI_REASON="gh-error"
+       echo "[bkit-ci-gate] unresolved(gh-error): every poll iteration errored — gh unavailable/unauthed"
+     elif echo "$PUSHED_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+       CI_OUTCOME="unresolved"; CI_REASON="timeout-dirty"
+       echo "[bkit-ci-gate] unresolved(timeout-dirty): no run and pushed HEAD carries a suppressor — refusing to re-trigger a dirty HEAD"
+     else
+       # self-heal cap = 1: assert re-trigger suffix == close-workflow suffix, then clean empty re-trigger
+       [ "$RETRIGGER_SUFFIX" = "$AUTO_ROUTE_SUFFIX" ] || { CI_OUTCOME="unresolved"; CI_REASON="autoroute-mismatch"; }
+       if [ -z "$CI_OUTCOME" ]; then
+         git commit --allow-empty -m "chore({FID}): re-trigger${RETRIGGER_SUFFIX}"; CI_RETRIGGER="true"
+         B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac
+         PUSHED_HEAD=$(git rev-parse HEAD); elapsed=0
+         echo "[bkit-ci-gate] re-trigger pushed ($PUSHED_HEAD); re-polling"
+         while [ "$elapsed" -lt "$POLL_BUDGET_S" ]; do
+           CI_ATTEMPTS=$((CI_ATTEMPTS+1)); R=$(poll_decide)
+           echo "[bkit-ci-gate] attempt ${CI_ATTEMPTS}: $R (elapsed ${elapsed}s)"
+           [ "$R" = "found" ] && { CI_OUTCOME="self-healed"; break; }
+           sleep "$POLL_INTERVAL_S"; elapsed=$((elapsed+POLL_INTERVAL_S))
+         done
+         # After re-trigger push: re-assert the re-trigger HEAD is clean before concluding no-ci
+         RETRIGGER_HEAD_MSG=$(git log -1 --pretty=%B)
+         if echo "$RETRIGGER_HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+           CI_OUTCOME="unresolved"; CI_REASON="retrigger-suppressed"
+           echo "[bkit-ci-gate] unresolved(retrigger-suppressed): re-trigger HEAD itself carries a suppressor — cannot confirm no-ci vs. suppression"
+         else
+           [ -z "$CI_OUTCOME" ] && { CI_OUTCOME="no-ci"
+             echo "[bkit-ci-gate] no-ci: clean re-trigger dispatched nothing — repo has no CI workflow for this event (logged pass)"; }
+         fi
+       fi
+     fi
+   fi
+   echo "[bkit-ci-gate] verdict: ${CI_OUTCOME}${CI_REASON:+(${CI_REASON})} head=$PUSHED_HEAD attempts=$CI_ATTEMPTS retrigger=$CI_RETRIGGER"
+   # ciDispatch verdict is ALWAYS written onto the step-done record (additive field).
+   jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg u "$PR_URL" \
+     --arg o "$CI_OUTCOME" --arg h "$PUSHED_HEAD" --argjson a "$CI_ATTEMPTS" \
+     --arg r "$CI_REASON" --argjson rt "$CI_RETRIGGER" \
+     '{type:"step-done", workflow:"debug", step:"debug-create-pr", status:"DONE", at:$t, parentSha:$p, artifacts:[$u],
+       ciDispatch: ({outcome:$o, head:$h, attempts:$a, retrigger:$rt} + (if $r=="" then {} else {reason:$r} end))}' \
+     >> "$STATUS"
+   case "$CI_OUTCOME" in unresolved) echo "[bkit-ci-gate] FATAL: unresolved verdict — routing to Failure Path" >&2; exit 1 ;; esac
    ```
 10. 
     No issue changes.
@@ -842,9 +978,10 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
 - [ ] Trigger-PR determined (`TRIGGER_PR`)
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
-- [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`)
+- [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`, `ciDispatch` verdict)
 - [ ] If PR created, changes pushed to `feat/{FID}`
-- [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test)
+- [ ] CI-Dispatch gate ran on the CI-triggering push (close-workflow PR-mode / create-pr LOCAL-mode); ciDispatch verdict recorded
+- [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test, `ciDispatch` verdict if PR-mode)
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)

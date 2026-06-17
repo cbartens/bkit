@@ -7,14 +7,17 @@ import {
   printUsage,
   OPTIN_MODULES,
   OPENCODE_PROVIDERS,
+  normalizeOpencodeProvider,
   type ModuleFlag,
   type CloudVariant,
 } from "./bkit-cli.js";
+import { launchApp, parseDotenv } from "./bkit-launch.js";
 import {
   dispatchModules,
   getPkgRoot,
   renderCloudWorkflow,
   renderOpencodeJson,
+  reconcileOpencodeJson,
   buildMcpJson,
   renderManagedOutputs,
   opencodeProviderId,
@@ -29,7 +32,11 @@ import {
   readChangelogVersionDelta,
   writeAdvisoriesArtifact,
 } from "./bkit-postinstall.js";
-import { runUninstall, type UninstallContext } from "./bkit-uninstall.js";
+import {
+  runUninstall,
+  runSurgicalOpencodeUninstall,
+  type UninstallContext,
+} from "./bkit-uninstall.js";
 import {
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
@@ -294,9 +301,9 @@ const OPENCODE_PROVIDER_COLUMN: Record<string, string> = {
   cerebras: "Cerebras",
   openrouter: "OpenRouter",
   ollama: "Ollama (Cloud)",
-  // zen (opencode-native gateway): the bkit key is `zen` but the column header is "Zen" and
-  // the cells are opencode-side ids (opencode/<id>), matching the gateway's reference format.
-  zen: "Zen",
+  // opencode-native gateway: bkit key `opencode`, column header "OpenCode", cells are
+  // opencode-side ids (opencode/<id>), matching the gateway's reference format.
+  opencode: "OpenCode",
 };
 
 /**
@@ -313,12 +320,11 @@ export function buildOpencodeModelLookup(
   const curated = header ? tryParseModelLookupForColumn(subagentsMdPath, header) : null;
   if (curated) return curated;
   // Sentinel fallback. All seven allowlisted providers (ollama-local, nvidia, groq, cerebras,
-  // openrouter, ollama, zen) ship a curated prompts.md column and never reach here (#245
-  // Phase 2 cloud providers 2026-06-11; Phase 3 zen 2026-06-12). This path is the safety net
-  // for a FUTURE allowlisted provider added before its column lands — every agent gets a
-  // prefix-correct sentinel the consumer replaces with a real model id (see providers.md
-  // § Models for the live-probe recipe). The prefix is the opencode-side provider id (the
-  // gateway key → opencode for zen), not necessarily the bkit key.
+  // openrouter, ollama, opencode) ship a curated prompts.md column and never reach here.
+  // This path is the safety net for a FUTURE allowlisted provider added before its column
+  // lands — every agent gets a prefix-correct sentinel the consumer replaces with a real
+  // model id (see providers.md § Models for the live-probe recipe). The prefix is the
+  // opencode-side provider id (opencodeProviderId(provider)), not necessarily the bkit key.
   const names =
     tryParseModelLookupForColumn(subagentsMdPath, "Ollama (Local)") ??
     parseModelLookupForColumn(subagentsMdPath, "Claude");
@@ -489,12 +495,24 @@ export function applyOpencodeAgent(
 }
 
 /**
+ * Session-prompt anchor prepended to every opencode command body. OpenCode
+ * substitutes `$ARGUMENTS` with everything typed after the slash command before
+ * the template is sent to the model. Without this, the command body replaces the
+ * user's input and the issue ref / instructions are lost (issue #278). A single
+ * top anchor keeps a large pasted prompt in one place and sits at the head where
+ * the workflows' Step 1 issue-extraction ("scan session prompt") reads it. The
+ * managed-version stamp is prepended afterwards, so this renders just below it.
+ */
+export const OPENCODE_SESSION_PROMPT_ANCHOR = "**Session prompt:**\n\n$ARGUMENTS\n\n---\n\n";
+
+/**
  * OC2: opencode command rewrite.
  * - Strips leading YAML frontmatter block (same as T1).
  * - Rewrites invocation spelling for opencode:
  *   - `Agent` tool → `Task` tool (subagent invocations)
  *   - `Skill` tool → `Task` tool (slash-command invocations)
  *   - @name → /name ONLY on exact **Subagent:** lines (anchored, same as T2)
+ * - Prepends the session-prompt `$ARGUMENTS` anchor (issue #278).
  */
 export function applyOpencodeCommand(content: string): string {
   // Step 1: strip frontmatter (same as T1)
@@ -505,6 +523,8 @@ export function applyOpencodeCommand(content: string): string {
   result = result.replace(/`Skill` tool/g, "`Task` tool");
   result = result.replace(/using `Skill` tool/g, "using `Task` tool");
   result = result.replace(/^(\*\*Subagent:\*\* )@([a-z][a-z0-9-]*)$/gm, "$1/$2");
+  // Step 3: prepend the session-prompt anchor so the slash-command args survive.
+  result = OPENCODE_SESSION_PROMPT_ANCHOR + result;
   return result;
 }
 
@@ -844,6 +864,67 @@ export function extractManagedBlock(
   return inner.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
+/**
+ * Parse EVERY named bkit-managed block in a file into `name -> { body, optional }`.
+ *
+ * Marker grammar (one style per file — auto-detected; HTML-comment wins if present):
+ *   HTML:  <!-- bkit:start [name] [optional] -->  ...  <!-- bkit:end [name] -->
+ *   hash:  # bkit:start [name] [optional]          ...  # bkit:end [name]
+ * The default (unnamed) block uses a bare `# bkit:start` / `<!-- bkit:start -->` and is
+ * keyed under "" — backward-compatible with extractManagedBlock's single-block model.
+ *
+ * Markers may be indented (leading whitespace); HTML markers may additionally carry a
+ * `# ` / `// ` comment prefix (so they survive inside shell / JS files). `optional` after
+ * the name flags the block as deletable — callers use it to suppress a "missing block"
+ * finding (a block that is PRESENT but DIFFERS is still drift regardless of `optional`).
+ *
+ * `body` is the inner content with surrounding blank lines stripped (matching
+ * extractManagedBlock). First occurrence of a name wins; an unterminated block (no
+ * matching end) is dropped. Matching is line-anchored — the marker must be the whole
+ * line (modulo indent + comment prefix) — so backtick-quoted prose mentions never match.
+ * An end marker closes the open block when its name matches OR when it is bare (`# bkit:end`).
+ */
+export function extractNamedBlocks(
+  content: string,
+): Map<string, { body: string; optional: boolean }> {
+  const NAME = "[A-Za-z0-9][A-Za-z0-9_-]*";
+  const hashStart = new RegExp(
+    `^[ \\t]*#[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*$`,
+  );
+  const hashEnd = new RegExp(`^[ \\t]*#[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*$`);
+  const htmlStart = new RegExp(
+    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:start(?:[ \\t]+(${NAME}))?(?:[ \\t]+(optional))?[ \\t]*-->[ \\t]*$`,
+  );
+  const htmlEnd = new RegExp(
+    `^[ \\t]*(?:#|//)?[ \\t]*<!--[ \\t]*bkit:end(?:[ \\t]+(${NAME}))?[ \\t]*-->[ \\t]*$`,
+  );
+
+  const lines = content.split("\n");
+  const isHtml = lines.some((l) => htmlStart.test(l));
+  const startRe = isHtml ? htmlStart : hashStart;
+  const endRe = isHtml ? htmlEnd : hashEnd;
+
+  const result = new Map<string, { body: string; optional: boolean }>();
+  let open: { name: string; optional: boolean; bodyLines: string[] } | null = null;
+  for (const line of lines) {
+    if (open) {
+      const em = endRe.exec(line);
+      const endName = em ? (em[1] ?? "") : null;
+      if (em && (endName === open.name || endName === "")) {
+        const body = open.bodyLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+        if (!result.has(open.name)) result.set(open.name, { body, optional: open.optional });
+        open = null;
+      } else {
+        open.bodyLines.push(line);
+      }
+    } else {
+      const sm = startRe.exec(line);
+      if (sm) open = { name: sm[1] ?? "", optional: !!sm[2], bodyLines: [] };
+    }
+  }
+  return result;
+}
+
 // Extract the FULL bkit-managed block INCLUDING marker lines from a file.
 // markerStyle defaults to "html-comment" for backward compat.
 // Used to append a fresh block to a destination that has none. Markers may be
@@ -1148,9 +1229,10 @@ function runStatus(cwd: string, logPrefix: string): void {
   // --- opencode host ---
   const opencodeDir = path.join(cwd, ".opencode");
   const opencodePresent = fs.existsSync(opencodeDir);
-  // Provider is the bkit provider key — resolved manifest-first (detectOpencodeProvider),
-  // which also covers managed-auth gateways (zen) whose opencode.json has no provider block.
-  let opencodeProvider = detectOpencodeProvider(cwd) ?? "unknown";
+  // Resolve active provider (manifest-first; covers managed-auth gateways like opencode).
+  const activeOpencodeProvider = detectOpencodeProvider(cwd);
+  // All installed providers (multi-provider tracking, Task 5 / #281).
+  const allOpencodeProviders = detectOpencodeProviders(cwd);
   let opencodeModel = "unknown";
   const opencodeJsonPath = path.join(opencodeDir, "opencode.json");
   if (opencodePresent && fs.existsSync(opencodeJsonPath)) {
@@ -1169,8 +1251,22 @@ function runStatus(cwd: string, logPrefix: string): void {
       opencodeModel = "parse-error";
     }
   }
+  let opencodeProviderDisplay: string;
+  let providerLabel: string;
+  if (allOpencodeProviders.length > 1) {
+    // Multi-provider: list all, mark active
+    const activeKey = activeOpencodeProvider ?? allOpencodeProviders[0];
+    opencodeProviderDisplay = allOpencodeProviders
+      .map((p) => (p === activeKey ? `${p} (active)` : p))
+      .join(", ");
+    providerLabel = "providers";
+  } else {
+    // Single provider: use singular label
+    opencodeProviderDisplay = activeOpencodeProvider ?? allOpencodeProviders[0] ?? "unknown";
+    providerLabel = "provider";
+  }
   const opencodeStatus = opencodePresent
-    ? `INSTALLED  (provider: ${opencodeProvider} / model: ${opencodeModel})`
+    ? `INSTALLED  (${providerLabel}: ${opencodeProviderDisplay} / model: ${opencodeModel})`
     : "absent (run: bkit install --opencode=<provider>)";
   console.log(`${logPrefix} opencode: ${opencodeStatus}`);
 
@@ -1210,7 +1306,7 @@ function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
  * opencode IS gated (#255 #8): `.opencode/opencode.json` is the most drift-sensitive file
  * bkit ships (provider block + tracker-filtered mcp + permission map). It is safe to gate
  * because the render inputs fall back to the INSTALLED provider/tracker (renderOpencodeProvider
- * + the package.json tracker resolution), so an nvidia/zen/… consumer is checked against its own
+ * + the package.json tracker resolution), so an nvidia/opencode/… consumer is checked against its own
  * config — not the ollama-local default — and the dry-run path is read-only (installFile /
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
@@ -1220,10 +1316,18 @@ function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
-  if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml"))) mods.add("ci");
+  // ci (#265): the stack-agnostic foundation — ci.yml + vale config. Either is a sentinel.
   if (
-    fs.existsSync(path.join(cwd, ".vale.ini")) ||
-    fs.existsSync(path.join(cwd, "slop-scan.config.json"))
+    fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml")) ||
+    fs.existsSync(path.join(cwd, ".vale.ini"))
+  ) {
+    mods.add("ci");
+  }
+  // lint (#265, the --typescript toolchain): slop-scan + prettier. Vale config alone no
+  // longer implies lint — it moved to the ci module.
+  if (
+    fs.existsSync(path.join(cwd, "slop-scan.config.json")) ||
+    fs.existsSync(path.join(cwd, ".prettierignore"))
   ) {
     mods.add("lint");
   }
@@ -1237,9 +1341,9 @@ function detectInstalledModules(cwd: string): Set<ModuleFlag> {
 }
 
 /**
- * Render a resolved module set back into valid new-surface CLI flags (#252) for
- * recovery-hint text. Skips core (implicit), collapses ci/lint/git-hooks → --tooling,
- * and maps opt-ins to their value-flag spellings.
+ * Render a resolved module set back into valid new-surface CLI flags (#252/#265) for
+ * recovery-hint text. Skips core (implicit), collapses the CI/quality modules to
+ * --ci / --typescript / --tooling, and maps opt-ins to their value-flag spellings.
  */
 function modulesToCliFlags(
   mods: Set<ModuleFlag>,
@@ -1250,7 +1354,15 @@ function modulesToCliFlags(
   if (mods.has("claude")) out.push("--claude");
   if (mods.has("cursor")) out.push("--cursor");
   if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
-  if (mods.has("ci") || mods.has("lint") || mods.has("git-hooks")) out.push("--tooling");
+  // #265: ci+lint+git-hooks → --tooling; TS toolchain (lint/git-hooks, ± ci) → --typescript
+  // (re-adds ci on install); agnostic ci only → --ci.
+  if (mods.has("ci") && mods.has("lint") && mods.has("git-hooks")) {
+    out.push("--tooling");
+  } else if (mods.has("lint") || mods.has("git-hooks")) {
+    out.push("--typescript");
+  } else if (mods.has("ci")) {
+    out.push("--ci");
+  }
   if (mods.has("renovate")) out.push("--dependency=renovate");
   if (mods.has("dependabot")) out.push("--dependency=dependabot");
   if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
@@ -1262,8 +1374,8 @@ function modulesToCliFlags(
  *
  * Resolution order:
  *  1. `package.json` `bkit.opencodeProvider` — the authoritative record written on install.
- *     This is the ONLY signal for managed-auth gateways (zen) whose opencode.json carries no
- *     custom provider block; without it upgrade would re-render zen as the ollama-local default.
+ *     This is the ONLY signal for managed-auth gateways (opencode) whose opencode.json carries no
+ *     custom provider block; without it upgrade would re-render the provider as the ollama-local default.
  *  2. `.opencode/opencode.json` first provider key — back-compat for installs that predate the
  *     manifest field (the block is keyed by provider id, matching renderOpencodeJson).
  *  3. null — caller falls back to the install default so the model lookup still resolves.
@@ -1278,7 +1390,10 @@ function detectOpencodeProvider(cwd: string): string | null {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
         bkit?: { opencodeProvider?: unknown };
       };
-      const stored = pkg.bkit?.opencodeProvider;
+      const rawStored = pkg.bkit?.opencodeProvider;
+      // Normalize legacy keys (e.g. "zen" → "opencode") before allowlist check.
+      const stored =
+        typeof rawStored === "string" ? normalizeOpencodeProvider(rawStored) : rawStored;
       if (
         typeof stored === "string" &&
         (OPENCODE_PROVIDERS as readonly string[]).includes(stored)
@@ -1304,6 +1419,37 @@ function detectOpencodeProvider(cwd: string): string | null {
   return null;
 }
 
+/**
+ * Returns all bkit-installed opencode providers from the consumer package.json.
+ * Reads `bkit.opencodeProviders` array; falls back to `[bkit.opencodeProvider]` for
+ * legacy single-provider installs (migrated on the next install run).
+ * Filters to valid OPENCODE_PROVIDERS entries; returns [] when neither field exists.
+ */
+export function detectOpencodeProviders(cwd: string): string[] {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return [];
+  try {
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
+      bkit?: { opencodeProviders?: unknown; opencodeProvider?: unknown };
+    };
+    const arr = pkg.bkit?.opencodeProviders;
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((v): v is string => typeof v === "string")
+        .map((v) => normalizeOpencodeProvider(v)) // migrate legacy keys (e.g. "zen" → "opencode")
+        .filter((v) => (OPENCODE_PROVIDERS as readonly string[]).includes(v));
+    }
+    // Legacy fallback: call detectOpencodeProvider which checks both package.json and opencode.json
+    const single = detectOpencodeProvider(cwd);
+    if (single !== null) {
+      return [single];
+    }
+  } catch {
+    // unparseable — return empty
+  }
+  return [];
+}
+
 async function main() {
   const {
     verb,
@@ -1321,13 +1467,21 @@ async function main() {
     return;
   }
 
+  // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
+  // so that MCP token placeholders (GH_TOKEN, NVIDIA_API_KEY, …) resolve correctly
+  // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
+  if (verb === "cursor" || verb === "opencode") {
+    await launchApp(verb, process.cwd());
+    return;
+  }
+
   // #252 Step 2 — install requires ≥1 module flag (bare install errors; replaces the
   // old implicit empty→full). `--tracker` / `--auto-revert` are modifiers and do not
   // count. moduleFlags holds only the explicitly-named modules (core is implicit).
   if (verb === "install" && moduleFlags.size === 0) {
     console.error(
       "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-        "--claude, --cursor, --opencode=<provider>, --tooling (plus opt-ins " +
+        "--claude, --cursor, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
         "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage.",
     );
     process.exit(1);
@@ -1382,10 +1536,18 @@ async function main() {
       );
 
       // Resolve provider: manifest-first (detectOpencodeProvider) so managed-auth gateways
-      // (zen — no provider block in opencode.json) are still detected; the `--opencode=`
-      // flag, if given this run, overrides.
+      // (opencode — no provider block beyond the minimal apiKey entry) are still detected;
+      // the `--opencode=` flag, if given this run, overrides.
       let detectedProvider: string | null = detectOpencodeProvider(process.cwd());
       if (opencodeProvider) detectedProvider = opencodeProvider;
+
+      // Multi-provider: get all installed providers (Task 5 / #281).
+      // If bkit.opencodeProviders is populated, use it; otherwise fall back to the
+      // single detected provider for backward compat with legacy single-provider installs.
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const activeProvider = detectedProvider ?? allProviders[0] ?? null;
+      const providersToCheck =
+        allProviders.length > 0 ? allProviders : activeProvider ? [activeProvider] : [];
 
       // Per-provider cred check (present/absent only — no value echoed).
       // Remote providers each name one API key; ollama-local is local (no key). Any
@@ -1396,85 +1558,103 @@ async function main() {
         cerebras: ["CEREBRAS_API_KEY"],
         openrouter: ["OPENROUTER_API_KEY"],
         ollama: ["OLLAMA_API_KEY"], // cloud Ollama (ollama.com) — distinct from ollama-local
+        opencode: ["OPENCODE_API_KEY"], // opencode-native gateway
         // ollama-local: local server, no API key required
       };
       // Local-only providers that use no remote API key
       const LOCAL_PROVIDERS = new Set(["ollama-local"]);
-      // Managed-auth gateways (zen): no API key env var — opencode holds the credential
-      // (`opencode auth login`). The doctor check is "is opencode logged in for this gateway",
-      // not "is $KEY set". Best-effort: parse `opencode auth list` for the `opencode` provider.
-      const MANAGED_AUTH_PROVIDERS = new Set(["zen"]);
-      if (detectedProvider && MANAGED_AUTH_PROVIDERS.has(detectedProvider)) {
-        let authState = "UNKNOWN — run `opencode auth login` if not already authenticated";
-        if (opencodeInstalled) {
-          const authResult = spawnSyncLocal("opencode", ["auth", "list"], { encoding: "utf-8" });
-          if (authResult.status === 0 && typeof authResult.stdout === "string") {
-            // The gateway shows up as the built-in `opencode` provider entry in `auth list`.
-            // The output header always names the auth.json path (…/opencode/auth.json), so a
-            // naive substring match false-positives — exclude the header/path line, then look
-            // for an `opencode` credential entry among the remaining lines.
-            const stripAnsi = (s: string) => s.replace(/\[[0-9;]*m/g, "");
-            const loggedIn = stripAnsi(authResult.stdout)
-              .split("\n")
-              .filter((l) => !/auth\.json|Credentials|Environment/i.test(l))
-              .some((l) => /\bopencode\b/i.test(l));
-            authState = loggedIn ? "LOGGED IN" : "NOT LOGGED IN (run `opencode auth login`)";
-          }
-        }
-        console.log(
-          `${LOG_PREFIX} zen (opencode gateway): opencode-managed auth — no API key env var. Auth: ${authState}`,
-        );
-      } else if (detectedProvider && !LOCAL_PROVIDERS.has(detectedProvider)) {
-        const keys = PROVIDER_KEYS[detectedProvider] ?? [
-          `${detectedProvider.toUpperCase()}_API_KEY`,
-        ];
-        for (const key of keys) {
-          const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
-          console.log(
-            `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + detectedProvider + ")"}`,
-          );
-        }
-      } else if (detectedProvider && LOCAL_PROVIDERS.has(detectedProvider)) {
-        console.log(
-          `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
-        );
-        // Memory-safety check (read-only — bkit never mutates the Ollama server env).
-        // These vars govern the Ollama SERVER process; opencode.json has no field for them.
-        // On a single local box, holding 2+ models resident causes swap thrash on model switch.
-        const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
-        if (!maxLoaded) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
-          );
-        } else if (maxLoaded !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
-        }
-        console.log(
-          `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
-        );
-        // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
-        // model, parallel requests give no speedup and split the KV cache (more memory).
-        // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
-        const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
-        if (!numParallel) {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
-          );
-        } else if (numParallel !== "1") {
-          console.log(
-            `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
-          );
-        } else {
-          console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
-        }
-      } else if (!detectedProvider) {
+
+      if (providersToCheck.length === 0) {
         console.log(
           `${LOG_PREFIX} Provider not detected — run \`bkit install --opencode=<provider>\` first`,
         );
+      } else {
+        for (const provider of providersToCheck) {
+          const roleLabel = provider === activeProvider ? "(active)" : "(installed)";
+          console.log(`${LOG_PREFIX} --- ${provider} ${roleLabel} ---`);
+          if (!LOCAL_PROVIDERS.has(provider)) {
+            const keys = PROVIDER_KEYS[provider] ?? [`${provider.toUpperCase()}_API_KEY`];
+            for (const key of keys) {
+              const present = Boolean(process.env[key] && process.env[key]!.trim().length > 0);
+              console.log(
+                `${LOG_PREFIX} ${key}: ${present ? "PRESENT" : "ABSENT (required for provider " + provider + ")"}`,
+              );
+            }
+          } else {
+            // ollama-local: local server, check host and memory-safety vars
+            console.log(
+              `${LOG_PREFIX} OLLAMA_HOST: ${process.env.OLLAMA_HOST ? "PRESENT (" + process.env.OLLAMA_HOST + ")" : "not set (defaults to http://localhost:11434)"}`,
+            );
+            // Memory-safety check (read-only — bkit never mutates the Ollama server env).
+            // These vars govern the Ollama SERVER process; opencode.json has no field for them.
+            // On a single local box, holding 2+ models resident causes swap thrash on model switch.
+            const maxLoaded = process.env.OLLAMA_MAX_LOADED_MODELS?.trim();
+            if (!maxLoaded) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: not set — recommend =1 on constrained machines (avoids swap thrash on model switch)`,
+              );
+            } else if (maxLoaded !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: ${maxLoaded} — recommend =1 on constrained machines (>1 holds multiple models resident → swap thrash)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_MAX_LOADED_MODELS: 1 (memory-safe)`);
+            }
+            console.log(
+              `${LOG_PREFIX} OLLAMA_KEEP_ALIVE: ${process.env.OLLAMA_KEEP_ALIVE?.trim() ? process.env.OLLAMA_KEEP_ALIVE!.trim() : "not set (default 5m) — consider 2m to unload sooner after idle"}`,
+            );
+            // Subagent fan-out: bkit workflows dispatch subagents concurrently. With one local
+            // model, parallel requests give no speedup and split the KV cache (more memory).
+            // NUM_PARALLEL=1 serializes execution at the Ollama server — the memory-safe default.
+            const numParallel = process.env.OLLAMA_NUM_PARALLEL?.trim();
+            if (!numParallel) {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: not set — recommend =1 on constrained machines (serializes workflow subagent fan-out; parallel gives no speedup on one model)`,
+              );
+            } else if (numParallel !== "1") {
+              console.log(
+                `${LOG_PREFIX} OLLAMA_NUM_PARALLEL: ${numParallel} — recommend =1 on constrained machines (>1 splits the KV cache across concurrent subagent requests → more memory)`,
+              );
+            } else {
+              console.log(`${LOG_PREFIX} OLLAMA_NUM_PARALLEL: 1 (subagent fan-out serialized)`);
+            }
+          }
+        }
+      }
+    }
+
+    // GUI-isolation check: flag any .bkit/.env keys that are set (non-empty) in the
+    // file but absent or empty in process.env. This happens when the app was launched
+    // via Dock/Finder (launchd) rather than from a direnv-active terminal — the env
+    // vars never make it into the process. Pointing at `bkit cursor` / `bkit opencode`
+    // is the actionable fix. (#279/#280)
+    const bkitEnvPath = path.join(process.cwd(), ".bkit", ".env");
+    if (fs.existsSync(bkitEnvPath)) {
+      const fileVars = parseDotenv(fs.readFileSync(bkitEnvPath, "utf-8"));
+      const guiMissing: string[] = [];
+      for (const [key, value] of fileVars) {
+        if (!value || value.trim() === "") continue; // skip blank placeholders
+        const inProcess = process.env[key] && process.env[key]!.trim().length > 0;
+        if (!inProcess) guiMissing.push(key);
+      }
+      if (guiMissing.length > 0) {
+        console.log(
+          `${LOG_PREFIX} --- GUI-isolation advisory ---\n` +
+            `${LOG_PREFIX} The following keys are set in .bkit/.env but are NOT present in this\n` +
+            `${LOG_PREFIX} process environment (GUI apps launched from Dock/Finder do not\n` +
+            `${LOG_PREFIX} inherit the login shell / direnv env):\n` +
+            guiMissing.map((k) => `${LOG_PREFIX}   ${k}`).join("\n") +
+            "\n" +
+            `${LOG_PREFIX} Fix: launch the app via \`bkit cursor\` or \`bkit opencode\` — these\n` +
+            `${LOG_PREFIX} verbs exec the binary directly with .bkit/.env merged in.`,
+        );
+      } else {
+        const nonBlankCount = [...fileVars.values()].filter((v) => v.trim() !== "").length;
+        if (nonBlankCount > 0) {
+          console.log(
+            `${LOG_PREFIX} GUI-isolation: all .bkit/.env keys are present in this process env (OK)`,
+          );
+        }
       }
     }
 
@@ -1659,6 +1839,32 @@ async function main() {
       tokens,
     });
 
+    // Task 3 (#281): re-render all installed provider blocks for upgrade.
+    // The candidates walk above handles the ACTIVE provider's block via renderOpencodeJson.
+    // For each ADDITIONAL installed provider, reconcile their template block into opencode.json
+    // so template changes (new keys, updated placeholders) propagate to all providers' blocks.
+    const OPENCODE_JSON_DST = path.join(".opencode", "opencode.json");
+    if (fs.existsSync(path.join(process.cwd(), OPENCODE_JSON_DST))) {
+      const allProviders = detectOpencodeProviders(process.cwd());
+      const otherProviders = allProviders.filter((p) => p !== upgradeOpencodeProvider);
+      if (otherProviders.length > 0) {
+        const opencodeTplDir = path.join(getTemplatesRoot(), ".opencode");
+        const jsonSrc = path.join(opencodeTplDir, "opencode.json");
+        if (fs.existsSync(jsonSrc)) {
+          const upgradeWs: WriteSet = { writes: [] };
+          for (const provider of otherProviders) {
+            const rendered = renderOpencodeJson(jsonSrc, upgradeTracker, provider);
+            reconcileOpencodeJson(rendered, OPENCODE_JSON_DST, upgradeFlags.dryRun, upgradeWs);
+          }
+          for (const w of upgradeWs.writes) {
+            console.log(
+              `${LOG_PREFIX}${upgradeFlags.dryRun ? " [dry-run]" : ""} upgrade: additional provider ${w.path}`,
+            );
+          }
+        }
+      }
+    }
+
     // #251: the template walk above only covers `.bkit/templates/` config. Re-render the
     // bkit-managed OUTPUT files install also produces but that are NOT templates — host
     // agents/commands (source-rendered from .bkit/prompts + .bkit/workflows) and the
@@ -1758,6 +1964,17 @@ async function main() {
 
   if (verb === "uninstall") {
     LOG_PREFIX = "[bkit-uninstall]";
+
+    // Surgical single-provider removal: `uninstall --opencode=<provider>`
+    if (modules.has("opencode") && opencodeProvider !== null) {
+      const tag = uninstallFlags.dryRun ? " (dry-run)" : "";
+      console.log(
+        `${LOG_PREFIX} Surgical opencode uninstall: removing provider "${opencodeProvider}"${tag}...`,
+      );
+      await runSurgicalOpencodeUninstall(opencodeProvider, uninstallFlags.dryRun, process.cwd());
+      return;
+    }
+
     const uninstallCtx: UninstallContext = {
       cwd: process.cwd(),
       dryRun: uninstallFlags.dryRun,
@@ -1799,7 +2016,7 @@ async function main() {
   // the parsed `opencodeProvider` is null on the check path. Falling back to the INSTALLED
   // provider (package.json `bkit.opencodeProvider`, else the opencode.json provider block) lets
   // the opencode drift check render with the consumer's real provider instead of the
-  // ollama-local default — otherwise an nvidia/groq/zen/… consumer reports false drift. On
+  // ollama-local default — otherwise an nvidia/groq/opencode/… consumer reports false drift. On
   // install this is a no-op: opencode joins the module set only when `--opencode=<provider>` was
   // given (non-null), so `?? detect` never fires. The PARSED `opencodeProvider` still drives the
   // persist-to-package.json logic below (gated on `!dryRun` + a real flag), so detection never
@@ -1906,7 +2123,7 @@ async function main() {
     if (cloudVariant === "opencode" && !fs.existsSync(path.join(process.cwd(), ".opencode"))) {
       console.error(
         `[bkit] --auto=opencode requires the local opencode host to be installed first.\n` +
-          `Run: bkit install --opencode=<provider>  (e.g. --opencode=nvidia)\n` +
+          `Run: bkit install --opencode=<provider>  (e.g. --opencode=opencode)\n` +
           `The cloud opencode job runs against the committed .opencode/ config — without it there is nothing to run.`,
       );
       process.exit(1);
@@ -1929,7 +2146,7 @@ async function main() {
             console.warn(
               `[bkit] warning: .opencode/opencode.json is configured for ${detectedId} (local server). ` +
                 `The cloud opencode job requires a remote provider with an API key — ` +
-                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=nvidia) to switch.`,
+                `re-run \`bkit install --opencode=<provider>\` (e.g. --opencode=opencode) to switch.`,
             );
           }
         } catch {
@@ -1944,7 +2161,7 @@ async function main() {
   //   - issueTracker: when a `--tracker=` value was given this run.
   //   - opencodeProvider: when an `--opencode=<provider>` value was given this run. This is
   //     the authoritative provider record detectOpencodeProvider reads on upgrade — REQUIRED
-  //     for managed-auth gateways (zen), whose opencode.json carries no provider block to
+  //     for managed-auth gateways (opencode), whose opencode.json carries no provider block to
   //     detect from. Both are merged in one read-modify-write to avoid double-writing.
   const persistTracker = tracker !== null;
   const persistProvider = opencodeProvider !== null && effectiveModules.has("opencode");
@@ -1956,7 +2173,22 @@ async function main() {
         const pkg = JSON.parse(raw) as Record<string, unknown>;
         const bkit = (pkg.bkit ?? {}) as Record<string, unknown>;
         if (persistTracker) bkit.issueTracker = tracker;
-        if (persistProvider) bkit.opencodeProvider = opencodeProvider;
+        if (persistProvider) {
+          // Save legacy single-string value BEFORE overwriting
+          const prevProvider =
+            typeof bkit.opencodeProvider === "string" ? bkit.opencodeProvider : null;
+          bkit.opencodeProvider = opencodeProvider; // active (drives agent frontmatter)
+          // Update providers array (deduped). Migrate: if only legacy string existed, seed array.
+          const existingArr: string[] = Array.isArray(bkit.opencodeProviders)
+            ? [...(bkit.opencodeProviders as string[])]
+            : prevProvider && (OPENCODE_PROVIDERS as readonly string[]).includes(prevProvider)
+              ? [prevProvider]
+              : [];
+          if (!existingArr.includes(opencodeProvider!)) {
+            existingArr.push(opencodeProvider!);
+          }
+          bkit.opencodeProviders = existingArr;
+        }
         pkg.bkit = bkit;
         const indentMatch = raw.match(/\n([ \t]+)"/);
         const indent = indentMatch ? indentMatch[1] : "  ";
@@ -1971,7 +2203,7 @@ async function main() {
         }
         if (persistProvider) {
           console.log(
-            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" in package.json`,
+            `${LOG_PREFIX} Set bkit.opencodeProvider = "${opencodeProvider}" and updated bkit.opencodeProviders in package.json`,
           );
         }
       } catch {
@@ -2048,12 +2280,15 @@ async function main() {
   // Check mode: exit-1 on drift (totalWrites > 0). Banner already emitted above.
   // Host agent/command mirrors are untracked force-overwrites, so a stale
   // managed-version marker never shows up in ws.writes — it surfaces as the
-  // bkit-rendered-prompts-stale Phase-3 blocker instead. Treat that blocker as
-  // drift here so `bkit check` hard-fails on outdated rendered prompts/workflows
-  // (#256). Other Phase-3 blockers keep their historical install-only semantics.
+  // bkit-rendered-prompts-stale Phase-3 blocker instead. The same is true for the
+  // managed docs/*.md marker (bkit-managed-docs-stale) — a stale doctrine doc need
+  // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
+  // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
+  // docs (#256). Other Phase-3 blockers keep their historical install-only semantics.
   if (dryRun) {
     const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale");
-    if (totalWrites > 0 || renderedStale) {
+    const docsStale = postFindings.some((f) => f.id === "bkit-managed-docs-stale");
+    if (totalWrites > 0 || renderedStale || docsStale) {
       if (totalWrites > 0) {
         console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);
       }
@@ -2061,6 +2296,12 @@ async function main() {
         console.error(
           `${LOG_PREFIX} check: rendered prompts/workflows are stale (managed-version marker drift) — ` +
             `see the bkit-rendered-prompts-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
+        );
+      }
+      if (docsStale) {
+        console.error(
+          `${LOG_PREFIX} check: managed docs are stale (managed-version marker drift) — ` +
+            `see the bkit-managed-docs-stale blocker above. Run \`pnpm bkit upgrade\` (or re-run install) and commit.`,
         );
       }
       process.exit(1);

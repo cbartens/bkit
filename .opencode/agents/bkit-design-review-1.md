@@ -2,7 +2,7 @@
 mode: subagent
 name: bkit-design-review-1
 description: Senior engineer assessing whether a design is buildable with the approved stack.
-model: nvidia/moonshotai/kimi-k2.6
+model: opencode/kimi-k2.6
 tools:
   read: true
   grep: true
@@ -14,7 +14,7 @@ tools:
   websearch: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing whether a design is buildable with the approved stack.
 **Scope:** As specified by input and Read/Update/Create section.

@@ -563,9 +563,14 @@ export function writeTier3(
   ws: WriteSet,
   aiMessage?: string,
   tokens?: TokenMap,
+  transform?: (content: string) => string,
 ): Tier3Result {
   const srcRaw = fs.readFileSync(srcPath, "utf-8");
-  const srcContent = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+  const srcTokens = tokens ? applyTokens(srcRaw, tokens) : srcRaw;
+  // `transform` runs AFTER token substitution so it sees fully-resolved content
+  // (used by the ci.yml skeleton derivation for --ci-only installs, #265). It is
+  // applied to BOTH the written file and the {{TEMPLATE_CONTENT}} merge suggestion.
+  const srcContent = transform ? transform(srcTokens) : srcTokens;
   const dstBasename = path.basename(dstPath);
 
   if (fs.existsSync(dstPath)) {

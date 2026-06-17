@@ -109,6 +109,18 @@ describe("resolveTokens — PROJECT_NAME", () => {
   });
 });
 
+describe("resolveTokens — BKIT_MANAGED_MARKER", () => {
+  it("populates the marker from the installing bkit version (not the consumer's)", async () => {
+    // Consumer package.json version is irrelevant — the marker tracks the bkit pkg.
+    writeJson("package.json", { name: "consumer", version: "0.1.2" });
+    const tokens = await resolveTokens(tmpDir);
+    expect(tokens.BKIT_MANAGED_MARKER).toMatch(
+      /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/,
+    );
+    expect(tokens.BKIT_MANAGED_MARKER).not.toContain("0.1.2");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // REPO_SLUG resolution — parsed from `git remote get-url origin`
 // ---------------------------------------------------------------------------
@@ -181,6 +193,26 @@ describe("applyTokens", () => {
   it("leaves content without placeholders unchanged", () => {
     const content = "no placeholders here";
     expect(applyTokens(content, tokens)).toBe(content);
+  });
+
+  it("substitutes {{BKIT_MANAGED_MARKER}} from the token value when provided", () => {
+    const marker = "<!-- bkit:managed v9.9.9 — do NOT edit; run `bkit upgrade` to refresh -->";
+    const result = applyTokens("<!-- bkit:start -->\n{{BKIT_MANAGED_MARKER}}\n", {
+      ...tokens,
+      BKIT_MANAGED_MARKER: marker,
+    });
+    expect(result).toContain(marker);
+    expect(result).not.toContain("{{BKIT_MANAGED_MARKER}}");
+  });
+
+  it("falls back to a computed marker when the token value is omitted (bare literal TokenMap)", () => {
+    // tokens here has no BKIT_MANAGED_MARKER — applyTokens computes it from the
+    // installing bkit version rather than leaving a dangling placeholder.
+    const result = applyTokens("{{BKIT_MANAGED_MARKER}}", tokens);
+    expect(result).toMatch(
+      /^<!-- bkit:managed v\S+ — do NOT edit; run `bkit upgrade` to refresh -->$/,
+    );
+    expect(result).not.toContain("{{BKIT_MANAGED_MARKER}}");
   });
 
   it("template source still has {{TOKEN}} placeholders after substitution (write-time semantics)", async () => {

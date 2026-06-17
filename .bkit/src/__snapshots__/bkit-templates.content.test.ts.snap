@@ -36,11 +36,13 @@ jobs:
     # (PR title for feature-branch pushes vs commit message for direct dev/main pushes)
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #
-    # GH_BKIT_TOKEN is also declared at the job level so every pnpm/npx invocation in
-    # this job (vitest, turbo, etc.) can substitute \${GH_BKIT_TOKEN} when reading
-    # .npmrc. Without it, pnpm emits "Failed to replace env in config" warnings on
-    # every read after the install step. The install step keeps its own env: block
-    # for explicitness and to satisfy the BAR-138 regression tests.
+    # GH_BKIT_TOKEN is declared at the job level so $GH_BKIT_TOKEN is available to the
+    # install step's \`pnpm config set\` (which writes the GH Packages auth token into
+    # pnpm's user-level config) and to any later pnpm/npx invocation. The committed
+    # project .npmrc carries ONLY the @cbartens registry mapping — the _authToken is
+    # NOT stored there: pnpm >=10.34.3 no longer authenticates a project-.npmrc
+    # \${GH_BKIT_TOKEN} env-substitution and 401s on download. The install step also
+    # keeps its own env: block for explicitness and to satisfy the BAR-138 tests.
     env:
       TURBO_LOG_LEVEL: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: \${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
@@ -52,6 +54,11 @@ jobs:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
 
+      # bkit:start ts-ci-steps
+      # Node/TS toolchain region (bkit #265). bkit seeds these step bodies ACTIVE when you
+      # install \`--typescript\` (or \`--tooling\`), and COMMENTED OUT when you install \`--ci\`
+      # alone (stack-agnostic skeleton). On a non-Node repo, adapt the commented examples to
+      # your stack's setup / install / typecheck / lint / test commands.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: {{NODE_VERSION}}
@@ -59,6 +66,7 @@ jobs:
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add \`with: version:\` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      # bkit:end ts-ci-steps
 
       # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
       # $GITHUB_ENV. Note that steps with their own \`env:\` block override $GITHUB_ENV —
@@ -112,6 +120,51 @@ jobs:
             fi
           fi
 
+      # bkit:start main-lag-warning
+      # Promotion-lag reminder (non-blocking, bkit-managed block). Renovate reads its config
+      # ONLY from the default branch, and scheduled / default-branch-triggered Actions run the
+      # default branch's copy of each workflow — so a renovate.json5 or .github/workflows/ edit
+      # that lands on dev but is never promoted runs STALE for everyone until a dev -> default
+      # branch PR lands. CI on dev validates the code; nothing otherwise checks it reached the
+      # default branch. Warns (never fails) on dev pushes when those consumed-from-default-branch
+      # surfaces differ — keyed ONLY on those surfaces, so ordinary app-code dev pushes stay
+      # quiet. The default branch is read at runtime, so this block is identical for every repo.
+      # Safe to keep in any repo: it only runs on dev pushes and self-skips when the default
+      # branch is dev/unset, so it never fires where the dev -> default-branch flow does not apply.
+      # bkit-owned: edit it in the bkit template, not here. \`bkit check\` raises a (non-blocking)
+      # advisory if this block is missing or has drifted. See docs/deployments.md § "Promotion-lag warning".
+      - name: Check Main Lags Dev
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        env:
+          DEFAULT_BRANCH: \${{ github.event.repository.default_branch }}
+        run: |
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$DEFAULT_BRANCH" = "dev" ]; then
+            echo "::notice::promotion-lag check skipped (default branch is '$DEFAULT_BRANCH')"
+            exit 0
+          fi
+          if ! git fetch --no-tags --quiet origin "+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH" 2>/dev/null; then
+            echo "::notice::promotion-lag check skipped — could not fetch $DEFAULT_BRANCH"
+            exit 0
+          fi
+          SURFACES=(.github/renovate.json5 .github/renovate.json .github/workflows)
+          STALE=$(git diff --name-only "origin/$DEFAULT_BRANCH" HEAD -- "\${SURFACES[@]}" 2>/dev/null || true)
+          if [ -z "$STALE" ]; then
+            echo "consumed-from-$DEFAULT_BRANCH surfaces match $DEFAULT_BRANCH — nothing stale to promote."
+            exit 0
+          fi
+          BEHIND=$(git rev-list --count "origin/$DEFAULT_BRANCH..HEAD" 2>/dev/null || echo "?")
+          {
+            echo "### WARNING: $DEFAULT_BRANCH is serving stale consumed surfaces"
+            echo ""
+            echo "\\\`$DEFAULT_BRANCH\\\` is **$BEHIND commit(s)** behind \\\`dev\\\`, and these files — which Renovate and scheduled / default-branch Actions read LIVE from \\\`$DEFAULT_BRANCH\\\` — differ from \\\`dev\\\`:"
+            echo ""
+            printf '%s\\n' "$STALE" | sed 's/^/- /'
+            echo ""
+            echo "They run the **$DEFAULT_BRANCH** version until promoted. Open a \\\`dev\\\` -> \\\`$DEFAULT_BRANCH\\\` PR to apply them."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::$DEFAULT_BRANCH is $BEHIND commit(s) behind dev and consumed-from-$DEFAULT_BRANCH surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> $DEFAULT_BRANCH. See the run summary."
+      # bkit:end main-lag-warning
+
       # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
       # - name: Auto Force E2E for Sensitive Paths
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
@@ -141,9 +194,17 @@ jobs:
       #     done
       #     exit $EXIT
 
+      # bkit:start ts-ci-steps
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        run: pnpm install --frozen-lockfile
+        # Write the GH Packages auth token into pnpm's user-level config BEFORE install.
+        # pnpm >=10.34.3 no longer authenticates a project-.npmrc \${GH_BKIT_TOKEN}
+        # env-substitution and 401s on download (ERR_PNPM_FETCH_401). \`pnpm config set\`
+        # is version-aware: it writes ~/.npmrc on pnpm 10.x and ~/.config/pnpm/auth.ini
+        # on pnpm 11.x — whichever location this pnpm reads at install time.
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+          pnpm install --frozen-lockfile
         env:
           GH_BKIT_TOKEN: \${{ secrets.GH_BKIT_TOKEN }}
 
@@ -198,6 +259,7 @@ jobs:
         env:
           BASE_SHA: \${{ github.event.pull_request.base.sha }}
         run: pnpm slop:delta "$BASE_SHA"
+      # bkit:end ts-ci-steps
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (\${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
@@ -214,9 +276,11 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
+      # bkit:start ts-ci-steps
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+      # bkit:end ts-ci-steps
 
       # --- Test / build group: install-dependent, tree-dirtying. Runs after all
       # static checks above so coverage/dist artifacts never reach slop or bkit check. ---
@@ -231,6 +295,11 @@ jobs:
       #   run: |
       #     pnpm dlx supabase link --project-ref "$SUPABASE_PROJECT_REF"
       #     pnpm dlx supabase db push --linked --include-all
+      #
+      # BUILD-vs-MIGRATION RACE (latent until your first build-time DB read): if your host auto-deploys
+      # on this same push, its build runs UNORDERED vs this migrate step and a build-time DB read can
+      # ERROR the first deploy (PG 42P01/42703/42704/3F000; a redeploy of the SAME sha self-heals).
+      # Fix: serialise migrate -> deploy. Full mechanism + fix options: docs/deployments.md § Build-vs-migration race.
 
       # bkit-stub:test-db — Assert schema-invariant DB checks (e.g. "every public table has RLS enabled, no hardcoded list") so they aren't app-defined. Two co-equal routes — pick by DEPLOY TOPOLOGY, not by whether you can run pgTAP locally:
       #   * pgTAP (this step) — fast, hermetic, offline; runs supabase/tests/*.sql against a CI-LOCAL fixture built from supabase/migrations. Caveat: that fixture can differ from prod — a migration that doesn't reproduce the live schema leaves this GREEN while prod RLS is broken. Best when there is NO deploy/@live tier, or for pure-logic DB unit tests.
@@ -254,6 +323,7 @@ jobs:
       #       fi
       #     done
 
+      # bkit:start ts-ci-steps
       - name: Run Vitest Tests
         if: steps.cache.outputs.skip != 'true'
         env:
@@ -270,6 +340,7 @@ jobs:
           else
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
+      # bkit:end ts-ci-steps
 
       # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
       # - name: Await Vercel Preview
@@ -292,6 +363,11 @@ jobs:
       #     done
       #     echo "::error::Vercel preview did not reach READY within 10 minutes"
       #     exit 1
+      #
+      # MIGRATION-COUPLED PRs: a preview deploy hits the SHARED dev DB, blind to a PR's unmerged migration,
+      # so a PR that adds+uses a column in one PR 500s pre-merge ([force e2e] won't help). Run feature->dev
+      # PR E2E against a LOCAL DB carrying this PR's migrations; keep preview E2E for pushes. Gate on head
+      # ref, not a flag. Full write-up: docs/testing.md § "E2E on PRs".
 
       # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
       # Under bkit [verbose ci]: your test:e2e script reads VERBOSE_CI (in the job env) and
@@ -315,6 +391,11 @@ jobs:
       #     TARGET_URL: \${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
       #   run: |
       #     pnpm test:e2e
+      #
+      # E2E PR-TIERING (biggest PR-wall-clock win): tag ~10-15 critical specs { tag:'@smoke' } and run the
+      # subset on PRs / full on push + nightly via a PROJECT-scoped grep (e.g. PW_E2E_GREP on pull_request
+      # only) — NOT a CLI/top-level --grep, which also filters the auth/setup projects and breaks seeding.
+      # Mechanism + turbo strict-env note: docs/testing.md § "E2E on PRs".
 
       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
       # \`if: always()\` captures both failure AND job-timeout cancel: Playwright's HTML reporter
@@ -400,6 +481,10 @@ jobs:
 #
 # === JOB 2: bkit-tests — the tiers ===
 #   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   SCALING: bkit-tests is ONE job, so tiers run SERIALLY (wall-clock = SUM of steps). On a monorepo
+#   where that dominates, split into parallel sibling lanes (-static/-unit/-integration/-e2e) so
+#   wall-clock = MAX(lane); the capstone needs: ALL lanes and EACH emits its own *_ran count. Detail +
+#   cost/mitigation: docs/deployments.md § Parallel test lanes.
 #   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
 #     integration_outcome: \${{ steps.integration.outcome }} ; e2e_outcome: \${{ steps.e2e.outcome }}
 #     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just
@@ -429,6 +514,8 @@ jobs:
 #       - name: Validate Environment          # [D] env-shape checker (e.g. env-check.sh)
 #       - name: Resolve Vercel URL            # [D] if: web_affected — this SHA's preview into $TARGET_URL (API by SHA, excl CANCELED/ERROR; no stale-branch fallback)
 #       - name: Apply Supabase Migrations     # [DB] if: push && (main||dev)
+#       #     [DB] BUILD-vs-MIGRATION RACE if the host auto-deploys on this push (build races this step; PG
+#       #     42P01/42703/42704/3F000, redeploy-same-sha self-heals). Fix: serialise migrate -> deploy. See docs/deployments.md § Build-vs-migration race.
 # bkit-stub:test-db — [DB] schema invariants ("every public table has RLS" etc., not app-defined). Two co-equal
 #       # routes by deploy topology: pgTAP (\`supabase db test\` over supabase/tests/*.sql) against a CI-LOCAL fixture
 #       # — fast/offline but can pass while prod drifts; OR a service_role-only catalog RPC from the @live tier
@@ -440,6 +527,8 @@ jobs:
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
 #       - name: Check Stale Test Data         # [DB] if: (full||run_e2e)&&web_affected; continue-on-error (hygiene warning)
 #       - name: Run Playwright E2E Tests      # [E] id: e2e; if: (full||run_e2e)&&web_affected; [verbose ci] adds --trace=on (never --reporter — replaces config chain)
+#       #     [E/PR] PR-tier the suite (@smoke subset on PRs via a PROJECT-scoped grep, full on push) AND, for migration-
+#       #     coupled PRs, run a LOCAL-DB E2E pass (preview hits the migration-less shared dev DB). Both: docs/testing.md § "E2E on PRs".
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
@@ -451,7 +540,10 @@ jobs:
 # DB is rebuilt from scratch (see docs/testing.md, fresh-provision rule). bkit owns the always-runs,
 # self-detecting, branch-protection-safe SCAFFOLD; you supply your stack's reset+seed (Supabase:
 # \`supabase db reset --local\`; Prisma: \`prisma migrate reset\`; Drizzle/raw: replay every migration
-# onto a throwaway DB, then seed). NOT in series before bkit-tests — they share no state (each
+# onto a throwaway DB, then seed). MULTIPLE MIGRATION SYSTEMS (e.g. Supabase public schema AND an
+# ORM/CMS chain like Payload/Prisma): replay EVERY chain + trigger on EVERY migration dir, or the
+# un-replayed chain is an unverified hole — see docs/testing.md § Provision backing services fresh.
+# NOT in series before bkit-tests — they share no state (each
 # provisions its own DB), so it runs in parallel and JOB 4 folds it into the capstone.
 #   bkit-tests-migrate:  needs:[] (independent sibling); timeout-minutes: 15
 #   # ALWAYS runs + reports a status (never a perpetually-pending required check); the heavy steps

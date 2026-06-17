@@ -216,4 +216,4 @@ The empirical eval layer (pass@k / pass^k regression fixtures plus rule-obedienc
 
 ---
 
-Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`), the BAR-168 differential review of Gulli, _Agentic Design Patterns_ (`docs/plans/202605/bar-168-gulli-comparison.md`), and the #230 differential review of `everything-claude-code` (`docs/plans/202606/230-affaan-comparison.md`).
+Source: bkit workflow and prompt definitions (`.bkit/workflows/*`, `.bkit/prompts.md`), the Gulli differential review of _Agentic Design Patterns_, and the `everything-claude-code` differential review.

@@ -59,13 +59,14 @@ WS-2 ─(WS2-T1 CLI decision)─┴─────────┘
 
 ## Sub-Plan Index
 
-| #   | Sub-plan                         | Workstream                                | Requires                                                 | Concurrency                                                    |
-| --- | -------------------------------- | ----------------------------------------- | -------------------------------------------------------- | -------------------------------------------------------------- |
-| A   | [`plan-v4-1.md`](./plan-v4-1.md) | WS-1 — JSONL telemetry substrate (P1)     | Nothing                                                  | Root — must land first                                         |
-| B   | [`plan-v4-2.md`](./plan-v4-2.md) | WS-2 — Compliance grader (P2)             | Sub-plan A shipped to dev                                | Concurrent with C                                              |
-| C   | [`plan-v4-3.md`](./plan-v4-3.md) | WS-3 — #58 counter refactor (P3)          | Sub-plan A shipped to dev                                | Concurrent with B                                              |
-| D   | [`plan-v4-4.md`](./plan-v4-4.md) | WS-4 — Harvest + analysis (P4)            | Sub-plans A + B + C shipped to dev                       | After A+B+C                                                    |
-| E   | [`plan-v4-5.md`](./plan-v4-5.md) | WS-5 — knowledge/decisions migration (P5) | Sub-plan A shipped to dev + WS2-T1 CLI decision recorded | Can begin after WS2-T1 completes (even before rest of B ships) |
+<!-- prettier-ignore -->
+| # | Sub-plan | Workstream | Requires | Concurrency |
+| --- | --- | --- | --- | --- |
+| A | [`plan-v4-1.md`](./plan-v4-1.md) | WS-1 — JSONL telemetry substrate (P1) | Nothing | Root — must land first |
+| B | [`plan-v4-2.md`](./plan-v4-2.md) | WS-2 — Compliance grader (P2) | Sub-plan A shipped to dev | Concurrent with C |
+| C | [`plan-v4-3.md`](./plan-v4-3.md) | WS-3 — #58 counter refactor (P3) | Sub-plan A shipped to dev | Concurrent with B |
+| D | [`plan-v4-4.md`](./plan-v4-4.md) | WS-4 — Harvest + analysis (P4) | Sub-plans A + B + C shipped to dev | After A+B+C |
+| E | [`plan-v4-5.md`](./plan-v4-5.md) | WS-5 — knowledge/decisions migration (P5) | Sub-plan A shipped to dev + WS2-T1 CLI decision recorded | Can begin after WS2-T1 completes (even before rest of B ships) |
 
 ### Per-sub-plan task ownership (losslessness map)
 

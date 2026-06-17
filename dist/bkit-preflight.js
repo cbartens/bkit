@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { spawnSync } from "node:child_process";
 import { readBkitVersion } from "./bkit-version.js";
 import { deepContains, stripManagedBlock } from "./bkit-tiers.js";
-import { extractManagedBlock } from "./bkit-install.js";
+import { extractNamedBlocks } from "./bkit-install.js";
 import { getPkgRoot, getTemplatesRoot } from "./bkit-paths.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
@@ -287,40 +287,12 @@ export function detectPrettierignoreScopeBroadening(cwd) {
 // ---------------------------------------------------------------------------
 // [verbose ci] marker advisories (BAR-224)
 // ---------------------------------------------------------------------------
-/**
- * Advisory: consumer's `.github/workflows/ci.yml` has bkit-managed markers but is
- * missing the `# bkit:start verbose-ci-env` named block that enables the
- * `[verbose ci]` commit/PR-title marker.
- *
- * Without the env block, the marker is a silent no-op — bkit-debug prompts will
- * still recommend `[verbose ci]` on thin-log failures, but the consumer's CI will
- * not escalate log detail. Surfacing this as an advisory directs the consumer to
- * `bkit install` which rewrites the bkit-managed block to include the env.
- *
- * Only fires when the consumer has opted into a bkit-managed ci.yml at all (other
- * bkit markers present). Consumers who own their ci.yml entirely are not nagged.
- */
-export function detectCiYmlVerboseCiBlockMissing(cwd) {
-    const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
-    if (!fs.existsSync(ciPath))
-        return null;
-    const content = fs.readFileSync(ciPath, "utf-8");
-    // YAML-aware marker detection: allow leading whitespace, because ci.yml markers are
-    // indented inside `jobs:` / `steps:` (unlike the strict `hasBkitMarkers` used for
-    // flat-structure files like .gitignore / .prettierignore where indentation is unusual).
-    const hasAnyBkitMarker = /^\s*# bkit:start\b/m.test(content);
-    if (!hasAnyBkitMarker)
-        return null;
-    // Named block marker present? `# bkit:start verbose-ci-env`
-    if (/^\s*# bkit:start verbose-ci-env\b/m.test(content))
-        return null;
-    return {
-        id: "ci-yml-verbose-ci-block-missing",
-        severity: "advisory",
-        detect: ".github/workflows/ci.yml has bkit-managed markers but is missing the `# bkit:start verbose-ci-env` block. The `[verbose ci]` commit-message / PR-title marker will silently no-op.",
-        action: "Run `pnpm bkit install` to add the verbose-ci-env block (sets TURBO_LOG_LEVEL=full, NODE_OPTIONS=--trace-warnings, DEBUG=vercel:*,supabase:* under the marker). After install, append `[verbose ci]` to the PR title (for feature-branch pushes — the workflow fires on `pull_request`, not `push`) or to the commit message (for direct pushes to `dev` / `main`).",
-    };
-}
+// NOTE: detectCiYmlVerboseCiBlockMissing was retired once detectTier2TextDrift became
+// named-block-aware. The template's `verbose-ci-env` is a named bkit-managed block, so a
+// consumer missing it (or having drifted it) is now surfaced generically by the tier2-text-drift
+// advisory over `.github/workflows/ci.yml` — no per-block detector needed. New bkit-owned
+// fragments follow the same path: wrap them in `# bkit:start <name>` in the template and the
+// generic drift advisory covers them. Per-block presence detectors are no longer added.
 /**
  * Advisory: consumer's Playwright invocation passes `--reporter=line`, which
  * overrides the configured reporter chain in `playwright.config.ts`. Under
@@ -585,41 +557,54 @@ export function detectTier2JsonDrift(cwd, relPath, pkgRoot) {
  * Follows `[Context] Message` advisory format.
  */
 export function detectTier2TextDrift(cwd, relPath, pkgRoot) {
+    void pkgRoot; // signature kept for call-site compatibility; templates resolve via getTemplatesRoot
     const absPath = path.join(cwd, relPath);
     const templatePath = path.join(getTemplatesRoot(), relPath);
     if (!fs.existsSync(absPath) || !fs.existsSync(templatePath))
         return null;
     const consumerContent = fs.readFileSync(absPath, "utf-8");
     const templateContent = fs.readFileSync(templatePath, "utf-8");
-    // Detect marker style from the consumer file
-    let style = null;
-    if (/^<!-- bkit:start -->$/m.test(consumerContent))
-        style = "html-comment";
-    else if (/^# bkit:start$/m.test(consumerContent))
-        style = "hash-comment";
-    if (!style)
-        return null; // no markers in consumer — not a drift (markers-missing case)
-    // Extract the block from both consumer and template
-    const consumerBlock = extractManagedBlock(consumerContent, style);
-    if (consumerBlock === null)
-        return null; // consumer has markers but they're malformed
-    // Template may use the same or different marker style
-    let templateBlock = extractManagedBlock(templateContent, style);
-    if (templateBlock === null) {
-        // Try the other style in case template uses different style
-        const altStyle = style === "html-comment" ? "hash-comment" : "html-comment";
-        templateBlock = extractManagedBlock(templateContent, altStyle);
+    // Every named (and the default unnamed) bkit-managed block in the TEMPLATE is the
+    // authoritative scope. Compare each against the consumer's same-named block:
+    //   - consumer lacks it  → "missing"  (unless the template marks the block `optional`)
+    //   - consumer has it but content differs → "drifted"
+    // Content OUTSIDE bkit:start/bkit:end is consumer-owned and never compared, so a
+    // freely-edited Tier-3 file only trips on its bkit-owned regions — no false positives.
+    const templateBlocks = extractNamedBlocks(templateContent);
+    if (templateBlocks.size === 0)
+        return null; // template owns no marked region in this file
+    const consumerBlocks = extractNamedBlocks(consumerContent);
+    // Consumer carries no bkit markers at all → fully consumer-owned (markers-missing case),
+    // or has only the bare wrapper of a different file shape. Never flag a file the consumer
+    // wrote without bkit markers (this also keeps bkit's own marker-free ci.yml out of scope).
+    if (consumerBlocks.size === 0)
+        return null;
+    const missing = [];
+    const drifted = [];
+    for (const [name, tBlock] of templateBlocks) {
+        const label = name || "(default block)";
+        const cBlock = consumerBlocks.get(name);
+        if (!cBlock) {
+            if (!tBlock.optional)
+                missing.push(label);
+            continue;
+        }
+        if (cBlock.body !== tBlock.body)
+            drifted.push(label);
     }
-    if (templateBlock === null)
-        return null; // template has no block to compare against
-    if (consumerBlock === templateBlock)
-        return null; // byte-equal — no drift
+    if (missing.length === 0 && drifted.length === 0)
+        return null;
+    const parts = [...missing.map((n) => `missing: ${n}`), ...drifted.map((n) => `drifted: ${n}`)];
+    const details = parts.slice(0, 6).join("; ");
+    const more = parts.length > 6 ? ` (+${parts.length - 6} more)` : "";
     return {
         id: "tier2-text-drift",
         severity: "advisory",
-        detect: `${relPath} bkit-managed marker block content differs from template.`,
-        action: `Run \`pnpm bkit install\` to restore the bkit-managed block in ${relPath}. ` +
-            "Content outside the bkit:start/bkit:end markers is preserved.",
+        detect: `${relPath} has bkit-managed block(s) that differ from the shipped template — ${details}${more}.`,
+        action: `Re-sync the bkit-managed block(s) in ${relPath} from .bkit/templates/${relPath} ` +
+            "(run `pnpm bkit install`, or copy the block between its `bkit:start`/`bkit:end` markers). " +
+            "Content outside the markers is preserved. A block marked `bkit:start <name> optional` may be " +
+            "deleted (markers included) without this warning.",
     };
 }
 /**
@@ -900,6 +885,29 @@ export function detectBlankDotenvKeys(cwd, tracker = "linear") {
     return findings;
 }
 /**
+ * Advisory: `bkit` is not on PATH.
+ * bkit is a devDependency — without a shell alias, every invocation requires
+ * `pnpm bkit <verb>` or `pnpm exec bkit <verb>`. Suggest the one-line alias.
+ * Short-circuits in CI / cloud environments where the alias is irrelevant.
+ */
+export function detectBkitNotOnPath() {
+    if (isCloudOrCi())
+        return null;
+    const result = spawnSync("which", ["bkit"], { encoding: "utf-8" });
+    if (result.status === 0 && result.stdout.trim())
+        return null;
+    return {
+        id: "bkit-not-on-path",
+        severity: "advisory",
+        detect: "`bkit` is not on PATH — commands must be run as `pnpm bkit <verb>` or `pnpm exec bkit <verb>`.",
+        action: "[bkit] Add a shell alias so you can type `bkit <verb>` directly. Add to ~/.zshrc (or ~/.bashrc), then reload:\n\n" +
+            "    alias bkit='pnpm bkit'\n" +
+            "    source ~/.zshrc\n\n" +
+            "For `bkit cursor` / `bkit opencode` (GUI app launchers), run from the repo root in\n" +
+            "an external terminal (Terminal.app / iTerm2) — not from inside the running app.",
+    };
+}
+/**
  * Returns true when running in a cloud/CI environment where direnv is not
  * applicable (agent reads env vars from the platform dashboard instead).
  */
@@ -1102,9 +1110,6 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     if (versionPinStale)
         advisories.push(versionPinStale);
     // BAR-224: [verbose ci] marker advisories
-    const verboseCiMissing = detectCiYmlVerboseCiBlockMissing(cwd);
-    if (verboseCiMissing)
-        advisories.push(verboseCiMissing);
     const playwrightReporterHostile = detectPlaywrightReporterHostile(cwd);
     if (playwrightReporterHostile)
         advisories.push(playwrightReporterHostile);
@@ -1114,6 +1119,10 @@ export function runPreflight(modules, cwd = process.cwd(), installingVersion, is
     const observabilityDebugFetchSource = detectObservabilityDebugFetchSourceNotEnabled(cwd);
     if (observabilityDebugFetchSource)
         advisories.push(observabilityDebugFetchSource);
+    // bkit-not-on-path advisory — suggest the shell alias for local development.
+    const bkitNotOnPath = detectBkitNotOnPath();
+    if (bkitNotOnPath)
+        advisories.push(bkitNotOnPath);
     // Missing MCP server advisory — one finding per missing required key, per file.
     // Tracker-aware: when issueTracker === "github", only github MCP server is required
     // (Linear gate is a no-op on GitHub tracker — gate moved into workflow Step 1 via MCP).

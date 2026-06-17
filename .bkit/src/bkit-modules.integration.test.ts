@@ -27,6 +27,7 @@ import {
   opencodeProviderId,
   renderCloudWorkflow,
   dispatchModules,
+  deriveCiSkeleton,
   type ModuleContext,
 } from "./bkit-modules";
 import { readBkitVersion, writeBkitVersion } from "./bkit-version";
@@ -333,6 +334,79 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
         p.includes(".bkit/version"),
     );
     expect(hasCiOrLint).toBe(true);
+  });
+});
+
+describe("ci.yml skeleton vs wired + --ci/--typescript footprint (#265)", () => {
+  function readCi(): string {
+    return fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8");
+  }
+
+  it("--ci alone seeds the SKELETON: ts-ci-steps commented, vale config present, NO TS footprint", () => {
+    dispatchModules(new Set(["core", "ci"]), makeCtx({}));
+    const ci = readCi();
+    // The Node/TS region body is commented out — no ACTIVE pnpm install step.
+    expect(ci).not.toMatch(/^\s+- name: Install Dependencies/m);
+    expect(ci).toMatch(/#\s*- name: Install Dependencies/);
+    expect(ci).toContain("# bkit:start ts-ci-steps"); // markers retained
+    // Vale config (stack-agnostic) ships with --ci.
+    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".vale", "styles", "House", "LLMSlop.yml"))).toBe(true);
+    // No Node/TS toolchain footprint.
+    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(false);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
+    ).toBe(false);
+    // --ci adds NO package.json scripts (agnostic).
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkg.scripts?.typecheck).toBeUndefined();
+  });
+
+  it("--ci --typescript seeds the WIRED ci.yml: ts-ci-steps active + full TS footprint", () => {
+    dispatchModules(new Set(["core", "ci", "lint", "git-hooks"]), makeCtx({}));
+    const ci = readCi();
+    // The Node/TS region is ACTIVE (uncommented).
+    expect(ci).toMatch(/^\s+- name: Install Dependencies/m);
+    // Full Node/TS footprint present.
+    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(true);
+    // Vale config still present (ci is co-installed under --typescript).
+    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
+    // typecheck added by the lint module (moved ci→lint).
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkg.scripts?.typecheck).toBeDefined();
+  });
+});
+
+describe("deriveCiSkeleton (#265)", () => {
+  it("comments lines inside ts-ci-steps regions, leaves the spine untouched", () => {
+    const input = [
+      "jobs:",
+      "  build:",
+      "    steps:",
+      "      - name: Checkout",
+      "      # bkit:start ts-ci-steps",
+      "      - name: Install Dependencies",
+      "        run: pnpm install",
+      "      # bkit:end ts-ci-steps",
+      "      - name: Actionlint",
+    ].join("\n");
+    const out = deriveCiSkeleton(input);
+    expect(out).toContain("      - name: Checkout"); // spine untouched
+    expect(out).toContain("      - name: Actionlint"); // spine untouched
+    expect(out).toContain("      # - name: Install Dependencies"); // commented, indent kept
+    expect(out).toContain("        # run: pnpm install"); // commented, deeper indent kept
+    expect(out).toContain("      # bkit:start ts-ci-steps"); // marker line retained verbatim
+  });
+
+  it("is a no-op when there are no ts-ci-steps regions", () => {
+    const input = "jobs:\n  build:\n    steps:\n      - run: echo hi\n";
+    expect(deriveCiSkeleton(input)).toBe(input);
   });
 });
 
@@ -1132,22 +1206,31 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     return pkg.scripts ?? {};
   }
 
-  it("runCiModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit)", () => {
+  it("runLintModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit) (#265)", () => {
     writePkg();
     fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
     const ctx = makeCtx({});
-    runCiModule(ctx);
+    runLintModule(ctx);
     const scripts = readPkgScripts();
     expect(scripts.typecheck).toBe("tsc --noEmit");
   });
 
-  it("runCiModule preserves an existing `typecheck` value (consumer wins)", () => {
+  it("runLintModule preserves an existing `typecheck` value (consumer wins)", () => {
     writePkg({ typecheck: "custom-runner" });
     fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
     const ctx = makeCtx({});
-    runCiModule(ctx);
+    runLintModule(ctx);
     const scripts = readPkgScripts();
     expect(scripts.typecheck).toBe("custom-runner");
+  });
+
+  it("runCiModule adds NO package.json scripts (stack-agnostic, #265)", () => {
+    writePkg();
+    const ctx = makeCtx({});
+    runCiModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts.typecheck).toBeUndefined();
+    expect(Object.keys(scripts)).toHaveLength(0);
   });
 
   it("runLintModule adds format:check, lint:prose, lint:slop scripts when missing", () => {
@@ -1168,12 +1251,12 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     expect(scripts.prepare).toBe("husky");
   });
 
-  it("runCiModule warns via advisories when package.json is missing", () => {
+  it("runLintModule warns via advisories when package.json is missing (#265)", () => {
     // beforeEach seeds a package.json — remove it so we hit the missingPkg branch
     fs.rmSync(path.join(tmpDir, "package.json"));
     const advisories: PreflightFinding[] = [];
     const ctx = makeCtx({ advisories });
-    runCiModule(ctx);
+    runLintModule(ctx);
     const combined = advisories.map((a) => `${a.detect} ${a.action}`).join("\n");
     expect(combined).toMatch(/package\.json not found/i);
   });
@@ -1891,54 +1974,73 @@ describe("tier2-json-drift advisory for slop-scan.config.json (Task 19 unblocked
 // step inside marker block → bkit check (detectTier2TextDrift) flags tier2-text-drift
 // ---------------------------------------------------------------------------
 
-describe("Task 23 — Tier-3 drift regression: ci.yml missing pnpm bkit check step", () => {
-  it("detectTier2TextDrift fires when consumer ci.yml pnpm bkit check step is removed from marker block", () => {
+describe("Task 23 — Tier-3 drift regression: ci.yml named-block drift", () => {
+  const relPath = path.join(".github", "workflows", "ci.yml");
+  const pkgRoot = (() => {
     const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
+    return path.resolve(scriptsDir, "..", "..");
+  })();
+  const readTemplate = (): string =>
+    fs.readFileSync(path.join(pkgRoot, ".bkit", "templates", relPath), "utf-8");
+  const writeConsumer = (content: string): void => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, relPath), content, "utf-8");
+  };
 
-    // Build consumer ci.yml: template with bkit check step removed from inside marker block
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
-
-    // Remove the Run Bkit Check step from inside the marker block
-    const consumerContent = templateContent.replace(
-      /\n      - name: Run Bkit Check\n        run: pnpm bkit check\n/,
+  it("no drift when a step OUTSIDE any named block is removed (consumer owns unmarked regions)", () => {
+    // The `Run Bkit Check` step is a plain step, not inside a bkit:start/end block, so the
+    // consumer owns it — removing it is NOT drift. Only bkit-owned named blocks are compared.
+    const consumer = readTemplate().replace(
+      /\n      - name: Run Bkit Check\n        if: steps\.cache\.outputs\.skip != 'true'\n        run: pnpm bkit check\n/,
       "\n",
     );
-
-    // Write the consumer version (with the pnpm bkit check line removed)
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), consumerContent, "utf-8");
-
-    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // NOTE: ci.yml is Tier-3 (seed-or-print, byte-equal) and carries NO whole-file
-    // bkit:start/end managed-block markers — only the named `verbose-ci-env` block, which
-    // extractManagedBlock does not treat as a Tier-2 managed block. With no col-0 managed
-    // block to extract, detectTier2TextDrift returns null: drift inside a Tier-3 file is
-    // expected (the consumer owns it after the one-time seed), not flagged. The test
-    // documents that boundary.
-    expect(result).toBeNull();
+    writeConsumer(consumer);
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
   });
 
-  it("no tier2-text-drift when consumer ci.yml marker block matches template exactly", () => {
-    const scriptsDir = import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname);
-    const pkgRoot = path.resolve(scriptsDir, "..", "..");
-    const relPath = path.join(".github", "workflows", "ci.yml");
-    const templatePath = path.join(pkgRoot, ".bkit", "templates", relPath);
-    const templateContent = fs.readFileSync(templatePath, "utf-8");
+  it("no tier2-text-drift when consumer ci.yml matches the template exactly", () => {
+    writeConsumer(readTemplate());
+    expect(detectTier2TextDrift(tmpDir, relPath, pkgRoot)).toBeNull();
+  });
 
-    const consumerDir = path.join(tmpDir, ".github", "workflows");
-    fs.mkdirSync(consumerDir, { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, relPath), templateContent, "utf-8");
+  it("flags DRIFT when the bkit-owned verbose-ci-env block content is edited", () => {
+    // Mutate one line INSIDE the verbose-ci-env named block → bkit-owned content drift.
+    const consumer = readTemplate().replace(
+      /VERBOSE_CI: \$\{\{[^\n]*\}\}/,
+      "VERBOSE_CI: 'consumer-hacked'",
+    );
+    writeConsumer(consumer);
+    const drift = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(drift?.id).toBe("tier2-text-drift");
+    expect(drift?.detect).toContain("verbose-ci-env");
+  });
 
+  it("flags MISSING when a required named block (verbose-ci-env) is absent but other markers remain", () => {
+    // Drop the whole verbose-ci-env block; keep the (optional) main-lag-warning block so the
+    // consumer still has bkit markers. Required block missing → flagged (migrates the retired
+    // detectCiYmlVerboseCiBlockMissing coverage onto the generic drift advisory).
+    const consumer = readTemplate().replace(
+      /\n {4}# bkit:start verbose-ci-env\n[\s\S]*?# bkit:end verbose-ci-env\n/,
+      "\n",
+    );
+    writeConsumer(consumer);
     const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
-    // ci.yml is Tier-3 (seed-or-print, byte-equal) with no whole-file managed-block
-    // markers, so extractManagedBlock finds no col-0 block and detectTier2TextDrift
-    // returns null (no managed block → not a Tier-2 drift case). Correct for a Tier-3
-    // file: the consumer owns it after the one-time seed.
-    expect(result).toBeNull();
+    expect(result?.id).toBe("tier2-text-drift");
+    expect(result?.detect).toMatch(/missing:.*verbose-ci-env/);
+  });
+
+  it("flags MISSING when the required main-lag-warning block is deleted", () => {
+    // main-lag-warning ships REQUIRED (no `optional` flag) so adoption is nagged everywhere —
+    // a consumer that drops it (e.g. installed before the block existed) gets a non-blocking
+    // advisory pointing them to re-sync from the template.
+    const consumer = readTemplate().replace(
+      /\n {6}# bkit:start main-lag-warning\n[\s\S]*?# bkit:end main-lag-warning\n/,
+      "\n",
+    );
+    writeConsumer(consumer);
+    const result = detectTier2TextDrift(tmpDir, relPath, pkgRoot);
+    expect(result?.id).toBe("tier2-text-drift");
+    expect(result?.detect).toMatch(/missing:.*main-lag-warning/);
   });
 });
 
@@ -2358,9 +2460,10 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(fs.existsSync(path.join(tmpDir, ".opencode", "plugin", "gateguard.js"))).toBe(true);
   });
 
-  // #255 P2-9 — a provider switch must not leave a stale bkit provider block behind.
-  it("provider switch nvidia → zen (managed-auth) prunes the stale nvidia block", () => {
-    type OpencodeDoc = { provider?: Record<string, unknown> };
+  // #255 P2-9 / #282 — install is additive: a second provider install adds its block without
+  // removing the first. Both nvidia + opencode blocks coexist after two installs.
+  it("provider switch nvidia → opencode keeps both blocks (additive install)", () => {
+    type OpencodeDoc = { provider?: Record<string, Record<string, unknown>> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
@@ -2368,15 +2471,18 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     expect(parsed.provider?.nvidia, "nvidia provider seeded on first install").toBeDefined();
     expect(fs.readFileSync(jsonPath, "utf-8")).toContain("NVIDIA_API_KEY");
 
-    // zen is managed-auth → its rendered template ships NO provider block.
-    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "zen" }));
+    // opencode renders a minimal built-in `opencode` provider block keyed by its providerId.
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "opencode" }));
     parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.nvidia, "stale nvidia provider must be pruned").toBeUndefined();
-    // No orphan {env:NVIDIA_API_KEY} reference requiring a now-irrelevant secret.
-    expect(fs.readFileSync(jsonPath, "utf-8")).not.toContain("NVIDIA_API_KEY");
+    // Additive: nvidia block is preserved alongside the new opencode block.
+    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
+    // The opencode block is keyed `opencode` and references OPENCODE_API_KEY.
+    expect((parsed.provider?.opencode?.options as Record<string, unknown>)?.apiKey).toBe(
+      "{env:OPENCODE_API_KEY}",
+    );
   });
 
-  it("provider switch nvidia → groq prunes the old keyed provider and seeds the new one", () => {
+  it("provider switch nvidia → groq keeps both provider blocks (additive install)", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2384,11 +2490,11 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
-    expect(parsed.provider?.groq, "new provider present").toBeDefined();
-    expect(parsed.provider?.nvidia, "old provider pruned").toBeUndefined();
+    expect(parsed.provider?.groq, "groq provider present").toBeDefined();
+    expect(parsed.provider?.nvidia, "nvidia provider preserved (additive install)").toBeDefined();
   });
 
-  it("preserves a consumer-added provider block across a bkit provider switch", () => {
+  it("preserves both consumer-added and bkit provider blocks across a second install", () => {
     type OpencodeDoc = { provider?: Record<string, unknown> };
     const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
 
@@ -2405,8 +2511,27 @@ describe("runOpencodeModule — clean install writeset (Task 2.2)", () => {
     runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "groq" }));
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
     expect(parsed.provider?.["my-custom"], "consumer provider preserved").toBeDefined();
-    expect(parsed.provider?.nvidia, "stale bkit provider pruned").toBeUndefined();
+    // Additive: the prior bkit nvidia block is also preserved.
+    expect(
+      parsed.provider?.nvidia,
+      "prior bkit provider preserved (additive install)",
+    ).toBeDefined();
     expect(parsed.provider?.groq, "new bkit provider present").toBeDefined();
+  });
+
+  it("additive install: nvidia then ollama-local → both provider blocks present", () => {
+    type OpencodeDoc = { provider?: Record<string, unknown> };
+    const jsonPath = path.join(tmpDir, ".opencode", "opencode.json");
+
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "nvidia" }));
+    runOpencodeModule(makeOpencodeCtx({ opencodeProvider: "ollama-local" }));
+
+    const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8")) as OpencodeDoc;
+    expect(parsed.provider?.nvidia, "nvidia block present after additive install").toBeDefined();
+    expect(
+      parsed.provider?.["ollama-local"],
+      "ollama-local block present after additive install",
+    ).toBeDefined();
   });
 
   it("opencode setup advisory is emitted on --opencode=<provider> install (Task 2.2)", () => {
@@ -2529,8 +2654,14 @@ describe("opencodeProviderId — bkit key → opencode-side provider id", () => 
     }
   });
 
-  it("maps the zen key to the opencode gateway id 'opencode' (#245 Phase 3)", () => {
-    expect(opencodeProviderId("zen")).toBe("opencode");
+  it("opencode key maps to opencode gateway id 'opencode' (#245 Phase 3)", () => {
+    expect(opencodeProviderId("opencode")).toBe("opencode");
+  });
+
+  it("legacy zen key maps to opencode gateway id via OPENCODE_PROVIDER_DEFAULTS providerId", () => {
+    // zen is a legacy alias; OPENCODE_PROVIDER_DEFAULTS no longer has a 'zen' entry,
+    // so opencodeProviderId passes it through unchanged (same as any unknown key).
+    expect(opencodeProviderId("zen")).toBe("zen");
   });
 
   it("passes through an unknown key unchanged (defensive)", () => {
@@ -2623,12 +2754,16 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     expect(block.options.apiKey).toBeUndefined();
   });
 
-  it("zen (#245 Phase 3): managed auth — NO custom provider block at all", () => {
-    // zen is a first-class built-in opencode provider authenticated via `opencode auth login`,
-    // not a {env:KEY} block. renderOpencodeJson must emit no `provider` key (a stray custom
-    // block — npm/baseURL/apiKey — would be wrong and could shadow the built-in gateway).
-    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "zen"));
-    expect(parsed.provider).toBeUndefined();
+  it("opencode (#282): built-in provider — minimal `opencode` block keyed by providerId, OPENCODE_API_KEY only", () => {
+    // opencode is the built-in opencode gateway (id `opencode`). renderOpencodeJson emits a
+    // minimal block carrying only options.apiKey ({env:OPENCODE_API_KEY}) — NO npm driver, NO
+    // baseURL (opencode resolves the built-in provider itself).
+    const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "opencode"));
+    const block = parsed.provider?.opencode;
+    expect(block, "opencode provider block present").toBeDefined();
+    expect(block.npm, "no npm driver for the built-in gateway").toBeUndefined();
+    expect(block.options?.baseURL, "no baseURL for the built-in gateway").toBeUndefined();
+    expect(block.options?.apiKey).toBe("{env:OPENCODE_API_KEY}");
     // The rest of the managed surface still renders normally.
     expect(parsed.plugin).toContain(".opencode/plugin/gateguard.js");
     expect(parsed.mcp?.github?.type).toBe("remote");

@@ -9,7 +9,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer surfacing regression risk and design-coverage for plan task surfaces.
 **Scope:** As specified by input and Read/Update/Create section.
@@ -35,7 +35,7 @@ tools:
 
 1. Initialise **Create** output stub with `PENDING` placeholders.
 2. Re-read all supplied inputs ONCE at session start, do NOT trust session memory.
-3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/knowledge.md`; skip missing.
+3. Read `.agents/docs.md` → load docs relevant to workflow/step/task but specifically `docs/testing.md` and `docs/knowledge.md`; skip missing.
 4. Update **Create** output — replace each `PENDING` via `Edit` as content becomes available.
 5. Per task surface-area trace: For each `Agent Execution Runbook` task, identify:
    - Files/modules edited (direct).
@@ -47,7 +47,7 @@ tools:
    - Backwards-compat boundary: Change to public signature, schema column, or event shape. Missing migration / shim / dual-write → CRITICAL.
    - Migration ordering: Multi-step migrations — intermediate states must work. Missing intermediate-state guard → CRITICAL.
    - Test-coverage gaps: Surfaces touched but not exercised by `Derived Test Matrix` rows → CRITICAL.
-   - Mock-only coverage: Tasks crossing an external boundary (DB / API / model / network / migration) where `Done when` does NOT contain non-mock live tests that name the boundary and ground-truth signal → CRITICAL.
+   - Mock-only coverage: Tasks crossing an external boundary (DB / API / model / network / migration) whose `Done when` lack non-mock boundary tests (reach real boundaries / assert ground-truth signals); `@live` for external / deployed → CRITICAL.
 7. Design-coverage: If a design artifact exists (`docs/plans/{YYYYMM}/{FID}-design.md` or referenced), every design section identifying touched surfaces needs a plan task with regression-test coverage (or explicit out-of-scope note). Sub-plans from `bkit-plan-complexity-split` declare coverage scope — respect that. Missing → CRITICAL.
 8. Knowledge cross-reference: Search `docs/knowledge.md` for `KN-*` entries describing past regressions in touched surfaces. Plan task re-entering a known-broken pattern without acknowledging the prior fix → CRITICAL.
 9. Sort findings into the standard three categories (CRITICAL / OPTIONAL / OUT OF SCOPE).

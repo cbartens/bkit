@@ -18,9 +18,10 @@ Verdict: PASS
 
 ## Sub-Plan Index
 
-| Sub-plan       | Scope                                                                                                                            | Tasks                                                                              | Path                                                                       |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| **Sub-Plan 1** | Phase A (CI scaffold) + Phase B (protection script + postinstall source)                                                         | A1, A2, A2b, A3, A3a, A3b, A4, A5, B1, B2, B3, B4, B5 (13 tasks)                   | [`./203-ci-green-validated-plan-1.md`](./203-ci-green-validated-plan-1.md) |
+<!-- prettier-ignore -->
+| Sub-plan | Scope | Tasks | Path |
+| --- | --- | --- | --- |
+| **Sub-Plan 1** | Phase A (CI scaffold) + Phase B (protection script + postinstall source) | A1, A2, A2b, A3, A3a, A3b, A4, A5, B1, B2, B3, B4, B5 (13 tasks) | [`./203-ci-green-validated-plan-1.md`](./203-ci-green-validated-plan-1.md) |
 | **Sub-Plan 2** | Phase C (Layer-2 gates) + Phase D (Layer-3 rules) + Phase E (tests + fixture + docs) + Phase F (final batched mirror+dist regen) | C1, C2, C3, D1, D2, E1, E2, E3, E4, E5, E6, E7, E8, E9, E10, F1, F2, F3 (18 tasks) | [`./203-ci-green-validated-plan-2.md`](./203-ci-green-validated-plan-2.md) |
 
 **Total tasks across children:** 13 + 18 = **31** (matches the count in [`plan-complexity-check.md`](./plan-complexity-check.md) line 9 — losslessness preserved).
@@ -228,14 +229,15 @@ As a bkit consumer or bkit maintainer, when CI reports a run green I can trust t
 > [!CAUTION]
 > **🛑 HUMAN MUST READ AND CONFIRM THIS SECTION.**
 
-| Change                                                                                                                                                           | Type            | Notes                                                                                                                                           | Owning sub-plan                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| New job names in shipped `ci.yml`: `bkit-decide`, `bkit-tests-live`, `bkit-tests-check` (alongside existing `bkit-tests`)                                        | New             | Capstone is `bkit-tests-check` (NOT `bkit-gate` — settled per #203 comment 2).                                                                  | Sub-Plan 1                                                |
-| `scripts/ci/bkit-set-protection.sh` -> `scripts/ci/bkit-protect-main.sh` (`git mv` rename of both engine + template copy)                                        | Breaking        | Tier-3 seed-or-print: existing consumers keep their copy; postinstall advisory + CHANGELOG flag the rename.                                     | Sub-Plan 1 (rename) + Sub-Plan 2 (CHANGELOG / docs)       |
-| `REQUIRED_JOB` constant: `"bkit-tests"` -> `"bkit-tests-check"` inside `bkit-protect-main.sh`                                                                    | Breaking        | Branch-protection consumers MUST re-apply the script (or hand-flip the required check).                                                         | Sub-Plan 1                                                |
-| Postinstall advisory "Quick path" text + the "Require status checks: bkit-tests" line                                                                            | Behavioural     | Both updated to reference `bkit-protect-main.sh` and `bkit-tests-check`.                                                                        | Sub-Plan 1 (source edit) + Sub-Plan 2 (dist regen + test) |
-| Branch protection on bkit's own `main` (operator step — out-of-tree)                                                                                             | Operator action | Not executed by this build; quick-path entry in `docs/pending.md` deferred. Sub-Plan 2 E7 updates the entry's referenced script + required job. | Sub-Plan 2 / E7                                           |
-| `.bkit/workflows/bkit-ship.md` Step 12 squash-merge guard: now keys off `bkit-tests-check` capstone conclusion instead of "any job whose name matches `/test/i`" | Behavioural     | A consumer whose ci.yml does not yet ship the capstone will see ship Step 12 refuse to declare validated — that is correct.                     | Sub-Plan 2 / C2                                           |
+<!-- prettier-ignore -->
+| Change | Type | Notes | Owning sub-plan |
+| --- | --- | --- | --- |
+| New job names in shipped `ci.yml`: `bkit-decide`, `bkit-tests-live`, `bkit-tests-check` (alongside existing `bkit-tests`) | New | Capstone is `bkit-tests-check` (NOT `bkit-gate` — settled per #203 comment 2). | Sub-Plan 1 |
+| `scripts/ci/bkit-set-protection.sh` -> `scripts/ci/bkit-protect-main.sh` (`git mv` rename of both engine + template copy) | Breaking | Tier-3 seed-or-print: existing consumers keep their copy; postinstall advisory + CHANGELOG flag the rename. | Sub-Plan 1 (rename) + Sub-Plan 2 (CHANGELOG / docs) |
+| `REQUIRED_JOB` constant: `"bkit-tests"` -> `"bkit-tests-check"` inside `bkit-protect-main.sh` | Breaking | Branch-protection consumers MUST re-apply the script (or hand-flip the required check). | Sub-Plan 1 |
+| Postinstall advisory "Quick path" text + the "Require status checks: bkit-tests" line | Behavioural | Both updated to reference `bkit-protect-main.sh` and `bkit-tests-check`. | Sub-Plan 1 (source edit) + Sub-Plan 2 (dist regen + test) |
+| Branch protection on bkit's own `main` (operator step — out-of-tree) | Operator action | Not executed by this build; quick-path entry in `docs/pending.md` deferred. Sub-Plan 2 E7 updates the entry's referenced script + required job. | Sub-Plan 2 / E7 |
+| `.bkit/workflows/bkit-ship.md` Step 12 squash-merge guard: now keys off `bkit-tests-check` capstone conclusion instead of "any job whose name matches `/test/i`" | Behavioural | A consumer whose ci.yml does not yet ship the capstone will see ship Step 12 refuse to declare validated — that is correct. | Sub-Plan 2 / C2 |
 
 ### 👤 ✅ Human Confirmation
 
@@ -271,16 +273,17 @@ As a bkit consumer or bkit maintainer, when CI reports a run green I can trust t
 
 ## Supersession Inventory (aggregate; each sub-plan owns its rows)
 
-| Existing artifact                                                              | Replaced by                                                                   | Decision              | Owning sub-plan                              |
-| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | --------------------- | -------------------------------------------- |
-| `scripts/ci/bkit-set-protection.sh`                                            | `scripts/ci/bkit-protect-main.sh`                                             | DELETE (via `git mv`) | Sub-Plan 1                                   |
-| `.bkit/templates/scripts/ci/bkit-set-protection.sh`                            | `.bkit/templates/scripts/ci/bkit-protect-main.sh`                             | DELETE (via `git mv`) | Sub-Plan 1                                   |
-| `bkit-postinstall.ts` Quick-path advisory text                                 | New Quick-path text referencing `bkit-protect-main.sh` and `bkit-tests-check` | DELETE                | Sub-Plan 1 (source); Sub-Plan 2 (dist regen) |
-| `bkit-postinstall.ts` "Require status checks: bkit-tests" line                 | "Require status checks: bkit-tests-check"                                     | DELETE                | Sub-Plan 1 (source); Sub-Plan 2 (dist regen) |
-| `bkit-ship.md` Step 12 squash-merge "any job whose name matches /test/i" block | Read `bkit-tests-check` conclusion explicitly                                 | DELETE                | Sub-Plan 2 / C2                              |
-| `bkit-ship.md` Gate 2 "any failures" rollup interpretation                     | "assert `bkit-tests-check == success`" interpretation                         | DELETE                | Sub-Plan 2 / C1                              |
-| `bkit-debug.md` Step 3 `RUN_CONCLUSION == success` blind read                  | Read `bkit-tests-check` conclusion explicitly                                 | DELETE                | Sub-Plan 2 / C3                              |
-| `tests/fixtures/heavy-customised-ci/.github/workflows/ci.yml` single-job shape | 4-job shape matching the new template                                         | DELETE                | Sub-Plan 2 / E5                              |
+<!-- prettier-ignore -->
+| Existing artifact | Replaced by | Decision | Owning sub-plan |
+| --- | --- | --- | --- |
+| `scripts/ci/bkit-set-protection.sh` | `scripts/ci/bkit-protect-main.sh` | DELETE (via `git mv`) | Sub-Plan 1 |
+| `.bkit/templates/scripts/ci/bkit-set-protection.sh` | `.bkit/templates/scripts/ci/bkit-protect-main.sh` | DELETE (via `git mv`) | Sub-Plan 1 |
+| `bkit-postinstall.ts` Quick-path advisory text | New Quick-path text referencing `bkit-protect-main.sh` and `bkit-tests-check` | DELETE | Sub-Plan 1 (source); Sub-Plan 2 (dist regen) |
+| `bkit-postinstall.ts` "Require status checks: bkit-tests" line | "Require status checks: bkit-tests-check" | DELETE | Sub-Plan 1 (source); Sub-Plan 2 (dist regen) |
+| `bkit-ship.md` Step 12 squash-merge "any job whose name matches /test/i" block | Read `bkit-tests-check` conclusion explicitly | DELETE | Sub-Plan 2 / C2 |
+| `bkit-ship.md` Gate 2 "any failures" rollup interpretation | "assert `bkit-tests-check == success`" interpretation | DELETE | Sub-Plan 2 / C1 |
+| `bkit-debug.md` Step 3 `RUN_CONCLUSION == success` blind read | Read `bkit-tests-check` conclusion explicitly | DELETE | Sub-Plan 2 / C3 |
+| `tests/fixtures/heavy-customised-ci/.github/workflows/ci.yml` single-job shape | 4-job shape matching the new template | DELETE | Sub-Plan 2 / E5 |
 
 ## Security & Privacy
 
@@ -301,9 +304,10 @@ The runbook has been split lossless across the two sub-plans. Each task (A1–A5
 
 ### Gates (cross-sub-plan)
 
-| Gate                                                     | Location                                                                                                                                                                                                         |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Gate 1 — Prerequisites Check** (×2 — one per sub-plan) | [Sub-Plan 1](./203-ci-green-validated-plan-1.md#-gate-1-prerequisites-check) + [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-1-prerequisites-check)                                                      |
-| **Gate 2 — Code Implementation Check**                   | Owned per sub-plan ([SP1](./203-ci-green-validated-plan-1.md#-gate-2-code-implementation-check-sub-plan-1-scope) + [SP2](./203-ci-green-validated-plan-2.md#-gate-2-code-implementation-check-sub-plan-2-scope)) |
-| **Gate 3 — Testing & Documentation Check**               | [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-3-testing--documentation-check-sub-plan-2-scope)                                                                                                           |
-| **Gate 4 — Automated Verification Confirmed**            | [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-4-automated-verification-confirmed)                                                                                                                        |
+<!-- prettier-ignore -->
+| Gate | Location |
+| --- | --- |
+| **Gate 1 — Prerequisites Check** (×2 — one per sub-plan) | [Sub-Plan 1](./203-ci-green-validated-plan-1.md#-gate-1-prerequisites-check) + [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-1-prerequisites-check) |
+| **Gate 2 — Code Implementation Check** | Owned per sub-plan ([SP1](./203-ci-green-validated-plan-1.md#-gate-2-code-implementation-check-sub-plan-1-scope) + [SP2](./203-ci-green-validated-plan-2.md#-gate-2-code-implementation-check-sub-plan-2-scope)) |
+| **Gate 3 — Testing & Documentation Check** | [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-3-testing--documentation-check-sub-plan-2-scope) |
+| **Gate 4 — Automated Verification Confirmed** | [Sub-Plan 2](./203-ci-green-validated-plan-2.md#-gate-4-automated-verification-confirmed) |

@@ -6,6 +6,26 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.0] — 2026-06-17
+
+Split `--tooling` into a stack-agnostic CI foundation and an opt-in Node/TS toolchain (#265), so a non-Node repo can adopt bkit's CI gate graph + prose-lint without inheriting `tsc`/`vitest`/`slop-scan`/`husky`.
+
+### Added
+
+- **`--ci` and `--typescript` install flags.** `--ci` seeds the stack-agnostic CI/quality foundation: the `ci.yml` **skeleton** (gate graph + capstone contract + branch-protection, with the Node/TS build/test/lint step bodies present as **commented examples**) plus the Vale prose-lint config (`.vale.ini` + `.vale/styles/House/`). It adds **no `package.json` footprint** and runs trivially green on any repo. `--typescript` adds the Node/TS toolchain (`tsc --noEmit`, slop-scan + the `boundary/type-suppression` rule, prettier, husky + lint-staged) and **activates the wired `ci.yml` step bodies**; it implies `--ci`.
+- **`deriveCiSkeleton`** — derives the agnostic `ci.yml` skeleton from the single wired template by commenting out the `# bkit:start ts-ci-steps` regions, so the wired and skeleton forms never drift.
+
+### Changed
+
+- **`--tooling` is now a back-compat alias for `--ci --typescript`.** Existing `install --tooling` / `uninstall --tooling` behaviour is unchanged (still the symmetric `ci + lint + git-hooks` bundle). `uninstall --typescript` removes only the Node/TS bits (lint + git-hooks), leaving the agnostic `--ci` foundation in place.
+- **Module re-bucketing (no module-ID churn).** Vale config moved `lint → ci` (it lints `.md`, stack-agnostic). The `typecheck` script and the slop-scan helper scripts (`.bkit/scripts/bkit-slop-type-suppression.mjs`, `bkit-slop-delta.sh`) moved into the `lint` module so a non-Node `--ci` consumer never receives them — the slop scripts no longer ship via the core template walk.
+
+### Fixed
+
+- **`lint-staged` orphaned on uninstall** — it was injected by the lint module but not manifest-declared, so a default-only `lint-staged` devDependency survived `bkit uninstall`. It is now tracked by the uninstall stripper.
+
+---
+
 ## [4.0.1] — 2026-06-13
 
 CI-scaffold and advisory refinements on top of 4.0.0. Headline: a new `bkit-tests-migrate` tier in the CI scaffold reference, plus a hardened template-reference advisory.
