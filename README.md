@@ -148,6 +148,7 @@ Two flows — pick one. Both end with `GH_BKIT_TOKEN` and `GH_MCP_TOKEN` in your
 export GH_BKIT_TOKEN=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
 export GH_MCP_TOKEN=<fine-grained PAT>                 # GitHub MCP
 export LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
+# gh CLI: run `gh auth login` — do NOT export GH_TOKEN (overrides keyring)
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
