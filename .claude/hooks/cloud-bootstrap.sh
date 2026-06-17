@@ -37,10 +37,8 @@ cd "$REPO_ROOT"
 # --- bkit baseline install (managed; do not edit) --------------------------
 
 if [ -f pnpm-lock.yaml ] && command -v pnpm >/dev/null 2>&1; then
-  # Write the GH Packages auth token into pnpm's user-level config before install.
-  # pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN}
-  # env-substitution (it 401s on download); the committed .npmrc carries only the
-  # registry mapping, so set the token here from the cloud env var.
+  # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
+  # config before install (supplements the project .npmrc auth token line).
   if [ -n "${GH_BKIT_TOKEN:-}" ]; then
     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" || log "pnpm config set failed (non-blocking)"
   fi

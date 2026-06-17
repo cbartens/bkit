@@ -97,9 +97,8 @@ describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", ()
     expect(POSTINSTALL_SRC).toContain("read:packages");
   });
 
-  it("postinstall source warns about the pnpm >=10.34.3 download 401 (#274)", () => {
-    expect(POSTINSTALL_SRC).toContain("pnpm >=10.34.3");
-    expect(POSTINSTALL_SRC).toContain("401");
+  it("postinstall source prescribes both .npmrc lines (registry + auth token)", () => {
+    expect(POSTINSTALL_SRC).toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}");
   });
 
   it("postinstall source does NOT contain git insteadOf shim language", () => {
@@ -128,8 +127,8 @@ describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
     expect(POSTINSTALL_SRC).toContain(".npmrc");
   });
 
-  it("postinstall source contains Remove directive for legacy installCommand", () => {
-    expect(POSTINSTALL_SRC).toContain("Remove");
+  it("postinstall source prescribes both .npmrc lines for Vercel", () => {
+    expect(POSTINSTALL_SRC).toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}");
   });
 
   it("postinstall source does NOT contain git config --global url. shim", () => {

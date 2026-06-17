@@ -88,36 +88,23 @@ export function hasGithubMcpServer(cwd: string): boolean {
 /**
  * Detect whether .npmrc declares the @cbartens GH Packages registry mapping.
  *
- * As of the pnpm >=10.34.3 auth rework the _authToken is NOT stored in the project
- * .npmrc: a project-.npmrc `${GH_BKIT_TOKEN}` env-substitution 401s on download
- * (ERR_PNPM_FETCH_401), so the token lives in pnpm's user-level config (written via
- * `pnpm config set`). The only line the committed project .npmrc must carry is the
- * registry scope mapping.
- * - "present"  → `@cbartens:registry=` present (registry-only is the correct shape)
- * - "missing"  → .npmrc exists but lacks the registry mapping (emit advisory)
- * - "unknown"  → .npmrc is absent (silent skip — absence alone is not misconfiguration)
+ * The committed project .npmrc must carry BOTH:
+ *   (1) the registry scope mapping: `@cbartens:registry=https://npm.pkg.github.com`
+ *   (2) the auth token reference: `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`
+ * pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime. Vercel and CI
+ * both set GH_BKIT_TOKEN as an env var; pnpm reads .npmrc and resolves the token.
  *
- * A residual project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=…`) is
- * neither required nor flagged here; detectNpmrcLegacyAuthToken nudges its removal.
+ * - "present"  → both lines present (correct shape)
+ * - "missing"  → .npmrc exists but lacks one or both required lines (emit advisory)
+ * - "unknown"  → .npmrc is absent (silent skip — absence alone is not misconfiguration)
  */
 export function detectNpmrcAuth(cwd: string): TokenPresence {
   const npmrcPath = path.join(cwd, ".npmrc");
   if (!fs.existsSync(npmrcPath)) return "unknown";
   const content = fs.readFileSync(npmrcPath, "utf-8");
-  return content.includes("@cbartens:registry=") ? "present" : "missing";
-}
-
-/**
- * Detect a legacy project-.npmrc auth-token line (`//npm.pkg.github.com/:_authToken=`).
- * As of the pnpm >=10.34.3 auth rework this line breaks installs: pnpm 401s on download
- * and, via config precedence (project .npmrc > user config), it shadows the user-level
- * token written by `pnpm config set`. Returns true when present so a migration advisory
- * can nudge its removal.
- */
-export function detectNpmrcLegacyAuthToken(cwd: string): boolean {
-  const npmrcPath = path.join(cwd, ".npmrc");
-  if (!fs.existsSync(npmrcPath)) return false;
-  return fs.readFileSync(npmrcPath, "utf-8").includes("//npm.pkg.github.com/:_authToken=");
+  const hasRegistry = content.includes("@cbartens:registry=");
+  const hasAuthToken = content.includes("//npm.pkg.github.com/:_authToken=");
+  return hasRegistry && hasAuthToken ? "present" : "missing";
 }
 
 /**
@@ -252,14 +239,13 @@ export function detectVercelEnv(
  * Returns null if no ci.yml, no `pnpm install` step, or the step is correctly wired
  * (no false positives).
  *
- * As of the pnpm >=10.34.3 auth rework the correct shape requires BOTH:
- *   (1) a `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` step that
- *       writes the token into pnpm's user-level config before install, AND
- *   (2) the `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` env mapping that feeds it.
+ * Belt-and-braces: the CI install step should ALSO run
+ *   `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
+ * before `pnpm install` with `GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}` env mapping.
+ * The .npmrc auth token line covers Vercel and other non-CI environments; the explicit
+ * config-set covers CI even if .npmrc is absent or the env var name differs.
  * Either missing → the next install 401s on download. Severity is "blocker" when the
- * project .npmrc shows the repo authenticates to GH Packages (registry mapping or a
- * legacy ${GH_BKIT_TOKEN} ref) — the next CI run will 401; otherwise "advisory". Phase 3
- * doesn't exit-1 (writes already happened) but visibility matches the risk.
+ * project .npmrc shows the repo authenticates to GH Packages; otherwise "advisory".
  */
 export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null {
   const ciPath = path.join(cwd, ".github", "workflows", "ci.yml");
@@ -302,14 +288,13 @@ export function detectCiYmlMissingTokenEnv(cwd: string): PreflightFinding | null
       ? `.github/workflows/ci.yml has a pnpm install step but is missing ${missingText}, and .npmrc authenticates to the GitHub Packages registry. The next CI run will 401 on the @cbartens/bkit download.`
       : `.github/workflows/ci.yml has a pnpm install step but is missing ${missingText}.`,
     action:
-      "Update the install step in .github/workflows/ci.yml to write the auth token into pnpm's user-level config BEFORE install:\n\n" +
+      "Update the install step in .github/workflows/ci.yml to write the auth token into pnpm's user-level config BEFORE install (belt-and-braces — supplements .npmrc):\n\n" +
       "    - name: Install Dependencies\n" +
       "      run: |\n" +
       '        pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n' +
       "        pnpm install --frozen-lockfile\n" +
       "      env:\n" +
       "        GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}\n\n" +
-      "pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN} env-substitution (it 401s on download), so the token must be set this way. `pnpm config set` writes ~/.npmrc on pnpm 10.x and ~/.config/pnpm/auth.ini on pnpm 11.x — whichever this pnpm reads.\n\n" +
       "Also confirm the secret exists: `gh secret list | grep GH_BKIT_TOKEN`. If absent: `gh secret set GH_BKIT_TOKEN --body=$GH_BKIT_TOKEN`.",
   };
 }
@@ -1623,27 +1608,25 @@ const AGENT_INLINE_SOURCE_GUIDANCE =
   '    echo "len=${#GH_BKIT_TOKEN}"';
 
 const GH_BKIT_TOKEN_MISSING_ACTION =
-  "Add the @cbartens registry mapping to .npmrc at the repo root (the token is NOT stored here):\n\n" +
-  "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-  "Write the token into pnpm's user-level config (run once locally; the CI install step does this automatically):\n\n" +
-  '    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
+  "Ensure .npmrc at the repo root has BOTH the registry mapping and the auth token reference:\n\n" +
+  "    @cbartens:registry=https://npm.pkg.github.com\n" +
+  "    //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
+  "pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime. Vercel and CI both set GH_BKIT_TOKEN as an env var.\n\n" +
   "Then set the GH_BKIT_TOKEN secret on this repo. The token must be a GitHub PAT (classic or fine-grained) with read:packages scope (classic) OR Packages: read permission (fine-grained). Generate at: https://github.com/settings/tokens\n\n" +
   "Run ONE of these to set it:\n\n" +
   "    gh secret set GH_BKIT_TOKEN --body='<paste-token-here>'\n\n" +
-  "Ensure the install step in .github/workflows/ci.yml writes the token before install:\n\n" +
+  "The CI install step also runs `pnpm config set` as belt-and-braces:\n\n" +
   "    - name: Install Dependencies\n" +
   "      run: |\n" +
   '        pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n' +
   "        pnpm install --frozen-lockfile\n" +
   "      env:\n" +
   "        GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}\n\n" +
-  "IMPORTANT — pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN} env-substitution and 401s on download (ERR_PNPM_FETCH_401), so the token must be set via `pnpm config set`. It writes ~/.npmrc on pnpm 10.x and ~/.config/pnpm/auth.ini on pnpm 11.x — whichever this pnpm reads. Metadata calls (pnpm view) can still resolve, so the failure only shows on a real install.\n\n" +
   "Verify secret set: gh secret list | grep GH_BKIT_TOKEN";
 
 const GH_BKIT_TOKEN_UNKNOWN_ACTION =
   "Could not auto-check GH_BKIT_TOKEN secret (gh CLI unavailable, unauthenticated, or this isn't a GitHub repo yet).\n\n" +
-  "Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub repo. It is required for the seeded ci.yml install step (`pnpm config set` + `pnpm install`) to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
-  "IMPORTANT — pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN} env-substitution and 401s on download (ERR_PNPM_FETCH_401). The seeded install step writes the token via `pnpm config set` (into ~/.npmrc on pnpm 10.x, ~/.config/pnpm/auth.ini on pnpm 11.x); if GH_BKIT_TOKEN is unset there, that write is empty and the install 401s.\n\n" +
+  "Manually verify the GH_BKIT_TOKEN secret exists on the consumer's GitHub repo. It is required for .npmrc auth token interpolation and the CI install step to authenticate against the GitHub Packages npm registry when installing @cbartens/bkit.\n\n" +
   "Once `gh` is installed and authenticated, get your token and export it:\n\n" +
   "    export GH_BKIT_TOKEN=$(gh auth token)\n\n" +
   "Then verify the secret is set on the repo:\n\n" +
@@ -1652,17 +1635,15 @@ const GH_BKIT_TOKEN_UNKNOWN_ACTION =
   "    gh secret set GH_BKIT_TOKEN --body=$(gh auth token)";
 
 const VERCEL_MISSING_ACTION =
-  "Add the @cbartens registry mapping to .npmrc at the repo root (the token is NOT stored here):\n\n" +
-  "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-  "Commit this .npmrc — Vercel reads it during its build.\n\n" +
-  "Vercel runs pnpm install in a fresh container and cannot run a pre-install shell step, so write the auth token via an installCommand in vercel.json (remove any legacy git-shim installCommand first):\n\n" +
-  '    "installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install"\n\n' +
+  "Ensure .npmrc at the repo root has BOTH the registry mapping and the auth token reference:\n\n" +
+  "    @cbartens:registry=https://npm.pkg.github.com\n" +
+  "    //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
+  "Commit this .npmrc — Vercel reads it during its build and pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime.\n\n" +
   "Set GH_BKIT_TOKEN as a Vercel environment variable for each environment:\n\n" +
   "    vercel env add GH_BKIT_TOKEN preview\n" +
   "    vercel env add GH_BKIT_TOKEN production\n\n" +
   "Or via web: Vercel project → Settings → Environment Variables.\n" +
-  "The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained).\n\n" +
-  "Why the installCommand: pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN} env-substitution (it 401s on download), so the token must reach pnpm's user-level config via `pnpm config set` before install.";
+  "The token must be a GitHub PAT with read:packages scope (classic) or Packages: read permission (fine-grained).";
 
 // ---------------------------------------------------------------------------
 // formatChecklist — pure renderer
@@ -2114,40 +2095,23 @@ export function runPostInstallCheck(
     }
   }
 
-  // .npmrc auth
+  // .npmrc auth — both registry mapping AND auth token reference are required.
+  // pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime.
   const npmrcStatus = detectNpmrcAuth(cwd);
   if (npmrcStatus === "missing") {
     phase3.push({
       id: "npmrc-missing-gh-packages",
       severity: "advisory",
-      detect: ".npmrc exists but is missing the required @cbartens registry mapping.",
+      detect:
+        ".npmrc exists but is missing required lines (registry mapping and/or auth token reference).",
       action:
-        "Add this line to .npmrc at the repo root (the auth token is NOT stored here):\n\n" +
-        "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-        "The token lives in pnpm's user-level config — write it once with:\n\n" +
-        '    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
-        "pnpm >=10.34.3 no longer authenticates a project-.npmrc ${GH_BKIT_TOKEN} env-substitution (it 401s on download), which is why the token must NOT go in .npmrc.",
+        "Ensure .npmrc at the repo root has BOTH lines:\n\n" +
+        "    @cbartens:registry=https://npm.pkg.github.com\n" +
+        "    //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
+        "pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime. Vercel and CI both set GH_BKIT_TOKEN as an env var.",
     });
   }
   // "unknown" (absent) → silent skip per spec
-
-  // .npmrc legacy auth-token line — migration nudge. The committed project .npmrc must
-  // NOT carry `//npm.pkg.github.com/:_authToken=…`: pnpm >=10.34.3 401s on it AND it
-  // shadows the user-level token written by `pnpm config set` (project config wins).
-  if (detectNpmrcLegacyAuthToken(cwd)) {
-    phase3.push({
-      id: "npmrc-legacy-authtoken",
-      severity: "advisory",
-      detect:
-        ".npmrc carries a legacy `//npm.pkg.github.com/:_authToken=…` line. pnpm >=10.34.3 401s on a project-.npmrc auth token (ERR_PNPM_FETCH_401), and via config precedence (project > user) it shadows the token written by `pnpm config set`.",
-      action:
-        "Remove the `//npm.pkg.github.com/:_authToken=…` line from .npmrc — keep ONLY the registry mapping:\n\n" +
-        "    @cbartens:registry=https://npm.pkg.github.com\n\n" +
-        "Then write the token into pnpm's user-level config instead (CI does this in its install step):\n\n" +
-        '    pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
-        "`pnpm config set` writes ~/.npmrc on pnpm 10.x and ~/.config/pnpm/auth.ini on pnpm 11.x — whichever this pnpm reads at install time.",
-    });
-  }
 
   // GH secret
   const ghSecretStatus = detectGhSecret();
