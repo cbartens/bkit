@@ -10,7 +10,7 @@ import { resolveTokens } from "./bkit-tokens.js";
 import { runPreflight } from "./bkit-preflight.js";
 import { runPostInstallCheck, formatChecklist, readChangelogVersionDelta, writeAdvisoriesArtifact, } from "./bkit-postinstall.js";
 import { runUninstall, runSurgicalOpencodeUninstall, } from "./bkit-uninstall.js";
-import { runUpgrade, updateCanonicalHashesAfterUpgrade, migrateStrayGitattributes, } from "./bkit-upgrade.js";
+import { runUpgrade, updateCanonicalHashesAfterUpgrade, migrateStrayGitattributes, planSelfBump, } from "./bkit-upgrade.js";
 import { DEFAULT_ISSUE_TRACKER, parseIssueTracker, getInstallManifest, getModuleManifest, } from "./bkit-manifest.js";
 // ---------------------------------------------------------------------------
 // Staging helpers (P4.T1 / P4.T2)
@@ -1291,6 +1291,76 @@ export function detectOpencodeProviders(cwd) {
     }
     return [];
 }
+/**
+ * Resolve the newest published @cbartens/bkit version from the registry for
+ * `bkit upgrade --latest`. Shells out to `pnpm view` (honours the consumer's
+ * registry auth). Hard-exits with guidance on failure — the caller has nothing
+ * to fall back to.
+ */
+async function resolveLatestPublishedVersion(cwd) {
+    const { spawnSync } = await import("node:child_process");
+    const r = spawnSync("pnpm", ["view", "@cbartens/bkit", "version"], { cwd, encoding: "utf-8" });
+    if (r.status !== 0 || !r.stdout || !r.stdout.trim()) {
+        console.error(`${LOG_PREFIX} could not resolve the latest @cbartens/bkit version from the registry ` +
+            `(pnpm view exit ${r.status ?? "null"}). Ensure GitHub Packages read auth (GH_BKIT_TOKEN, ` +
+            `classic PAT, read:packages), or pin a version with --to=<version>.`);
+        process.exit(1);
+    }
+    return r.stdout.trim();
+}
+/**
+ * Atomic self-bump for `bkit upgrade --to=<v>` / `--latest`: install the target
+ * @cbartens/bkit, then RE-EXEC the freshly-installed binary so the NEW code does
+ * the render + re-pin (this process is still the OLD code — rendering new
+ * templates with old logic would be a correctness hole). Coupling the package
+ * bump and the re-render in one command is the point: it is impossible to bump
+ * the package and forget the re-render, which is what strands a base branch's
+ * mirrors (#256) for every feature branch to inherit.
+ *
+ * Returns true when it handled the run (bumped + re-exec'd, or dry-run reported a
+ * bump) → the caller should return. Returns false when already at target → the
+ * caller falls through to a normal in-place re-render.
+ */
+async function runSelfBump(flags, cwd) {
+    const installed = getInstallingVersion();
+    // --latest needs async registry resolution, but planSelfBump's injected resolver
+    // is sync; resolve the latest first (only when asked), then feed it a constant.
+    const latestVersion = flags.latest ? await resolveLatestPublishedVersion(cwd) : "";
+    const resolvedPlan = planSelfBump(installed, { toVersion: flags.toVersion, latest: flags.latest }, () => latestVersion);
+    if (resolvedPlan.kind === "invalid") {
+        console.error(`${LOG_PREFIX} ${resolvedPlan.message}`);
+        process.exit(1);
+    }
+    if (resolvedPlan.kind === "noop") {
+        console.log(`${LOG_PREFIX} already at @cbartens/bkit@${resolvedPlan.target} — re-rendering in place at the installed version.`);
+        return false; // fall through to the normal upgrade path
+    }
+    // resolvedPlan.kind === "bump"
+    if (flags.dryRun) {
+        console.log(`${LOG_PREFIX} [dry-run] would bump @cbartens/bkit ${installed} -> ${resolvedPlan.target} ` +
+            `(pnpm add -D @cbartens/bkit@${resolvedPlan.target}), then re-render + re-pin via the ` +
+            `freshly-installed binary. No changes made.`);
+        return true;
+    }
+    const { spawnSync } = await import("node:child_process");
+    console.log(`${LOG_PREFIX} bumping @cbartens/bkit ${installed} -> ${resolvedPlan.target} ...`);
+    const add = spawnSync("pnpm", ["add", "-D", `@cbartens/bkit@${resolvedPlan.target}`], {
+        cwd,
+        stdio: "inherit",
+    });
+    if (add.status !== 0) {
+        console.error(`${LOG_PREFIX} \`pnpm add @cbartens/bkit@${resolvedPlan.target}\` failed (exit ${add.status ?? "null"}). ` +
+            `Most common cause: GitHub Packages auth — set GH_BKIT_TOKEN (classic PAT, read:packages). Nothing re-rendered.`);
+        process.exit(1);
+    }
+    // Re-exec the just-installed (NEW) bkit so IT renders + re-pins, not this old process.
+    console.log(`${LOG_PREFIX} re-rendering with @cbartens/bkit@${resolvedPlan.target} ...`);
+    const reArgs = ["exec", "bkit", "upgrade"];
+    if (flags.nonInteractive)
+        reArgs.push("--auto-apply");
+    const re = spawnSync("pnpm", reArgs, { cwd, stdio: "inherit" });
+    process.exit(re.status ?? 1);
+}
 async function main() {
     const { verb, modules, moduleFlags, uninstallFlags, upgradeFlags, tracker, cloudVariant, opencodeProvider, } = parseArgs(process.argv.slice(2));
     if (verb === "help") {
@@ -1466,6 +1536,16 @@ async function main() {
     }
     if (verb === "upgrade") {
         LOG_PREFIX = "[bkit-upgrade]";
+        // --to=<version> / --latest: atomic self-bump. Install the target package,
+        // then re-exec the freshly-installed binary to render + re-pin (this process
+        // is the OLD code). When a bump happens (or a dry-run reports one) runSelfBump
+        // handles the whole run; when already at target it returns false and we fall
+        // through to a normal in-place re-render.
+        if (upgradeFlags.toVersion !== null || upgradeFlags.latest) {
+            const handled = await runSelfBump(upgradeFlags, process.cwd());
+            if (handled)
+                return;
+        }
         console.log(`${LOG_PREFIX} Running upgrade${upgradeFlags.dryRun ? " (dry-run)" : ""}${upgradeFlags.nonInteractive ? " (non-interactive)" : ""}`);
         // 2.5.0 migration: that release wrote `.gitattributes` to a file literally
         // named `gitattributes` (no dot), which git never reads. Rename it and drop
@@ -2011,9 +2091,15 @@ async function main() {
     // not change ws.writes to be stale. Treat BOTH marker blockers as drift here so
     // `bkit check` hard-fails on outdated rendered prompts/workflows AND outdated
     // docs (#256). Other Phase-3 blockers keep their historical install-only semantics.
+    //
+    // Gate on `severity === "blocker"`, NOT mere id-presence: both gates are
+    // branch-scoped (detectRenderedPromptsStale / detectManagedDocsStale downgrade to
+    // `advisory` off main/dev), so on a feature branch the finding still surfaces in
+    // the checklist but does not exit-1. On main/dev (or a PR into them) it stays a
+    // blocker and hard-fails as before.
     if (dryRun) {
-        const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale");
-        const docsStale = postFindings.some((f) => f.id === "bkit-managed-docs-stale");
+        const renderedStale = postFindings.some((f) => f.id === "bkit-rendered-prompts-stale" && f.severity === "blocker");
+        const docsStale = postFindings.some((f) => f.id === "bkit-managed-docs-stale" && f.severity === "blocker");
         if (totalWrites > 0 || renderedStale || docsStale) {
             if (totalWrites > 0) {
                 console.error(`${LOG_PREFIX} check: ${totalWrites} write(s) would occur — DRIFT DETECTED`);

@@ -1,7 +1,7 @@
 // bkit-postinstall.ts — Phase 3: re-detect AFTER writes; produce the unified output.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { execSync, execFileSync } from "node:child_process";
+import { execSync, execFileSync, spawnSync } from "node:child_process";
 import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_UPDATER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
@@ -1697,6 +1697,58 @@ function readPkgVersion() {
         return "0.0.0";
     }
 }
+// ---------------------------------------------------------------------------
+// Branch-scoped severity for the #256 stale gates
+//
+// A stale-render is almost never CREATED by a feature branch — it is INHERITED
+// from a base (dev) where the bkit package was bumped without an atomic
+// re-render. Hard-failing every feature-branch push for inherited drift is the
+// friction this scoping removes: the gate stays a hard BLOCKER on the
+// integration + release branches (`main`/`dev`), where stale doctrine must never
+// land, and downgrades to a non-blocking ADVISORY everywhere else — still shown
+// in the checklist so the dev knows to re-render, but it no longer blocks an
+// intermediate push. A PR INTO main/dev re-asserts the blocker (via
+// GITHUB_BASE_REF), so the skew can never reach a protected branch silently.
+// ---------------------------------------------------------------------------
+/** Branches where a stale managed-version marker is a hard blocker, not a warning. */
+const PROTECTED_BRANCHES = new Set(["main", "dev"]);
+/**
+ * Resolve the branch the check is effectively gating, preferring the CI signal:
+ *   1. `GITHUB_BASE_REF` — set on `pull_request` events to the MERGE TARGET. A PR
+ *      into main/dev must hard-block, so the target wins over the source branch.
+ *   2. `GITHUB_REF_NAME` — set on `push` events to the pushed branch.
+ *   3. Local `git rev-parse --abbrev-ref HEAD` — the checked-out branch.
+ * Returns null when undeterminable (detached HEAD, no git, no CI env).
+ */
+function currentBranch(cwd) {
+    const base = process.env.GITHUB_BASE_REF?.trim();
+    if (base)
+        return base;
+    const refName = process.env.GITHUB_REF_NAME?.trim();
+    if (refName)
+        return refName;
+    // spawnSync (not execFileSync) so a missing git / non-repo is a non-zero status,
+    // not a thrown error needing a swallowing catch — null then means "undeterminable".
+    const r = spawnSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+    });
+    const b = r.status === 0 && r.stdout ? r.stdout.trim() : "";
+    return b && b !== "HEAD" ? b : null;
+}
+/**
+ * True when the stale gates should hard-block here (on `main`/`dev`, or a PR
+ * targeting them). Fail-safe: an undeterminable branch is treated as protected,
+ * so an unknown environment never silently downgrades the gate to a warning.
+ * Exported for deterministic unit testing.
+ */
+export function isOnProtectedBranch(cwd = process.cwd()) {
+    const b = currentBranch(cwd);
+    if (b === null)
+        return true; // undeterminable → fail safe to blocker
+    return PROTECTED_BRANCHES.has(b);
+}
 /**
  * Blocker: a rendered prompt/workflow (.claude / .cursor / .opencode agents +
  * commands) carries a managed-version marker that differs from the installing
@@ -1716,9 +1768,14 @@ function readPkgVersion() {
  *     → return null (cannot meaningfully compare; never a false blocker).
  *   - No rendered files scanned → return null (nothing installed to check).
  *
- * `installingVersion` is injected for testability; defaults to the package root.
+ * Severity is branch-scoped (see PROTECTED_BRANCHES): a hard `blocker` on
+ * main/dev (or a PR into them), a non-blocking `advisory` on feature branches —
+ * a feature branch inherits this drift, it does not create it.
+ *
+ * `installingVersion` and `onProtectedBranch` are injected for testability;
+ * they default to the package root and the resolved current branch.
  */
-export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersion()) {
+export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersion(), onProtectedBranch = isOnProtectedBranch(cwd)) {
     if (!installingVersion || installingVersion === "0.0.0")
         return null;
     const stale = [];
@@ -1742,10 +1799,13 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
         return null;
     const examples = stale.slice(0, 5).join(", ");
     const more = stale.length > 5 ? ` (+${stale.length - 5} more)` : "";
+    const branchNote = onProtectedBranch
+        ? ""
+        : " (non-blocking on this feature branch — it WILL hard-fail `bkit check` on main/dev, so re-render before merging.)";
     return {
         id: "bkit-rendered-prompts-stale",
-        severity: "blocker",
-        detect: `${stale.length} of ${scanned} rendered prompt/workflow mirror file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.`,
+        severity: onProtectedBranch ? "blocker" : "advisory",
+        detect: `${stale.length} of ${scanned} rendered prompt/workflow mirror file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
         action: "Re-render every prompt/workflow at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the .claude/.cursor/.opencode agents + commands are bkit-managed mirrors and must be regenerated after every version bump. Never hand-edit them; edits to a mirror drop the version marker and fail this gate.",
     };
 }
@@ -1800,7 +1860,7 @@ function collectManagedDocMarkdown(dir, acc = []) {
  * Guards mirror the prompts gate: dev tree without a readable version → null;
  * no managed docs scanned → null. `templatesRoot` is injected for testability.
  */
-export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion(), templatesRoot = getTemplatesRoot()) {
+export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion(), templatesRoot = getTemplatesRoot(), onProtectedBranch = isOnProtectedBranch(cwd)) {
     if (!installingVersion || installingVersion === "0.0.0")
         return null;
     const docsTemplateRoot = path.join(templatesRoot, "docs");
@@ -1826,10 +1886,13 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
         return null;
     const examples = stale.slice(0, 5).join(", ");
     const more = stale.length > 5 ? ` (+${stale.length - 5} more)` : "";
+    const branchNote = onProtectedBranch
+        ? ""
+        : " (non-blocking on this feature branch — it WILL hard-fail `bkit check` on main/dev, so re-render before merging.)";
     return {
         id: "bkit-managed-docs-stale",
-        severity: "blocker",
-        detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.`,
+        severity: onProtectedBranch ? "blocker" : "advisory",
+        detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
         action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the docs/*.md managed blocks (testing.md, deployments.md, plans/template.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
     };
 }
@@ -1850,15 +1913,16 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
  */
 export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = process.cwd()) {
     const phase3 = [];
-    // Rendered prompts/workflows version gate (#256) — blocker in `bkit check` when a
-    // mirror's managed-version marker drifts from the installed version. No-op in real
-    // install/upgrade (markers were just re-stamped in Phase 2).
+    // Rendered prompts/workflows version gate (#256) — in `bkit check`, a blocker on
+    // main/dev (or a PR into them) and a non-blocking advisory on feature branches
+    // when a mirror's managed-version marker drifts from the installed version. No-op
+    // in real install/upgrade (markers were just re-stamped in Phase 2).
     const renderedStale = detectRenderedPromptsStale(cwd);
     if (renderedStale)
         phase3.push(renderedStale);
-    // Managed docs/*.md version gate (#256 extension) — blocker in `bkit check` when a
-    // bkit-owned doc's managed-version marker drifts from the installed version. No-op
-    // in real install/upgrade (markers were just re-stamped in Phase 2).
+    // Managed docs/*.md version gate (#256 extension) — same branch-scoped severity:
+    // blocker on main/dev, advisory on feature branches when a bkit-owned doc's
+    // managed-version marker drifts. No-op in real install/upgrade (re-stamped Phase 2).
     const docsStale = detectManagedDocsStale(cwd);
     if (docsStale)
         phase3.push(docsStale);

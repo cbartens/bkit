@@ -104,7 +104,7 @@ function defaultUninstallFlags() {
     };
 }
 function defaultUpgradeFlags() {
-    return { nonInteractive: false, dryRun: false };
+    return { nonInteractive: false, dryRun: false, toVersion: null, latest: false };
 }
 /**
  * Parse argv (process.argv.slice(2)) into a ParsedArgs object.
@@ -282,6 +282,18 @@ export function parseArgs(argv) {
                 upgradeFlags.nonInteractive = true;
                 continue;
             }
+            // Upgrade-specific atomic self-bump (see runSelfBump). `--to=<version>` pins a
+            // target @cbartens/bkit version; `--latest` resolves the newest published one.
+            // Either makes the package bump atomic with the re-render so a bumped package
+            // can never drift from its rendered mirrors. Verb/mutual-exclusion guards below.
+            if (flag.startsWith("to=")) {
+                upgradeFlags.toVersion = flag.slice("to=".length);
+                continue;
+            }
+            if (flag === "latest") {
+                upgradeFlags.latest = true;
+                continue;
+            }
             // --tooling (#252): back-compat alias = --ci --typescript. Expands to the
             // interdependent ci+lint+git-hooks bundle (husky hooks run vale/slop; CI runs
             // lint+check). Symmetric install↔uninstall (removes all three).
@@ -332,6 +344,20 @@ export function parseArgs(argv) {
         console.error("[bkit] `--renovate` and `--dependabot` are mutually exclusive (running both opens competing PRs against the same packages). Pick one.");
         process.exit(1);
     }
+    // Self-bump flags (`--to=`/`--latest`) only apply to the `upgrade` verb, and the
+    // two are mutually exclusive (pin a version OR resolve the latest, not both).
+    if ((upgradeFlags.toVersion !== null || upgradeFlags.latest) && verb !== "upgrade") {
+        console.error("[bkit] `--to=<version>` / `--latest` are only valid for `bkit upgrade` (they atomically bump @cbartens/bkit, then re-render).");
+        process.exit(1);
+    }
+    if (upgradeFlags.toVersion !== null && upgradeFlags.latest) {
+        console.error("[bkit] `--to=<version>` and `--latest` are mutually exclusive — pin a version or resolve the latest, not both.");
+        process.exit(1);
+    }
+    if (upgradeFlags.toVersion !== null && upgradeFlags.toVersion.trim() === "") {
+        console.error("[bkit] `--to=` requires a version value, e.g. `--to=4.1.5`.");
+        process.exit(1);
+    }
     // resolveModules is verb-aware: a bare uninstall expands to all modules + opt-ins +
     // core (zero footprint); every other verb keeps core implicit + the named modules.
     const modules = resolveModules(moduleFlags, verb);
@@ -356,11 +382,16 @@ Usage:
                                  Hosts compose: --claude --cursor --opencode=<provider>.
   bkit check                     Dry-run — drift-check everything already installed (no
                                  module flags). Exits 1 on drift. This is the CI gate.
-  bkit upgrade [--auto-apply] [--dry-run]
+  bkit upgrade [--to=<version>|--latest] [--auto-apply] [--dry-run]
                                  Upgrade everything installed (no module flags). Diffs old
                                  vs new templates; conflict list emitted to stderr. Use
                                  --auto-apply for CI (apply non-conflicting; exit non-zero
                                  on any conflict).
+                                 --to=<version> / --latest atomically BUMP @cbartens/bkit
+                                 (pnpm add), then re-render + re-pin in one step — so a
+                                 version bump can never drift from its rendered mirrors.
+                                 This is the supported way to move bkit versions; a bare
+                                 \`pnpm add @cbartens/bkit\` alone leaves mirrors stale.
   bkit uninstall [module-flags] Remove bkit-managed files + strip managed blocks.
                                  No flags = full removal — ALL modules incl. opt-in add-ons
                                  (renovate/dependabot/cloud/opencode) + core. Consumer-modified

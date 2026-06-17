@@ -938,48 +938,134 @@ describe("Scenario 4 — stale consumer prompts.md tolerated on upgrade", () => 
 });
 
 // ---------------------------------------------------------------------------
-// Scenario: rendered prompts/workflows version gate (#256)
-// `bkit check` hard-fails (exit 1) when a rendered mirror's managed-version
-// marker is older than the installing bkit version — so a consumer can never
-// silently run outdated prompts/workflows.
+// Scenario: rendered prompts/workflows version gate (#256), branch-scoped
+// `bkit check` hard-fails (exit 1) on main/dev when a rendered mirror's
+// managed-version marker is older than the installing bkit version — so a
+// consumer can never silently run outdated prompts/workflows on a protected
+// branch. On a feature branch the same drift is a NON-blocking advisory (it was
+// inherited from the base, not created here), so an intermediate push is not
+// blocked — see isOnProtectedBranch.
 // ---------------------------------------------------------------------------
 
-describe("Scenario: bkit check fails on stale rendered prompt/workflow markers (#256)", () => {
-  it("exits 1 and names the bkit-rendered-prompts-stale blocker", () => {
+describe("Scenario: bkit check stale-marker gate is branch-scoped (#256)", () => {
+  // Build a scratch consumer with one deliberately-old claude mirror marker (the
+  // installing version under tsx is the repo's package.json version, far newer)
+  // and run `bkit check`, forcing the effective branch via GH Actions env.
+  // Returns null when tsx is unavailable (skip).
+  function runStaleCheck(branchEnv: Record<string, string>): {
+    combined: string;
+    status: number | null;
+  } | null {
     fs.writeFileSync(
       path.join(tmpDir, "package.json"),
       JSON.stringify({ name: "x", devDependencies: {} }),
     );
     fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
-
-    // A claude agent mirror stamped with a deliberately old version (the installing
-    // version under tsx is the repo's package.json version, which is far newer).
     fs.mkdirSync(path.join(tmpDir, ".claude", "agents"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".claude", "agents", "bkit-foo.md"),
       "---\nname: bkit-foo\n---\n<!-- bkit:managed v0.0.1 — do NOT edit; run `bkit upgrade` to refresh -->\n\nbody\n",
     );
 
-    const bkitInstallPath = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "bkit-install.ts",
-    );
-    const tsxBin = path.resolve(
-      path.dirname(new URL(import.meta.url).pathname),
-      "../../node_modules/.bin/tsx",
-    );
-    if (!fs.existsSync(tsxBin)) return;
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "bkit-install.ts");
+    const tsxBin = path.resolve(dir, "../../node_modules/.bin/tsx");
+    if (!fs.existsSync(tsxBin)) return null;
+
+    // Force the branch deterministically: clear any ambient CI branch env first
+    // (bkit's own CI would otherwise leak its branch into the subprocess).
+    const env: NodeJS.ProcessEnv = { ...process.env, NODE_NO_WARNINGS: "1" };
+    delete env.GITHUB_BASE_REF;
+    delete env.GITHUB_REF_NAME;
+    Object.assign(env, branchEnv);
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "check"], {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env,
+      timeout: 60_000,
+    });
+    return { combined: `${result.stdout ?? ""}\n${result.stderr ?? ""}`, status: result.status };
+  }
+
+  it("on main: hard-fails (exit 1) and names the bkit-rendered-prompts-stale BLOCKER", () => {
+    const r = runStaleCheck({ GITHUB_REF_NAME: "main" });
+    if (!r) return;
+    expect(r.combined, r.combined).toContain("[blocker] bkit-rendered-prompts-stale");
+    expect(r.combined).toContain(
+      "rendered prompts/workflows are stale (managed-version marker drift)",
+    );
+    expect(r.status, `expected exit 1, got ${r.status}:\n${r.combined}`).toBe(1);
+  });
+
+  it("on a feature branch: surfaces a non-blocking ADVISORY, no marker-drift hard-fail line", () => {
+    const r = runStaleCheck({ GITHUB_REF_NAME: "feat/296-file-upload" });
+    if (!r) return;
+    expect(r.combined, r.combined).toContain("[advisory] bkit-rendered-prompts-stale");
+    expect(r.combined).toContain("non-blocking on this feature branch");
+    // The blocker-only stderr drift line is gated on severity===blocker, so it must
+    // NOT appear here even though other writes may still flag generic drift.
+    expect(r.combined).not.toContain(
+      "rendered prompts/workflows are stale (managed-version marker drift)",
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario: `bkit upgrade --to=<v>` atomic self-bump (#1) — dry-run preview
+// A dry-run bump reports the plan and exits 0 WITHOUT shelling out to pnpm or
+// re-rendering (runSelfBump returns before any IO), so this stays offline.
+// ---------------------------------------------------------------------------
+
+describe("Scenario: bkit upgrade --to self-bump dry-run (#1)", () => {
+  it("previews the bump (pnpm add + re-render) and exits 0 without mutating", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", devDependencies: {} }),
+    );
+    fs.mkdirSync(path.join(tmpDir, ".git"), { recursive: true });
+
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "bkit-install.ts");
+    const tsxBin = path.resolve(dir, "../../node_modules/.bin/tsx");
+    if (!fs.existsSync(tsxBin)) return;
+
+    // Target a version far above the installed one so it's always a "bump", never a noop.
+    const result = spawnSync(tsxBin, [bkitInstallPath, "upgrade", "--to=99.0.0", "--dry-run"], {
       cwd: tmpDir,
       encoding: "utf-8",
       env: { ...process.env, NODE_NO_WARNINGS: "1" },
       timeout: 60_000,
     });
-
     const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    expect(combined, combined).toContain("bkit-rendered-prompts-stale");
-    expect(result.status, `expected exit 1, got ${result.status}:\n${combined}`).toBe(1);
+    expect(combined, combined).toContain("[dry-run] would bump @cbartens/bkit");
+    expect(combined).toContain("99.0.0");
+    expect(combined).toContain("pnpm add -D @cbartens/bkit@99.0.0");
+    expect(result.status, `expected exit 0, got ${result.status}:\n${combined}`).toBe(0);
+    // Dry-run must not have touched the consumer's package.json.
+    const pkg = fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8");
+    expect(pkg).not.toContain("99.0.0");
+  });
+
+  it("rejects --to=<version> with --latest (mutually exclusive) at exit 1", () => {
+    fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }));
+    const dir = path.dirname(new URL(import.meta.url).pathname);
+    const bkitInstallPath = path.resolve(dir, "bkit-install.ts");
+    const tsxBin = path.resolve(dir, "../../node_modules/.bin/tsx");
+    if (!fs.existsSync(tsxBin)) return;
+    const result = spawnSync(
+      tsxBin,
+      [bkitInstallPath, "upgrade", "--to=4.2.0", "--latest", "--dry-run"],
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: { ...process.env, NODE_NO_WARNINGS: "1" },
+        timeout: 60_000,
+      },
+    );
+    const combined = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    expect(combined, combined).toContain("mutually exclusive");
+    expect(result.status).toBe(1);
   });
 });
 
