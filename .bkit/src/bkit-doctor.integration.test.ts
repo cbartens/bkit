@@ -312,7 +312,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
   it("mcp-env-missing-dotenv surfaces through runPostInstallCheck when .env.example exists but .env absent", () => {
     fs.writeFileSync(path.join(tmpDir, "package.json"), JSON.stringify({ name: "x" }), "utf-8");
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
     // No .bkit/.env
 
     const modules = new Set<import("./bkit-cli").ModuleFlag>(["core"]);
@@ -331,7 +331,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -339,7 +339,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const ws = { writes: [], reverts: [] };
     const findings = runPostInstallCheck([], ws, modules, tmpDir);
     const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
   });
@@ -353,7 +353,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
 
@@ -361,7 +361,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     const ws = { writes: [], reverts: [] };
     const findings = runPostInstallCheck([], ws, modules, tmpDir);
     const ids = findings.map((a) => a.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
 
@@ -370,7 +370,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "GH_MCP_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
 
@@ -413,7 +413,7 @@ describe("bkit doctor — [mcp-env] advisory surface", () => {
 
     seedMinimalConsumer(tmpDir);
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
 
     const result = spawnSync(tsxBin, [bkitInstallPath, "doctor"], {
       cwd: tmpDir,

@@ -25,6 +25,7 @@ import {
   REQUIRED_MCP_SERVERS,
   detectMissingDotenv,
   detectBlankDotenvKeys,
+  detectLegacyGhTokenInDotenv,
   detectDirenvMissing,
   detectDirenvNotAllowed,
   detectBkitNotOnPath,
@@ -1281,7 +1282,7 @@ describe("detectExtraMcpServers", () => {
 describe("detectMissingDotenv", () => {
   it("flags when .bkit/.env.example exists but .bkit/.env does not", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
     const f = detectMissingDotenv(tmpDir);
     expect(f).not.toBeNull();
     expect(f!.id).toBe("mcp-env-missing-dotenv");
@@ -1292,8 +1293,8 @@ describe("detectMissingDotenv", () => {
 
   it("does NOT flag when both .env.example and .env exist", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=ghp_test\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_MCP_TOKEN=ghp_test\n", "utf-8");
     expect(detectMissingDotenv(tmpDir)).toBeNull();
   });
 
@@ -1303,11 +1304,11 @@ describe("detectMissingDotenv", () => {
 
   it("github tracker: token prose omits LINEAR_API_KEY; linear keeps it (issue #138)", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
     const gh = detectMissingDotenv(tmpDir, "github")!;
     expect(gh.detect).not.toContain("LINEAR_API_KEY");
     expect(gh.action).not.toContain("LINEAR_API_KEY");
-    expect(gh.action).toContain("GH_TOKEN");
+    expect(gh.action).toContain("GH_MCP_TOKEN");
     const linear = detectMissingDotenv(tmpDir, "linear")!;
     expect(linear.action).toContain("LINEAR_API_KEY");
   });
@@ -1322,13 +1323,13 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
     expect(findings).toHaveLength(3);
     const ids = findings.map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
   });
@@ -1337,11 +1338,11 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir, "github").map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).not.toContain("mcp-env-blank-key-linear_api_key");
   });
@@ -1350,7 +1351,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
@@ -1362,7 +1363,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
+      "GH_MCP_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\nLINEAR_API_KEY=lin_key\n",
       "utf-8",
     );
     expect(detectBlankDotenvKeys(tmpDir)).toEqual([]);
@@ -1372,7 +1373,7 @@ describe("detectBlankDotenvKeys", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\n",
+      "GH_MCP_TOKEN=ghp_test\nGH_BKIT_TOKEN=ghp_bkit\n",
       "utf-8",
     );
     const findings = detectBlankDotenvKeys(tmpDir);
@@ -1382,7 +1383,7 @@ describe("detectBlankDotenvKeys", () => {
 
   it("advisory action text contains [mcp-env] prefix and no BAR-XXX references", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_MCP_TOKEN=\n", "utf-8");
     const findings = detectBlankDotenvKeys(tmpDir);
     for (const f of findings) {
       expect(f.action).toContain("[mcp-env]");
@@ -1500,10 +1501,34 @@ describe("detectDirenvNotAllowed", () => {
   });
 });
 
+describe("detectLegacyGhTokenInDotenv", () => {
+  it("flags when GH_TOKEN is set but GH_MCP_TOKEN is absent", () => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", ".env"),
+      "GH_TOKEN=ghp_legacy\nGH_BKIT_TOKEN=ghp_bkit\n",
+      "utf-8",
+    );
+    const finding = detectLegacyGhTokenInDotenv(tmpDir);
+    expect(finding?.id).toBe("mcp-env-legacy-gh-token");
+    expect(finding?.action).toContain("GH_MCP_TOKEN");
+  });
+
+  it("does NOT flag when GH_MCP_TOKEN is already set", () => {
+    fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".bkit", ".env"),
+      "GH_TOKEN=ghp_legacy\nGH_MCP_TOKEN=ghp_mcp\n",
+      "utf-8",
+    );
+    expect(detectLegacyGhTokenInDotenv(tmpDir)).toBeNull();
+  });
+});
+
 describe("[mcp-env] detector outputs", () => {
   it("detectMissingDotenv fires when .env.example exists but .env absent", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
     const finding = detectMissingDotenv(tmpDir);
     expect(finding?.id).toBe("mcp-env-missing-dotenv");
   });
@@ -1512,19 +1537,19 @@ describe("[mcp-env] detector outputs", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".bkit", ".env"),
-      "GH_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
+      "GH_MCP_TOKEN=\nGH_BKIT_TOKEN=\nLINEAR_API_KEY=\n",
       "utf-8",
     );
     const ids = detectBlankDotenvKeys(tmpDir).map((f) => f.id);
-    expect(ids).toContain("mcp-env-blank-key-gh_token");
+    expect(ids).toContain("mcp-env-blank-key-gh_mcp_token");
     expect(ids).toContain("mcp-env-blank-key-gh_bkit_token");
     expect(ids).toContain("mcp-env-blank-key-linear_api_key");
   });
 
   it("all [mcp-env] advisories have no BAR-XXX references", () => {
     fs.mkdirSync(path.join(tmpDir, ".bkit"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_TOKEN=\n", "utf-8");
-    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env.example"), "GH_MCP_TOKEN=\n", "utf-8");
+    fs.writeFileSync(path.join(tmpDir, ".bkit", ".env"), "GH_MCP_TOKEN=\n", "utf-8");
     const findings = [
       detectMissingDotenv(tmpDir),
       ...detectBlankDotenvKeys(tmpDir),

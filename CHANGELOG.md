@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.3] — 2026-06-17
+
+Rename local GitHub MCP PAT from `GH_TOKEN` to `GH_MCP_TOKEN` so direnv no longer overrides `gh auth login` keyring auth (#287).
+
+### Changed
+
+- **`.bkit/.env.example` → `GH_MCP_TOKEN`.** MCP-only fine-grained PAT; `gh` CLI uses keyring locally. Migration advisory `mcp-env-legacy-gh-token` when `.env` still has `GH_TOKEN`.
+- **MCP configs** (`.mcp.json`, `.cursor/mcp.json`, OpenCode template) reference `${GH_MCP_TOKEN}` / `{env:GH_MCP_TOKEN}`.
+- **Preflight/postinstall advisories** renamed to `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell`.
+- **Docs:** `KN-CORE-8`, updated setup/cloud/README copy.
+
+### Unchanged
+
+- CI workflow steps keep `GH_TOKEN: ${{ github.token }}` (GHA convention for `gh` in Actions).
+
+---
+
 ## [4.1.2] — 2026-06-17
 
 Fix breaking `.npmrc` auth regression — restore the `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line that #274 incorrectly removed.

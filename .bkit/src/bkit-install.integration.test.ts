@@ -1023,7 +1023,7 @@ describe("Scenario: .env.example + .envrc Tier 3 scaffolding", () => {
     const envExamplePath = path.join(tmpDir, ".bkit", ".env.example");
     expect(fs.existsSync(envExamplePath)).toBe(true);
     const content = fs.readFileSync(envExamplePath, "utf-8");
-    expect(content).toContain("GH_TOKEN=");
+    expect(content).toContain("GH_MCP_TOKEN=");
     expect(content).toContain("GH_BKIT_TOKEN=");
     expect(content).toContain("LINEAR_API_KEY=");
   });

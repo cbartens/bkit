@@ -1237,7 +1237,7 @@ export function runCursorModule(ctx: ModuleContext): void {
   }
 
   // Post-install advisory: macOS GUI-isolation note.
-  // MCP token placeholders (${GH_TOKEN}, ${LINEAR_API_KEY}, …) in .cursor/mcp.json are
+  // MCP token placeholders (${GH_MCP_TOKEN}, ${LINEAR_API_KEY}, …) in .cursor/mcp.json are
   // expanded by Cursor from the process environment. When Cursor is launched from the
   // Dock/Finder (launchd), it does NOT inherit the login-shell / direnv env — tokens
   // resolve empty and MCP calls fail with auth errors (#279/#280).
@@ -1245,13 +1245,13 @@ export function runCursorModule(ctx: ModuleContext): void {
     id: "cursor-gui-isolation",
     severity: "advisory",
     detect:
-      "Cursor's MCP token placeholders (${GH_TOKEN}, …) resolve from process.env. " +
+      "Cursor's MCP token placeholders (${GH_MCP_TOKEN}, …) resolve from process.env. " +
       "Dock/Finder-launched Cursor does not inherit the login-shell / direnv env.",
     action:
       "[cursor] Use `bkit cursor` to launch Cursor — it execs the binary directly with " +
       ".bkit/.env merged into the environment so MCP tokens resolve correctly. " +
       "Quit Cursor first (a running instance will not see the new env). " +
-      'Alternative: `launchctl setenv GH_TOKEN "$GH_TOKEN"` (session-scoped; must re-run after reboot) ' +
+      'Alternative: `launchctl setenv GH_MCP_TOKEN "$GH_MCP_TOKEN"` (session-scoped; must re-run after reboot) ' +
       "then relaunch from Dock.",
   });
 }
@@ -1396,7 +1396,7 @@ export function renderOpencodeJson(
   let mcpEntry: string;
   if (tracker === "github") {
     mcpEntry =
-      '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:GH_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
+      '"github": { "type": "remote", "url": "https://api.githubcopilot.com/mcp/", "headers": { "Authorization": "Bearer {env:GH_MCP_TOKEN}", "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects" } }';
   } else if (tracker === "linear") {
     mcpEntry = '"linear": { "type": "remote", "url": "https://mcp.linear.app/mcp" }';
   } else {
@@ -1942,7 +1942,7 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 
   Open .bkit/.env.example. Compare against the bkit reference below.
   Merge any new entries you find into your existing file — tracker/cloud-agent
-  tokens (GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY, ANTHROPIC_API_KEY,
+  tokens (GH_MCP_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY, ANTHROPIC_API_KEY,
   CURSOR_API_KEY) and the observability / debug-fetch operator creds
   (VERCEL_TOKEN, SUPABASE_ACCESS_TOKEN). Those debug-fetch creds are account-level
   READ creds, NOT app-runtime secrets — keep your app's keys out of this file. Keep
@@ -2922,8 +2922,8 @@ export function runCloudModule(ctx: ModuleContext): void {
         "IN CLAUDE APP (claude.ai/code → environment selector → + Add environment):\n" +
         "  - Name: `bkit-shared` (or per-repo).\n" +
         "  - Setup script: paste from bkit's `cloud.md` § Setup script (installs vale 3.9.1 + gh + corepack-pinned pnpm 10.33.0).\n" +
-        "  - Environment variables: `GH_TOKEN` (fine-grained PAT), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
-        "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
+        "  - Environment variables: `GH_MCP_TOKEN` (fine-grained PAT for GitHub MCP), `GH_BKIT_TOKEN` (classic PAT with read:packages), `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70`.\n" +
+        "  - Tracker env vars (GitHub): No tracker PAT needed. Run `gh auth login` once for CLI surface. MCP auth is browser OAuth (automatic on first tool call). Set `GH_MCP_TOKEN` (fine-grained PAT for GitHub MCP server).\n" +
         "  - Network access: `Trusted` (default). One env can be reused across bkit + every consumer repo.",
     });
   } else if (variant === "opencode") {
@@ -3038,7 +3038,7 @@ export function runCloudModule(ctx: ModuleContext): void {
         "Cloud env config splits across the repo (`.cursor/Dockerfile` + `.cursor/environment.json`, bkit-managed) and the Cursor app dashboard (env vars + auth tokens, manual).",
       action:
         "IN CURSOR APP (Cursor → Settings → Background Agents → Environment Variables):\n" +
-        "  - `GH_TOKEN`, `GH_BKIT_TOKEN`.\n" +
+        "  - `GH_MCP_TOKEN`, `GH_BKIT_TOKEN`.\n" +
         "  - Tracker env vars (Linear): `LINEAR_API_KEY` (generate at https://linear.app/settings/api). `LINEAR_ISSUE_ID` is injected per-session — don't hardcode.\n" +
         "  - First session after Dockerfile changes rebuilds the image; subsequent sessions reuse cached layers.\n\n" +
         "Full recipe in bkit's `cloud.md`.",

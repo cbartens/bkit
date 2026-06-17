@@ -1298,7 +1298,7 @@ async function main() {
         return;
     }
     // Launcher verbs — exec the GUI app binary with .bkit/.env merged into the env
-    // so that MCP token placeholders (GH_TOKEN, NVIDIA_API_KEY, …) resolve correctly
+    // so that MCP token placeholders (GH_MCP_TOKEN, NVIDIA_API_KEY, …) resolve correctly
     // even when launched from the Dock/Finder (macOS GUI-isolation #279/#280).
     if (verb === "cursor" || verb === "opencode") {
         await launchApp(verb, process.cwd());

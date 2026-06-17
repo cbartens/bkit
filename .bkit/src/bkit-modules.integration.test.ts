@@ -2689,7 +2689,7 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
     const parsed = JSON.parse(renderOpencodeJson(TEMPLATE, "github", "nvidia"));
     const gh = parsed.mcp?.github;
     expect(gh.type).toBe("remote");
-    expect(gh.headers.Authorization).toBe("Bearer {env:GH_TOKEN}");
+    expect(gh.headers.Authorization).toBe("Bearer {env:GH_MCP_TOKEN}");
     expect(JSON.stringify(parsed.mcp)).not.toContain('"http"');
     expect(JSON.stringify(parsed.mcp)).not.toContain("${");
   });

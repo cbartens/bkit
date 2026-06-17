@@ -94,7 +94,7 @@ Run these in order on a brand-new consumer repo. Each step links to its detail s
 | 3 | Commit `.npmrc` at repo root (registry mapping only; token goes in pnpm user-level config) | [§ Consumer CI auth](#consumer-ci-auth) step 3 |
 | 4 | Export `GH_BKIT_TOKEN` for the `pnpm add` step (one-off — `export GH_BKIT_TOKEN=<classic PAT>` in this shell only), then run `pnpm add -D @cbartens/bkit` | [§ Install](#install) (this section) |
 | 5 | Run `bkit install --claude --cursor --tooling` to seed both hosts + tooling (creates `.bkit/.env.example` + `.envrc`) | [§ Install](#install) (this section) |
-| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
+| 5a | Set up direnv + `.bkit/.env` so every subsequent shell auto-loads `GH_BKIT_TOKEN`, `GH_MCP_TOKEN`, `LINEAR_API_KEY` | [§ Local env setup](#local-env-setup) |
 | 6 | If deploying to Vercel: add `GH_BKIT_TOKEN` to Vercel env vars | [§ Consumer Vercel auth](#consumer-vercel-auth) |
 | 7 | Push to a feature branch and verify CI runs green | — |
 
@@ -139,15 +139,16 @@ bkit check
 
 ### Local env setup
 
-Two flows — pick one. Both end with the same env vars (`GH_BKIT_TOKEN`, `GH_TOKEN`, `LINEAR_API_KEY`) available to your shell, `gh` CLI, `pnpm`, and Claude/Cursor MCP servers.
+Two flows — pick one. Both end with `GH_BKIT_TOKEN` and `GH_MCP_TOKEN` in your shell for pnpm and GitHub MCP; use `gh auth login` for the CLI (do not export `GH_TOKEN` — it overrides the keyring). Linear repos also need `LINEAR_API_KEY`.
 
 #### Flow A — Shell export (quickest, no extra deps)
 
 ```bash
 # Add to ~/.zshrc (or ~/.bashrc)
 export GH_BKIT_TOKEN=<classic PAT, read:packages>      # pnpm → npm.pkg.github.com
-export GH_TOKEN=<fine-grained PAT>                     # gh CLI + GitHub MCP
+export GH_MCP_TOKEN=<fine-grained PAT>                 # GitHub MCP only
 export LINEAR_API_KEY=<Linear personal API key>        # Linear MCP + preflight
+# gh CLI: run `gh auth login` — do NOT export GH_TOKEN (overrides keyring)
 
 # Reload
 source ~/.zshrc                                        # or: source ~/.bashrc
@@ -170,11 +171,12 @@ echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc
 
 # 3. One-time per consumer repo (after `bkit install` has seeded the templates)
 cp .bkit/.env.example .bkit/.env
-# Edit .bkit/.env: set GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY
+# Edit .bkit/.env: set GH_BKIT_TOKEN, GH_MCP_TOKEN, LINEAR_API_KEY
 direnv allow                                                       # trust the .envrc
 
 # 4. Verify
-echo "len=${#GH_TOKEN}"                                            # non-zero → loaded
+echo "len=${#GH_MCP_TOKEN}"                                            # non-zero → MCP token loaded
+gh auth status                                                       # gh CLI uses keyring, not GH_MCP_TOKEN
 ```
 
 After step 4, restart any open Claude Code / Cursor sessions in this repo so the new env reaches their MCP servers.
@@ -333,7 +335,8 @@ After writes, bkit re-runs token-surface and environment checks — some are onl
 | `npmrc-legacy-authtoken` | `.npmrc` still carries a legacy `//npm.pkg.github.com/:_authToken=…` line (401s on pnpm >=10.34.3; move it to pnpm user-level config) |
 | `gh-bkit-token-secret-missing` | `gh secret list` confirms secret absent |
 | `gh-bkit-token-secret-unknown` | `gh` CLI unavailable/unauthenticated |
-| `gh-token-unset-shell` / `gh-token-empty-shell` | `GH_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
+| `gh-mcp-token-unset-shell` / `gh-mcp-token-empty-shell` | `GH_MCP_TOKEN` (GitHub MCP auth) unset/empty in shell while a `github` MCP server is configured — the whole tracker/PR/board MCP surface fails to connect. Suppressed in CI. |
+| `mcp-env-legacy-gh-token` | `.bkit/.env` still defines `GH_TOKEN` but not `GH_MCP_TOKEN` — rename per #287 so `gh auth login` keyring is not overridden. |
 | `vercel-env-missing-preview` | `vercel.json` detected; token absent in preview |
 | `vercel-env-missing-production` | `vercel.json` detected; token absent in production |
 | `ci-yml-missing-token-env` | ci.yml install step lacks the `pnpm config set` auth step and/or the `GH_BKIT_TOKEN` env mapping |

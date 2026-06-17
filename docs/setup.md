@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Setup
 
@@ -39,11 +39,11 @@ brew install direnv
 echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && source ~/.zshrc   # zsh; bash users use ~/.bashrc
 
 # One-time per repo clone
-cp .bkit/.env.example .bkit/.env   # then fill in GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
+cp .bkit/.env.example .bkit/.env   # then fill in GH_BKIT_TOKEN, GH_MCP_TOKEN, LINEAR_API_KEY (+ optional ANTHROPIC_API_KEY / CURSOR_API_KEY)
 direnv allow                            # trust the .envrc; auto-loads on subsequent cd
 
 # Verify
-echo "len=${#GH_TOKEN}"                 # non-zero → loaded
+echo "len=${#GH_MCP_TOKEN}"                 # non-zero → MCP token loaded; gh CLI uses `gh auth login` keyring
 ```
 
 `LINEAR_ISSUE_ID` is injected per-session by the cloud integration — never put it in `.bkit/.env`. Cloud sessions (Claude on the web, Cursor Background Agents) set the same variable names in their respective dashboards, not via this file.

@@ -34,7 +34,7 @@ Future hosts (Codex, Windsurf, Kiro, etc.) — add row + `bkit/hosts/<name>.ts` 
 
 ## macOS GUI-isolation — `bkit cursor` / `bkit opencode`
 
-**Root cause:** macOS GUI apps launched from the Dock, Finder, or Spotlight run under `launchd` and do **not** inherit the login-shell environment. `direnv` exports from `.bkit/.env` stay shell-only. Token placeholders in config files (`${GH_TOKEN}` in `.cursor/mcp.json`, `{env:NVIDIA_API_KEY}` in `.opencode/opencode.json`) resolve empty → MCP auth failures.
+**Root cause:** macOS GUI apps launched from the Dock, Finder, or Spotlight run under `launchd` and do **not** inherit the login-shell environment. `direnv` exports from `.bkit/.env` stay shell-only. Token placeholders in config files (`${GH_MCP_TOKEN}` in `.cursor/mcp.json`, `{env:NVIDIA_API_KEY}` in `.opencode/opencode.json`) resolve empty → MCP auth failures.
 
 **Fix — launcher verbs:** `bkit cursor` and `bkit opencode` exec the app binary directly with `.bkit/.env` merged into the child process environment. Dynamic, per-repo, zero global state.
 
@@ -53,7 +53,7 @@ bkit opencode  # /Applications/opencode.app/Contents/MacOS/opencode
 **launchctl fallback (opt-in, not recommended):** makes a key visible to launchd-launched apps for the current session only (not persistent across reboots). Requires manual re-run after restart and manual rotation on token change — prefer the launcher verbs.
 
 ```bash
-launchctl setenv GH_TOKEN "$GH_TOKEN"
+launchctl setenv GH_MCP_TOKEN "$GH_MCP_TOKEN"
 launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"
 # then relaunch from Dock — values survive until next reboot
 ```
@@ -256,7 +256,7 @@ Both hosts use the same `mcpServers` key shape, but the files differ:
 | Claude Code | `.mcp.json` at repo root | `bkit install --tracker=github` seeds the `github` entry |
 | Cursor | `.cursor/mcp.json` | `bkit install --tracker=github` seeds this file with the same `mcpServers.github` block |
 
-Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_TOKEN}" }`. The `${GH_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.bkit/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
+Both use `"type": "http"` with `"url": "https://api.githubcopilot.com/mcp/"` and `"headers": { "Authorization": "Bearer ${GH_MCP_TOKEN}" }`. The `${GH_MCP_TOKEN}` substitution happens at session start — the variable must be set in the shell (local) or dashboard env vars (cloud). See `.bkit/cloud.md` § MCP issue-tracker integration for the full JSON snippet.
 
 **Tracker switch is seed-only, not a rewrite.** `.mcp.json` / `.cursor/mcp.json` are Tier-3 seed-or-print: bkit writes the tracker-filtered content only when the file is _absent_. On an existing file it never overwrites — so switching trackers (e.g. `--tracker=linear` → `--tracker=github`) leaves the old tracker's `mcpServers` entry behind. Two advisories catch the divergence: `mcp-missing-server-<name>` when the file lacks a server the tracker needs, and `mcp-extra-server-<name>` when it carries a bkit-managed server the tracker no longer uses (remove that entry). Consumer-added (non-bkit) MCP servers are never flagged.
 

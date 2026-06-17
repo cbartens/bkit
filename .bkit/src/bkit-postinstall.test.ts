@@ -8,7 +8,7 @@ import type { PreflightFinding } from "./bkit-preflight";
 import type { WriteSet } from "./bkit-tiers";
 import {
   detectShellToken,
-  detectShellGhToken,
+  detectShellGhMcpToken,
   hasGithubMcpServer,
   detectActionsWritePermissions,
   detectProjectsToolset,
@@ -114,23 +114,23 @@ describe("detectShellToken", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectShellGhToken (GH_TOKEN — GitHub MCP auth)
+// detectShellGhMcpToken (GH_MCP_TOKEN — GitHub MCP auth)
 // ---------------------------------------------------------------------------
 
-describe("detectShellGhToken", () => {
-  it("returns 'present' when GH_TOKEN is set and non-empty", () => {
-    process.env.GH_TOKEN = "ghp_value";
-    expect(detectShellGhToken()).toBe("present");
+describe("detectShellGhMcpToken", () => {
+  it("returns 'present' when GH_MCP_TOKEN is set and non-empty", () => {
+    process.env.GH_MCP_TOKEN = "ghp_value";
+    expect(detectShellGhMcpToken()).toBe("present");
   });
 
-  it("returns 'missing' when GH_TOKEN is not set", () => {
-    delete process.env.GH_TOKEN;
-    expect(detectShellGhToken()).toBe("missing");
+  it("returns 'missing' when GH_MCP_TOKEN is not set", () => {
+    delete process.env.GH_MCP_TOKEN;
+    expect(detectShellGhMcpToken()).toBe("missing");
   });
 
-  it("returns 'empty' when GH_TOKEN is set to empty string", () => {
-    process.env.GH_TOKEN = "";
-    expect(detectShellGhToken()).toBe("empty");
+  it("returns 'empty' when GH_MCP_TOKEN is set to empty string", () => {
+    process.env.GH_MCP_TOKEN = "";
+    expect(detectShellGhMcpToken()).toBe("empty");
   });
 });
 

@@ -881,7 +881,9 @@ export function detectMissingDotenv(
   if (!fs.existsSync(examplePath)) return null;
   if (fs.existsSync(envPath)) return null;
   const tokens =
-    tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY" : "GH_TOKEN, GH_BKIT_TOKEN";
+    tracker === "linear"
+      ? "GH_MCP_TOKEN, GH_BKIT_TOKEN, LINEAR_API_KEY"
+      : "GH_MCP_TOKEN, GH_BKIT_TOKEN";
   return {
     id: "mcp-env-missing-dotenv",
     severity: "advisory",
@@ -918,9 +920,9 @@ export function detectBlankDotenvKeys(
 
   const REQUIRED_KEYS: Array<{ key: string; description: string }> = [
     {
-      key: "GH_TOKEN",
+      key: "GH_MCP_TOKEN",
       description:
-        "fine-grained PAT for the GitHub MCP server and gh CLI (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write)",
+        "fine-grained PAT for the GitHub MCP server only (Contents, Pull requests, Issues, Actions, Workflows, Metadata — read/write). Use `gh auth login` for the gh CLI — do not set GH_TOKEN in .bkit/.env",
     },
     {
       key: "GH_BKIT_TOKEN",
@@ -956,6 +958,47 @@ export function detectBlankDotenvKeys(
     });
   }
   return findings;
+}
+
+/**
+ * Advisory: .bkit/.env still uses legacy GH_TOKEN (pre-#287) instead of GH_MCP_TOKEN.
+ * GH_TOKEN in the shell overrides `gh auth login` keyring auth — the rename decouples MCP from gh CLI.
+ */
+export function detectLegacyGhTokenInDotenv(cwd: string): PreflightFinding | null {
+  if (isCloudOrCi()) return null;
+  const envPath = path.join(cwd, ".bkit", ".env");
+  if (!fs.existsSync(envPath)) return null;
+
+  const content = fs.readFileSync(envPath, "utf-8");
+  const kvMap = new Map<string, string>();
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eqIdx = trimmed.indexOf("=");
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    let value = trimmed.slice(eqIdx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    kvMap.set(key, value);
+  }
+
+  const legacy = kvMap.get("GH_TOKEN") ?? "";
+  const mcp = kvMap.get("GH_MCP_TOKEN") ?? "";
+  if (!legacy || mcp) return null;
+
+  return {
+    id: "mcp-env-legacy-gh-token",
+    severity: "advisory",
+    detect:
+      ".bkit/.env still defines GH_TOKEN but not GH_MCP_TOKEN. Exporting GH_TOKEN overrides `gh auth login` keyring credentials — bkit now uses GH_MCP_TOKEN for the GitHub MCP server only.",
+    action:
+      "[mcp-env] Rename GH_TOKEN → GH_MCP_TOKEN in .bkit/.env (keep the same PAT value), remove the GH_TOKEN line, run `bkit install` to refresh MCP configs, then `direnv allow` and restart your editor. Use `gh auth login` for the gh CLI.",
+  };
 }
 
 /**
@@ -1007,9 +1050,13 @@ export function detectDirenvMissing(
   if (result.status === 0 && result.stdout.trim()) return null;
   // LINEAR_API_KEY only matters under the Linear tracker (issue #138).
   const editKeys =
-    tracker === "linear" ? "GH_BKIT_TOKEN, GH_TOKEN, LINEAR_API_KEY" : "GH_BKIT_TOKEN, GH_TOKEN";
+    tracker === "linear"
+      ? "GH_BKIT_TOKEN, GH_MCP_TOKEN, LINEAR_API_KEY"
+      : "GH_BKIT_TOKEN, GH_MCP_TOKEN";
   const exportKeys =
-    tracker === "linear" ? "GH_BKIT_TOKEN / GH_TOKEN / LINEAR_API_KEY" : "GH_BKIT_TOKEN / GH_TOKEN";
+    tracker === "linear"
+      ? "GH_BKIT_TOKEN / GH_MCP_TOKEN / LINEAR_API_KEY"
+      : "GH_BKIT_TOKEN / GH_MCP_TOKEN";
   return {
     id: "mcp-env-direnv-missing",
     severity: "advisory",
@@ -1066,7 +1113,7 @@ export function detectDirenvNotAllowed(
       severity: "advisory",
       detect:
         "direnv is installed but the .envrc in this repo is blocked. .bkit/.env is not being auto-loaded.",
-      action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "GH_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
+      action: `[mcp-env] Run \`direnv allow\` in this repo to trust the .envrc and enable auto-load of .bkit/.env. direnv will then export ${tracker === "linear" ? "GH_MCP_TOKEN, GH_BKIT_TOKEN, and LINEAR_API_KEY" : "GH_MCP_TOKEN and GH_BKIT_TOKEN"} into your shell whenever you cd into the repo.`,
     };
   }
   return null;
