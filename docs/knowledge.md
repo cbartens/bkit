@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Knowledge
 
@@ -39,9 +39,9 @@
 ## KN-CORE-1: GitHub MCP / `gh` 401 immediately after token rotation (2026-05-24)
 
 - **Category:** integrations
-- **Symptom:** 401 from the GitHub MCP server or `gh` despite a freshly-rotated, valid, correctly-scoped `GH_TOKEN`.
-- **Root cause:** the MCP server captures `GH_TOKEN` at process launch, so a mid-session rotation leaves it holding the dead token. Non-interactive shells also miss direnv (`.envrc` re-sources only on interactive prompt/cd), so `gh` keeps the stale exported value.
-- **Fix or rule:** restart/reload the MCP server after rotating the token; for one-off CLI prefix `direnv exec . gh …`. Confirm the live token matches the file before chasing PAT scopes/approval.
+- **Symptom:** 401 from the GitHub MCP server or `gh` despite a freshly-rotated, valid, correctly-scoped PAT in `.bkit/.env`.
+- **Root cause:** the MCP server captures `GH_MCP_TOKEN` at process launch, so a mid-session rotation leaves it holding the dead token. Non-interactive shells also miss direnv (`.envrc` re-sources only on interactive prompt/cd), so the shell keeps a stale exported value. For `gh` specifically, an exported `GH_TOKEN` (legacy or manual) overrides the keyring — see KN-CORE-8.
+- **Fix or rule:** restart/reload the MCP server after rotating the token; for one-off CLI prefix `direnv exec . gh …`. Confirm the live `GH_MCP_TOKEN` matches `.bkit/.env` before chasing PAT scopes/approval.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** normal
@@ -119,6 +119,18 @@
 - **Severity:** critical
 - **Source:** human
 - **Related:** KN-CORE-2, `.npmrc`, `deployments.md` (§ Consumer CI auth)
+
+## KN-CORE-8: `GH_TOKEN` in shell overrides `gh auth login` keyring (2026-06-17)
+
+- **Category:** integrations
+- **Symptom:** Agent or human reports "`GH_TOKEN` env var is overriding the keyring token which has proper repo scopes"; `gh` behaves differently from `gh auth status` expectations.
+- **Root cause:** `gh` checks `GH_TOKEN` / `GITHUB_TOKEN` before the OS keyring. bkit historically exported `GH_TOKEN` from `.bkit/.env` for both MCP and CLI — direnv put a fine-grained PAT in the shell and shadowed `gh auth login`.
+- **Fix or rule:** Use `GH_MCP_TOKEN` in `.bkit/.env` for the GitHub MCP server only (`Authorization: Bearer ${GH_MCP_TOKEN}` in `.mcp.json`). Use `gh auth login` for the CLI locally — do not export `GH_TOKEN` from `.bkit/.env`. Cloud dashboards: set `GH_MCP_TOKEN` for MCP; authenticate `gh` via setup/bootstrap (`gh auth login --with-token`) or cloud-only `GH_TOKEN` if headless CLI requires it. CI keeps `GH_TOKEN: ${{ github.token }}` in workflow steps (unchanged).
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** normal
+- **Source:** human
+- **Related:** #287, KN-CORE-1, `.bkit/.env.example`, `.mcp.json`
 
 <!-- bkit:end -->
 

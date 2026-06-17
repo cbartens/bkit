@@ -11,7 +11,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical writer maintaining consistent file-path references across markdown.
 **Scope:** As specified by input or session prompt.

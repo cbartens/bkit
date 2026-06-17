@@ -43,7 +43,7 @@
       "type": "remote",
       "url": "https://api.githubcopilot.com/mcp/",
       "headers": {
-        "Authorization": "Bearer {env:GH_TOKEN}",
+        "Authorization": "Bearer {env:GH_MCP_TOKEN}",
         "X-MCP-Toolsets": "context,issues,pull_requests,repos,users,projects"
       }
     }

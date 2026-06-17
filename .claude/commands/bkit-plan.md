@@ -1,7 +1,7 @@
 ---
 description: "Plan Feature — Autonomous plan generation"
 ---
-<!-- bkit:managed v4.1.2 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Plan Feature (Workflow 2/6)
 
@@ -70,8 +70,6 @@ description: "Plan Feature — Autonomous plan generation"
 1. Acquire concurrency lock:
    ```bash
    git fetch origin dev 2>/dev/null
-   AHEAD=$(git rev-list --count origin/dev..dev 2>/dev/null || echo 0)
-   [ "$AHEAD" -gt 0 ] && { echo "Local dev is $AHEAD commits ahead of origin/dev. Push or reset before retrying." >&2; exit 1; }
    REPO_ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
    YYYYMM=$(ls -d "$REPO_ROOT"/docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/{FID}/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-3)}')
    [ -z "$YYYYMM" ] && YYYYMM=$(date +%Y%m)
@@ -98,7 +96,7 @@ description: "Plan Feature — Autonomous plan generation"
    fi
    printf '%s plan\n' "$(date -u +%FT%TZ)" > "$LOCK"
    ```
-   **If** divergence check or lock acquisition exits non-zero → **Failure Path**.
+   **If** lock acquisition exits non-zero → **Failure Path**.
    `FID` hint (interrupted): `ls -d docs/plans/[0-9][0-9][0-9][0-9][0-9][0-9]/logs/*/ 2>/dev/null | head -1 | awk -F/ '{print $(NF-1)}'`.
 2. `gh repo view --json nameWithOwner --jq .nameWithOwner` → extract `OWNER_REPO`. Assert non-empty. Derive `OWNER="${OWNER_REPO%/*}"` and `REPO="${OWNER_REPO#*/}"`. Assert both non-empty.
 3. `git branch --show-current` → extract initial `BRANCH`. Assert non-empty.
@@ -128,7 +126,6 @@ description: "Plan Feature — Autonomous plan generation"
 
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
-- [ ] Local `dev` NOT ahead of `origin/dev`
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
 - [ ] Issue update attempted (phase label `bkit:plan`, status/state `In Progress`)

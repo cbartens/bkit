@@ -473,7 +473,7 @@ macOS GUI-isolation note (launchctl fallback):
   If you prefer launching via the Dock/Spotlight instead of \`bkit cursor\` / \`bkit opencode\`,
   make the tokens visible to launchd-launched GUI apps with a one-shot setenv (does NOT
   survive reboot — must re-run after each restart):
-    launchctl setenv GH_TOKEN "$GH_TOKEN"
+    launchctl setenv GH_MCP_TOKEN "$GH_MCP_TOKEN"
     launchctl setenv NVIDIA_API_KEY "$NVIDIA_API_KEY"   # etc.
   For a persistent approach, add a RunAtLoad LaunchAgent plist under
   ~/Library/LaunchAgents/ that calls setenv for each key. This requires manual rotation
