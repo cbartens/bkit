@@ -6,6 +6,17 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.1] — 2026-06-17
+
+Split bkit's own CI and the consumer CI template into parallel test lanes, dogfooding the pattern recommended in the scaffold reference.
+
+### Changed
+
+- **Parallel CI test lanes.** Both bkit's own `.github/workflows/ci.yml` and the consumer template (`.bkit/templates/.github/workflows/ci.yml`) now ship `bkit-tests-static` + `bkit-tests-unit` as parallel sibling jobs instead of a single serial `bkit-tests`. Wall-clock = MAX(lane) instead of SUM(steps). The `bkit-tests-check` capstone asserts both lanes passed and unit executed >0 tests.
+- **Consumer template ships pre-split.** New consumers get the two-lane pattern by default. The `verbose-ci-env` managed block stays in `bkit-tests-static` (single instance for drift detection); `bkit-tests-unit` duplicates the env vars with a cross-reference comment. Stubs (`auto-force-e2e`, `e2e`, `vercel-await`, etc.) live in the unit lane; `migrations-immutable` stays in static.
+
+---
+
 ## [4.1.0] — 2026-06-17
 
 Split `--tooling` into a stack-agnostic CI foundation and an opt-in Node/TS toolchain (#265), so a non-Node repo can adopt bkit's CI gate graph + prose-lint without inheriting `tsc`/`vitest`/`slop-scan`/`husky`.

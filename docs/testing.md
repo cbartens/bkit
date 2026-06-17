@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Testing
 
@@ -298,10 +298,11 @@ Always assert at least one positive signal (a known log prefix like `[bkit-insta
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs the degenerate 3-job scaffold on every push to `dev`/`main` and PRs into them (bkit is single-package with no deploy, so there is no `bkit-tests-live`):
+`.github/workflows/ci.yml` runs a 4-job scaffold on every push to `dev`/`main` and PRs into them (bkit is single-package with no deploy, so there is no `bkit-tests-live`):
 
 1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON + a `$GITHUB_STEP_SUMMARY` table.
-2. **`bkit-tests`** (`if: run_level != 'none'`) — the suite, in order: `pnpm typecheck` → `pnpm test` (unit + integration) → `pnpm format:check` → `pnpm lint:prose` (vale) → `pnpm lint:slop` → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
-3. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests` succeeded **and executed > 0 tests** (the count comes from vitest's JSON reporter via the `bkit-tests` `tests_ran` output; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
+2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane: `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
+3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): vitest with JSON reporter to emit an executed-test count. Same SHA-cache short-circuit as the static lane.
+4. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, both `bkit-tests-static` and `bkit-tests-unit` succeeded **and unit executed > 0 tests** (the count comes from vitest's JSON reporter via `bkit-tests-unit`'s `tests_ran` output; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
 Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the `bkit-tests` static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -199,6 +199,24 @@ If your host auto-deploys on push (Vercel / Netlify Git integration) while CI ap
 
 Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migrate` proves migrations _replay_ from empty; it does nothing for build-vs-deploy _ordering_ — this race is orthogonal to that gate.
 
+## Vercel Deployment Checks — hold production promotion until CI passes
+
+Vercel **Deployment Checks** (Project Settings → Build & Deployment → Deployment Checks) hold production promotion until a named GitHub Actions check reports success. The build starts immediately on push (in parallel with CI), but the production alias is NOT updated until the check passes.
+
+### Setup
+
+1. **Dashboard:** Vercel Dashboard → Project → Settings → Build & Deployment → Deployment Checks. Add a check matching the capstone job name (e.g. `bkit-tests-check`).
+
+2. **CI workflow:** Add the `vercel/repository-dispatch/actions/status@v1` action as the last step in the capstone job. This reports the job outcome back to Vercel so the deployment check resolves:
+
+```yaml
+- name: Notify Vercel Deployment Check
+  if: always()
+  uses: vercel/repository-dispatch/actions/status@v1
+  with:
+    name: "Vercel - <project-name>: <capstone-job-name>"
+```
+
 ## GitHub Actions pinning
 
 Workflows with elevated permissions (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) MUST pin `uses:` to a 40-character commit SHA — never `@v{N}` floating tags. Floating tags are forgeable: a compromised maintainer can re-point `v4` at malicious code that runs on the next push.
@@ -318,7 +336,7 @@ Token must be a GitHub PAT with `read:packages` scope (classic) or `Packages: re
 
 ### Pre-push checklist
 
-Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `bkit-tests` job:
+Every push to a feature branch must pass the same gates CI runs. The husky pre-push hook (`.husky/pre-push`) enforces them mechanically — running `--no-verify` is a violation. Order matches `.github/workflows/ci.yml`'s `bkit-tests-static` lane (gates 1, 3-7) and `bkit-tests-unit` lane (gate 2):
 
 <!-- prettier-ignore -->
 | # | Gate | Command | Hook block | Failure mode |
@@ -333,7 +351,7 @@ Every push to a feature branch must pass the same gates CI runs. The husky pre-p
 
 **Revert-branch bypass:** on branches named `revert-*` or whose HEAD commit subject starts with `Revert "`, the pre-push hook skips `pnpm test` (Gate 2) and runs only `pnpm typecheck && pnpm format:check` from the test group. Gates 4–7 (prose, slop:delta, bkit check, and source-repo check:dist) still run in both variants — prose is unaffected by deleted code, and slop:delta reports removals as `resolved` (never `added`), so neither blocks a recovery push. Rationale: rollback source trees are intentionally inconsistent — surviving tests can reference deleted files, blocking a legitimate recovery push. Non-revert branches always run all applicable gates.
 
-Pre-commit (`.husky/pre-commit`) runs `pnpm lint-staged && pnpm lint:prose` — fast staged-file gates that fire earlier in the cycle, not at push time. The enforcing slop gate moved to pre-push (`pnpm slop:delta`, Gate 5); `pnpm lint:slop` (`slop-scan scan`) is report-only and is no longer wired into a hook. CI re-runs prose + slop:delta in the `bkit-tests` job for belt-and-braces.
+Pre-commit (`.husky/pre-commit`) runs `pnpm lint-staged && pnpm lint:prose` — fast staged-file gates that fire earlier in the cycle, not at push time. The enforcing slop gate moved to pre-push (`pnpm slop:delta`, Gate 5); `pnpm lint:slop` (`slop-scan scan`) is report-only and is no longer wired into a hook. CI re-runs prose + slop:delta in the `bkit-tests-static` lane for belt-and-braces.
 
 When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-verify` and do NOT amend over a failed hook (see auto-memory: "skip-ci commits must not be HEAD when PR is created"). If the gate is genuinely broken (e.g. flaky external call), STOP and document the blocker — do not push.
 
@@ -342,7 +360,7 @@ When a gate fails locally, fix the cause and re-stage; do NOT bypass with `--no-
 Source-repo only. Any TypeScript change under `.bkit/src/*.ts` MUST be accompanied by `pnpm build && git add dist/` in the same commit.
 
 - Pre-commit and pre-push hooks run `typecheck` + `test` — they do NOT run `pnpm build`. The source-repo pre-push also runs `pnpm check:dist` (catches a stale `dist/` at push time), but this does NOT commit the freshened `dist/` — if stale, the push is blocked and you must run `pnpm build && git add dist/` manually before pushing.
-- CI's `bkit-tests` job has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
+- CI's `bkit-tests-static` lane has a "Verify Dist Freshness" step (`pnpm check:dist` → `rm -rf dist && tsc && git diff --exit-code dist/`) that fails the build if shipped artefacts drift from source. Lives only at `.github/workflows/ci.yml` (this repo).
 - Consumer repos install the published tarball and never recompile, so the consumer `ci.yml` template at `.bkit/templates/.github/workflows/ci.yml` deliberately omits the freshness step. Do not add it there.
 - See KN-7 for failure-mode and recurrence history.
 

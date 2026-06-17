@@ -199,6 +199,24 @@ If your host auto-deploys on push (Vercel / Netlify Git integration) while CI ap
 
 Latent until the first build-time DB read lands, so flag it in review when one is added. Note `bkit-tests-migrate` proves migrations _replay_ from empty; it does nothing for build-vs-deploy _ordering_ — this race is orthogonal to that gate.
 
+## Vercel Deployment Checks — hold production promotion until CI passes
+
+Vercel **Deployment Checks** (Project Settings → Build & Deployment → Deployment Checks) hold production promotion until a named GitHub Actions check reports success. The build starts immediately on push (in parallel with CI), but the production alias is NOT updated until the check passes.
+
+### Setup
+
+1. **Dashboard:** Vercel Dashboard → Project → Settings → Build & Deployment → Deployment Checks. Add a check matching the capstone job name (e.g. `bkit-tests-check`).
+
+2. **CI workflow:** Add the `vercel/repository-dispatch/actions/status@v1` action as the last step in the capstone job. This reports the job outcome back to Vercel so the deployment check resolves:
+
+```yaml
+- name: Notify Vercel Deployment Check
+  if: always()
+  uses: vercel/repository-dispatch/actions/status@v1
+  with:
+    name: "Vercel - <project-name>: <capstone-job-name>"
+```
+
 ## GitHub Actions pinning
 
 Workflows with elevated permissions (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) MUST pin `uses:` to a 40-character commit SHA — never `@v{N}` floating tags. Floating tags are forgeable: a compromised maintainer can re-point `v4` at malicious code that runs on the next push.

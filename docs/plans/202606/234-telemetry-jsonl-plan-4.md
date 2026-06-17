@@ -78,7 +78,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 #### [NEW] `bkit analysis` CLI (+ `bkit-analysis.test.ts`)
 
-- Counts/rates/elapsed-time; #183 size↔outcome regression (logistic `error ~ log(lines) + files_changed`, bucketed) over `kind:"run-outcome"` rows + GitHub-API historical backfill (pulls/commits/check-runs/reviews incl. hand-written baseline); dispatch-size threshold feeding `plan-complexity-check`/`split`; **per-rule compliance rate over time over WS-2's `kind:"compliance"` rows (this consumption is the artefact that makes the declared WS-2→WS-4 edge real)** + per-`bkitVersion`→CHANGELOG release-attributed regression. Labels `counterSource` trust tier. Recommend/inform only. **Resolve #183 backfill-scope + provenance OPEN QUESTION.**
+- Counts/rates/elapsed-time; #183 size↔outcome regression (logistic `error ~ log(lines_added) + files_changed`, bucketed) over `kind:"run-outcome"` rows (fields: `lines_added`/`lines_deleted`/`lines_changed`/`files_changed`/`task_count`/`duration_seconds`/`ci_try_success`/`corrective_commits`/`review_iterations`/`deferrals`/`failures`) + GitHub-API historical backfill (pulls/commits/check-runs/reviews incl. hand-written baseline); dispatch-size threshold feeding `plan-complexity-check`/`split`; **per-rule compliance rate over time over WS-2's `kind:"compliance"` rows (this consumption is the artefact that makes the declared WS-2→WS-4 edge real)** + per-`bkitVersion`→CHANGELOG release-attributed regression. Labels `counterSource` trust tier. Recommend/inform only. **Resolve #183 backfill-scope + provenance OPEN QUESTION.**
 
 #### [MODIFY] `bkit-ship.md` summary step — ship-chain rollup
 

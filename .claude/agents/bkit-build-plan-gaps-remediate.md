@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 100
 ---
-<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 **Scope:** As specified by input and Read/Update/Create section.

@@ -74,7 +74,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 
 #### [NEW] shell counter bus helper + `MAX_*` config
 
-- `counter_init/inc/get/reset/check_max` + `decide_next` (prints next step id; exit code = branch). ALL `MAX_*` thresholds in ONE config file. Counters emit `kind:"counter"` rows with `counterSource:"shell-bus"` into `.bkit/stats.jsonl` (per A3: control counters live in per-plan `status.jsonl` during run; summary rows appended to central `.bkit/stats.jsonl` at workflow close).
+- `counter_init/inc/get/reset/check_max` + `decide_next` (prints next step id; exit code = branch). ALL `MAX_*` thresholds in ONE config file. Counter contract: `{verifyAttempt, testAttempt, challengeAttempt, debugAttempt, normalAttempt, soakAttempt, mergeAttempt, sub_plan_count}`. Counters emit `kind:"counter"` rows with `counterSource:"shell-bus"` into `.bkit/stats.jsonl` (per A3: control counters live in per-plan `status.jsonl` during run; summary rows appended to central `.bkit/stats.jsonl` at workflow close).
 
 #### [NEW] `scripts/tooling/counter-bus.bats`
 

@@ -22,7 +22,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  bkit-tests:
+  # ── bkit-tests-static ────────────────────────────────────────────────────
+  # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
+  # bkit check. Runs on a CLEAN tree (no test artifacts). Parallel sibling of
+  # bkit-tests-unit — wall-clock = MAX(lane).
+  bkit-tests-static:
     runs-on: ubuntu-latest
     # bkit:start verbose-ci-env
     # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
@@ -162,20 +166,6 @@ jobs:
           echo "::warning::$DEFAULT_BRANCH is $BEHIND commit(s) behind dev and consumed-from-$DEFAULT_BRANCH surfaces (Renovate config / workflows) differ — they run STALE until you promote dev -> $DEFAULT_BRANCH. See the run summary."
       # bkit:end main-lag-warning
 
-      # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
-      # - name: Auto Force E2E for Sensitive Paths
-      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
-      #   id: e2e-paths
-      #   run: |
-      #     git fetch origin "${{ github.base_ref }}" --depth=1 2>/dev/null || true
-      #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" 2>/dev/null || echo "")
-      #     PATTERNS=('auth/' 'migrations/' 'supabase/migrations/' 'payment/' 'api/' 'server/')
-      #     for f in $CHANGED; do
-      #       for p in "${PATTERNS[@]}"; do
-      #         case "$f" in *"$p"*) echo "needs_e2e=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
-      #       done
-      #     done
-
       # bkit-stub:migrations-immutable — Block PRs modifying previously-merged migrations. To enable: uncomment the step below and delete this stub header.
       # - name: Migrations Immutability Guard
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
@@ -279,8 +269,103 @@ jobs:
         run: pnpm bkit check
       # bkit:end ts-ci-steps
 
-      # --- Test / build group: install-dependent, tree-dirtying. Runs after all
-      # static checks above so coverage/dist artifacts never reach slop or bkit check. ---
+  # ── bkit-tests-unit ───────────────────────────────────────────────────────
+  # Unit / integration / E2E test lane. Parallel sibling of bkit-tests-static —
+  # wall-clock = MAX(lane).
+  bkit-tests-unit:
+    runs-on: ubuntu-latest
+    # Env vars duplicated from bkit-tests-static's managed verbose-ci-env block.
+    # See the verbose-ci-env block comment in bkit-tests-static for documentation.
+    env:
+      TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
+      VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
+      GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Full history needed for E2E / supabase stubs when enabled.
+          fetch-depth: 0
+
+      # bkit:start ts-ci-steps
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: {{NODE_VERSION}}
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      # bkit:end ts-ci-steps
+
+      - name: Configure Verbose CI
+        if: env.VERBOSE_CI == '1'
+        run: |
+          echo "🔊 [verbose ci] marker active — escalating log detail"
+          echo "NODE_OPTIONS=--trace-warnings --trace-deprecation" >> "$GITHUB_ENV"
+          echo "DEBUG=vercel:*,supabase:*" >> "$GITHUB_ENV"
+
+      - name: Check SHA Cache
+        id: cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+          PRIOR=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow "$GITHUB_WORKFLOW" \
+            --status success \
+            --limit 50 \
+            --json headSha,createdAt \
+            --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+            2>/dev/null || echo 0)
+          if [ "${PRIOR:-0}" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Detect Direct Push
+        if: steps.cache.outputs.skip != 'true'
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            MSG="${{ github.event.pull_request.title }}"
+          else
+            MSG=$(git log -1 --pretty=%B "$GITHUB_SHA" 2>/dev/null || echo "")
+          fi
+          case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
+            if [ -z "$PR_NUMBER" ]; then
+              echo "turbo_force=1" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
+      # - name: Auto Force E2E for Sensitive Paths
+      #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
+      #   id: e2e-paths
+      #   run: |
+      #     git fetch origin "${{ github.base_ref }}" --depth=1 2>/dev/null || true
+      #     CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}..HEAD" 2>/dev/null || echo "")
+      #     PATTERNS=('auth/' 'migrations/' 'supabase/migrations/' 'payment/' 'api/' 'server/')
+      #     for f in $CHANGED; do
+      #       for p in "${PATTERNS[@]}"; do
+      #         case "$f" in *"$p"*) echo "needs_e2e=true" >> "$GITHUB_OUTPUT"; exit 0 ;; esac
+      #       done
+      #     done
+
+      # bkit:start ts-ci-steps
+      - name: Install Dependencies
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
+          pnpm install --frozen-lockfile
+        env:
+          GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
+      # bkit:end ts-ci-steps
 
       # bkit-stub:supabase-migrate — Apply Supabase migrations to dev project on dev push. To enable: uncomment the step below, set SUPABASE_* secrets, delete this stub header.
       # - name: Apply Supabase Migrations to Dev
@@ -432,8 +517,8 @@ jobs:
 # gether app-gether-life (proven turbo + Vercel + Supabase + Playwright monorepo).
 # Concept: bkit #203.
 #
-# The single bkit-tests job ABOVE is the any-repo starter. Below is the complete
-# proven scaffold. To adopt a tier, lift its steps KEEPING THIS ORDER (load-bearing:
+# The parallel bkit-tests-static + bkit-tests-unit jobs ABOVE are the any-repo
+# starter. Below is the complete proven scaffold. To adopt a tier, lift its steps KEEPING THIS ORDER (load-bearing:
 # static checks before env pull; resolve URL before integration; await deploy before
 # E2E; capstone last). Replace gether-specifics (apps/web, *.vercel.app, VERCEL_*/
 # SUPABASE_*). Tags: [U]niversal already in the starter; [M]onorepo/[D]eploy/[E]2E/
@@ -476,12 +561,12 @@ jobs:
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
 #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
 #
-# === JOB 2: bkit-tests — the tiers ===
+# === JOB 2: bkit-tests-static + bkit-tests-unit — the tiers ===
 #   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
-#   SCALING: bkit-tests is ONE job, so tiers run SERIALLY (wall-clock = SUM of steps). On a monorepo
-#   where that dominates, split into parallel sibling lanes (-static/-unit/-integration/-e2e) so
-#   wall-clock = MAX(lane); the capstone needs: ALL lanes and EACH emits its own *_ran count. Detail +
-#   cost/mitigation: docs/deployments.md § Parallel test lanes.
+#   The starter ABOVE already ships two parallel lanes (bkit-tests-static + bkit-tests-unit).
+#   To scale further (integration, E2E), add more sibling lanes — the capstone needs: ALL
+#   lanes and EACH emits its own *_ran count. Detail + cost/mitigation: docs/deployments.md
+#   § Parallel test lanes.
 #   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
 #     integration_outcome: ${{ steps.integration.outcome }} ; e2e_outcome: ${{ steps.e2e.outcome }}
 #     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just

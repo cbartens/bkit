@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior debug engineer specialising in CI/runtime failure root-cause analysis.
 **Scope:** As specified by input and Read/Update/Create section.
