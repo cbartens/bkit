@@ -168,7 +168,7 @@ bkit uses a three-tier model to handle different file ownership scenarios withou
 | **Tier 1 — Fully managed** | Idempotent rewrite of whole file on every install. Consumer should not edit directly. | `.cursor/hooks.json`, `.claude/hooks/preflight.sh`, `.cursor/hooks/preflight.sh`, `.vale/styles/House/**` |
 | **Tier 2 — Managed-block** | bkit owns content between `bkit:start`/`bkit:end` markers. Consumer owns everything outside. File absent → write whole file. File present without markers → append block at EOF. | `.vale.ini`, `.gitignore`, `.prettierignore`, `rules.md`, `AGENTS.md`, `CLAUDE.md` |
 | **Tier 3 — Seed-or-print** | Write if absent. If present, print suggested diff to stdout (never overwrite). | `.husky/pre-commit`, `.husky/pre-push` (v2.0.4+), `slop-scan.config.json`, `.cursor/settings.json`, `.github/workflows/ci.yml` |
-| **Managed package.json keys** (v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | `scripts.typecheck` (`--ci`), `scripts.format:check` / `lint:prose` / `lint:slop` (`--lint`), `scripts.prepare` (`--git-hooks`); `devDependencies.prettier` + `slop-scan` (`--lint`), `devDependencies.husky` (`--git-hooks`) |
+| **Managed package.json keys** (v0.4.0) | Add-if-missing semantics on the `scripts` and `devDependencies` blocks. Existing keys are NEVER overwritten — consumer pins always win. Drift detection via `bkit check` flags missing keys when their parent module is enabled. | All under `--typescript` (#265): `scripts.typecheck` / `format:check` / `lint:prose` / `lint:slop` / `slop:delta` / `prepare`; `devDependencies.prettier` + `slop-scan` + `lint-staged` + `husky`. The stack-agnostic `--ci` adds NO package.json keys. |
 
 **Marker syntax** is format-specific:
 
@@ -197,13 +197,15 @@ Comment prefixes (`# `, `// `) before markers are preserved on block updates.
 | `.github/renovate.json5` | renovate | `.bkit/templates/.github/renovate.json5` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=renovate`** — not part of a default install. Phase-gated against `origin/<default-branch>`: Phase A lands the file and prompts merge to default branch; Phase B (re-run after merge) prints the GitHub App install URL. `baseBranches: ["dev"]` per bkit branch protection. **Mutually exclusive with `--dependabot`**. |
 | `.github/dependabot.yml` | dependabot | `.bkit/templates/.github/dependabot.yml` | Tier 1 (canonical-overwrite). **Opt-in via `bkit install --dependency=dependabot`** — not part of a default install. First-party GitHub feature; no App install or phase gate. **Mutually exclusive with `--renovate`**. Less monorepo-aware than Renovate but no third-party trust surface and no onboarding race. |
 | `.bkit/scripts/bkit-set-dependabot.sh` | dependabot | `.bkit/templates/.bkit/scripts/bkit-set-dependabot.sh` | Tier 1 (canonical-overwrite), executable. Enables repo-level Dependabot state (auto-fixes-enabled, vulnerability-alerts, never-auto-merge-on-main policy) via `gh api`. Run once after `bkit install --dependency=dependabot`. |
-| `package.json#scripts.typecheck` | ci | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing) |
-| `.vale.ini` | lint | `.bkit/templates/.vale.ini` | Tier 2 hash-comment |
-| `.vale/styles/House/**` | lint | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed) |
+| `.vale.ini` | ci | `.bkit/templates/.vale.ini` | Tier 3 (seed-or-print). Vale is stack-agnostic (#265) → ships with `--ci`. |
+| `.vale/styles/House/**` | ci | `.bkit/templates/.vale/styles/House/` | Tier 1 (fully managed). Ships with `--ci` (#265). |
 | `slop-scan.config.json` | lint | `.bkit/templates/slop-scan.config.json` | Tier 3 (seed-or-print) |
+| `.bkit/scripts/bkit-slop-type-suppression.mjs` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-type-suppression.mjs` | Tier 1 (canonical-overwrite). Slop plugin — `--typescript` only (#265). |
+| `.bkit/scripts/bkit-slop-delta.sh` | lint | `.bkit/templates/.bkit/scripts/bkit-slop-delta.sh` | Tier 1 (canonical-overwrite), executable. `slop:delta` gate helper — `--typescript` only (#265). |
 | `.prettierignore` | lint | `.bkit/templates/.prettierignore` | Tier 2 hash-comment |
-| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` | lint | hardcoded defaults | Managed-key (add-if-missing) |
-| `package.json#devDependencies.prettier` / `slop-scan` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`) | Managed-key (add-if-missing) |
+| `package.json#scripts.typecheck` | lint | hardcoded default (`tsc --noEmit` if `tsconfig.json` present, else skip-noop) | Managed-key (add-if-missing). TS-exclusive (moved ci→lint, #265). |
+| `package.json#scripts.format:check` / `lint:prose` / `lint:slop` / `slop:delta` | lint | hardcoded defaults | Managed-key (add-if-missing) |
+| `package.json#devDependencies.prettier` / `slop-scan` / `lint-staged` | lint | hardcoded version-specs (`^3.5.3`, `^0.3.0`, `^15.2.10`) | Managed-key (add-if-missing) |
 | `.husky/pre-commit` | git-hooks | `.bkit/templates/.husky/pre-commit` | Tier 3 (seed-or-print, v2.0.4+) |
 | `.husky/pre-push` | git-hooks | `.bkit/templates/.husky/pre-push` | Tier 3 (seed-or-print, v2.0.4+) |
 | `package.json#scripts.prepare` | git-hooks | hardcoded default (`husky install`) | Managed-key (add-if-missing) |

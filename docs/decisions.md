@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Decisions
 
@@ -414,3 +414,16 @@
 - **Discarded — `PUSH_MODE`-based no-op for "no CI":** LOCAL mode still dispatches CI (it creates a PR). The only legitimate no-op is "no CI workflow for this event," discriminated by the clean re-trigger dispatching nothing.
 - **Source:** phase
 - **Related:** #261, #184, #209 (FOLD reducer additive field), #81 (Change C ship backstop), KN-11, KN-30, §141, DE-21 (D2/D3 cloud auto-route), `.bkit/workflows.md` § CI-Dispatch Gate, `.bkit/src/bkit-ci-dispatch-gate-alignment.test.ts`
+
+## DE-33: #265 — Split `--tooling` into stack-agnostic `--ci` + opt-in `--typescript` (2026-06-17)
+
+- **Category:** infra
+- **Status:** active
+- **Decision:** Split the `--tooling` bundle into two composable flags. `--ci` = the stack-agnostic CI/quality foundation: the `ci.yml` **skeleton** (gate graph + capstone contract + branch-protection, with Node/TS step bodies shipped as commented examples) + Vale prose-lint config; **no `package.json` footprint**. `--typescript` = the Node/TS toolchain (`tsc`, slop-scan + `boundary/type-suppression`, prettier, husky + lint-staged) + the **wired** `ci.yml` step bodies; **implies `--ci`**. `--tooling` becomes a back-compat alias for `--ci --typescript`. Re-bucket module CONTENTS (not module IDs) to avoid dispatch/registry churn: Vale config `lint → ci`; `typecheck` + slop-scan helper scripts `core-walk → lint`. `uninstall --typescript` removes only lint + git-hooks (keeps the `--ci` foundation); `uninstall --tooling` stays symmetric (removes all three).
+- **Why:** A non-Node repo could not adopt bkit's CI gate graph + prose-lint without inheriting `tsc`/`vitest`/`slop-scan`/`husky` it has no use for. Separating the agnostic foundation from the TS toolchain lets any repo install `--claude --ci` and stay green, while Node/TS repos opt into the full toolchain with `--typescript`.
+- **Mechanism:** The wired `ci.yml` template is the single source of truth (bkit dogfoods it); the skeleton is **derived** by `deriveCiSkeleton`, which comments out every `# bkit:start ts-ci-steps … # bkit:end ts-ci-steps` region. `dispatchModules` sets `ctx.wiredCi = modules.has("lint")` so the `ci` module seeds wired when the TS toolchain is co-installed, skeleton otherwise. This guarantees the two `ci.yml` forms never drift.
+- **Discarded — re-bucket module IDs / add bare `--lint`/`--git-hooks`:** maximises churn across the dispatch registry, resolveModules, detection, and the entire test suite for no user-facing gain (lint + git-hooks always travel together under `--typescript`/`--tooling`). Kept `lint`/`git-hooks` internal-only.
+- **Discarded — maintain two hand-edited `ci.yml` templates:** guaranteed drift. The derive-from-wired transform keeps one source of truth.
+- **Discarded — move the `lint:prose` npm script to `--ci`:** it is a `package.json`/Node convenience and `--ci` must stay package.json-free; only the Vale **config** (stack-agnostic) ships with `--ci`. `--typescript` always co-installs `--ci`, so a TS consumer still gets the config its `lint:prose` references.
+- **Source:** phase
+- **Related:** #265, #263 (type-suppression rule prerequisite), DE-29 (#252 CLI surface redesign), `.bkit/src/bkit-cli.ts`, `.bkit/src/bkit-manifest.ts`, `.bkit/src/bkit-modules.ts` (`deriveCiSkeleton`, `runCiModule`, `runLintModule`), `.bkit/templates/.github/workflows/ci.yml`

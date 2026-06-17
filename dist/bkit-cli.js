@@ -39,13 +39,20 @@ export function parseCloudVariant(value) {
         ? value
         : null;
 }
-// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing) and
-// `tooling` (expands to ci/lint/git-hooks) are intercepted by dedicated branches in
-// parseArgs before this set is consulted; the generic check only ever validates
-// claude/cursor. `full`, `core`, `ci`, `lint`, `git-hooks`, `renovate`, `dependabot`
-// and `cloud` are NO LONGER accepted as bare flags (#252): use `--tooling`,
-// `--dependency=<renovate|dependabot>`, and `--auto=<claude|cursor>`; core is implicit.
-const MODULE_FLAGS = new Set(["claude", "cursor", "opencode", "tooling"]);
+// Bare module-flag tokens accepted on the CLI. `opencode` (value-bearing), `tooling`,
+// `ci`, and `typescript` are intercepted by dedicated branches in parseArgs before this
+// set is consulted; the generic check only ever validates claude/cursor. `full`, `core`,
+// `lint`, `git-hooks`, `renovate`, `dependabot` and `cloud` are NOT accepted as bare flags
+// (#252/#265): use `--ci`/`--typescript`/`--tooling`, `--dependency=<renovate|dependabot>`,
+// and `--auto=<claude|cursor>`; core is implicit.
+const MODULE_FLAGS = new Set([
+    "claude",
+    "cursor",
+    "opencode",
+    "tooling",
+    "ci",
+    "typescript",
+]);
 // ALL_MODULES — every non-opt-in module, core first. Used to expand a bare/full
 // uninstall (which additionally pulls in the opt-in add-ons below for zero footprint).
 const ALL_MODULES = ["core", "claude", "cursor", "ci", "lint", "git-hooks"];
@@ -275,12 +282,32 @@ export function parseArgs(argv) {
                 upgradeFlags.nonInteractive = true;
                 continue;
             }
-            // --tooling (#252): CLI-level alias expanding to the interdependent ci+lint+git-hooks
-            // bundle (husky hooks run vale/slop; CI runs lint+check). Symmetric install↔uninstall.
+            // --tooling (#252): back-compat alias = --ci --typescript. Expands to the
+            // interdependent ci+lint+git-hooks bundle (husky hooks run vale/slop; CI runs
+            // lint+check). Symmetric install↔uninstall (removes all three).
             if (flag === "tooling") {
                 moduleFlags.add("ci");
                 moduleFlags.add("lint");
                 moduleFlags.add("git-hooks");
+                continue;
+            }
+            // --ci (#265): the stack-agnostic CI/quality foundation — ci.yml skeleton + vale
+            // prose-lint. No Node/TS footprint. Maps to the internal `ci` module only.
+            if (flag === "ci") {
+                moduleFlags.add("ci");
+                continue;
+            }
+            // --typescript (#265): the Node/TS toolchain — slop-scan (+ type-suppression rule),
+            // prettier, tsc typecheck, husky + lint-staged, and the WIRED ci.yml step bodies.
+            // Depends-on --ci: on install we auto-add `ci` so the wired ci.yml is seeded. On
+            // uninstall we DROP only the TS bits (lint + git-hooks), leaving the agnostic ci
+            // foundation in place (a downgrade to --ci, not a full teardown). `--tooling`
+            // remains the symmetric remove-all-three alias for legacy consumers.
+            if (flag === "typescript") {
+                moduleFlags.add("lint");
+                moduleFlags.add("git-hooks");
+                if (verb !== "uninstall")
+                    moduleFlags.add("ci");
                 continue;
             }
             // Bare module flags. opencode/tooling are intercepted above; only claude/cursor
@@ -375,8 +402,15 @@ Module flags (composable; symmetric install ↔ uninstall):
                   auth via OPENCODE_API_KEY). Ships .opencode/** (agents, commands,
                   opencode.json, gateguard). Configure your provider key; verify with
                   \`bkit doctor\`. All installed providers tracked in bkit.opencodeProviders.
-  --tooling       ci.yml + Vale/slop/prettier (lint) + husky hooks — one interdependent
-                  bundle (husky runs vale/slop; CI runs lint+check). Tier-3 seed-or-print.
+  --ci            Stack-agnostic CI/quality foundation: the ci.yml SKELETON (gate graph +
+                  capstone contract + branch-protection, with Node/TS build/test steps as
+                  commented examples) + Vale prose-lint. No Node/TS footprint — runs green
+                  on any repo. Tier-3 seed-or-print.
+  --typescript    Node/TS toolchain (implies --ci): tsc typecheck, slop-scan (+ the
+                  boundary/type-suppression rule), prettier, husky + lint-staged, and the
+                  WIRED ci.yml step bodies. Most of it is plain Node; name is colloquial.
+  --tooling       Back-compat alias for \`--ci --typescript\` (the full ci+lint+git-hooks
+                  bundle). Symmetric install↔uninstall (removes all three).
   --dependency=<renovate|dependabot>
                   Dependency updater (opt-in, mutually exclusive — both open PRs against
                   the same packages). renovate is phase-gated against the default branch;
@@ -419,7 +453,9 @@ Uninstall flags:
 
 Examples:
   bkit install --claude                       .claude/** + CLAUDE.md + core.
-  bkit install --claude --cursor --tooling    Both hosts + ci/lint/git-hooks + core.
+  bkit install --claude --ci                  Claude host + stack-agnostic CI skeleton + core.
+  bkit install --claude --cursor --typescript Both hosts + full Node/TS toolchain (implies --ci).
+  bkit install --claude --cursor --tooling    Same as --ci --typescript (back-compat alias).
   bkit install --opencode=opencode            opencode host (opencode-native gateway, additive).
   bkit install --opencode=nvidia              add nvidia alongside opencode gateway.
   bkit uninstall --opencode=nvidia            remove nvidia block only; keep opencode.
@@ -428,6 +464,7 @@ Examples:
   bkit check                                  Drift-check everything installed (CI gate).
   bkit upgrade --auto-apply                   Upgrade installed files; CI-safe.
   bkit uninstall                              Full uninstall (all modules, zero footprint).
+  bkit uninstall --typescript                 Remove Node/TS toolchain only (keep --ci + core).
   bkit uninstall --tooling                    Remove ci/lint/git-hooks only (core kept).
   bkit cursor                                 Launch Cursor with .bkit/.env (MCP tokens).
   bkit opencode                               Launch opencode with .bkit/.env (API key).

@@ -173,7 +173,8 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
   const dropped = [
     "--full",
     "--core",
-    "--ci",
+    // --ci is now ACCEPTED again (#265: stack-agnostic CI foundation) — see the
+    // "--ci / --typescript (#265)" describe block below.
     "--lint",
     "--git-hooks",
     "--renovate",
@@ -191,6 +192,45 @@ describe("parseArgs — dropped flags reject with generic 'Unknown flag' (S1)", 
   it("--non-interactive → Unknown flag (renamed to --auto-apply)", () => {
     const msg = expectExit(() => parseArgs(["upgrade", "--non-interactive"]));
     expect(msg).toMatch(/Unknown flag/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --ci / --typescript (#265): split of --tooling into the stack-agnostic CI
+// foundation (--ci) + the opt-in Node/TS toolchain (--typescript, implies --ci).
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — --ci / --typescript (#265)", () => {
+  it("install --ci → {ci, core}; moduleFlags = {ci}", () => {
+    const result = parseArgs(["install", "--ci"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core"]);
+    expect([...result.moduleFlags].sort()).toEqual(["ci"]);
+  });
+
+  it("install --typescript → {ci, lint, git-hooks, core} (implies --ci)", () => {
+    const result = parseArgs(["install", "--typescript"]);
+    expect([...result.modules].sort()).toEqual(["ci", "core", "git-hooks", "lint"]);
+  });
+
+  it("install --typescript composes with hosts", () => {
+    const result = parseArgs(["install", "--claude", "--typescript"]);
+    expect([...result.modules].sort()).toEqual(["ci", "claude", "core", "git-hooks", "lint"]);
+  });
+
+  it("install --ci --typescript == install --tooling", () => {
+    const split = [...parseArgs(["install", "--ci", "--typescript"]).modules].sort();
+    const tooling = [...parseArgs(["install", "--tooling"]).modules].sort();
+    expect(split).toEqual(tooling);
+  });
+
+  it("uninstall --typescript → {lint, git-hooks} only (keeps --ci foundation + core)", () => {
+    const result = parseArgs(["uninstall", "--typescript"]);
+    expect([...result.modules].sort()).toEqual(["git-hooks", "lint"]);
+  });
+
+  it("uninstall --ci → {ci} only (targeted, core preserved)", () => {
+    const result = parseArgs(["uninstall", "--ci"]);
+    expect([...result.modules].sort()).toEqual(["ci"]);
   });
 });
 
@@ -292,6 +332,8 @@ describe("printUsage — help output", () => {
     expect(output).toContain("--claude");
     expect(output).toContain("--cursor");
     expect(output).toContain("--opencode=");
+    expect(output).toContain("--ci");
+    expect(output).toContain("--typescript");
     expect(output).toContain("--tooling");
     expect(output).toContain("--dependency=");
     expect(output).toContain("--auto=");
@@ -299,10 +341,10 @@ describe("printUsage — help output", () => {
 
   it("does NOT advertise the dropped flags", () => {
     const output = usage();
-    // The dropped bare flags must not appear as offered options.
+    // The dropped bare flags must not appear as offered options. --ci / --typescript
+    // ARE advertised again (#265); only --full/--core/--lint/--git-hooks stay hidden.
     expect(output).not.toMatch(/^\s*--full\b/m);
     expect(output).not.toMatch(/^\s*--core\b/m);
-    expect(output).not.toMatch(/^\s*--ci\b/m);
     expect(output).not.toMatch(/^\s*--lint\b/m);
     expect(output).not.toMatch(/^\s*--git-hooks\b/m);
   });

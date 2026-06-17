@@ -27,6 +27,7 @@ import {
   opencodeProviderId,
   renderCloudWorkflow,
   dispatchModules,
+  deriveCiSkeleton,
   type ModuleContext,
 } from "./bkit-modules";
 import { readBkitVersion, writeBkitVersion } from "./bkit-version";
@@ -333,6 +334,79 @@ describe("module dispatch: --ci --lint seeds core + CI + lint only", () => {
         p.includes(".bkit/version"),
     );
     expect(hasCiOrLint).toBe(true);
+  });
+});
+
+describe("ci.yml skeleton vs wired + --ci/--typescript footprint (#265)", () => {
+  function readCi(): string {
+    return fs.readFileSync(path.join(tmpDir, ".github", "workflows", "ci.yml"), "utf-8");
+  }
+
+  it("--ci alone seeds the SKELETON: ts-ci-steps commented, vale config present, NO TS footprint", () => {
+    dispatchModules(new Set(["core", "ci"]), makeCtx({}));
+    const ci = readCi();
+    // The Node/TS region body is commented out — no ACTIVE pnpm install step.
+    expect(ci).not.toMatch(/^\s+- name: Install Dependencies/m);
+    expect(ci).toMatch(/#\s*- name: Install Dependencies/);
+    expect(ci).toContain("# bkit:start ts-ci-steps"); // markers retained
+    // Vale config (stack-agnostic) ships with --ci.
+    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".vale", "styles", "House", "LLMSlop.yml"))).toBe(true);
+    // No Node/TS toolchain footprint.
+    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(false);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
+    ).toBe(false);
+    // --ci adds NO package.json scripts (agnostic).
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkg.scripts?.typecheck).toBeUndefined();
+  });
+
+  it("--ci --typescript seeds the WIRED ci.yml: ts-ci-steps active + full TS footprint", () => {
+    dispatchModules(new Set(["core", "ci", "lint", "git-hooks"]), makeCtx({}));
+    const ci = readCi();
+    // The Node/TS region is ACTIVE (uncommented).
+    expect(ci).toMatch(/^\s+- name: Install Dependencies/m);
+    // Full Node/TS footprint present.
+    expect(fs.existsSync(path.join(tmpDir, "slop-scan.config.json"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".prettierignore"))).toBe(true);
+    expect(
+      fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-type-suppression.mjs")),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".bkit", "scripts", "bkit-slop-delta.sh"))).toBe(true);
+    // Vale config still present (ci is co-installed under --typescript).
+    expect(fs.existsSync(path.join(tmpDir, ".vale.ini"))).toBe(true);
+    // typecheck added by the lint module (moved ci→lint).
+    const pkg = JSON.parse(fs.readFileSync(path.join(tmpDir, "package.json"), "utf-8"));
+    expect(pkg.scripts?.typecheck).toBeDefined();
+  });
+});
+
+describe("deriveCiSkeleton (#265)", () => {
+  it("comments lines inside ts-ci-steps regions, leaves the spine untouched", () => {
+    const input = [
+      "jobs:",
+      "  build:",
+      "    steps:",
+      "      - name: Checkout",
+      "      # bkit:start ts-ci-steps",
+      "      - name: Install Dependencies",
+      "        run: pnpm install",
+      "      # bkit:end ts-ci-steps",
+      "      - name: Actionlint",
+    ].join("\n");
+    const out = deriveCiSkeleton(input);
+    expect(out).toContain("      - name: Checkout"); // spine untouched
+    expect(out).toContain("      - name: Actionlint"); // spine untouched
+    expect(out).toContain("      # - name: Install Dependencies"); // commented, indent kept
+    expect(out).toContain("        # run: pnpm install"); // commented, deeper indent kept
+    expect(out).toContain("      # bkit:start ts-ci-steps"); // marker line retained verbatim
+  });
+
+  it("is a no-op when there are no ts-ci-steps regions", () => {
+    const input = "jobs:\n  build:\n    steps:\n      - run: echo hi\n";
+    expect(deriveCiSkeleton(input)).toBe(input);
   });
 });
 
@@ -1132,22 +1206,31 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     return pkg.scripts ?? {};
   }
 
-  it("runCiModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit)", () => {
+  it("runLintModule adds `typecheck` to package.json when missing (tsconfig present → tsc --noEmit) (#265)", () => {
     writePkg();
     fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
     const ctx = makeCtx({});
-    runCiModule(ctx);
+    runLintModule(ctx);
     const scripts = readPkgScripts();
     expect(scripts.typecheck).toBe("tsc --noEmit");
   });
 
-  it("runCiModule preserves an existing `typecheck` value (consumer wins)", () => {
+  it("runLintModule preserves an existing `typecheck` value (consumer wins)", () => {
     writePkg({ typecheck: "custom-runner" });
     fs.writeFileSync(path.join(tmpDir, "tsconfig.json"), "{}", "utf-8");
     const ctx = makeCtx({});
-    runCiModule(ctx);
+    runLintModule(ctx);
     const scripts = readPkgScripts();
     expect(scripts.typecheck).toBe("custom-runner");
+  });
+
+  it("runCiModule adds NO package.json scripts (stack-agnostic, #265)", () => {
+    writePkg();
+    const ctx = makeCtx({});
+    runCiModule(ctx);
+    const scripts = readPkgScripts();
+    expect(scripts.typecheck).toBeUndefined();
+    expect(Object.keys(scripts)).toHaveLength(0);
   });
 
   it("runLintModule adds format:check, lint:prose, lint:slop scripts when missing", () => {
@@ -1168,12 +1251,12 @@ describe("managed package.json scripts: --ci adds typecheck, --lint adds format/
     expect(scripts.prepare).toBe("husky");
   });
 
-  it("runCiModule warns via advisories when package.json is missing", () => {
+  it("runLintModule warns via advisories when package.json is missing (#265)", () => {
     // beforeEach seeds a package.json — remove it so we hit the missingPkg branch
     fs.rmSync(path.join(tmpDir, "package.json"));
     const advisories: PreflightFinding[] = [];
     const ctx = makeCtx({ advisories });
-    runCiModule(ctx);
+    runLintModule(ctx);
     const combined = advisories.map((a) => `${a.detect} ${a.action}`).join("\n");
     expect(combined).toMatch(/package\.json not found/i);
   });

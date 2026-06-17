@@ -107,3 +107,4 @@
 - **Prompt edits:** Any `.bkit/prompts/*.md` edits → ALWAYS follow `.bkit/prompts.md` § Prompt Authoring Rules.
 - **Keep documentation updated:** When editing `.bkit/workflows/*.md` → update `.bkit/workflows.md`. When editing `.bkit/prompts/*.md` → update `.bkit/prompts.md`. Index drift = regression.
 - **Preflight advisories self-contain:** `PreflightFinding.action` text in `.bkit/src/bkit-preflight.ts` MUST inline the load-bearing fix (command + key params + decisive context). NEVER link out to `docs/*.md`.
+- **Verify before complete:** Done = BOTH full suite (`pnpm vitest run`, never scoped) AND real dogfood (`pnpm build` → `node dist/bkit-install.js <verb> <flags>` on a fresh scratch consumer; inspect on-disk footprint). Green tests ≠ proof.

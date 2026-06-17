@@ -125,6 +125,10 @@ const AGENTS_SUBTEMPLATE_TIER3_EXCLUDE = new Set([".env.example"]);
 // Note: `.bkit/scripts/bkit-mode.sh` was removed in #245 — no longer in templates.
 const CORE_TEMPLATE_PATH_EXCLUDE = new Set([
     path.join(".bkit", "scripts", "bkit-set-dependabot.sh"),
+    // slop-scan helpers moved to the `lint` module (--typescript) so a non-Node `--ci`
+    // consumer never receives them (#265). runLintModule emits them as Tier 1.
+    path.join(".bkit", "scripts", "bkit-slop-type-suppression.mjs"),
+    path.join(".bkit", "scripts", "bkit-slop-delta.sh"),
 ]);
 // Template subdirectories that belong to non-core modules (skip in core pass)
 const NON_CORE_TEMPLATE_DIRS = new Set([
@@ -707,7 +711,7 @@ export function runCoreModule(ctx) {
                 "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
                 "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
                 "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
-                "`pnpm bkit install --tooling` to seed them all. Existing scripts are preserved\n" +
+                "`pnpm bkit install --typescript` to seed them all. Existing scripts are preserved\n" +
                 "(consumer values always win).",
         });
     }
@@ -1768,9 +1772,43 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
 // Bkit can't safely YAML-merge, so we seed when absent and print AI-actionable
 // merge instructions when present.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// deriveCiSkeleton — turn the WIRED ci.yml template into the stack-agnostic SKELETON
+// by commenting out every line inside each `# bkit:start ts-ci-steps` … `# bkit:end
+// ts-ci-steps` region. The wired template is the single source of truth (bkit dogfoods
+// it); the skeleton is purely derived, so the two never drift (#265). The result is
+// valid YAML whose Node/TS step bodies are inert, copy-to-adapt examples — a non-Node
+// consumer (`--ci` without `--typescript`) gets a workflow that runs trivially green.
+// ---------------------------------------------------------------------------
+const CI_TS_REGION_START = /^\s*#\s*bkit:start ts-ci-steps\s*$/;
+const CI_TS_REGION_END = /^\s*#\s*bkit:end ts-ci-steps\s*$/;
+export function deriveCiSkeleton(content) {
+    const lines = content.split("\n");
+    let inRegion = false;
+    const out = lines.map((line) => {
+        if (CI_TS_REGION_START.test(line)) {
+            inRegion = true;
+            return line;
+        }
+        if (CI_TS_REGION_END.test(line)) {
+            inRegion = false;
+            return line;
+        }
+        if (inRegion && line.trim() !== "") {
+            // Insert "# " after the leading whitespace so indentation is preserved.
+            const m = /^(\s*)(.*)$/.exec(line);
+            return m ? `${m[1]}# ${m[2]}` : `# ${line}`;
+        }
+        return line;
+    });
+    return out.join("\n");
+}
 export function runCiModule(ctx) {
     const { dryRun, tokens, ws, advisories, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
+    // Wired (Node/TS step bodies active) when the TS toolchain is co-installed
+    // (--typescript/--tooling ⇒ `lint` present). Otherwise seed the agnostic skeleton.
+    const wiredCi = ctx.wiredCi === true;
     const templatePath = path.join(getTemplatesRoot(), ".github", "workflows", "ci.yml");
     if (!fs.existsSync(templatePath)) {
         console.warn(`${logPrefix} CI template not found at ${templatePath} — skipping CI module`);
@@ -1791,9 +1829,9 @@ export function runCiModule(ctx) {
     }
     const dstPath = path.join(".github", "workflows", "ci.yml");
     const prevLen = ws.writes.length;
-    const result = writeTier3(templatePath, dstPath, dryRun, advisories, ws, CI_YML_MERGE_INSTRUCTIONS, tokens);
+    const result = writeTier3(templatePath, dstPath, dryRun, advisories, ws, CI_YML_MERGE_INSTRUCTIONS, tokens, wiredCi ? undefined : deriveCiSkeleton);
     if (ws.writes.length > prevLen) {
-        console.log(`${logPrefix} ${tag}ci: ${dstPath}`);
+        console.log(`${logPrefix} ${tag}ci: ${dstPath}${wiredCi ? "" : " (skeleton — no --typescript)"}`);
     }
     else if (result.suggested) {
         console.log(`${logPrefix} ${tag}ci: ${dstPath} (exists; AI merge instructions printed)`);
@@ -1810,46 +1848,39 @@ export function runCiModule(ctx) {
     // and issue #123 follow-up for rationale (Renovate App's first scan reads
     // the default branch, so the file must reach `main` before App install —
     // default install can't sequence that).
-    // Ensure the typecheck script the workflow calls exists in package.json.
-    // `test` is deliberately not managed — too opinionated for a default.
-    const typecheckDefault = fs.existsSync("tsconfig.json")
-        ? "tsc --noEmit"
-        : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
-    const ciScripts = ensurePackageJsonScripts({ typecheck: typecheckDefault }, dryRun, ws);
-    if (ciScripts.added.length > 0) {
-        console.log(`${logPrefix} ${tag}ci: package.json scripts added [${ciScripts.added.join(", ")}]`);
-    }
-    if (ciScripts.missingPkg) {
-        advisories.push({
-            id: "ci-package-json-missing",
-            severity: "advisory",
-            detect: "package.json not found — cannot ensure `typecheck` script.",
-            action: "The seeded ci.yml will fail until you add a `typecheck` script to package.json. Run `pnpm bkit install --tooling` after creating package.json.",
-        });
-    }
-    else if (ciScripts.malformed) {
-        advisories.push({
-            id: "ci-package-json-malformed",
-            severity: "advisory",
-            detect: "package.json failed to parse — cannot ensure `typecheck` script.",
-            action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
-        });
-    }
-    // The `test` script is the consumer's responsibility — flag if absent so they know.
-    if (!dryRun && !ciScripts.missingPkg && !ciScripts.malformed) {
-        try {
-            const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8"));
-            if (!pkg.scripts || !pkg.scripts.test) {
-                advisories.push({
-                    id: "ci-no-test-script",
-                    severity: "advisory",
-                    detect: "package.json has no `test` script.",
-                    action: 'The seeded ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
-                });
-            }
+    // Vale prose-lint config is stack-agnostic (external binary, lints .md) → ships with
+    // --ci (#265). The `lint:prose` npm wrapper + typecheck/test package.json footprint live
+    // under --typescript (runLintModule); --ci has NO package.json footprint so a non-Node
+    // consumer can install it and stay green.
+    const templatesBase = getTemplatesRoot();
+    // .vale.ini — Tier 3 (seed-or-print).
+    const valeIniSrc = path.join(templatesBase, ".vale.ini");
+    if (fs.existsSync(valeIniSrc)) {
+        const valeDst = ".vale.ini";
+        const prevValeLen = ws.writes.length;
+        const valeRes = writeTier3(valeIniSrc, valeDst, dryRun, advisories, ws, VALE_INI_MERGE_INSTRUCTIONS);
+        if (ws.writes.length > prevValeLen) {
+            console.log(`${logPrefix} ${tag}ci: ${valeDst}`);
         }
-        catch {
-            // Already handled above
+        else if (valeRes.suggested) {
+            console.log(`${logPrefix} ${tag}ci: ${valeDst} (exists; AI merge instructions printed)`);
+        }
+    }
+    // .vale/styles/House/ — Tier 1 (fully managed).
+    const valeStylesSrc = path.join(templatesBase, ".vale", "styles", "House");
+    if (fs.existsSync(valeStylesSrc)) {
+        const valeStylesDst = path.join(".vale", "styles", "House");
+        ensureDir(valeStylesDst);
+        for (const file of fs.readdirSync(valeStylesSrc)) {
+            const srcPath = path.join(valeStylesSrc, file);
+            const dstFilePath = path.join(valeStylesDst, file);
+            if (!fs.statSync(srcPath).isFile())
+                continue;
+            const prevStyleLen = ws.writes.length;
+            writeTier1(srcPath, dstFilePath, tokens, dryRun, ws);
+            if (ws.writes.length > prevStyleLen) {
+                console.log(`${logPrefix} ${tag}ci: ${dstFilePath}`);
+            }
         }
     }
     // Note: GH_BKIT_TOKEN secret check and Vercel detection are now Phase 3 responsibilities.
@@ -1862,39 +1893,10 @@ export function runLintModule(ctx) {
     const { dryRun, tokens, advisories, ws, logPrefix } = ctx;
     const tag = dryRun ? "[dry-run] " : "";
     const templatesBase = getTemplatesRoot();
-    // .vale.ini — Tier 3 (seed-or-print) since v0.2.1
-    // Was Tier 2 but appending a managed-block at EOF puts core options after
-    // [glob] sections, which Vale rejects (E201). Tier 3 seeds the whole file
-    // when absent and prints AI-actionable merge instructions when present.
-    const valeIniSrc = path.join(templatesBase, ".vale.ini");
-    if (fs.existsSync(valeIniSrc)) {
-        const valeDst = ".vale.ini";
-        const prevLen = ws.writes.length;
-        const valeRes = writeTier3(valeIniSrc, valeDst, dryRun, advisories, ws, VALE_INI_MERGE_INSTRUCTIONS);
-        if (ws.writes.length > prevLen) {
-            console.log(`${logPrefix} ${tag}lint: ${valeDst}`);
-        }
-        else if (valeRes.suggested) {
-            console.log(`${logPrefix} ${tag}lint: ${valeDst} (exists; AI merge instructions printed)`);
-        }
-    }
-    // .vale/styles/House/ — Tier 1 (fully managed)
-    const valeStylesSrc = path.join(templatesBase, ".vale", "styles", "House");
-    if (fs.existsSync(valeStylesSrc)) {
-        const valeStylesDst = path.join(".vale", "styles", "House");
-        ensureDir(valeStylesDst);
-        for (const file of fs.readdirSync(valeStylesSrc)) {
-            const srcPath = path.join(valeStylesSrc, file);
-            const dstPath = path.join(valeStylesDst, file);
-            if (!fs.statSync(srcPath).isFile())
-                continue;
-            const prevLen = ws.writes.length;
-            writeTier1(srcPath, dstPath, tokens, dryRun, ws);
-            if (ws.writes.length > prevLen) {
-                console.log(`${logPrefix} ${tag}lint: ${dstPath}`);
-            }
-        }
-    }
+    // Vale config (.vale.ini + .vale/styles/House) moved to the stack-agnostic `ci` module
+    // (#265) — vale is an external binary that lints .md, so it is not Node/TS-coupled. The
+    // `lint:prose` npm wrapper stays here (a package.json/Node convenience). --typescript
+    // always co-installs `ci`, so a --typescript consumer still gets the vale config.
     // slop-scan.config.json — Tier 3 (seed-or-print)
     const slopSrc = path.join(templatesBase, "slop-scan.config.json");
     if (fs.existsSync(slopSrc)) {
@@ -1933,12 +1935,30 @@ export function runLintModule(ctx) {
             console.log(`${logPrefix} ${tag}lint: ${prettierDst}`);
         }
     }
-    // Note: .bkit/scripts/bkit-slop-delta.sh (the `slop:delta` gate helper) ships via the core
-    // templates pass (.bkit/ is a core template dir), like .bkit/scripts/bkit-protect-main.sh —
-    // no per-module copy needed; the core pass preserves its +x bit.
-    // Ensure lint scripts the seeded .vale.ini / slop-scan.config / .prettierignore
-    // expect actually exist in package.json. Add-if-missing; consumer values win.
+    // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
+    // ONLY with the TS toolchain (--typescript), never to a non-Node --ci consumer. Tier 1
+    // (bkit-owned, force-overwritten; core pass would preserve the +x bit, writeTier1 copies
+    // the source mode). Listed in CORE_TEMPLATE_PATH_EXCLUDE so the core pass skips them.
+    for (const script of ["bkit-slop-type-suppression.mjs", "bkit-slop-delta.sh"]) {
+        const scriptSrc = path.join(templatesBase, ".bkit", "scripts", script);
+        if (!fs.existsSync(scriptSrc))
+            continue;
+        const scriptDst = path.join(".bkit", "scripts", script);
+        ensureDir(path.dirname(scriptDst));
+        const prevLen = ws.writes.length;
+        writeTier1(scriptSrc, scriptDst, tokens, dryRun, ws);
+        if (ws.writes.length > prevLen) {
+            console.log(`${logPrefix} ${tag}lint: ${scriptDst}`);
+        }
+    }
+    // Ensure the package.json scripts the seeded configs + wired ci.yml expect actually
+    // exist. Add-if-missing; consumer values win. `typecheck` moved here from the (now
+    // agnostic) ci module (#265) — it is TS-exclusive; default is tsconfig-aware.
+    const typecheckDefault = fs.existsSync("tsconfig.json")
+        ? "tsc --noEmit"
+        : 'echo "[bkit] typecheck: no tsconfig.json — skipping" >&2';
     const lintScripts = ensurePackageJsonScripts({
+        typecheck: typecheckDefault,
         "format:check": "prettier --check .",
         "lint:prose": 
         // F9 (BAR-138): symmetric soft-skip — protect against missing vale
@@ -1969,6 +1989,26 @@ export function runLintModule(ctx) {
             detect: "package.json failed to parse — cannot ensure lint scripts.",
             action: "Fix the JSON syntax error in package.json and re-run `pnpm bkit install`.",
         });
+    }
+    // The `test` script is the consumer's responsibility — flag if absent so they know
+    // (the wired ci.yml step bodies call `pnpm test`). Moved here from runCiModule (#265):
+    // the agnostic --ci skeleton has the test step commented, so the advisory belongs with
+    // the TS toolchain that activates it.
+    if (!dryRun && !lintScripts.missingPkg && !lintScripts.malformed) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf-8"));
+            if (!pkg.scripts || !pkg.scripts.test) {
+                advisories.push({
+                    id: "ci-no-test-script",
+                    severity: "advisory",
+                    detect: "package.json has no `test` script.",
+                    action: 'The wired ci.yml calls `pnpm test` — add a script (e.g. `"test": "vitest run"`) or remove the step from ci.yml.',
+                });
+            }
+        }
+        catch {
+            // Already handled above
+        }
     }
     // Ensure devDeps for the tools the lint scripts call. Vale is a system tool
     // (binary) and is documented as a prereq instead of a managed devDep.
@@ -2571,6 +2611,9 @@ export const MODULE_DISPATCH_ORDER = [
  * After all modules complete, ctx.postDispatch callbacks are run in order.
  */
 export function dispatchModules(modules, ctx) {
+    // The `ci` module seeds the WIRED ci.yml when the TS toolchain is co-installed
+    // (`lint` present ⇒ --typescript/--tooling), else the agnostic skeleton (#265).
+    ctx.wiredCi = modules.has("lint");
     for (const flag of MODULE_DISPATCH_ORDER) {
         if (!modules.has(flag))
             continue;

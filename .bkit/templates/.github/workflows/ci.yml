@@ -51,6 +51,11 @@ jobs:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
 
+      # bkit:start ts-ci-steps
+      # Node/TS toolchain region (bkit #265). bkit seeds these step bodies ACTIVE when you
+      # install `--typescript` (or `--tooling`), and COMMENTED OUT when you install `--ci`
+      # alone (stack-agnostic skeleton). On a non-Node repo, adapt the commented examples to
+      # your stack's setup / install / typecheck / lint / test commands.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: {{NODE_VERSION}}
@@ -58,6 +63,7 @@ jobs:
       # Pnpm version is resolved from the consumer's package.json#packageManager (single SoT).
       # Do NOT add `with: version:` here — pnpm/action-setup errors when both are set.
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      # bkit:end ts-ci-steps
 
       # Under [verbose ci]: propagate NODE_OPTIONS + DEBUG to all subsequent steps via
       # $GITHUB_ENV. Note that steps with their own `env:` block override $GITHUB_ENV —
@@ -185,6 +191,7 @@ jobs:
       #     done
       #     exit $EXIT
 
+      # bkit:start ts-ci-steps
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
         # Write the GH Packages auth token into pnpm's user-level config BEFORE install.
@@ -249,6 +256,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: pnpm slop:delta "$BASE_SHA"
+      # bkit:end ts-ci-steps
 
       # actionlint validates .github/workflows/* with GitHub-Actions-aware rules
       # (${{ }} expression syntax, shellcheck on run: blocks). A YAML linter accepts
@@ -265,9 +273,11 @@ jobs:
           done
           "$RUNNER_TEMP/actionlint" -color
 
+      # bkit:start ts-ci-steps
       - name: Run Bkit Check
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
+      # bkit:end ts-ci-steps
 
       # --- Test / build group: install-dependent, tree-dirtying. Runs after all
       # static checks above so coverage/dist artifacts never reach slop or bkit check. ---
@@ -310,6 +320,7 @@ jobs:
       #       fi
       #     done
 
+      # bkit:start ts-ci-steps
       - name: Run Vitest Tests
         if: steps.cache.outputs.skip != 'true'
         env:
@@ -326,6 +337,7 @@ jobs:
           else
             echo "::warning::test:integration script not found in package.json — skipping integration tests"
           fi
+      # bkit:end ts-ci-steps
 
       # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
       # - name: Await Vercel Preview

@@ -116,9 +116,10 @@ The seeded `.github/workflows/ci.yml` install step writes the token into pnpm's 
 # Name the host(s) + stack you want — core is implicit. Hosts compose.
 bkit install --claude                    # .claude/** + CLAUDE.md + core
 bkit install --cursor                    # .cursor/** + core
-bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core
+bkit install --ci                        # stack-agnostic CI skeleton + Vale prose-lint + core
+bkit install --claude --typescript       # Claude host + full Node/TS toolchain (implies --ci) + core
 bkit install --opencode=opencode         # additive opencode host (opencode-native gateway) + core
-bkit install --tooling                   # ci.yml + Vale/slop/prettier + husky hooks + core
+bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core (alias for --ci --typescript)
 
 # A bare install errors — name at least one module:
 bkit install                             # ✗ error: requires ≥1 module flag
@@ -130,7 +131,7 @@ bkit upgrade
 bkit check
 ```
 
-**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--opencode=<provider>` `--tooling`. `--tooling` is the interdependent `ci + lint + git-hooks` bundle. Core is implicit on every install — there is no `--core`/`--full`/`--ci`/`--lint`/`--git-hooks` flag.
+**Module flags** (composable; symmetric install ↔ uninstall): `--claude` `--cursor` `--opencode=<provider>` `--ci` `--typescript` `--tooling`. `--ci` is the stack-agnostic CI/quality foundation (ci.yml skeleton with Node/TS steps as commented examples + Vale prose-lint; no package.json footprint, runs green on any repo). `--typescript` adds the Node/TS toolchain (tsc/slop-scan/prettier/husky + the wired ci.yml step bodies) and implies `--ci`. `--tooling` is the back-compat alias for `--ci --typescript` (the interdependent `ci + lint + git-hooks` bundle). Core is implicit on every install — there is no `--core`/`--full`/`--lint`/`--git-hooks` flag.
 
 **Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (the additive opencode execution host — `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`). These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 

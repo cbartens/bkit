@@ -238,18 +238,23 @@ export const OPENCODE_MANIFEST: ManifestEntry[] = [
   // Uninstall uses the BKIT_PREFIX filter for .opencode/agents/ and .opencode/commands/.
 ];
 
+// --ci (#265): the stack-agnostic CI/quality foundation. NO package.json footprint —
+// a non-Node consumer can install this and stay green. ci.yml is seeded as the SKELETON
+// (Node/TS step bodies commented) when --typescript is absent, or WIRED when present
+// (see runCiModule + deriveCiSkeleton). Vale is stack-agnostic (external binary, lints
+// .md) so its config ships here; the `lint:prose` npm wrapper stays under --typescript.
 const CI_MANIFEST: ManifestEntry[] = [
   // ci.yml is seed-or-print — appending bkit content to existing CI YAML produces
   // duplicate top-level keys, so consumers own it after the initial seed.
   { path: ".github/workflows/ci.yml", format: "byte-equal-text", module: "ci", seedOrPrint: true },
-  {
-    path: "package.json",
-    format: "markered-text",
-    module: "ci",
-    packageJsonKeys: {
-      scripts: { typecheck: "tsc --noEmit" },
-    },
-  },
+  // .vale.ini — Tier 3 (seed-or-print). Vale config (stack-agnostic prose lint).
+  { path: ".vale.ini", format: "byte-equal-text", module: "ci", seedOrPrint: true },
+  // .vale/styles/House/*.yml — Tier 1 (fully managed, bkit-owned, force-overwritten).
+  // Keep in sync with .bkit/templates/.vale/styles/House/ (a parity test guards drift).
+  { path: ".vale/styles/House/Filler.yml", format: "byte-equal-text", module: "ci" },
+  { path: ".vale/styles/House/Hedging.yml", format: "byte-equal-text", module: "ci" },
+  { path: ".vale/styles/House/LLMSlop.yml", format: "byte-equal-text", module: "ci" },
+  { path: ".vale/styles/House/Verbose.yml", format: "byte-equal-text", module: "ci" },
 ];
 
 // Cloud agent integration is opt-in — NOT included in --full, so a default install
@@ -334,28 +339,34 @@ const DEPENDABOT_MANIFEST: ManifestEntry[] = [
   { path: ".bkit/scripts/bkit-set-dependabot.sh", format: "byte-equal-text", module: "dependabot" },
 ];
 
+// --typescript (#265): the Node/TS toolchain (most of it is plain Node — prettier/husky/
+// slop work on .js; only tsc + the cast/@ts-* rule are TS-exclusive). Always installed
+// alongside `ci` (--typescript implies --ci). Vale CONFIG lives under `ci` (agnostic); the
+// `lint:prose` npm wrapper stays here because it is a package.json/Node convenience.
 const LINT_MANIFEST: ManifestEntry[] = [
-  { path: ".vale.ini", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: "slop-scan.config.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
   { path: ".prettierignore", format: "markered-text", module: "lint" },
   // .lintstagedrc.json — Tier 3 seed-or-print (consumer may customise; pairs with the
   // lint-staged call in the pre-commit hook). Hash-guarded delete on uninstall: removed
   // when still byte-equal to the seed, preserved once the consumer edits it (#255 P1-7).
   { path: ".lintstagedrc.json", format: "byte-equal-text", module: "lint", seedOrPrint: true },
-  // .vale/styles/House/*.yml — Tier 1 (fully managed, bkit-owned, byte-identical to the
-  // template; force-overwritten every install). Enumerated explicitly so uninstall removes
-  // them and install records their hashes (byteEqualPaths is manifest-derived). Keep in sync
-  // with .bkit/templates/.vale/styles/House/ — a parity test guards against drift (#255 P1-7).
-  { path: ".vale/styles/House/Filler.yml", format: "byte-equal-text", module: "lint" },
-  { path: ".vale/styles/House/Hedging.yml", format: "byte-equal-text", module: "lint" },
-  { path: ".vale/styles/House/LLMSlop.yml", format: "byte-equal-text", module: "lint" },
-  { path: ".vale/styles/House/Verbose.yml", format: "byte-equal-text", module: "lint" },
+  // slop-scan helper scripts — moved OUT of the core template walk (#265) so they ship
+  // ONLY with the TS toolchain, never to a non-Node --ci consumer. Tier 1 (bkit-owned,
+  // force-overwritten). Mirrors .bkit/templates/.bkit/scripts/. See CORE_TEMPLATE_PATH_EXCLUDE.
+  {
+    path: ".bkit/scripts/bkit-slop-type-suppression.mjs",
+    format: "byte-equal-text",
+    module: "lint",
+  },
+  { path: ".bkit/scripts/bkit-slop-delta.sh", format: "byte-equal-text", module: "lint" },
   {
     path: "package.json",
     format: "markered-text",
     module: "lint",
     packageJsonKeys: {
       scripts: {
+        // typecheck moved here from the (now agnostic) ci module — it is TS-exclusive (#265).
+        typecheck: "tsc --noEmit",
         "format:check": "prettier --check .",
         "lint:prose":
           'bash -c \'if command -v vale >/dev/null 2>&1 && [ -d .vale/styles/write-good ]; then vale $(find . -name "*.md" -not -path "*/node_modules/*"); else echo "[bkit] vale missing or .vale/styles/write-good not synced — skipping (run \\`vale sync\\` to enable)"; fi\'',
@@ -365,6 +376,11 @@ const LINT_MANIFEST: ManifestEntry[] = [
       devDependencies: {
         prettier: "^3.5.3",
         "slop-scan": "^0.3.0",
+        // lint-staged is injected by runLintModule (pairs with .lintstagedrc.json +
+        // the pre-commit hook's `pnpm lint-staged` call). It MUST be declared here so
+        // getManagedPackageJsonKeys surfaces it to the uninstall stripper — otherwise
+        // a default-only lint-staged devDep is orphaned on uninstall.
+        "lint-staged": "^15.2.10",
       },
     },
   },

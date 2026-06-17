@@ -1316,10 +1316,18 @@ function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
   if (fs.existsSync(path.join(cwd, ".opencode", "agents"))) mods.add("opencode");
-  if (fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml"))) mods.add("ci");
+  // ci (#265): the stack-agnostic foundation — ci.yml + vale config. Either is a sentinel.
   if (
-    fs.existsSync(path.join(cwd, ".vale.ini")) ||
-    fs.existsSync(path.join(cwd, "slop-scan.config.json"))
+    fs.existsSync(path.join(cwd, ".github", "workflows", "ci.yml")) ||
+    fs.existsSync(path.join(cwd, ".vale.ini"))
+  ) {
+    mods.add("ci");
+  }
+  // lint (#265, the --typescript toolchain): slop-scan + prettier. Vale config alone no
+  // longer implies lint — it moved to the ci module.
+  if (
+    fs.existsSync(path.join(cwd, "slop-scan.config.json")) ||
+    fs.existsSync(path.join(cwd, ".prettierignore"))
   ) {
     mods.add("lint");
   }
@@ -1333,9 +1341,9 @@ function detectInstalledModules(cwd: string): Set<ModuleFlag> {
 }
 
 /**
- * Render a resolved module set back into valid new-surface CLI flags (#252) for
- * recovery-hint text. Skips core (implicit), collapses ci/lint/git-hooks → --tooling,
- * and maps opt-ins to their value-flag spellings.
+ * Render a resolved module set back into valid new-surface CLI flags (#252/#265) for
+ * recovery-hint text. Skips core (implicit), collapses the CI/quality modules to
+ * --ci / --typescript / --tooling, and maps opt-ins to their value-flag spellings.
  */
 function modulesToCliFlags(
   mods: Set<ModuleFlag>,
@@ -1346,7 +1354,15 @@ function modulesToCliFlags(
   if (mods.has("claude")) out.push("--claude");
   if (mods.has("cursor")) out.push("--cursor");
   if (mods.has("opencode")) out.push(`--opencode=${opencodeProvider ?? "<provider>"}`);
-  if (mods.has("ci") || mods.has("lint") || mods.has("git-hooks")) out.push("--tooling");
+  // #265: ci+lint+git-hooks → --tooling; TS toolchain (lint/git-hooks, ± ci) → --typescript
+  // (re-adds ci on install); agnostic ci only → --ci.
+  if (mods.has("ci") && mods.has("lint") && mods.has("git-hooks")) {
+    out.push("--tooling");
+  } else if (mods.has("lint") || mods.has("git-hooks")) {
+    out.push("--typescript");
+  } else if (mods.has("ci")) {
+    out.push("--ci");
+  }
   if (mods.has("renovate")) out.push("--dependency=renovate");
   if (mods.has("dependabot")) out.push("--dependency=dependabot");
   if (mods.has("cloud")) out.push(`--auto=${cloudVariant ?? "<variant>"}`);
@@ -1465,7 +1481,7 @@ async function main() {
   if (verb === "install" && moduleFlags.size === 0) {
     console.error(
       "[bkit] `bkit install` requires at least one module flag. Name what to install: " +
-        "--claude, --cursor, --opencode=<provider>, --tooling (plus opt-ins " +
+        "--claude, --cursor, --opencode=<provider>, --ci, --typescript (plus opt-ins " +
         "--dependency=<renovate|dependabot>, --auto=<claude|cursor>). Run `bkit help` for usage.",
     );
     process.exit(1);

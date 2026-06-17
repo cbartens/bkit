@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.0.1 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect decomposing a reviewed design into dependency-annotated workstreams.
 **Scope:** As specified by input and Read/Update/Create section.
