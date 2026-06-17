@@ -74,6 +74,7 @@
 - **Integration and E2E:** Debug workflow only (post-PR).
 - **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
 - **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
+- **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
 
 ### Security & Data

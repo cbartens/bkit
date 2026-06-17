@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Knowledge
 
@@ -131,6 +131,20 @@
 - **Severity:** normal
 - **Source:** human
 - **Related:** #287, KN-CORE-1, `.bkit/.env.example`, `.mcp.json`
+
+## KN-CORE-9: Agent shell misses direnv — repo env vars appear unset (2026-06-17)
+
+- **Category:** agentic
+- **Symptom:** `SENTRY_AUTH_TOKEN`, `GH_TOKEN`, `VERCEL_TOKEN`, `OPENROUTER_API_KEY`, etc. empty in Cursor agent Shell; Sentry `curl` 401; `gh` 401; `/bkit-debug` blocks print `[debug-fetch:*] skipped — … unset` despite values present under `.bkit/.env` or `apps/web/.env.local`.
+- **Root cause:** `.envrc` loads repo env via direnv: `dotenv_if_exists .bkit/.env`, `apps/web/.env.local`, `apps/web/.env.preview`. Interactive terminals re-source on `cd`; Cursor agent Shell and other non-interactive bash do not auto-run direnv — so **none** of those exports reach the agent. macOS GUI apps launched from Dock also miss direnv (see `.bkit/providers.md` — `bkit cursor`). **Exception:** `.envrc` deliberately `unset`s some `apps/web/.env.local` keys (`UPSTASH_*`, `SUPABASE_PROJECT_ID`) even when direnv runs — they stay out of `$ENV` by design; read the file or use Next.js/runtime paths instead.
+- **Fix or rule:** One-off CLI/API from agent: prefix `direnv exec . bash -c '…'` (loads all `.envrc` sources). Verify: `direnv exec . bash -c 'test -n "$SENTRY_AUTH_TOKEN" && echo ok'`. Persistent GUI/MCP env: launch Cursor with `bkit cursor`. Cloud/headless agents: set tokens in dashboard env (see `docs/observability.md` Debug Fetch). Sentry org API: EU host `https://de.sentry.io/api/0/...` if global `sentry.io` 404s on issue IDs. Same pattern as KN-CORE-1 (`GH_TOKEN`).
+- **Type:** gotcha
+- **Confidence:** high
+- **Last-confirmed:** 2026-06-17
+- **Severity:** normal
+- **Scope:** consumer
+- **Source:** agent
+- **Related:** KN-CORE-1, `.envrc`, `.bkit/.env`, `apps/web/.env.local`, `apps/web/.env.preview`, `.bkit/providers.md`, #478, `docs/observability.md`, `SENTRY_AUTH_TOKEN`
 
 <!-- bkit:end -->
 

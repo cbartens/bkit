@@ -11,7 +11,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 **Scope:** As specified by input and Read/Update/Create section.

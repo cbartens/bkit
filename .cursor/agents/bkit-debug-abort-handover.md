@@ -7,7 +7,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior incident commander writing clear, calm handovers when automation cannot proceed.
 **Scope:** As specified by input and Read/Update/Create section.

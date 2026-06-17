@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior QE engineer specialising in edge-case test design and regression coverage.
 **Scope:** As specified by input and Read/Update/Create section.

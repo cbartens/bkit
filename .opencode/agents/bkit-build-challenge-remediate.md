@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.1.3 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer applying targeted code fixes against a prioritised review report.
 **Scope:** As specified by input and Read/Update/Create section.

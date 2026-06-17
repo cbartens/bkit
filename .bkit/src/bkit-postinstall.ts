@@ -7,7 +7,6 @@ import {
   type PreflightFinding,
   detectMissingDotenv,
   detectBlankDotenvKeys,
-  detectLegacyGhTokenInDotenv,
   detectDirenvMissing,
   detectDirenvNotAllowed,
 } from "./bkit-preflight.js";
@@ -64,9 +63,6 @@ export function detectShellGhMcpToken(): TokenPresence {
   if (process.env.GH_MCP_TOKEN === "") return "empty";
   return "present";
 }
-
-/** @deprecated Use detectShellGhMcpToken */
-export const detectShellGhToken = detectShellGhMcpToken;
 
 /**
  * True when a `github` MCP server is configured in `.mcp.json` or
@@ -2085,7 +2081,7 @@ export function runPostInstallCheck(
         detect:
           "GH_MCP_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${GH_MCP_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
         action:
-          "Set GH_MCP_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_MCP_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. Use `gh auth login` for the gh CLI — do not export GH_TOKEN locally (it overrides the keyring). In cloud sessions (Claude Code web / Cursor Background Agents) set GH_MCP_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+          "Set GH_MCP_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_MCP_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_MCP_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
       });
     } else if (ghMcpTokenStatus === "empty") {
       phase3.push({
@@ -2296,8 +2292,6 @@ export function runPostInstallCheck(
   const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
   if (missingDotenv) phase3.push(missingDotenv);
   phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));
-  const legacyGhToken = detectLegacyGhTokenInDotenv(cwd);
-  if (legacyGhToken) phase3.push(legacyGhToken);
   const direnvMissing = detectDirenvMissing(cwd, mcpEnvTracker);
   if (direnvMissing) phase3.push(direnvMissing);
   const direnvNotAllowed = detectDirenvNotAllowed(cwd, mcpEnvTracker);

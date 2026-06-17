@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync } from "node:child_process";
-import { detectMissingDotenv, detectBlankDotenvKeys, detectLegacyGhTokenInDotenv, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
+import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_UPDATER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
@@ -38,8 +38,6 @@ export function detectShellGhMcpToken() {
         return "empty";
     return "present";
 }
-/** @deprecated Use detectShellGhMcpToken */
-export const detectShellGhToken = detectShellGhMcpToken;
 /**
  * True when a `github` MCP server is configured in `.mcp.json` or
  * `.cursor/mcp.json` — i.e. GH_MCP_TOKEN is actually consumed for MCP auth. Used to
@@ -1896,7 +1894,7 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
                 id: "gh-mcp-token-unset-shell",
                 severity: "advisory",
                 detect: "GH_MCP_TOKEN is not set in the shell environment (undefined). The GitHub MCP server authenticates with `Authorization: Bearer ${GH_MCP_TOKEN}` — without it, every tracker, PR, and board MCP call fails to connect.",
-                action: "Set GH_MCP_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_MCP_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. Use `gh auth login` for the gh CLI — do not export GH_TOKEN locally (it overrides the keyring). In cloud sessions (Claude Code web / Cursor Background Agents) set GH_MCP_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
+                action: "Set GH_MCP_TOKEN in .bkit/.env (canonical local-secrets file, gitignored), then `direnv allow` and restart your editor so MCP servers pick it up:\n\n    cp .bkit/.env.example .bkit/.env       # if not already done\n    # edit .bkit/.env — set GH_MCP_TOKEN=<fine-grained PAT>\n    direnv allow\n\nThe PAT needs Contents, Pull requests, Issues, and Actions read & write (plus organization-scoped Projects read & write if you use board sync). Generate at: https://github.com/settings/tokens. In cloud sessions (Claude Code web / Cursor Background Agents) set GH_MCP_TOKEN in the dashboard env vars instead — repo files are not read for secrets there.",
             });
         }
         else if (ghMcpTokenStatus === "empty") {
@@ -2099,9 +2097,6 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     if (missingDotenv)
         phase3.push(missingDotenv);
     phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));
-    const legacyGhToken = detectLegacyGhTokenInDotenv(cwd);
-    if (legacyGhToken)
-        phase3.push(legacyGhToken);
     const direnvMissing = detectDirenvMissing(cwd, mcpEnvTracker);
     if (direnvMissing)
         phase3.push(direnvMissing);
