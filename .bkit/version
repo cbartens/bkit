@@ -10,7 +10,7 @@
   "canonicalHashes": {
     "docs/deployments.md": "2964c41726790277c32e06ec0f8f90848cddc679f53467c37eb5afe15e01fea6",
     "docs/testing.md": "bbda98ae30562c3cbd96bfa3bfb098a4932cb489c0d991c1c6f819a7042641db",
-    ".claude/settings.json": "9fd0c032b2f5b90c6d793647f736fb01968b22daf2cdd0e5e1e01ad5a357a6df",
+    ".claude/settings.json": "0167a89c05902dd05b2e299854ee09f4556709b38fecd273e41cd2f29786ace9",
     ".husky/pre-push": "e14a11ba614c53f5bff13466a243edd241eed8fb2d24fbc1cd027b0843eaa5dc",
     ".agents/docs.md": "4164589af6b0b4c2b4c6a07e79f62a7ca84a1a413d9c566795f7ca1003553941",
     ".agents/skills.md": "4048154abe29cc5086d45cbc9fb6e0be82bfc346367c58cb745a644400e0bb9d",
@@ -67,7 +67,7 @@
     "scripts/ci/bkit-protect-main.sh": "b9a9191a85170ed33f00443b62c3c3255cc1fc6c413f8ecdad256a030a311d4e",
     "scripts/tooling/slop-delta.sh": "43ed5d0f8bc0ea4060f0cfca62d340f20fdd0bb29f6b6ffde99534ef1427c2b2",
     ".bkit/bkit-mode.sh": "0e6c5306e92c1e0a396bc355dc70daedc5ecceab5fba6092b91226906b84703f",
-    ".opencode/opencode.json": "422ec053ed660a241c860ec7924089728405da9e7cd521da8a15d0dfc0fc21fd",
+    ".opencode/opencode.json": "e88dd110593d0df4214451ebb8ae35e315c58748342afe569c1a67aa07f8574e",
     ".opencode/plugin/gateguard.js": "363c3f799dfa104a76910447dbf480ca807924c5b9eacfbbdeeec2389c51b02d",
     ".bkit/scripts/bkit-protect-main.sh": "30759666aa21a4cdf4a3a8211d3e389ceb79cb390724486906e796a7d6ab3a4f",
     ".bkit/scripts/bkit-slop-delta.sh": "0887c339692f20e5c6eabc3443e58bfdf95943900f8af7f6de41d2134e697dab",
