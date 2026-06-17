@@ -23,9 +23,10 @@ concurrency:
 jobs:
   # ── bkit-decide ── always-on planner (no `if:`; never skips). Emits the bkit-test-plan
   # JSON read via fromJSON(needs.bkit-decide.outputs.plan).<field> + a $GITHUB_STEP_SUMMARY table.
-  # DEGENERATE: bkit is single-package, no deploy — web_affected/run_e2e/run_live are always
-  # false and there's no turbo affected-graph. The full multi-tier decide ships to consumers in
-  # .bkit/templates/.github/workflows/ci.yml; this dogfoods the marker + run_level + merged-PR-escalation core.
+  # bkit is single-package, no deploy — web_affected/run_e2e/run_live are always false and
+  # there's no turbo affected-graph. The full multi-tier decide ships to consumers in
+  # .bkit/templates/.github/workflows/ci.yml; this dogfoods the marker + run_level +
+  # merged-PR-escalation core. Test lanes (bkit-tests-static, bkit-tests-unit) run in parallel.
   bkit-decide:
     name: bkit-decide
     runs-on: ubuntu-latest
@@ -201,7 +202,7 @@ jobs:
           WHETHER=$(echo "$PLAN" | jq -r '.reason')
           MARKERS=$(echo "$PLAN" | jq -r '.markers_present | join(", ")' 2>/dev/null || echo "")
           {
-            echo "## CI Plan — \`bkit-decide\` (degenerate: single-package, no deploy/e2e/live)"
+            echo "## CI Plan — \`bkit-decide\` (single-package, no deploy/e2e/live)"
             echo ""
             echo "| Field | Value |"
             echo "| --- | --- |"
@@ -212,9 +213,9 @@ jobs:
             echo "| markers | ${MARKERS:-none} |"
             echo ""
             if [ "$RUN_LEVEL" = "none" ]; then
-              echo "> ⏭️ **bkit-tests skipped** — $WHETHER"
+              echo "> ⏭️ **bkit-tests-static + bkit-tests-unit skipped** — $WHETHER"
             else
-              echo "> ✅ **bkit-tests runs** (run_level=\`$RUN_LEVEL\`); web / e2e / live tiers are N/A for bkit."
+              echo "> ✅ **bkit-tests-static + bkit-tests-unit run** (run_level=\`$RUN_LEVEL\`); web / e2e / live tiers are N/A for bkit."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -227,21 +228,17 @@ jobs:
             echo "> ⚠️ Run cancelled before the plan-table could be written (concurrency cancel-in-progress)."
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ── bkit-tests ─────────────────────────────────────────────────────────────
-  # bkit's single test tier: static checks (clean tree) then vitest. Gated on
-  # run_level != none. Consumers split this into integration / E2E tiers + a separate
-  # bkit-tests-live job; bkit has neither, so it stays one job.
-  bkit-tests:
-    name: bkit-tests
+  # ── bkit-tests-static ─────────────────────────────────────────────────────
+  # Static-analysis lane: typecheck, format, prose lint, slop, actionlint,
+  # dist-freshness, bkit check. Runs on a CLEAN tree (no test artifacts).
+  # Parallel sibling of bkit-tests-unit — wall-clock = MAX(lane).
+  bkit-tests-static:
+    name: bkit-tests-static
     needs: [bkit-decide]
     if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
     outputs:
-      # Non-hollow signal for the capstone: did the unit tier actually execute tests, or
-      # pass vacuously (--passWithNoTests / glob drift / all-skipped)? cache_skip tells a real
-      # run from the SHA-cache short-circuit (which was already validated on the cached SHA).
       cache_skip: ${{ steps.cache.outputs.skip }}
-      tests_ran: ${{ steps.vitest.outputs.ran }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -257,16 +254,11 @@ jobs:
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
 
       - name: Check SHA Cache
-        # Skip the suite when this SHA already has a successful run for this workflow
-        # within the last 7 days (helps after a rollback force-push). [force build] /
-        # [force cache] markers bypass the short-circuit and force a real run.
         id: cache
         env:
           GH_TOKEN: ${{ github.token }}
           PLAN: ${{ needs.bkit-decide.outputs.plan }}
         run: |
-          # Single grouped write at the end (one redirect) keeps the actionlint
-          # pass clean (avoids SC2129).
           SKIP="false"
           FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
           if [ "$FORCE" = "true" ]; then
@@ -332,9 +324,6 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
-      # Static checks (typecheck → prettier → vale → slop → verify-dist → bkit check)
-      # run first so they scan a CLEAN tree. Vitest runs LAST — it writes coverage and
-      # other artifacts that would otherwise pollute the Slop Scan / bkit check inputs.
       - name: Run Typecheck
         if: steps.cache.outputs.skip != 'true'
         run: pnpm typecheck
@@ -405,28 +394,76 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm bkit check
 
+  # ── bkit-tests-unit ──────────────────────────────────────────────────────
+  # Unit-test lane: vitest only. Parallel sibling of bkit-tests-static —
+  # wall-clock = MAX(lane). Emits tests_ran for the non-hollow capstone check.
+  bkit-tests-unit:
+    name: bkit-tests-unit
+    needs: [bkit-decide]
+    if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
+    runs-on: ubuntu-latest
+    outputs:
+      cache_skip: ${{ steps.cache.outputs.skip }}
+      tests_ran: ${{ steps.vitest.outputs.ran }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+
+      - name: Check SHA Cache
+        id: cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.bkit-decide.outputs.plan }}
+        run: |
+          SKIP="false"
+          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
+          if [ "$FORCE" = "true" ]; then
+            echo "::notice::force marker present — ignoring SHA cache."
+          else
+            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+            PRIOR=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$GITHUB_WORKFLOW" \
+              --status success \
+              --limit 50 \
+              --json headSha,createdAt \
+              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+              2>/dev/null || echo 0)
+            if [ "${PRIOR:-0}" -gt 0 ]; then
+              SKIP="true"
+              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+            fi
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+
+      - name: Install Dependencies
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
       - name: Run Vitest Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
-          # Emit an executed-test count (passed + failed, excluding skipped) so the capstone
-          # can reject a vacuous green — vitest exiting 0 having run zero tests. Dual reporter:
-          # default to the log, json to a file we parse. (`vitest run` == the `test` script.)
           pnpm exec vitest run --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/vitest-result.json"
           RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/vitest-result.json")
           echo "ran=$RAN" >> "$GITHUB_OUTPUT"
           echo "::notice::vitest executed $RAN test(s)."
 
-  # ── bkit-tests-check ── capstone; needs all tiers; if: !cancelled() (NOT always() — a
+  # ── bkit-tests-check ── capstone; needs all lanes; if: !cancelled() (NOT always() — a
   # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not
   # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-decide
-  # succeeded and, when run_level != none, bkit-tests succeeded AND executed >0 tests (not a
-  # vacuous green). bkit's SOLE branch-protection
+  # succeeded and, when run_level != none, BOTH lanes succeeded AND unit executed >0 tests (not
+  # a vacuous green). bkit's SOLE branch-protection
   # required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
   # "the planned suite ran and passed", not "nothing visibly failed".
   bkit-tests-check:
     name: bkit-tests-check
-    needs: [bkit-decide, bkit-tests]
+    needs: [bkit-decide, bkit-tests-static, bkit-tests-unit]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -435,9 +472,10 @@ jobs:
         env:
           PLAN: ${{ needs.bkit-decide.outputs.plan }}
           DECIDE_RESULT: ${{ needs.bkit-decide.result }}
-          TESTS_RESULT: ${{ needs.bkit-tests.result }}
-          TESTS_RAN: ${{ needs.bkit-tests.outputs.tests_ran }}
-          CACHE_SKIP: ${{ needs.bkit-tests.outputs.cache_skip }}
+          STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
+          UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
+          TESTS_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
+          CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
         run: |
           FAIL=0
           plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
@@ -445,23 +483,25 @@ jobs:
             echo "::error::bkit-decide did not succeed (result=$DECIDE_RESULT)"
             FAIL=1
           fi
-          # run_level=none (e.g. [skip ci]) → bkit-tests is skipped by design; asserting
-          # on a skipped job would false-RED a legit maintainer skip.
-          if [ "$plan_run_level" != "none" ] && [ "$TESTS_RESULT" != "success" ]; then
-            echo "::error::plan.run_level=$plan_run_level but bkit-tests result=$TESTS_RESULT"
+          if [ "$plan_run_level" != "none" ] && [ "$STATIC_RESULT" != "success" ]; then
+            echo "::error::plan.run_level=$plan_run_level but bkit-tests-static result=$STATIC_RESULT"
             FAIL=1
           fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of the unit tier must have
+          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" != "success" ]; then
+            echo "::error::plan.run_level=$plan_run_level but bkit-tests-unit result=$UNIT_RESULT"
+            FAIL=1
+          fi
+          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of the unit lane must have
           # executed >0 tests — guards the green-with-zero hole (vitest exiting 0 having run
           # nothing: --passWithNoTests / glob drift / all-skipped). cache_skip=true was already
           # validated on the cached SHA, and run_level=none is a deliberate skip — both assert nothing.
-          if [ "$plan_run_level" != "none" ] && [ "$TESTS_RESULT" = "success" ] && [ "$CACHE_SKIP" != "true" ]; then
+          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" = "success" ] && [ "$CACHE_SKIP" != "true" ]; then
             case "$TESTS_RAN" in
               ''|*[!0-9]*)
-                echo "::error::bkit-tests succeeded but its executed-test count is non-numeric ('$TESTS_RAN') — cannot confirm tests ran."
+                echo "::error::bkit-tests-unit succeeded but its executed-test count is non-numeric ('$TESTS_RAN') — cannot confirm tests ran."
                 FAIL=1 ;;
               0)
-                echo "::error::bkit-tests succeeded but executed 0 tests — vacuous green (expected >0)."
+                echo "::error::bkit-tests-unit succeeded but executed 0 tests — vacuous green (expected >0)."
                 FAIL=1 ;;
             esac
           fi
@@ -469,12 +509,14 @@ jobs:
             echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
             exit 1
           fi
-          echo "✅ bkit-tests-check passed — planned suite ran (${TESTS_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
+          echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${TESTS_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSUMER SCAFFOLD (not used by bkit). bkit ships the FULL multi-tier scaffold to
 # consumers in .bkit/templates/.github/workflows/ci.yml as `# bkit-stub:` blocks they
-# enable: turbo affected-graph (bkit-decide); integration + E2E + Vercel-await (bkit-tests);
-# the push-only @live job (bkit-tests-live) — all N/A for single-package, no-deploy bkit.
+# enable: turbo affected-graph (bkit-decide); integration + E2E + Vercel-await; the
+# push-only @live job (bkit-tests-live) — all N/A for single-package, no-deploy bkit.
+# bkit's own CI splits into parallel lanes (bkit-tests-static + bkit-tests-unit) to
+# dogfood the pattern recommended in the scaffold § Parallel test lanes.
 # `pnpm bkit install`/`upgrade` advise on each stub. See .bkit/src/bkit-postinstall.ts.
 # ─────────────────────────────────────────────────────────────────────────────

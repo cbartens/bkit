@@ -7,7 +7,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.1.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a design doc for readiness to enter planning.
 **Scope:** As specified by input and Read/Update/Create section.
