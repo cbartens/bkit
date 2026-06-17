@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.4] — 2026-06-17
+
+Complete the `GH_MCP_TOKEN` rename by dropping legacy `GH_TOKEN` migration paths, and document the agent-shell direnv gap (#478).
+
+### Changed
+
+- **`GH_MCP_TOKEN` only.** Removed `detectLegacyGhTokenInDotenv`, `mcp-env-legacy-gh-token` advisory, and `detectShellGhToken` alias — bkit no longer checks or migrates `GH_TOKEN` in `.env`.
+
+### Added
+
+- **KN-CORE-9.** Documents that Cursor agent Shell does not auto-run direnv; agents should prefix one-off CLI with `direnv exec . bash -c '…'` when repo env vars appear unset. Universal rule added to `.agents/rules.md`.
+
+---
+
 ## [4.1.3] — 2026-06-17
 
 Rename local GitHub MCP PAT from `GH_TOKEN` to `GH_MCP_TOKEN` so direnv no longer overrides `gh auth login` keyring auth (#287).
