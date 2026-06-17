@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execSync, execFileSync } from "node:child_process";
-import { detectMissingDotenv, detectBlankDotenvKeys, detectLegacyGhTokenInDotenv, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
+import { detectMissingDotenv, detectBlankDotenvKeys, detectDirenvMissing, detectDirenvNotAllowed, } from "./bkit-preflight.js";
 import { readBkitIgnoreFile, isFileIgnored } from "./bkit-bkitignore.js";
 import { parseIssueTracker, DEFAULT_ISSUE_TRACKER, parseDepUpdater, DEFAULT_DEP_UPDATER, parseCloudAgents, DEFAULT_CLOUD_AGENTS, } from "./bkit-manifest.js";
 import { readBkitVersion, MANAGED_MARKER_VERSION_RE } from "./bkit-version.js";
@@ -38,8 +38,6 @@ export function detectShellGhMcpToken() {
         return "empty";
     return "present";
 }
-/** @deprecated Use detectShellGhMcpToken */
-export const detectShellGhToken = detectShellGhMcpToken;
 /**
  * True when a `github` MCP server is configured in `.mcp.json` or
  * `.cursor/mcp.json` — i.e. GH_MCP_TOKEN is actually consumed for MCP auth. Used to
@@ -2099,9 +2097,6 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     if (missingDotenv)
         phase3.push(missingDotenv);
     phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));
-    const legacyGhToken = detectLegacyGhTokenInDotenv(cwd);
-    if (legacyGhToken)
-        phase3.push(legacyGhToken);
     const direnvMissing = detectDirenvMissing(cwd, mcpEnvTracker);
     if (direnvMissing)
         phase3.push(direnvMissing);

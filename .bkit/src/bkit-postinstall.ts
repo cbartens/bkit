@@ -7,7 +7,6 @@ import {
   type PreflightFinding,
   detectMissingDotenv,
   detectBlankDotenvKeys,
-  detectLegacyGhTokenInDotenv,
   detectDirenvMissing,
   detectDirenvNotAllowed,
 } from "./bkit-preflight.js";
@@ -64,9 +63,6 @@ export function detectShellGhMcpToken(): TokenPresence {
   if (process.env.GH_MCP_TOKEN === "") return "empty";
   return "present";
 }
-
-/** @deprecated Use detectShellGhMcpToken */
-export const detectShellGhToken = detectShellGhMcpToken;
 
 /**
  * True when a `github` MCP server is configured in `.mcp.json` or
@@ -2296,8 +2292,6 @@ export function runPostInstallCheck(
   const missingDotenv = detectMissingDotenv(cwd, mcpEnvTracker);
   if (missingDotenv) phase3.push(missingDotenv);
   phase3.push(...detectBlankDotenvKeys(cwd, mcpEnvTracker));
-  const legacyGhToken = detectLegacyGhTokenInDotenv(cwd);
-  if (legacyGhToken) phase3.push(legacyGhToken);
   const direnvMissing = detectDirenvMissing(cwd, mcpEnvTracker);
   if (direnvMissing) phase3.push(direnvMissing);
   const direnvNotAllowed = detectDirenvNotAllowed(cwd, mcpEnvTracker);
