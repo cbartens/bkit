@@ -76,6 +76,7 @@
 - **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
+- **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete/move/merge files or rewire callers to clear structural findings.
 
 ### Security & Data
 
