@@ -4,17 +4,20 @@
     "allow": [
       "Skill(*)",
       "Bash(*)",
-      "Edit(*)",
-      "Write(*)",
       "mcp__github__*",
       "mcp__claude_ai_Linear__*",
       "WebSearch",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:docs.github.com)",
       "WebFetch(domain:linear.app)",
       "WebFetch(domain:docs.anthropic.com)",
       "WebFetch(domain:docs.claude.com)",
-      "WebFetch(domain:cursor.com)"
+      "WebFetch(domain:cursor.com)",
+      "WebFetch(domain:npmjs.com)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:supabase.com)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
@@ -29,8 +32,6 @@
     ],
     "ask": [
       "Bash(sudo:*)",
-      "Bash(curl:*)",
-      "Bash(wget:*)",
       "Bash(brew install:*)",
       "Bash(pnpm publish:*)",
       "Bash(npm publish:*)",
@@ -53,7 +54,7 @@
       "Read(./.env)",
       "Read(./.env.*)"
     ],
-    "defaultMode": "default"
+    "defaultMode": "acceptEdits"
   },
   "hooks": {
     "SessionStart": [
