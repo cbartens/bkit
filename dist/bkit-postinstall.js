@@ -1806,7 +1806,7 @@ export function detectRenderedPromptsStale(cwd, installingVersion = readPkgVersi
         id: "bkit-rendered-prompts-stale",
         severity: onProtectedBranch ? "blocker" : "advisory",
         detect: `${stale.length} of ${scanned} rendered prompt/workflow mirror file(s) carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
-        action: "Re-render every prompt/workflow at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the .claude/.cursor/.opencode agents + commands are bkit-managed mirrors and must be regenerated after every version bump. Never hand-edit them; edits to a mirror drop the version marker and fail this gate.",
+        action: "Re-render every prompt/workflow at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The .claude/.cursor/.opencode agents + commands are bkit-managed mirrors and must be regenerated after every version bump. Never hand-edit them; edits to a mirror drop the version marker and fail this gate.",
     };
 }
 // ---------------------------------------------------------------------------
@@ -1893,7 +1893,7 @@ export function detectManagedDocsStale(cwd, installingVersion = readPkgVersion()
         id: "bkit-managed-docs-stale",
         severity: onProtectedBranch ? "blocker" : "advisory",
         detect: `${stale.length} of ${scanned} bkit-managed doc(s) under docs/ carry a bkit version marker that differs from the installed bkit version (${installingVersion}): ${examples}${more}.${branchNote}`,
-        action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. `pnpm add @cbartens/bkit` alone does NOT re-render — the docs/*.md managed blocks (testing.md, deployments.md, plans/template.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
+        action: "Re-render the managed docs at the installed version, then commit the result: run `pnpm bkit upgrade` (resyncs all hosts + docs) or re-run `pnpm bkit install` with your host flags. To MOVE to a newer bkit, use `pnpm bkit upgrade --latest` (or `--to=<version>`) — it bumps @cbartens/bkit AND re-renders in one step; `pnpm add @cbartens/bkit` alone does NOT re-render. The docs/*.md managed blocks (testing.md, deployments.md, plans/template.md, …) are bkit-owned and must be regenerated after every version bump so agents read current doctrine. Edit consumer-owned content OUTSIDE the `<!-- bkit:start -->`/`<!-- bkit:end -->` block; never hand-edit inside it.",
     };
 }
 // ---------------------------------------------------------------------------
