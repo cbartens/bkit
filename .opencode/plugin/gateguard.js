@@ -90,7 +90,7 @@ function investigationChecklist(filePath) {
     `- Confirm you read this file and exact symbols/lines you are about to change.\n` +
     `- Confirm precise field names, types, and signatures being changed.\n` +
     `- Confirm callers/importers change affects (search/read current state, do NOT assume).\n` +
-    `- Confirm external data contracts (DB schema, API/SDK shape) change affects (verify actual shape, do NOT assume).\n` +
+    `- Confirm external data contracts (DB schemas, APIs/SDKs) change affects (verify actual shape, do NOT assume).\n` +
     `- Confirm user instructions or plan tasks this change serves (quote them, do NOT trust memory).\n` +
     `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
   );

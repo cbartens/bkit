@@ -25,7 +25,8 @@
 ### Output & Editing
 
 - **Output:** Token-efficient dense phrasing. No filler/hedging/restating. Tables > prose, bullets > paragraphs.
-- **Read before edit:** ALWAYS read a file before editing. NEVER edit on assumed contents.
+- **Read before edits:** ALWAYS read files before edits. NEVER edit on assumed contents.
+- **Verify before edits:** ALWAYS verify current state/shape before symbol/signature/contract edits (callers/importers, DB schemas, APIs/SDKs). NEVER assume blast radius.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Imports:** No barrel files / `index.ts` exports.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
