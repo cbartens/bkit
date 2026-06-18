@@ -40,15 +40,6 @@
       }
     },
     {
-      "files": [
-        ".bkit/scripts/bkit-slop-type-suppression.mjs",
-        ".bkit/templates/.bkit/scripts/bkit-slop-type-suppression.mjs"
-      ],
-      "rules": {
-        "boundary/type-suppression": { "enabled": false }
-      }
-    },
-    {
       "files": [".bkit/src", ".bkit/src/**"],
       "rules": {
         "structure.directory-fanout-hotspot": { "enabled": false }
