@@ -44,6 +44,63 @@ const EMPTY_TOKENS: TokenMap = {
   REPO_SLUG: "",
 };
 
+// ---------------------------------------------------------------------------
+// planSelfBump — pure decision for `bkit upgrade --to=<v>` / `--latest`
+//
+// Decides what the atomic self-bump should do WITHOUT any IO: bump the installed
+// @cbartens/bkit package, then re-render at the new version. The imperative half
+// (pnpm add + re-exec of the freshly-installed binary) lives in bkit-install.ts
+// (runSelfBump); the version logic is split out here so it is unit-testable with
+// `resolveLatest` injected. Keeping the package bump and the re-render in ONE
+// command is the whole point — a bare `pnpm add @cbartens/bkit` that forgets the
+// re-render is exactly what leaves a base branch's rendered mirrors stale (#256),
+// which every branch cut from it then inherits.
+// ---------------------------------------------------------------------------
+
+/** Accepts X.Y.Z with an optional prerelease tag (e.g. 4.1.5, 4.2.0-rc.1). */
+const SELF_BUMP_SEMVER_RE = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+
+export type SelfBumpPlan =
+  | { kind: "invalid"; message: string }
+  /** Already at the target → caller falls through to a normal in-place re-render. */
+  | { kind: "noop"; target: string }
+  /** Install `target`, then re-exec the new binary to re-render + re-pin. */
+  | { kind: "bump"; target: string };
+
+/**
+ * Resolve the self-bump target and decide the action. `resolveLatest` is only
+ * invoked for `--latest` (it shells out to the registry in production); injected
+ * so tests stay offline. A leading `v` is tolerated on either source.
+ */
+export function planSelfBump(
+  installed: string,
+  flags: { toVersion: string | null; latest: boolean },
+  resolveLatest: () => string,
+): SelfBumpPlan {
+  let target: string;
+  if (flags.toVersion !== null) {
+    target = flags.toVersion.trim().replace(/^v/, "");
+    if (!SELF_BUMP_SEMVER_RE.test(target)) {
+      return {
+        kind: "invalid",
+        message: `--to=<version> must be a semver (e.g. 4.1.5). Got: ${JSON.stringify(flags.toVersion)}`,
+      };
+    }
+  } else {
+    target = resolveLatest().trim().replace(/^v/, "");
+    if (!SELF_BUMP_SEMVER_RE.test(target)) {
+      return {
+        kind: "invalid",
+        message: `could not resolve a valid latest @cbartens/bkit version from the registry (got ${JSON.stringify(
+          target,
+        )}). Pin explicitly with --to=<version>.`,
+      };
+    }
+  }
+  if (target === installed.trim().replace(/^v/, "")) return { kind: "noop", target };
+  return { kind: "bump", target };
+}
+
 /**
  * Detect a template's managed-block marker style from its content.
  * The html-comment marker (`<!-- bkit:start -->`) may itself be hash-prefixed in

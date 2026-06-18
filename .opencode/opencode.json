@@ -9,14 +9,13 @@
     "bash": {
       "*": "allow",
       "sudo *": "ask",
-      "curl *": "ask",
-      "wget *": "ask",
       "brew install*": "ask",
       "pnpm publish*": "ask",
       "npm publish*": "ask",
       "bun publish*": "ask",
       "git reset --hard*": "ask",
       "git clean -fd*": "ask",
+      "git clean -fdx*": "ask",
       "git filter-branch*": "ask",
       "git checkout -- .*": "ask",
       "git restore .*": "ask",
@@ -35,7 +34,9 @@
       "rm -rf $HOME/*": "deny",
       "git push --force*": "deny",
       "git push -f*": "deny",
-      "git push --force-with-lease*": "allow"
+      "git push --force-with-lease*": "allow",
+      "curl *": "ask",
+      "wget *": "ask"
     }
   },
   "mcp": {

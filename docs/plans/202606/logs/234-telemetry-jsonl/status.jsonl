@@ -22,3 +22,4 @@
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","verdict":"PASS","attempt":1,"at":"2026-06-07T06:56:26Z","parentSha":"027e2361e4488a52a1b4d121e6187d666ad12043","artifacts":["docs/plans/202606/logs/234-telemetry-jsonl/plan-summary.md"]}
 {"type":"step-done","workflow":"plan","step":"plan-summary","status":"DONE","at":"2026-06-07T07:01:07Z","parentSha":"f87fc656ff2b0210cef22061df0bb7a6eea44a08","verdict":"PASS","artifacts":["docs/plans/202606/234-telemetry-jsonl-plan.md","docs/plans/202606/234-telemetry-jsonl-plan-1.md","docs/plans/202606/234-telemetry-jsonl-plan-2.md","docs/plans/202606/234-telemetry-jsonl-plan-3.md","docs/plans/202606/234-telemetry-jsonl-plan-4.md","docs/plans/202606/234-telemetry-jsonl-plan-5.md"]}
 {"type":"workflow-done","workflow":"plan","at":"2026-06-07T07:01:07Z"}
+{"type":"workflow-failed","workflow":"ship","at":"2026-06-17T11:13:13Z"}

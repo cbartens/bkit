@@ -130,7 +130,7 @@ Every phase command (`design`, `plan`, `build`, `debug`, `ship`) follows the sam
 
 **Step convention:** every step ends with `### 🔒 Gate N — {Step Name}` checklist (must verify before proceeding), and posts a NEW tracker comment with one fenced section (see § Comment Lifecycle).
 
-**Managed-version marker:** the renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(one blank line below) after the frontmatter for claude commands, or at the top for cursor/opencode commands whose transforms strip the frontmatter. Stamped at`bkit install`/`upgrade`render time by`stampManagedVersion`— NEVER add a version line to a source workflow.`bkit check` hard-fails (`bkit-rendered-prompts-stale` blocker) when a rendered marker drifts from the installed version, so consumers cannot silently run outdated workflows.
+**Managed-version marker:** the renderer injects `<!-- bkit:managed vX.Y.Z — do NOT edit; run \`bkit upgrade\` to refresh -->`(one blank line below) after the frontmatter for claude commands, or at the top for cursor/opencode commands whose transforms strip the frontmatter. Stamped at`bkit install`/`upgrade`render time by`stampManagedVersion`— NEVER add a version line to a source workflow.`bkit check`flags`bkit-rendered-prompts-stale`when a rendered marker drifts from the installed version — a hard-failing blocker on`main`/`dev` (or a PR into them), a non-blocking advisory on feature branches (the drift is inherited from the base, not created by the branch) — so consumers cannot silently run outdated workflows on a protected branch.
 
 **Pre-worktree git scope:** Step 1 and Step 2's pre-worktree guard run on the originating branch (often `dev`). Allow-list `git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md` only (FID-scoped — NEVER the whole `docs/plans/` tree, which sweeps a concurrent run's untracked status under another `{FID}`); guard the commit with `git diff --cached --quiet ||`. NEVER `git add -A` until after `cd "$WORKTREE_PATH"` — it sweeps the user's unrelated in-flight edits into the workflow commit, which then rides feat → dev on merge. Post-worktree (Step 3+) `git add -A` is fine; cwd is the sandbox. `git worktree add` does not inherit dirty state, so leaving other edits on dev's working dir is correct.
 
@@ -1148,7 +1148,7 @@ Pipeline writes to five structured docs at `docs/` root. Each has strict sole-wr
 | Doc | ID prefix | Sole writer(s) | Source step |
 | --- | --- | --- | --- |
 | `docs/knowledge.md` | `KN-` | `@bkit-build-plan-gaps-remediate`, `@bkit-build-challenge-remediate`, `@bkit-debug-failure-remediate` | After verified fix |
-| `docs/decisions.md` | `DE-` | `@bkit-design-generate`, `@bkit-debug-failure-remediate` (forced arch) | At decision time |
+| `docs/decisions.md` | `DE-` | `@bkit-debug-failure-remediate` (forced arch) | At decision time — the design phase reads ADRs but no longer authors them |
 | `docs/completed.md` | — | `@bkit-ship-update-docs` only | `/bkit-ship` Step 10 |
 | `docs/pending.md` | — | `@bkit-design-generate` (out-of-scope features), `@bkit-plan-generate` (out-of-scope ideas), `@bkit-plan-update` (scope expansions from `/bkit-plan` Step 7), `@bkit-debug-abort-handover` (handover context) | `/bkit-design` Step 4, `/bkit-plan` Steps 3 & 7, Failure Path handover |
 

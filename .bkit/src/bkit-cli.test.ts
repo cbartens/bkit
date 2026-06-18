@@ -709,3 +709,48 @@ describe("printUsage — status + opencode in help text", () => {
     expect(output).toMatch(/REQUIRED|required/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// parseArgs — upgrade self-bump flags (--to=<version> / --latest)
+// ---------------------------------------------------------------------------
+
+describe("parseArgs — upgrade --to/--latest", () => {
+  it("parses --to=<version> on upgrade", () => {
+    const r = parseArgs(["upgrade", "--to=4.2.0"]);
+    expect(r.verb).toBe("upgrade");
+    expect(r.upgradeFlags.toVersion).toBe("4.2.0");
+    expect(r.upgradeFlags.latest).toBe(false);
+  });
+
+  it("parses --latest on upgrade", () => {
+    const r = parseArgs(["upgrade", "--latest"]);
+    expect(r.upgradeFlags.latest).toBe(true);
+    expect(r.upgradeFlags.toVersion).toBeNull();
+  });
+
+  it("defaults to no self-bump on a bare upgrade", () => {
+    const r = parseArgs(["upgrade"]);
+    expect(r.upgradeFlags.toVersion).toBeNull();
+    expect(r.upgradeFlags.latest).toBe(false);
+  });
+
+  it("rejects --to=<version> on a non-upgrade verb (e.g. check)", () => {
+    const msg = expectExit(() => parseArgs(["check", "--to=4.2.0"]));
+    expect(msg).toContain("only valid for `bkit upgrade`");
+  });
+
+  it("rejects --latest on install", () => {
+    const msg = expectExit(() => parseArgs(["install", "--claude", "--latest"]));
+    expect(msg).toContain("only valid for `bkit upgrade`");
+  });
+
+  it("rejects --to and --latest together (mutually exclusive)", () => {
+    const msg = expectExit(() => parseArgs(["upgrade", "--to=4.2.0", "--latest"]));
+    expect(msg).toContain("mutually exclusive");
+  });
+
+  it("rejects an empty --to= value", () => {
+    const msg = expectExit(() => parseArgs(["upgrade", "--to="]));
+    expect(msg).toContain("requires a version value");
+  });
+});

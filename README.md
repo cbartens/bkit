@@ -124,8 +124,11 @@ bkit install --claude --cursor --tooling # both hosts + ci/lint/git-hooks + core
 # A bare install errors — name at least one module:
 bkit install                             # ✗ error: requires ≥1 module flag
 
-# Ongoing sync — operates on everything installed (MANDATORY after a version bump)
+# Ongoing sync — re-render everything installed at the CURRENT version (offline)
 bkit upgrade
+
+# Move to a newer bkit in ONE step — bumps @cbartens/bkit, then re-renders + re-pins
+bkit upgrade --latest                    # newest published; or --to=<version> to pin one
 
 # Drift detection — drift-checks everything installed; exits non-zero on drift (CI gate)
 bkit check
@@ -135,7 +138,7 @@ bkit check
 
 **Opt-in flags:** `--tracker=github|linear`, `--dependency=renovate|dependabot`, `--auto=claude|cursor` (cloud agents), `--opencode=<provider>` (the additive opencode execution host — `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `opencode`). These are post-install decisions — see [§ Optional post-install decisions](#optional-post-install-decisions).
 
-> **⚠️ Always run `bkit upgrade` after bumping `@cbartens/bkit`.** A plain version bump only refreshes `package.json` + lockfile — it does **not** resync `.agents/` payload or update the version pin in `.bkit/version`. Skipping the resync will red CI on the `bkit check` drift gate. Commit the resync changes alongside the version bump in the same PR.
+> **⚠️ Moving bkit versions: use `bkit upgrade --latest` (or `--to=<version>`).** It bumps `@cbartens/bkit` **and** resyncs the `.agents/` payload + `.bkit/version` pin in one atomic step, so the two can never drift apart. A bare `pnpm add @cbartens/bkit` (or a Renovate/Dependabot bump) only refreshes `package.json` + lockfile — it does **not** resync, and skipping the resync reds CI on the `bkit check` drift gate. If you do bump the package separately, run `bkit upgrade` afterward and commit the resync alongside the version bump in the same PR.
 
 ### Local env setup
 

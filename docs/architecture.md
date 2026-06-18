@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Architecture
 
@@ -87,7 +87,7 @@ CLI verbs:
 - `pnpm bkit doctor` (v0.6.0+) — Phase 1 + Phase 3 detection; never writes; always exits 0.
 - `pnpm bkit status` (v4.0.0+) — read-only; prints each installed host (claude / cursor / opencode) and its configured provider.
 - `pnpm bkit uninstall` (v0.7.0+) — surgical format-aware removal: fully-managed delete / markered-text block strip / byte-equal-text hash-guarded delete; `--dry-run`, `--force`, `--nuke`, `--keep-npmrc`, `--keep-tooling`.
-- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict). Module-scoped to installed modules (v4.0.0+).
+- `pnpm bkit upgrade` (v0.9.0+) — diff engine compares old vs new template against `canonicalHashes`; non-conflicting changes auto-apply, conflicts emit to stderr (`--auto-apply` exits non-zero on any conflict). Module-scoped to installed modules (v4.0.0+). Re-renders at the **currently installed** version (offline). `--to=<version>` / `--latest` (#296) additionally bump `@cbartens/bkit` (`pnpm add`) then re-exec the freshly-installed binary to re-render + re-pin in one atomic step — so a version bump can never drift from its rendered mirrors; a bare `pnpm add` does not re-render.
 
 ## Consumer Integration Model
 
@@ -117,7 +117,7 @@ Workflow/prompt SOURCES are NOT shipped into the consumer `.agents/`; they live 
 - `.cursor/commands/` + `.cursor/agents/` — T1/T2/T3-transformed copies for Cursor compatibility
 - `.opencode/commands/` + `.opencode/agents/` + `.opencode/opencode.json` + `.opencode/plugin/gateguard.js` — additive opencode host; opt-in via `bkit install --opencode=<provider>`; provider-pluggable (seven allowlisted providers: `ollama-local`, `nvidia`, `groq`, `cerebras`, `openrouter`, `ollama`, `zen`)
 
-Every rendered agent/command file — and every bkit-managed `docs/*.md` block (the first line of its `bkit:start` region, via the `{{BKIT_MANAGED_MARKER}}` token) — carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install`/`upgrade` (v4.0.0+). `bkit check` hard-fails with `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (docs, scoped to the canonical doc set, never consumer plans) when a marker drifts from the installed version.
+Every rendered agent/command file — and every bkit-managed `docs/*.md` block (the first line of its `bkit:start` region, via the `{{BKIT_MANAGED_MARKER}}` token) — carries a `<!-- bkit:managed vX.Y.Z … -->` version marker stamped by `bkit install`/`upgrade` (v4.0.0+). When a marker drifts from the installed version, `bkit check` emits `bkit-rendered-prompts-stale` (prompts/workflows) or `bkit-managed-docs-stale` (docs, scoped to the canonical doc set, never consumer plans). These two gates are **branch-scoped** (`isOnProtectedBranch`): a hard-failing `blocker` on `main`/`dev` (or a PR into them, via `GITHUB_BASE_REF`), and a non-blocking `advisory` on feature branches — because a stale render is almost always _inherited_ from a base where bkit was bumped without an atomic re-render, not created by the feature branch. The advisory is still surfaced in the checklist so the drift is visible; it just no longer blocks an intermediate push.
 
 ## Distribution
 

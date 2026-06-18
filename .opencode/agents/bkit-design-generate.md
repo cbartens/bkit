@@ -11,7 +11,7 @@ tools:
   edit: true
 reasoningEffort: high
 ---
-<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect generating unified design doc from parallel exploration brainstorms.
 **Scope:** As specified by input and Read/Update/Create section.
@@ -44,8 +44,7 @@ reasoningEffort: high
    - Success Criteria: <=5 high-level measurable outcomes. NO tests. NO implementation steps.
    - Key Edge Cases: ONLY design-shaping cases that affect scope (concurrency, conflict resolution, failure modes, cross-feature interactions).
 8. Preserve strongest approaches. Consolidate Decisions.
-9. New architecture/technology decisions (if any) → append `docs/decisions.md`; check existing entries first.
-10. Out-of-scope ideas (if any) → append `docs/pending.md`; check existing entries first.
+9. Out-of-scope ideas (if any) → append `docs/pending.md`; check existing entries first.
 
 **Output format:**
 

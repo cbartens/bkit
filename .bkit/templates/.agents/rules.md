@@ -25,7 +25,8 @@
 ### Output & Editing
 
 - **Output:** Token-efficient dense phrasing. No filler/hedging/restating. Tables > prose, bullets > paragraphs.
-- **Read before edit:** ALWAYS read a file before editing. NEVER edit on assumed contents.
+- **Read before edits:** ALWAYS read files before edits. NEVER edit on assumed contents.
+- **Verify before edits:** ALWAYS verify current state/shape before symbol/signature/contract edits (callers/importers, DB schemas, APIs/SDKs). NEVER assume blast radius.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Imports:** No barrel files / `index.ts` exports.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
@@ -76,6 +77,7 @@
 - **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
+- **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete/move/merge files or rewire callers to clear structural findings.
 
 ### Security & Data
 

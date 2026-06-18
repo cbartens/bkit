@@ -39,6 +39,7 @@ import {
   buildTrackerSetupAdvisory,
   detectRenderedPromptsStale,
   detectManagedDocsStale,
+  isOnProtectedBranch,
   formatChecklist,
   runPostInstallCheck,
   dedupeById,
@@ -54,11 +55,12 @@ import { stampManagedVersion, managedVersionMarker } from "./bkit-version";
 // the mock declaration before imports. Individual tests use mockReset +
 // mockReturnValue / mockImplementation to configure per-case behaviour.
 // ---------------------------------------------------------------------------
-const { execSync, execFileSync } = vi.hoisted(() => ({
+const { execSync, execFileSync, spawnSync } = vi.hoisted(() => ({
   execSync: vi.fn(),
   execFileSync: vi.fn(),
+  spawnSync: vi.fn(),
 }));
-vi.mock("node:child_process", () => ({ execSync, execFileSync }));
+vi.mock("node:child_process", () => ({ execSync, execFileSync, spawnSync }));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,6 +75,9 @@ beforeEach(() => {
   originalEnv = { ...process.env };
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-postinstall-test-"));
   process.chdir(tmpDir);
+  // Default: git resolution fails → currentBranch null → isOnProtectedBranch true
+  // (fail-safe). Tests that exercise a specific branch set GITHUB_REF_NAME/BASE_REF.
+  spawnSync.mockReturnValue({ status: 1, stdout: "" } as ReturnType<typeof spawnSync>);
 });
 
 afterEach(() => {
@@ -82,6 +87,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   execSync.mockReset();
   execFileSync.mockReset();
+  spawnSync.mockReset();
 });
 
 function makeModules(...flags: string[]): Set<import("./bkit-cli").ModuleFlag> {
@@ -2044,14 +2050,26 @@ describe("detectRenderedPromptsStale", () => {
     expect(detectRenderedPromptsStale(tmpDir, "4.0.0")).toBeNull();
   });
 
-  it("returns a blocker when a marker is older than the installing version", () => {
+  it("returns a blocker on a protected branch when a marker is older than the installing version", () => {
     writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
-    const f = detectRenderedPromptsStale(tmpDir, "4.1.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.1.0", true);
     expect(f).not.toBeNull();
     expect(f?.id).toBe("bkit-rendered-prompts-stale");
     expect(f?.severity).toBe("blocker");
     expect(f?.detect).toContain("4.1.0");
     expect(f?.detect).toContain("bkit-a.md");
+    // No feature-branch note on a protected branch.
+    expect(f?.detect).not.toContain("non-blocking");
+  });
+
+  it("downgrades to a non-blocking advisory on a feature branch (drift is inherited, not created)", () => {
+    writeRendered(".claude/agents", "bkit-a.md", "4.0.0");
+    const f = detectRenderedPromptsStale(tmpDir, "4.1.0", false);
+    expect(f).not.toBeNull();
+    expect(f?.id).toBe("bkit-rendered-prompts-stale"); // still the same finding id…
+    expect(f?.severity).toBe("advisory"); // …but non-blocking here
+    expect(f?.detect).toContain("non-blocking on this feature branch");
+    expect(f?.detect).toContain("hard-fail");
   });
 
   it("flags a managed mirror that has no marker at all (hand-edited / pre-feature)", () => {
@@ -2142,16 +2160,26 @@ describe("detectManagedDocsStale", () => {
     expect(detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot)).toBeNull();
   });
 
-  it("returns a blocker when a managed doc marker is older than the installing version", () => {
+  it("returns a blocker on a protected branch when a managed doc marker is older than the installing version", () => {
     declareCanonical("testing.md");
     writeConsumerDoc("testing.md", "4.0.0");
-    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot);
+    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, true);
     expect(f).not.toBeNull();
     expect(f?.id).toBe("bkit-managed-docs-stale");
     expect(f?.severity).toBe("blocker");
     expect(f?.detect).toContain("4.1.0");
     expect(f?.detect).toContain("docs/testing.md");
     expect(f?.detect).toContain("(v4.0.0)");
+    expect(f?.detect).not.toContain("non-blocking");
+  });
+
+  it("downgrades to a non-blocking advisory on a feature branch", () => {
+    declareCanonical("testing.md");
+    writeConsumerDoc("testing.md", "4.0.0");
+    const f = detectManagedDocsStale(tmpDir, "4.1.0", templatesRoot, false);
+    expect(f?.id).toBe("bkit-managed-docs-stale");
+    expect(f?.severity).toBe("advisory");
+    expect(f?.detect).toContain("non-blocking on this feature branch");
   });
 
   it("flags a managed doc whose block carries no marker (pre-feature / hand-edited)", () => {
@@ -2218,5 +2246,50 @@ describe("detectManagedDocsStale", () => {
     }
     const f = detectManagedDocsStale(tmpDir, "4.0.0", templatesRoot);
     expect(f?.detect).toContain("(+3 more)"); // 8 stale, 5 shown
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isOnProtectedBranch — branch-scoped severity for the #256 stale gates
+// ---------------------------------------------------------------------------
+
+describe("isOnProtectedBranch", () => {
+  const saved = {
+    base: process.env.GITHUB_BASE_REF,
+    ref: process.env.GITHUB_REF_NAME,
+  };
+  afterEach(() => {
+    if (saved.base === undefined) delete process.env.GITHUB_BASE_REF;
+    else process.env.GITHUB_BASE_REF = saved.base;
+    if (saved.ref === undefined) delete process.env.GITHUB_REF_NAME;
+    else process.env.GITHUB_REF_NAME = saved.ref;
+  });
+
+  it("treats a push to main/dev as protected (GITHUB_REF_NAME)", () => {
+    delete process.env.GITHUB_BASE_REF;
+    process.env.GITHUB_REF_NAME = "main";
+    expect(isOnProtectedBranch(tmpDir)).toBe(true);
+    process.env.GITHUB_REF_NAME = "dev";
+    expect(isOnProtectedBranch(tmpDir)).toBe(true);
+  });
+
+  it("treats a push to a feature branch as NOT protected", () => {
+    delete process.env.GITHUB_BASE_REF;
+    process.env.GITHUB_REF_NAME = "feat/296-file-upload";
+    expect(isOnProtectedBranch(tmpDir)).toBe(false);
+  });
+
+  it("treats a PR INTO main/dev as protected — base ref wins over the feature head ref", () => {
+    process.env.GITHUB_REF_NAME = "feat/296-file-upload"; // PR head/merge ref
+    process.env.GITHUB_BASE_REF = "dev"; // merge target
+    expect(isOnProtectedBranch(tmpDir)).toBe(true);
+  });
+
+  it("fail-safe: undeterminable branch (no CI env, non-git dir) → protected", () => {
+    delete process.env.GITHUB_BASE_REF;
+    delete process.env.GITHUB_REF_NAME;
+    // tmpDir is a fresh mkdtemp dir, not a git work tree → git HEAD resolution
+    // fails → null → treated as protected so an unknown env never downgrades.
+    expect(isOnProtectedBranch(tmpDir)).toBe(true);
   });
 });

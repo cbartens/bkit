@@ -72,7 +72,13 @@ const netCount = s.netFindingCount || 0, netScore = s.netRepoScore || 0;
 console.error(`[slop:delta] added ${added}, resolved ${resolved}, worsened ${worsened}; net findings ${netCount}, net score ${netScore.toFixed(2)}`);
 // Fail only on NET worsening — pure line-shifts of the existing baseline net to zero.
 if (netCount > 0 || netScore > 0.001) {
-  console.error("[slop:delta] FAIL — this change adds or worsens slop on net. Inspect: slop-scan delta --base <base-worktree> --head .");
+  console.error([
+    "[slop:delta] FAIL — change adds/worsens slop on net.",
+    "- ONLY fix net-new, NEVER the baseline. New lines matching existing patterns are consistent, NOT slop.",
+    "- Type-suppression (as any / as unknown as {} / @ts-*): Assert real type, else Record<string, unknown>, NEVER any; suppress only with written reason.",
+    "- Structure/defensive (over-fragmentation, pass-through-wrapper, empty-catch, ...): Fix in place; NEVER delete/move/merge files or rewire callers to satisfy — refactors are separate decisions, NOT lint side effects.",
+    "Inspect: slop-scan delta --base <base-worktree> --head .",
+  ].join("\n"));
   process.exit(1);
 }
 console.error("[slop:delta] OK — no net-new or worsened findings (baseline line-shifts ignored).");

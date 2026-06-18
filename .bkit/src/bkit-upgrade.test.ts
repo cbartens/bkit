@@ -12,6 +12,7 @@ import {
   diffFile,
   runUpgrade,
   updateCanonicalHashesAfterUpgrade,
+  planSelfBump,
   LOG_PREFIX,
   type UpgradeConflict,
 } from "./bkit-upgrade";
@@ -476,5 +477,64 @@ describe("P4.T5 — updateCanonicalHashesAfterUpgrade", () => {
     const v = readBkitVersion(path.join(tmpDir, ".bkit", "version"));
     expect(v!.pinnedVersion).toBe("0.8.0");
     expect(v!.canonicalHashes["x.md"]).toBe(sha256("x")); // untouched
+  });
+});
+
+// ---------------------------------------------------------------------------
+// planSelfBump — `bkit upgrade --to=<v>` / `--latest` decision (atomic bump+render)
+// ---------------------------------------------------------------------------
+
+describe("planSelfBump", () => {
+  // resolveLatest must NOT be called unless --latest is set; this throws to prove it.
+  const neverResolve = (): string => {
+    throw new Error("resolveLatest should not be called");
+  };
+
+  it("--to a newer version → bump", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "4.2.0", latest: false }, neverResolve);
+    expect(p).toEqual({ kind: "bump", target: "4.2.0" });
+  });
+
+  it("--to the currently-installed version → noop (caller re-renders in place)", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "4.1.4", latest: false }, neverResolve);
+    expect(p).toEqual({ kind: "noop", target: "4.1.4" });
+  });
+
+  it("tolerates a leading v on --to and on the installed version", () => {
+    expect(planSelfBump("v4.1.4", { toVersion: "v4.1.4", latest: false }, neverResolve)).toEqual({
+      kind: "noop",
+      target: "4.1.4",
+    });
+    expect(planSelfBump("4.1.4", { toVersion: "v4.2.0", latest: false }, neverResolve)).toEqual({
+      kind: "bump",
+      target: "4.2.0",
+    });
+  });
+
+  it("accepts a prerelease target", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "4.2.0-rc.1", latest: false }, neverResolve);
+    expect(p).toEqual({ kind: "bump", target: "4.2.0-rc.1" });
+  });
+
+  it("rejects a non-semver --to value as invalid (no resolveLatest call)", () => {
+    const p = planSelfBump("4.1.4", { toVersion: "latest", latest: false }, neverResolve);
+    expect(p.kind).toBe("invalid");
+    if (p.kind === "invalid") expect(p.message).toContain("must be a semver");
+  });
+
+  it("--latest resolves via the injected resolver, then bumps", () => {
+    const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "4.3.0");
+    expect(p).toEqual({ kind: "bump", target: "4.3.0" });
+  });
+
+  it("--latest that resolves to the installed version → noop", () => {
+    const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "v4.1.4");
+    expect(p).toEqual({ kind: "noop", target: "4.1.4" });
+  });
+
+  it("--latest that resolves to garbage → invalid (pin explicitly)", () => {
+    const p = planSelfBump("4.1.4", { toVersion: null, latest: true }, () => "not-a-version");
+    expect(p.kind).toBe("invalid");
+    if (p.kind === "invalid") expect(p.message).toContain("--to=<version>");
   });
 });
