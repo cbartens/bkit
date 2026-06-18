@@ -6,6 +6,23 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.5] — 2026-06-18
+
+Add `bkit upgrade --to/--latest`, branch-scope stale-render gates, and surface slop:delta remediation doctrine in gate output (#295, #296).
+
+### Added
+
+- **`bkit upgrade --to=<version>` / `--latest`.** Atomically bumps `@cbartens/bkit` and re-renders + re-pins mirrors in one command (re-execs the freshly-installed binary), so a package bump can never drift from its rendered output.
+- **Branch-scoped stale-render gates.** `detectRenderedPromptsStale` and `detectManagedDocsStale` now hard-block on `main`/`dev` (and PRs targeting them via `GITHUB_BASE_REF`) but emit a non-blocking advisory on feature branches, which inherit a stale render rather than create it.
+- **slop:delta remediation doctrine in gate output.** On `slop:delta` FAIL, the gate now prints a single atomic advisory: fix net-new slop only (baseline is never yours); use `Record<string, unknown>` instead of type-suppression; fix structure/defensive issues in place — never delete, move, merge files, or rewire callers to clear the gate.
+
+### Changed
+
+- **Gateguard hook clarity.** Updated investigation checklist wording for precision.
+- **Editing guidelines.** Clarity improvements in version-hash commentary.
+
+---
+
 ## [4.1.4] — 2026-06-17
 
 Complete the `GH_MCP_TOKEN` rename by dropping legacy `GH_TOKEN` migration paths, and document the agent-shell direnv gap (#478).
