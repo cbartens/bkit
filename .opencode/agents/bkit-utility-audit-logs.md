@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.1.4 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior SRE scanning GCP logs for unique error signatures and regressions.
 **Scope:** As specified by input or session prompt.
