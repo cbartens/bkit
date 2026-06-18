@@ -34,8 +34,12 @@
         "**/*.spec.js"
       ],
       "rules": {
-        "structure.duplicate-function-signatures": { "enabled": false },
-        "tests.duplicate-mock-setup": { "enabled": false },
+        "tests.duplicate-mock-setup": { "enabled": false }
+      }
+    },
+    {
+      "files": [".bkit/src/bkit-slop-type-suppression.integration.test.ts"],
+      "rules": {
         "boundary/type-suppression": { "enabled": false }
       }
     },
@@ -56,12 +60,6 @@
       "files": [".bkit/templates/.claude/hooks/gateguard.cjs", ".claude/hooks/gateguard.cjs"],
       "rules": {
         "structure.duplicate-function-signatures": { "enabled": false }
-      }
-    },
-    {
-      "files": [".bkit/src/bkit-gateguard-opencode.test.ts"],
-      "rules": {
-        "defensive.empty-catch": { "enabled": false }
       }
     }
   ]

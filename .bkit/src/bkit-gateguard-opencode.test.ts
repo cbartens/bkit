@@ -208,11 +208,8 @@ afterEach(() => {
   if (!fs.existsSync(dir)) return;
   for (const name of fs.readdirSync(dir)) {
     if (name.startsWith(`gg-oc-test-${process.pid}-`)) {
-      try {
-        fs.unlinkSync(path.join(dir, name));
-      } catch {
-        // ignore cleanup errors
-      }
+      // force: ignore ENOENT if the file is already gone — no try/catch needed
+      fs.rmSync(path.join(dir, name), { force: true });
     }
   }
 });
