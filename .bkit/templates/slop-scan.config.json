@@ -13,6 +13,7 @@
   "rules": {
     "comments.placeholder-comments": { "enabled": true, "weight": 1.5 },
     "boundary/type-suppression": { "enabled": true },
+    "boundary/gate-suppression": { "enabled": true },
     "structure.over-fragmentation": { "enabled": true },
     "structure.directory-fanout-hotspot": { "enabled": true },
     "structure.duplicate-function-signatures": { "enabled": true },
@@ -42,7 +43,8 @@
     {
       "files": [".bkit/scripts/bkit-slop-type-suppression.mjs"],
       "rules": {
-        "boundary/type-suppression": { "enabled": false }
+        "boundary/type-suppression": { "enabled": false },
+        "boundary/gate-suppression": { "enabled": false }
       }
     },
     {

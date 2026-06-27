@@ -17,18 +17,25 @@
 
 - **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
 - **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
+- **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
+- **Scope discipline:** ONLY do what requests ask. NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do NOT bundle.
+- **No speculative scope:** ONLY build for requirements at hand (YAGNI). NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
 - **Investigate before implementing:** Search `{framework/runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 - **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, not mandate. NEVER skip human gates.
+- **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human approval is a gate, not a goal.
+- **Honest reporting:** NEVER assume or report done/passing/fixed without running actual checks; state failures, skips, and uncertainty verbatim.
 - **Major changes:** ALWAYS require human confirmation — global, architecture, technology, process, layout, UX.
 
 ### Output & Editing
 
 - **Output:** Token-efficient dense phrasing. No filler/hedging/restating. Tables > prose, bullets > paragraphs.
 - **Read before edits:** ALWAYS read files before edits. NEVER edit on assumed contents.
-- **Verify before edits:** ALWAYS verify current state/shape before symbol/signature/contract edits (callers/importers, DB schemas, APIs/SDKs). NEVER assume blast radius.
+- **Verify before edits:** ALWAYS check what changes could break (callers/importers, DB schemas, APIs/SDKs) before touching symbols/signatures/contracts. NEVER assume blast radius.
+- **No invented symbols:** ALWAYS confirm APIs/SDKs/flags/configs/imports exist as written before using (grep code, read docs, check live endpoints). NEVER assume or invent.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Imports:** No barrel files / `index.ts` exports.
+- **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders/commented-out code, or dead stubs. Match surrounding comment density.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
 - **Blockers:** NEVER fail silently. Document in logs/files/responses.
 
@@ -46,7 +53,7 @@
 ### Plans & Process
 
 - **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
-- **Gates:** STOP at every gate. Verify all steps BEFORE proceeding.
+- **Gates:** STOP at every gate. ALWAYS verify all steps before proceeding.
 - **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 
@@ -73,10 +80,11 @@
 
 - **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
 - **Integration and E2E:** Debug workflow only (post-PR).
-- **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
+- **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
 - **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
+- **Fix code, never gate:** NEVER make gates (lint/format/types/test/slop) pass by weakening them — do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted, ONLY use targeted per-file/rule opt-outs after explicit human confirmation.
 - **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete/move/merge files or rewire callers to clear structural findings.
 
 ### Security & Data
