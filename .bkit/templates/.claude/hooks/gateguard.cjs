@@ -67,11 +67,11 @@ function investigationChecklist(filePath) {
   const base = path.basename(filePath);
   return (
     `[bkit GateGuard] First edit to \`${base}\` this session - confirm following, and investigate anything you cannot answer BEFORE editing:\n` +
-    `- Confirm you read this file and exact symbols/lines you are about to change.\n` +
+    `- Confirm you read this file and exact symbols / lines you are about to change.\n` +
     `- Confirm precise field names, types, and signatures being changed.\n` +
-    `- Confirm callers/importers changes affect (grep/read source, do NOT assume).\n` +
-    `- Confirm symbols/flags/configs changes require exist (grep/read source, do NOT assume).\n` +
-    `- Confirm external data contracts (DB schemas, APIs/SDKs) changes affect (verify actual shape, do NOT assume).\n` +
+    `- Confirm callers / importers changes affect (grep / read source, do NOT assume).\n` +
+    `- Confirm symbols / flags / configs changes require exist (grep / read source, do NOT assume).\n` +
+    `- Confirm external data contracts (DB schemas, APIs / SDKs) changes affect (verify actual shape, do NOT assume).\n` +
     `- Confirm user instructions or plan tasks changes serve (quote them, do NOT trust memory).\n` +
     `Self-review is weak; the investigation itself is what changes the output. Advisory — proceed once satisfied.`
   );
@@ -82,7 +82,7 @@ function configAdvisory(filePath) {
   return (
     `[bkit GateGuard] \`${base}\` quality-gate config (lint / format / types / test / slop):\n` +
     `- Prefer FIXING code over weakening any gates.\n` +
-    `- If changes genuinely warranted, use targeted per-file/per-rule opt-outs over blanket disable.\n` +
+    `- If changes genuinely warranted, use targeted per-file / per-rule opt-outs over blanket disable.\n` +
     `- ALWAYS get explicit human sign-off for any quality-gate config changes.\n` +
     `Set BKIT_ALLOW_CONFIG_EDIT=1 to silence this. Advisory — proceed once satisfied.`
   );
