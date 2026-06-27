@@ -97,8 +97,11 @@ describe("GH_BKIT_TOKEN_MISSING action strings (now in bkit-postinstall.ts)", ()
     expect(POSTINSTALL_SRC).toContain("read:packages");
   });
 
-  it("postinstall source prescribes both .npmrc lines (registry + auth token)", () => {
-    expect(POSTINSTALL_SRC).toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}");
+  it("GH_BKIT_TOKEN_MISSING action keeps the token out of the committed .npmrc (#274)", () => {
+    // The committed project .npmrc carries only the registry mapping; the auth token is
+    // written to pnpm's user-level config — so the action must NOT prescribe the
+    // env-substitution `_authToken=${GH_BKIT_TOKEN}` line that 401s on pnpm >=10.34.3.
+    expect(body).not.toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}");
   });
 
   it("postinstall source does NOT contain git insteadOf shim language", () => {
@@ -127,8 +130,10 @@ describe("VERCEL action strings (now in bkit-postinstall.ts)", () => {
     expect(POSTINSTALL_SRC).toContain(".npmrc");
   });
 
-  it("postinstall source prescribes both .npmrc lines for Vercel", () => {
-    expect(POSTINSTALL_SRC).toContain("//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}");
+  it("postinstall source prescribes the Vercel installCommand auth (pnpm config set before install)", () => {
+    expect(POSTINSTALL_SRC).toContain(
+      '"installCommand": "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install"',
+    );
   });
 
   it("postinstall source does NOT contain git config --global url. shim", () => {

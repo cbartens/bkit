@@ -15,10 +15,12 @@ import {
   buildGithubProjectAdvisory,
   detectGithubProjectFieldIdFormat,
   detectNpmrcAuth,
+  detectNpmrcLegacyAuthToken,
   detectGhSecret,
   detectMainBranchProtection,
   detectVercelProject,
   detectVercelEnv,
+  detectVercelInstallCommandMissingAuth,
   detectCiYmlMissingTokenEnv,
   detectValePackageNotSynced,
   detectWorkflowLintToolsMissing,
@@ -432,7 +434,19 @@ describe("detectGithubProjectFieldIdFormat", () => {
 // ---------------------------------------------------------------------------
 
 describe("detectNpmrcAuth", () => {
-  it("returns 'present' when .npmrc has both registry mapping and auth token", () => {
+  // #274: registry-mapping-only is the correct shape — the auth token lives in
+  // pnpm's user-level config (pnpm config set), NOT in the project .npmrc.
+  it("returns 'present' when .npmrc has only the @cbartens registry mapping", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n",
+      "utf-8",
+    );
+    expect(detectNpmrcAuth(tmpDir)).toBe("present");
+  });
+
+  it("returns 'present' when .npmrc has the registry mapping plus a legacy authToken line", () => {
+    // Still 'present' for the registry check; the legacy line is flagged separately.
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
@@ -441,16 +455,7 @@ describe("detectNpmrcAuth", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("present");
   });
 
-  it("returns 'missing' when .npmrc has only the registry mapping (no auth token)", () => {
-    fs.writeFileSync(
-      path.join(tmpDir, ".npmrc"),
-      "@cbartens:registry=https://npm.pkg.github.com\n",
-      "utf-8",
-    );
-    expect(detectNpmrcAuth(tmpDir)).toBe("missing");
-  });
-
-  it("returns 'missing' when .npmrc has only the auth token (no registry mapping)", () => {
+  it("returns 'missing' when .npmrc exists but lacks the @cbartens registry mapping", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".npmrc"),
       "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
@@ -470,6 +475,99 @@ describe("detectNpmrcAuth", () => {
 
   it("returns 'unknown' (silent skip) when .npmrc is absent", () => {
     expect(detectNpmrcAuth(tmpDir)).toBe("unknown");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectNpmrcLegacyAuthToken
+// ---------------------------------------------------------------------------
+
+describe("detectNpmrcLegacyAuthToken", () => {
+  it("returns true when .npmrc carries a legacy GH Packages auth-token line", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n",
+      "utf-8",
+    );
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(true);
+  });
+
+  it("returns false for a registry-only .npmrc (the correct shape)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, ".npmrc"),
+      "@cbartens:registry=https://npm.pkg.github.com\n",
+      "utf-8",
+    );
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
+  });
+
+  it("returns false when .npmrc is absent", () => {
+    expect(detectNpmrcLegacyAuthToken(tmpDir)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectVercelInstallCommandMissingAuth
+// ---------------------------------------------------------------------------
+
+describe("detectVercelInstallCommandMissingAuth", () => {
+  it("flags a root vercel.json whose installCommand omits the pnpm config set auth", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "vercel.json"),
+      JSON.stringify({ installCommand: "pnpm install --frozen-lockfile" }),
+      "utf-8",
+    );
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual(["vercel.json"]);
+  });
+
+  it("flags a root vercel.json that has no installCommand at all", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "vercel.json"),
+      JSON.stringify({ framework: "nextjs" }),
+      "utf-8",
+    );
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual(["vercel.json"]);
+  });
+
+  it("passes an installCommand that writes the token via pnpm config set (JSON-escaped quotes)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "vercel.json"),
+      JSON.stringify({
+        installCommand:
+          'pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN" && pnpm install',
+      }),
+      "utf-8",
+    );
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual([]);
+  });
+
+  it("passes the unquoted installCommand form (README example shape)", () => {
+    fs.writeFileSync(
+      path.join(tmpDir, "vercel.json"),
+      JSON.stringify({
+        installCommand:
+          "pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install",
+      }),
+      "utf-8",
+    );
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual([]);
+  });
+
+  it("returns [] when no vercel.json exists", () => {
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual([]);
+  });
+
+  it("scans apps/<name>/vercel.json and reports the offending app path", () => {
+    const appDir = path.join(tmpDir, "apps", "web");
+    fs.mkdirSync(appDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(appDir, "vercel.json"),
+      JSON.stringify({ installCommand: "pnpm install" }),
+      "utf-8",
+    );
+    expect(detectVercelInstallCommandMissingAuth(tmpDir)).toEqual([
+      path.join("apps", "web", "vercel.json"),
+    ]);
   });
 });
 

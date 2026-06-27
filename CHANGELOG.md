@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [Unreleased]
+
+Re-fix `.npmrc` GH Packages auth so consumers can move off the pnpm 10.34.1 pin onto pnpm 11 (reopens #274).
+
+### Fixed
+
+- **GH Packages auth no longer relies on project-`.npmrc` env-substitution — reverses the 4.1.2 regression.** 4.1.2 re-added a `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line to the advised `.npmrc` on the premise "pnpm interpolates it at runtime" — false on pnpm >=10.34.2, which 401s on download (`ERR_PNPM_FETCH_401`). It only looked correct because everything was pinned to pnpm 10.34.1, where env-substitution still warns-but-works from store cache. Advisories, doc comments, KN-CORE-7, and `.bkit/.env.example` now prescribe #274's doctrine again: the project `.npmrc` carries only the `@cbartens` registry mapping; the token is written to pnpm's user-level config via `pnpm config set` (the shell-expanded literal token — version-proof across pnpm 10.x/11.x) on every install surface (CI step, local-once, Vercel `installCommand`). `detectNpmrcLegacyAuthToken` and the `npmrc-legacy-authtoken` advisory are restored.
+
+### Added
+
+- **`vercel-installcommand-missing-auth` post-install advisory.** Closes the gap that triggered the 4.1.2 revert: bkit checked the Vercel `GH_BKIT_TOKEN` env var but never whether `vercel.json` actually authenticates in its `installCommand`. A Vercel project whose install step omits the `pnpm config set` auth now surfaces at install time instead of as an un-attributable build 401. Unblocks the pnpm-11 migration (#176).
+
+---
+
 ## [4.1.5] — 2026-06-18
 
 Add `bkit upgrade --to/--latest`, branch-scope stale-render gates, and surface slop:delta remediation doctrine in gate output (#295, #296).

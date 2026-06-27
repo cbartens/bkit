@@ -165,7 +165,7 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block!).toContain("GH_BKIT_TOKEN");
   });
 
-  it("ci.yml install step writes the GH Packages auth token via pnpm config set (belt-and-braces)", () => {
+  it("ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
     expect(content).toMatch(
       /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,

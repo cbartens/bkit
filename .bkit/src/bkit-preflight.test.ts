@@ -851,11 +851,13 @@ describe("B4 — detectShellToken differentiates unset from empty-string", () =>
 });
 
 // ---------------------------------------------------------------------------
-// B6 — advisory auth shape (BAR-142 §B6 + .npmrc auth token restoration)
+// B6 — advisory auth shape (BAR-142 §B6 + #274 user-level pnpm config set)
 //
-// Advisory text must prescribe BOTH:
-//   (1) the .npmrc auth token line: `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`
-//   (2) the belt-and-braces CI shape: `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
+// Advisory text must prescribe the user-level auth shape
+//   `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"`
+// and must NOT prescribe committing an `_authToken=${GH_BKIT_TOKEN}` line in the project
+// .npmrc as the auth mechanism — pnpm >=10.34.3 401s on that env-substitution (the legacy
+// line is flagged for removal by detectNpmrcLegacyAuthToken, never prescribed).
 //
 // The BAR-142 §B6 invariant still holds permanently: the broken POSIX-fallback
 // `${VAR:-default}` form must never appear (pnpm cannot parse it; it 401s).
@@ -867,14 +869,11 @@ describe("B6 — gh-bkit-token-secret-unknown action text contains concrete one-
     expect(src).toContain("export GH_BKIT_TOKEN=$(gh auth token)");
   });
 
-  it("advisory strings prescribe both .npmrc auth token and pnpm config set shapes", () => {
+  it("advisory strings prescribe the user-level `pnpm config set` auth shape", () => {
     for (const f of ["bkit-modules.ts", "bkit-postinstall.ts"]) {
       const src = fs.readFileSync(path.join(__dirname, f), "utf-8");
       expect(src, `${f} must prescribe the user-level pnpm config set auth shape`).toMatch(
         /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
-      );
-      expect(src, `${f} must prescribe the .npmrc auth token line`).toContain(
-        "//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}",
       );
     }
   });

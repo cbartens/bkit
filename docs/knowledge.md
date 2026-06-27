@@ -53,7 +53,7 @@
 - **Category:** infra
 - **Symptom:** `pnpm install` (local, CI, or Vercel build) fails with a generic 401 against `registry.npmjs.org` — NOT against `npm.pkg.github.com`. The error reads as a plain auth failure with no "token missing" wording, and `@cbartens/bkit` is reported as not found.
 - **Root cause:** pnpm v7.20+ silently discards the ENTIRE `.npmrc` the moment any `${VAR}` in it resolves to an unset env var. The `@cbartens:registry=https://npm.pkg.github.com` scope mapping is dropped, pnpm falls back to npmjs.org, which has no `@cbartens/bkit` → 401. The unset variable is almost always `GH_BKIT_TOKEN`. Separately, pnpm does NOT parse POSIX fallback syntax: `${VAR:-default}` sends no auth at all and 401s — use bare `${VAR}` only.
-- **Fix or rule:** `GH_BKIT_TOKEN` must be present on every surface that runs `pnpm install` (shell for local installs, an Actions secret, a Vercel env var on preview + production). Diagnose with `echo "${GH_BKIT_TOKEN:-MISSING}"` immediately before `pnpm install`. The project `.npmrc` must carry both the registry mapping AND `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` — pnpm interpolates the env var at runtime. CI also runs `pnpm config set` as belt-and-braces.
+- **Fix or rule:** `GH_BKIT_TOKEN` must be present on every surface that runs `pnpm install` (shell for local installs, an Actions secret, a Vercel env var on preview + production). Diagnose with `echo "${GH_BKIT_TOKEN:-MISSING}"` immediately before `pnpm install`. **Update (pnpm >=10.34.3):** bkit no longer stores any auth token in the project `.npmrc` — the `${VAR}` env-substitution path 401s on download even when the token is set; the token now goes into pnpm's user-level config via `pnpm config set`. See KN-CORE-7.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
@@ -108,12 +108,12 @@
 - **Source:** human
 - **Related:** `deployments.md` (§ GitHub Actions pinning), `.github/renovate.json5`, `.github/renovate-local.json5`, `package.json` (`pnpm.overrides`)
 
-## KN-CORE-7: `.npmrc` auth — both registry mapping AND auth token reference required (2026-06-17)
+## KN-CORE-7: pnpm >=10.34.3 auth rework — project `.npmrc` `${GH_BKIT_TOKEN}` 401s on download; use user-level `pnpm config set` (2026-06-15)
 
 - **Category:** infra
-- **Symptom:** `pnpm install` fails with `ERR_PNPM_FETCH_401` when the project `.npmrc` is missing the `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line. Vercel builds are especially affected because Vercel reads `.npmrc` directly with no `pnpm config set` pre-step.
-- **Root cause:** The `.npmrc` must carry BOTH lines: the registry scope mapping AND the auth token reference. pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime. Without the auth token line, pnpm has no credential for the GitHub Packages registry.
-- **Fix or rule:** Ensure `.npmrc` at the repo root has both lines: `@cbartens:registry=https://npm.pkg.github.com` AND `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}`. CI also runs `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` as belt-and-braces. **POSIX fallback syntax** (`${VAR:-default}`) must never appear — pnpm cannot parse it and 401s. Use bare `${VAR}` only.
+- **Symptom:** `pnpm install` / `pnpm add @cbartens/bkit` fails with `ERR_PNPM_FETCH_401` (`GET https://npm.pkg.github.com/@cbartens%2Fbkit: Unauthorized`) on pnpm >=10.34.3 even though `GH_BKIT_TOKEN` is correctly set in the environment. Metadata calls (`pnpm view @cbartens/bkit`) still resolve, so "it works locally" via `view` is misleading — only the actual download 401s. pnpm 10.34.1 is unaffected (the regression boundary is between 10.34.1 and 10.34.3).
+- **Root cause:** pnpm's auth-handling rework stopped honouring a project-level `.npmrc` env-substitution `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` at install fetch time. The token must instead live in pnpm's user-level auth config. Independently, config precedence is project `.npmrc` > user config, so a leftover project auth line also shadows a correct user-level token.
+- **Fix or rule:** Commit ONLY the registry mapping in the project `.npmrc` (`@cbartens:registry=https://npm.pkg.github.com`) — NEVER an `_authToken` line. Write the token into pnpm's user-level config with `pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"` on every surface that runs `pnpm install`: CI (a step before install), local dev (run once), Vercel (`vercel.json` `installCommand: pnpm config set //npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN && pnpm install`). `pnpm config set` stores the shell-expanded literal token (the shell resolves `$GH_BKIT_TOKEN` before pnpm writes it), so the one command is version-proof across pnpm 10.x and 11.x — prefer it over a hand-written `~/.npmrc`. Do NOT "restore" the project `.npmrc` `_authToken` line: it appears to work only on pnpm 10.34.1 (warning + store cache) and 401s again the instant pnpm bumps.
 - **Type:** gotcha
 - **Confidence:** high
 - **Severity:** critical
