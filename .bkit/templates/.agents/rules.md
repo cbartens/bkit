@@ -17,18 +17,25 @@
 
 - **Completeness over shortcuts:** AI makes thoroughness cheap. NEVER defer tests, apply 90% solutions / silent shortcuts. In-scope = complete or skip.
 - **End-state over diff-size:** AI makes changes cheap. NEVER pick solutions based on lower cost-of-change; ALWAYS pick the solution with best quality-of-end-state.
-- **Investigate before implementing:** Search `{framework/runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
+- **Improve over duplicate:** ALWAYS search for existing solutions and extend/modify them if feasible. NEVER add new parallel solutions where existing ones can be evolved.
+- **Scope discipline:** ONLY do what requests ask. NEVER apply opportunistic refactors, renames, or 'while I'm here' edits. Out-of-scope finds → propose separately, do NOT bundle.
+- **No speculative scope:** ONLY build for requirements at hand (YAGNI). NEVER add config, flags, abstraction layers, or items 'for the future' nobody requested.
+- **Investigate before implementing:** Search `{framework / runtime} {capability} built-in`, `{problem} best practice 2026`. Prefer official docs / discovered code over custom.
 - **Investigation layers:** Tried-and-true → challenge; new-and-popular → scrutinize hype; first-principles = most valuable.
 - **Recommend, do NOT decide:** Agents propose, humans approve. Two-model agreement = strong signal, not mandate. NEVER skip human gates.
+- **Truth over agreement:** NEVER validate flawed premises to please. Surface errors and disagree with evidence; human approval is a gate, not a goal.
+- **Honest reporting:** NEVER assume or report done / passing / fixed without running actual checks; state failures, skips, and uncertainty verbatim.
 - **Major changes:** ALWAYS require human confirmation — global, architecture, technology, process, layout, UX.
 
 ### Output & Editing
 
-- **Output:** Token-efficient dense phrasing. No filler/hedging/restating. Tables > prose, bullets > paragraphs.
+- **Output:** Token-efficient dense phrasing. No filler / hedging / restating. Tables > prose, bullets > paragraphs.
 - **Read before edits:** ALWAYS read files before edits. NEVER edit on assumed contents.
-- **Verify before edits:** ALWAYS verify current state/shape before symbol/signature/contract edits (callers/importers, DB schemas, APIs/SDKs). NEVER assume blast radius.
+- **Verify before edits:** ALWAYS check what changes could break (callers / importers, DB schemas, APIs / SDKs) before touching symbols / signatures / contracts. NEVER assume blast radius.
+- **No invented symbols:** ALWAYS confirm APIs / SDKs / flags / configs / imports exist as written before using (grep code, read docs, check live endpoints). NEVER assume or invent.
 - **File edits:** Fastest tool wins — edit for surgical changes, write for new files, append where possible.
 - **Imports:** No barrel files / `index.ts` exports.
+- **Comments & dead code:** Comments explain why, not what. NEVER narrate diff, leave placeholders/commented-out code, or dead stubs. Match surrounding comment density.
 - **Tmp files:** Use repo root `tmp/`. NEVER system `/tmp/` or `/private/tmp`.
 - **Blockers:** NEVER fail silently. Document in logs/files/responses.
 
@@ -46,7 +53,7 @@
 ### Plans & Process
 
 - **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
-- **Gates:** STOP at every gate. Verify all steps BEFORE proceeding.
+- **Gates:** STOP at every gate. ALWAYS verify all steps before proceeding.
 - **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 
@@ -54,15 +61,15 @@
 
 > Full CI/CD matrix: `docs/deployments.md`.
 
-- **Commits/pushes:** NEVER commit/push unprompted; requires specific request.
+- **Commits/pushes:** NEVER commit / push unprompted; requires specific request.
 - **Commits:** `{type}({FID}): {message}` format.
 - **Code commits:** Ensure code commit is HEAD so CI runs.
-- **Docs-only commits:** Append `[skip build] [skip ci]`. Do NOT push alone — batch with next code push.
+- **Docs-only commits:** Append `[skip ci]`. Do NOT push alone, ALWAYS batch with next code push. NEVER append on manual code commits, on `dev` / `main` pushes, or as HEAD of PR branches.
 - **Secrets:** NEVER stage `.env*`, credentials, tokens, API keys. `git status` review before every commit.
 - **Branches:** `feat/{FID}` preferred; agent branches MUST contain plan `{FID}` or `{ISSUE_ID}` in kebab case.
 - **Pre-push:** `--no-verify` PROHIBITED. Fix failures locally. If unfixable → document and STOP.
-- **Force push:** PROHIBITED on shared branches (`dev`/`main`). Personal branches only with `--force-with-lease`.
-- **CI:** Pushes auto-trigger; NEVER manually. Final push to PR / `dev` → HEAD commit should NEVER contain `[skip ci]`. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
+- **Force push:** PROHIBITED on shared branches (`dev` / `main`). Personal branches only with `--force-with-lease`.
+- **CI:** Pushes auto-trigger; NEVER manually. ALWAYS verify HEAD commit does NOT contain `[skip ci]` on final push to PR / `dev`. See `docs/deployments.md` for enforcement contract and full tag taxonomy.
 - **CI edits:** ANY changes to `.github/workflows/*`, ALWAYS require human confirmation; NEVER edit unprompted.
 - **PRs:** ALWAYS target default integration branch (`dev`).
 - **Production merge:** ANY merge into default production branch (`main`) requires PR with EXPLICIT human approval.
@@ -73,11 +80,12 @@
 
 - **Pre-PR:** lint, typecheck, format:check, and unit only (`pnpm turbo lint typecheck format:check test`).
 - **Integration and E2E:** Debug workflow only (post-PR).
-- **Reproduce first:** NEVER fix what you cannot reproduce. Add failing tests BEFORE touching code.
+- **Reproduce first:** NEVER fix what you cannot reproduce. ALWAYS add failing tests before touching code.
 - **Check gotchas first:** Search `docs/knowledge.md` BEFORE touching code.
 - **Agent shell env:** IDE agent Shell does not auto-load direnv, repo `.env` vars look unset. Prefix one-off commands with `direnv exec . …`.
 - **No downgrades:** NEVER fix by downgrade. STOP if stuck.
-- **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete/move/merge files or rewire callers to clear structural findings.
+- **Fix code, never gate:** NEVER make gates (lint / format / types / test / slop) pass by weakening them; do NOT use `as any`, `as unknown as`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, `eslint-disable`, `.skip`, `xfail`, deleted assertions, error-swallowing, empty catches, or mocking-away units under test. ALWAYS fix root causes; if config changes genuinely warranted → ONLY use targeted per-file / per-rule opt-outs after explicit human confirmation.
+- **Slop gate:** ONLY fix net-new `slop:delta` findings, NEVER the baseline. NEVER delete /move / merge files or rewire callers to clear structural findings.
 
 ### Security & Data
 

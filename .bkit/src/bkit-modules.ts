@@ -887,11 +887,13 @@ export function runCoreModule(ctx: ModuleContext): void {
         "   - GitHub Settings → Secrets and variables → Actions → New repository secret\n" +
         "   - Name: GH_BKIT_TOKEN\n" +
         "   - See README.md ## Consumer CI auth for full setup.\n\n" +
-        "2. Add a `.npmrc` at your repo root with the registry mapping AND auth token:\n" +
-        "     @cbartens:registry=https://npm.pkg.github.com\n" +
-        "     //npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}\n\n" +
-        "   pnpm interpolates `${GH_BKIT_TOKEN}` from the environment at runtime.\n\n" +
-        "3. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
+        "2. Add a `.npmrc` at your repo root with the @cbartens registry mapping (the\n" +
+        "   auth token is NOT stored here — it goes in pnpm's user-level config):\n" +
+        "     @cbartens:registry=https://npm.pkg.github.com\n\n" +
+        "3. Write the token into pnpm's user-level config (run once; CI does this in its\n" +
+        "   install step). pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN} ref:\n" +
+        '     pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"\n\n' +
+        "4. Run `pnpm install` to refresh the lockfile, then commit.\n\n" +
         "Note: package.json scripts (typecheck, format:check, lint:prose, lint:slop,\n" +
         "slop:delta, prepare) are auto-added by bkit when their parent module installs. Run\n" +
         "`pnpm bkit install --typescript` to seed them all. Existing scripts are preserved\n" +
@@ -1710,17 +1712,16 @@ INSTRUCTIONS FOR AN AI AGENT (copy-paste this whole block into Claude/Cursor/etc
   jobs and triggers — preserve those.
 
   Required merge actions:
-  1. Ensure a .npmrc file exists at the repo root with BOTH the registry mapping
-     AND the auth token reference:
+  1. Ensure a .npmrc file exists at the repo root with ONLY the registry mapping
+     (the auth token is NOT stored here):
 
         @cbartens:registry=https://npm.pkg.github.com
-        //npm.pkg.github.com/:_authToken=\${GH_BKIT_TOKEN}
 
-     Commit this .npmrc file — pnpm interpolates \${GH_BKIT_TOKEN} from the
-     environment at runtime. Vercel and CI both set this as an env var.
+     Commit this .npmrc file — the CI runner reads it during pnpm install.
 
-  2. Ensure the install step also writes the auth token via \`pnpm config set\`
-     as belt-and-braces (supplements .npmrc):
+  2. Ensure the install step writes the auth token into pnpm's user-level config
+     BEFORE install. pnpm >=10.34.3 no longer authenticates a project-.npmrc
+     \${GH_BKIT_TOKEN} env-substitution (it 401s on download):
 
         - name: Install Dependencies
           run: |

@@ -165,7 +165,7 @@ describe("Group B templates — ci.yml Tier-3 named verbose-ci-env block", () =>
     expect(block!).toContain("GH_BKIT_TOKEN");
   });
 
-  it("ci.yml install step writes the GH Packages auth token via pnpm config set (belt-and-braces)", () => {
+  it("ci.yml install step writes the GH Packages auth token via pnpm config set (user-level, before install)", () => {
     const content = readTemplate(".github/workflows/ci.yml");
     expect(content).toMatch(
       /pnpm config set\s+"?\/\/npm\.pkg\.github\.com\/:_authToken=\$GH_BKIT_TOKEN/,
@@ -229,12 +229,14 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     "defensive.error-swallowing",
     "defensive.error-obscuring",
     "defensive.async-noise",
-    // Plugin rule (loaded via the `plugins.boundary` ref) — flags unsafe
-    // boundary casts and ts-suppression directives. Wiring asserted below.
+    // Plugin rules (loaded via the `plugins.boundary` ref) — type-suppression flags
+    // unsafe boundary casts + ts-suppression directives; gate-suppression flags skipped/
+    // focused tests + blanket lint disables. Wiring asserted below.
     "boundary/type-suppression",
+    "boundary/gate-suppression",
   ];
 
-  it("template contains all 11 required rule keys", () => {
+  it("template contains all 12 required rule keys", () => {
     const content = readTemplate("slop-scan.config.json");
     const data = JSON.parse(content) as { rules?: Record<string, { enabled?: boolean }> };
     const rules = data.rules ?? {};
@@ -260,7 +262,7 @@ describe("slop-scan.config.json — required core rules (JSON deep-containment)"
     expect(data.rules?.["comments.placeholder-comments"]?.weight).toBe(1.5);
   });
 
-  it("template has exactly 11 required rules (no extra bkit-mandated rules beyond the eleven)", () => {
+  it("template has exactly 12 required rules (no extra bkit-mandated rules beyond the twelve)", () => {
     // This test documents the expected scope — if bkit adds a new required rule,
     // this test must be updated with the new rule's key.
     const content = readTemplate("slop-scan.config.json");

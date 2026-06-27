@@ -10,7 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating a completed build cycle for shippability.
 **Scope:** As specified by input and Read/Update/Create section.

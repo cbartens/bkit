@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     # bkit:start verbose-ci-env
     # [verbose ci] marker — escalates CI log detail for one run. Composes freely with
-    # [force build] / [force cache] / [skip ci] (independent contains() per marker).
+    # [force build] / [force full] / [force cache] / [skip ci] (independent contains() per marker).
     # Markers are bare substrings — bkit-emitted commits prepend `bkit ` for attribution
     # (e.g. `bkit [verbose ci]`); substring match honours both forms.
     # See docs/deployments.md § "Commit-message force tags" for where to put the marker
@@ -38,12 +38,12 @@ jobs:
     # and docs/testing.md § "CI verbosity" for the full knob list.
     #
     # GH_BKIT_TOKEN is declared at the job level so $GH_BKIT_TOKEN is available to the
-    # install step's `pnpm config set` (belt-and-braces — supplements the project
-    # .npmrc auth token line) and to any later pnpm/npx invocation. The committed
-    # project .npmrc carries both the @cbartens registry mapping AND the
-    # `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` reference (pnpm interpolates
-    # from the environment at runtime). The install step also keeps its own env: block
-    # for explicitness and to satisfy the BAR-138 tests.
+    # install step's `pnpm config set` (the REQUIRED GH Packages auth — pnpm >=10.34.3
+    # 401s on a project-.npmrc ${GH_BKIT_TOKEN} env-substitution) and to any later
+    # pnpm/npx invocation. The committed project .npmrc carries ONLY the @cbartens
+    # registry mapping; `pnpm config set` writes the shell-expanded literal token into
+    # pnpm's user-level config before install (version-proof across pnpm 10.x/11.x). The
+    # install step also keeps its own env: block for explicitness and the BAR-138 tests.
     env:
       TURBO_LOG_LEVEL: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && 'full' || 'errors-only' }}
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
@@ -113,7 +113,7 @@ jobs:
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
-          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
@@ -184,8 +184,8 @@ jobs:
       # bkit:start ts-ci-steps
       - name: Install Dependencies
         if: steps.cache.outputs.skip != 'true'
-        # Belt-and-braces: write the GH Packages auth token into pnpm's user-level
-        # config before install (supplements the project .npmrc auth token line).
+        # Write the GH Packages auth token into pnpm's user-level config before install
+        # (REQUIRED — pnpm >=10.34.3 401s on a project-.npmrc ${GH_BKIT_TOKEN} ref).
         run: |
           pnpm config set "//npm.pkg.github.com/:_authToken=$GH_BKIT_TOKEN"
           pnpm install --frozen-lockfile
@@ -332,7 +332,7 @@ jobs:
           fi
           case "$MSG" in *"[force cache]"*) echo "turbo_force=1" >> "$GITHUB_OUTPUT" ;; esac
           case "$MSG" in *"[force build]"*) echo "should_force_build=true" >> "$GITHUB_OUTPUT" ;; esac
-          case "$MSG" in *"[force e2e]"*) echo "should_run_e2e=true" >> "$GITHUB_OUTPUT" ;; esac
+          case "$MSG" in *"[force full]"*) echo "should_run_full=true" >> "$GITHUB_OUTPUT" ;; esac
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/dev" ]; then
             PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --search "$GITHUB_SHA" --state merged --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
             if [ -z "$PR_NUMBER" ]; then
@@ -340,7 +340,7 @@ jobs:
             fi
           fi
 
-      # bkit-stub:auto-force-e2e — Auto-trigger E2E for PRs touching sensitive paths. To enable: uncomment the step below and delete this stub header.
+      # bkit-stub:auto-force-e2e — Auto-trigger the full lane (E2E etc.) for PRs touching sensitive paths. Orthogonal to the [force full] marker (sets needs_e2e, OR'd with should_run_full at the e2e gate). To enable: uncomment the step below and delete this stub header.
       # - name: Auto Force E2E for Sensitive Paths
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
       #   id: e2e-paths
@@ -444,11 +444,11 @@ jobs:
       #     exit 1
       #
       # MIGRATION-COUPLED PRs: a preview deploy hits the SHARED dev DB, blind to a PR's unmerged migration,
-      # so a PR that adds+uses a column in one PR 500s pre-merge ([force e2e] won't help). Run feature->dev
+      # so a PR that adds+uses a column in one PR 500s pre-merge ([force full] won't help). Run feature->dev
       # PR E2E against a LOCAL DB carrying this PR's migrations; keep preview E2E for pushes. Gate on head
       # ref, not a flag. Full write-up: docs/testing.md § "E2E on PRs".
 
-      # bkit-stub:e2e — Run E2E gated on should_run_e2e (commit-tag) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
+      # bkit-stub:e2e — Run E2E gated on should_run_full ([force full] commit-tag/PR-title) or needs_e2e (auto-force-e2e). To enable: uncomment the step below and delete this stub header.
       # Under bkit [verbose ci]: your test:e2e script reads VERBOSE_CI (in the job env) and
       # appends --trace=on to its own `playwright test` call, so Playwright writes per-test
       # trace.zip (snapshots + network + console + source) — the canonical e2e debug artifact.
@@ -465,7 +465,7 @@ jobs:
       # surfaces them.
       # - name: Run E2E Tests
       #   id: e2e
-      #   if: (steps.detect.outputs.should_run_e2e == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true'
+      #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true'
       #   env:
       #     TARGET_URL: ${{ steps.vercel.outputs.target_url || 'http://localhost:3000' }}
       #   run: |
@@ -552,7 +552,8 @@ jobs:
 #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
 #       - name: Decide Run Level             # [U] Layer 2 (how-much): force-build/PR/dispatch/push-main -> full; push-dev ->
 #       #     commits/{sha}/pulls: merged PR -> light, no PR (direct) -> full ESCALATE (the green!=validated fix); api-error/403 -> full. Needs pull-requests: read.
-#       - name: Decide Run Live & E2E        # [D/E] run_live = push dev/main or [force live]; run_e2e = (full||[force e2e]) && web_affected
+#       - name: Decide Run Live & E2E        # [D/E] web_affected_eff = web_affected || [force full] (#291; emit as plan.web_affected — drives integration/e2e/@live + the capstone uniformly).
+#       #     run_e2e = run_level==full && web_affected_eff. run_live = push dev/main && web_affected_eff (@live stays PUSH-ONLY — real LLM/email side effects; a docs-only/empty [force full] push reaches it via web_affected_eff, NOT off a PR/dispatch).
 #       - name: Generate Test Plan           # [U] id: decide. jq bkit-test-plan; validate with has()/!=null
 #       #     (NOT `// empty` — jq's // treats false as absent, dropping a legit run_live:false). Prior outputs via env: for --argjson.
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())

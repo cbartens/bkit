@@ -15,6 +15,32 @@ esac
 case "$HEAD_SUBJECT" in
   'Revert "'*) IS_REVERT=1 ;;
 esac
+
+# CI-suppressor HEAD guard. A [skip ci]-class token on the HEAD commit of a branch with an
+# OPEN PR silences GitHub's pull_request trigger -> empty statusCheckRollup -> a PR that
+# merges without ever running CI. The workflow CI-Dispatch gate only covers the push it
+# makes at close; this backstops MANUAL pushes (rebase + force-push, post-close commits).
+# Conditioned on an open PR so it never blocks sanctioned [skip ci] pushes with no PR
+# (mid-loop status, abort handover). dev/main exempt; gh absent -> allow (backstop only).
+case "$BRANCH" in
+  dev|main) ;;
+  *)
+    if git log -1 --pretty=%B | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
+      if command -v gh >/dev/null 2>&1; then
+        # strip hook-injected GIT_DIR/GIT_WORK_TREE so gh resolves the repo from cwd (worktree-safe)
+        OPEN_PR=$(env -u GIT_DIR -u GIT_WORK_TREE gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+        if [ -n "$OPEN_PR" ]; then
+          echo "[pre-push] BLOCKED: HEAD on '$BRANCH' carries a CI-suppressing token and PR #$OPEN_PR is open — its checks would stay vacuously green." >&2
+          echo "[pre-push] Add a clean trigger commit and re-push:  git commit --allow-empty -m \"chore: trigger CI\" && git push" >&2
+          exit 1
+        fi
+      else
+        echo "[pre-push] WARN: HEAD on '$BRANCH' carries a CI-suppressing token but gh is unavailable to check for an open PR; allowing. If a PR is open, ensure HEAD triggers CI." >&2
+      fi
+    fi
+    ;;
+esac
+
 if [ "$IS_REVERT" = "1" ]; then
   echo "[pre-push] revert branch/commit detected — running typecheck + format:check only"
   pnpm typecheck && pnpm format:check

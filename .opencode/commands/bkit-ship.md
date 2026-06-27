@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -79,7 +79,7 @@ $ARGUMENTS
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): ship aborted bkit [skip build] bkit [skip ci]"`.
+9. `git commit -m "docs({FID}): ship aborted bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty, then push (force-with-lease on the personal branch, plain on `dev`/`main`): `B=$(git branch --show-current); case "$B" in dev|main) git push origin "$B" ;; *) git push --force-with-lease origin "$B" ;; esac` — if push fails, do not claim success on Linear.
 11. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
     `{BODY}` = fenced block below:
@@ -164,7 +164,7 @@ $ARGUMENTS
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build] bkit [skip ci]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip ci]"
    fi
    ```
 2. Create/resume the worktree:
@@ -407,15 +407,15 @@ $ARGUMENTS
    if [ -n "$(git -C "$REPO_ROOT" status --porcelain | grep -v '^??')" ]; then
      git -C "$REPO_ROOT" status --short
      git -C "$REPO_ROOT" add -- ':(exclude).DS_Store' ':(exclude)*.log' ':(exclude)*.swp' ':(exclude)node_modules'
-     git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip build] bkit [skip ci]"
+     git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes bkit [skip ci]"
    fi
    ```
 3. Run HEAD-Subject Assertion:
    ```bash
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
-   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
-     echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+     echo "Fix: remove the suppressing tag from the PR title." >&2
      exit 1
    fi
    ```

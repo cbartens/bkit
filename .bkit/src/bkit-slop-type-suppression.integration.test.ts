@@ -47,6 +47,29 @@ const FIXTURES: Record<string, string> = {
   "src/sample.test.ts": "// @ts-ignore\nexport const m = foo as any;\n",
 };
 
+// Fixtures for the sibling boundary/gate-suppression rule: skipped/focused tests and
+// lint/format disable directives (the other gates), plus negatives that must NOT flag.
+const GATE_FIXTURES: Record<string, string> = {
+  // skipped test — disables this test
+  "src/skip.ts": 'describe.skip("x", () => {});\n',
+  // focused test — silently disables every sibling test
+  "src/only.ts": 'it.only("x", () => {});\n',
+  // x-prefixed skip global (Jasmine/Jest)
+  "src/xit.ts": 'xit("x", () => {});\n',
+  // f-prefixed focus global (Jasmine/Jest)
+  "src/fdescribe.ts": 'fdescribe("x", () => {});\n',
+  // BLANKET whole-file linter disable — a comment, so NOT comment-skipped
+  "src/blanket.ts": "/* eslint-disable */\nexport const a = 1;\n",
+  // TARGETED per-rule disable — the sanctioned opt-out, must NOT flag
+  "src/targeted.ts": "// eslint-disable-next-line no-eval\nexport const b = 1;\n",
+  // a real `.fit()` method call (not a focused test) — must NOT flag (lookbehind)
+  "src/falsepos.ts": "export const c = arr.fit(x);\n",
+  // the skip token only appears in a comment — must NOT flag
+  "src/comment.ts": "// do not reach for it.skip here\nexport const d = 1;\n",
+  // ordinary tests — must NOT flag
+  "src/clean.ts": 'it("real", () => {});\ndescribe("real", () => {});\n',
+};
+
 /** Builds a temp corpus, runs the real slop-scan, returns flagged source paths. */
 function scanFlagged(options: Record<string, unknown> = {}): string[] {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slop-ts-"));
@@ -107,6 +130,47 @@ describe("boundary/type-suppression slop rule (.bkit/scripts/bkit-slop-type-supp
       "src/any.ts",
       "src/dbl.ts",
       "src/obj.ts",
+    ]);
+  });
+});
+
+/** Builds a temp corpus, runs the real slop-scan, returns paths flagged by gate-suppression. */
+function scanGateFlagged(): string[] {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "slop-gate-"));
+  tmpDirs.push(dir);
+  fs.copyFileSync(PLUGIN_SRC, path.join(dir, "plugin.mjs"));
+  const config = {
+    plugins: { boundary: "./plugin.mjs" },
+    rules: { "boundary/gate-suppression": { enabled: true } },
+    // Self-override so the plugin's own pattern literals never flag (matches shipped config).
+    overrides: [
+      { files: ["plugin.mjs"], rules: { "boundary/gate-suppression": { enabled: false } } },
+    ],
+  };
+  fs.writeFileSync(path.join(dir, "slop-scan.config.json"), JSON.stringify(config, null, 2));
+  for (const [rel, content] of Object.entries(GATE_FIXTURES)) {
+    const dst = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.writeFileSync(dst, content);
+  }
+  const out = execFileSync("npx", ["--no-install", "slop-scan", "scan", dir, "--json"], {
+    encoding: "utf8",
+  });
+  const report = JSON.parse(out) as { findings: Array<{ ruleId: string; path: string }> };
+  return report.findings
+    .filter((f) => f.ruleId === "boundary/gate-suppression")
+    .map((f) => f.path)
+    .sort();
+}
+
+describe("boundary/gate-suppression slop rule (.bkit/scripts/bkit-slop-type-suppression.mjs)", () => {
+  it("flags skipped/focused tests and blanket lint disables; ignores targeted disables, .fit(), comments, and clean tests", () => {
+    expect(scanGateFlagged()).toEqual([
+      "src/blanket.ts",
+      "src/fdescribe.ts",
+      "src/only.ts",
+      "src/skip.ts",
+      "src/xit.ts",
     ]);
   });
 });

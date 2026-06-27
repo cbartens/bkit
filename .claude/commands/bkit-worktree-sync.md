@@ -1,7 +1,7 @@
 ---
 description: "Worktree Sync — Pull agent worktree changes into the IDE's current branch"
 ---
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Worktree Sync (Utility Command)
 
@@ -29,7 +29,7 @@ description: "Worktree Sync — Pull agent worktree changes into the IDE's curre
    ```bash
    git -C "$REPO_ROOT" status --short
    git -C "$REPO_ROOT" add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-   git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes [skip build]"
+   git -C "$REPO_ROOT" commit -m "chore: pre-merge uncommitted dev changes"
    ```
 
 4. Print: `Pre-merge clean-tree guard: committed local changes on {CURRENT_BRANCH}.`

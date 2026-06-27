@@ -15,7 +15,7 @@ Typical cycle for issue `ISSUE-123` "Add feature X":
 3. **Workflow Step 1** — preflight hook checks the `bkit:auto` label, acquires `.lock`, sets tracker label `bkit:plan` + state `In Progress`, creates one workflow comment.
 4. **Step 2 — worktree** — git worktree at `.worktrees/issue-123-add-feature/` on branch `feat/issue-123-add-feature`. Env files (`.env*`) copied across, `pnpm install --frozen-lockfile` run.
 5. **Phase steps** — workflow dispatches subagents (`@bkit-plan-generate`, then `@bkit-plan-review-1` ‖ `-2` ‖ `-3` as a parallel triplet, etc.). Each writes to `docs/plans/{YYYYMM}/logs/{FID}/` (`{YYYYMM}` = canonical month bucket, set at design start) and appends one fenced section to the tracker comment.
-6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(issue-123-…): summary bkit [skip build] bkit [skip ci]` (design / plan) or `chore(issue-123-…): summary` (build / debug / ship) → push.
+6. **Phase summary** — subagent emits a verdict (`PASS` / `CONCERNS` / `FAIL`); workflow commits `chore(issue-123-…): summary bkit [skip ci]` (design / plan) or `chore(issue-123-…): summary` (build / debug / ship) → push.
 7. **Close Workflow** — transitions tracker state to `In Review`; phase label persists. For `/bkit-design` and `/bkit-plan`, worktree is pruned and `feat/issue-123-…` deleted (changes merged into `dev`). For `/bkit-build` / `/bkit-debug`, worktree persists.
 8. **Human review** — design / plan doc lives at `docs/plans/{YYYYMM}/{FID}-{design,plan}.md` (canonical, durable). Reviewer can re-trigger or progress to `/bkit-build`.
 9. **`/bkit-build`** — re-creates worktree, executes plan, runs lint/typecheck/unit tests, opens PR to `dev`.
