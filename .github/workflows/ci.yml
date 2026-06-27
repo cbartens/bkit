@@ -57,6 +57,11 @@ jobs:
 
           MARKERS=""
           case "$MSG" in *"[force build]"*) MARKERS="$MARKERS force-build" ;; esac
+          # [force full] (#291) — the consumer-scaffold hammer (full + bypass web_affected →
+          # integration + e2e + @live). bkit's own repo is single-package with no deploy /
+          # affected-graph, so there is nothing extra to bypass: [force full] is recognised
+          # here purely so the marker dogfoods to run_level=full (same as [force build]).
+          case "$MSG" in *"[force full]"*) MARKERS="$MARKERS force-full" ;; esac
           case "$MSG" in *"[force cache]"*) MARKERS="$MARKERS force-cache" ;; esac
           case "$MSG" in *"[verbose ci]"*) MARKERS="$MARKERS verbose-ci" ;; esac
           case "$SKIP_MSG" in *"[skip ci]"*) MARKERS="$MARKERS skip-ci" ;; esac
@@ -85,15 +90,23 @@ jobs:
 
           HAS_SKIP=$(echo "$MARKERS" | jq 'any(.[]; . == "skip-ci")' 2>/dev/null || echo "false")
           HAS_FORCE_BUILD=$(echo "$MARKERS" | jq 'any(.[]; . == "force-build")' 2>/dev/null || echo "false")
+          HAS_FORCE_FULL=$(echo "$MARKERS" | jq 'any(.[]; . == "force-full")' 2>/dev/null || echo "false")
 
           if [ "$HAS_SKIP" = "true" ]; then
-            # Layer 1 — [skip ci] wins: do not run.
+            # Layer 1 — [skip ci] wins: do not run. Hard veto over any force marker (#291).
             RUN_LEVEL="none"; DEPTH_SOURCE="marker:skip-ci"; WHETHER_REASON="skipped-because:skip-ci-marker"
             echo "🛑 [skip ci] → run_level=none"
-          elif [ "$HAS_FORCE_BUILD" = "true" ]; then
-            # Layer 2 — how much to run.
-            RUN_LEVEL="full"; DEPTH_SOURCE="marker:force-build"; WHETHER_REASON="ran-because:force-build"
-            echo "✅ [force build] → run_level=full"
+          elif [ "$HAS_FORCE_BUILD" = "true" ] || [ "$HAS_FORCE_FULL" = "true" ]; then
+            # Layer 2 — how much to run. [force build] / [force full] both escalate to full
+            # here; in a deploy-bearing consumer scaffold [force full] additionally bypasses
+            # web_affected (integration + e2e + @live) — bkit's own repo has no such tiers.
+            if [ "$HAS_FORCE_FULL" = "true" ]; then
+              RUN_LEVEL="full"; DEPTH_SOURCE="marker:force-full"; WHETHER_REASON="ran-because:force-full"
+              echo "✅ [force full] → run_level=full"
+            else
+              RUN_LEVEL="full"; DEPTH_SOURCE="marker:force-build"; WHETHER_REASON="ran-because:force-build"
+              echo "✅ [force build] → run_level=full"
+            fi
           elif [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             RUN_LEVEL="full"; DEPTH_SOURCE="event:$EVENT_NAME"; WHETHER_REASON="ran-because:$EVENT_NAME"
             echo "✅ $EVENT_NAME → run_level=full"

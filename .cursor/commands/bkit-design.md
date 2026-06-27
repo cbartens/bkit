@@ -133,7 +133,7 @@
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
 2. Create/resume the worktree:
@@ -415,7 +415,7 @@
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" --arg v "$SUMMARY_VERDICT" \
      '{type:"step-done", workflow:"design", step:"design-summary", status:"DONE", verdict:$v, attempt:1, at:$t, parentSha:$p, artifacts:["docs/plans/{YYYYMM}/logs/{FID}/design-summary.md"]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip build] bkit [skip ci]"
+   git add -A && git commit --allow-empty -m "chore({FID}): summary bkit [skip ci]"
    ```
 6. Assert `{BRANCH}` non-empty and push (force-with-lease on the personal branch, plain on `dev`/`main`):
    ```bash
@@ -514,7 +514,7 @@
    jq -nc --arg p "$PARENT_SHA" --arg t "$(date -u +%FT%TZ)" \
      '{type:"step-done", workflow:"design", step:"design-workstream-issues", status:"DONE", at:$t, parentSha:$p, artifacts:[]}' \
      >> "$STATUS"
-   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues bkit [skip build]"
+   git add -A && git commit --allow-empty -m "chore({FID}): design-workstream-issues"
    ```
 7. `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, body: "{BODY}" })` — NEW comment, no edit.
    `{BODY}` = fenced block below:

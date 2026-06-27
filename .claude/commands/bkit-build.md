@@ -72,7 +72,7 @@ description: "Build Feature — Autonomous implementation"
 6. Assert subagent Update/Create files exist and are non-empty. **If** any file empty → **Failure Path**.
 7. `git status --short` → remove unintended files.
 8. `git add -A`.
-9. `git commit -m "docs({FID}): build aborted bkit [skip build] bkit [skip ci]"`.
+9. `git commit -m "docs({FID}): build aborted bkit [skip ci]"`.
 10. Assert `{BRANCH}` non-empty, then push with EC-2 abort-guard (preserve last validated remote HEAD when a live PR exists — never push a `[skip ci]` abort commit onto an open PR):
     ```bash
     B=$(git branch --show-current)
@@ -187,7 +187,7 @@ description: "Build Feature — Autonomous implementation"
    if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
      git status --short
      git add docs/plans/{YYYYMM}/logs/{FID}/ .bkit/friction.md
-     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes bkit [skip build]"
+     git diff --cached --quiet || git commit -m "chore({FID}): pre-worktree uncommitted changes"
    fi
    ```
 2. Create/resume the worktree:

@@ -121,12 +121,16 @@ Bkit's shipped `ci.yml` recognises the tags below. Tags are case-sensitive, must
 | Tag | Effect | Scope |
 | --- | --- | --- |
 | `[force cache]` | Sets `TURBO_FORCE=1` for the run — turbo recomputes instead of replaying cache hits. Use when investigating suspected ghost-greens. | Read by `Detect Direct Push` step |
-| `[force build]` | Exposes `should_force_build=true` step output for downstream deploy gates. Has no effect unless the consumer's deploy steps gate on it. | Read by `Detect Direct Push` step |
-| `[force e2e]` | Exposes `should_run_e2e=true` step output. The `bkit-stub:e2e` block (when uncommented) runs E2E on this signal. | Read by `Detect Direct Push` step |
-| `[force live]` | Sets the plan's `run_live=true` so the `bkit-tests-live` @live job runs even off a non-dev/main-push event. No effect unless you have added the `bkit-tests-live` job (full scaffold). | Read by `bkit-decide` (Read Markers → Decide Run Live & E2E) |
+| `[force build]` | The lighter hammer. Exposes `should_force_build=true` + `run_level=full`; does **not** bypass `web_affected`, so no integration / e2e / @live unless web is genuinely affected. Rebuild without paying @live's side effects. No effect unless the consumer's deploy steps gate on the output. | Read by `Detect Direct Push` step |
+| `[force full]` | The hammer. Exposes `should_run_full=true` → `run_level=full` **and** bypasses `web_affected` (the `bkit-stub:e2e` / integration / `bkit-tests-live` blocks run on **any** commit, incl. docs-only / empty), greening the non-hollow capstone (the forced lanes must genuinely run). On a PR it upgrades the local e2e lane to the full suite; `@live` stays **push-only** (reached on a docs-only/empty `[force full]` push via the effective `web_affected`, never off a PR / dispatch — real LLM + email side effects). Replaces the removed `[force e2e]` / `[force live]`. | Read by `Detect Direct Push` step |
 | `[verbose ci]` | Escalates log detail for one run: `TURBO_LOG_LEVEL=full`, `NODE_OPTIONS=--trace-warnings --trace-deprecation`, `DEBUG=vercel:*,supabase:*`, plus Playwright `--trace=on` (when E2E stub enabled). Use when `bkit-debug` diagnose returns thin evidence; never for routine pushes (trace.zip files are MB-scale). See `testing.md` for the full knob list and the `--reporter=line` hostile gap. | Read by `bkit:start verbose-ci-env` env block (top of `bkit-tests` job) |
 | `[skip ci]` / `[skip actions]` | Honoured natively by GitHub Actions — suppresses workflow dispatch entirely. Use sparingly: the suppressed run will not appear in `gh run list`, and downstream `workflow_run` triggers will not fire. | Native GitHub behaviour, not a bkit-level toggle |
-| `[skip build]` | Consumer-defined: bkit does not interpret this tag in `ci.yml`. Consumers wiring it into deploy steps add the gate themselves. | Consumer-controlled |
+
+**Two deploy-forcing markers only (#291): `[force build]` + `[force full]`.** The granular `[force e2e]` / `[force live]` were removed — they were silent no-ops on an unchanged tree (named "force" but gated behind `web_affected`). `[force full]` is the single gate-bypass: it means "validate everything," so one effective `web_affected` drives integration + e2e + @live uniformly.
+
+- **Precedence — `[skip ci]` / `[skip actions]` is a hard veto over any force marker.** A push commit carrying `[skip ci]` is never dispatched as a workflow run (native GitHub suppression, before any `ci.yml` code) — no force marker can un-suppress it. To validate a would-be-skipped commit, drop the `[skip ci]` and push with `[force full]`.
+- **`[force cache]` is orthogonal** — it busts turbo _replay_ (`TURBO_FORCE=1`), a different axis from _which lanes run_. Never folded into `[force full]`. Combine `[force full] [force cache]` for "everything, fresh."
+- **Marker parity (deploy-forcing set).** The e2e / @live lanes resolve a per-SHA deployment, so any marker that force-runs them must **also** force the host build, or the lane force-runs then dies at "resolve deployment URL" — worse than skipping. If you wire a host build-cancel script (e.g. Vercel `ignoreCommand`), it MUST honor **both** `[force build]` and `[force full]`; assert it in CI (a `grep -qF` guard over the cancel script). `[force cache]` / `[verbose ci]` / `[skip ci]` are test-plane-only and intentionally NOT honored by the cancel script.
 
 Direct push to `dev` (no merged PR ancestry) auto-sets `TURBO_FORCE=1` regardless of tags. See `bkit-debug` runbook for the cache-bust rationale.
 
@@ -139,12 +143,12 @@ Bkit ships a 4-job scaffold — `bkit-decide` (always-on; reads markers, compute
 | --- | --- | --- | --- |
 | `none` | HEAD has `[skip ci]` / `[skip actions]`; or `cache.outputs.skip == 'true'` (SHA passed in last 7 days). | Nothing (workflow skipped entirely or short-circuited after the cache check). | All gates |
 | `partial` | Push to `dev` from a merged PR; routine chore commits without `[force build]`. | Typecheck, unit tests, integration tests, format check, prose + slop lint, bkit check. | Deploy, smoke, E2E. |
-| `full` | Push to `main`; PR runs; or any commit with `[force build]` / `[force e2e]`. | Partial + deploy gate + (optional) Vercel preview await + E2E. | Smoke (runs as `workflow_run` after CI). |
+| `full` | Push to `main`; PR runs; or any commit with `[force build]` / `[force full]`. | Partial + deploy gate + (optional) Vercel preview await + E2E. | Smoke (runs as `workflow_run` after CI). |
 
 Composition guidance:
 
 - Treat `cache.outputs.skip` as the `none` gate — every step gates on `if: steps.cache.outputs.skip != 'true'`.
-- Treat `steps.detect.outputs.should_force_build` / `should_run_e2e` as escalation flags into `full`.
+- Treat `steps.detect.outputs.should_force_build` / `should_run_full` as escalation flags into `full`.
 - Treat the absence of a merged PR for a `dev` push (auto-set `TURBO_FORCE=1`) as the recovery signal — partial CI runs with cache busted.
 - Smoke lives in a separate workflow (see `bkit-stub:smoke` in `ci.yml`) keyed to `workflow_run` so it does not block PR merges but still gates production observability.
 - The capstone `bkit-tests-check` is the SOLE branch-protection required check (apply via `.bkit/scripts/bkit-protect-main.sh`). Green there means the tiers the plan _expected_ actually ran and passed — `green == validated`, not merely "the tests job did not fail". A light / cached / partial run is green by construction, so confirm a `full` run before treating green as validation.
@@ -401,8 +405,7 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 | --- | --- | --- |
 | `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
 | `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — `worktree-setup`, `create-pr`, `summary` (design/plan), status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
-| `bkit [skip build]` | NO for CI; YES for Vercel | Vercel ignore script cancels preview build; CI cap remains at partial tier. Not a CI suppressor — safe on PR HEAD when CI must fire. PR title must not carry it (blocks post-squash deploy). |
-| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. The former `bkit [skip build]` Vercel-cancel tag was removed (#291) — docs-only commits self-cancel via the host's affected-detection build-cancel. A stray `[skip build]` in a PR title is still rejected by the HEAD-Subject Assertion (defensive: it would skip post-merge deploy on hosts that honor it). |
 | `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow + debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; treated as legitimate by the HEAD-Subject Assertion. |
 | `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
 
@@ -414,7 +417,7 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 | build `create-pr` commit | `chore({FID}): create-pr bkit [skip ci]` — bookkeeping; no CI trigger. Fires after PR creation but before the close-workflow push. |
 | ship squash merge | `gh pr merge --squash --body ""` — empty body strips PR-body `bkit [skip ci]` from the squash subject so `dev`'s merge HEAD is clean. Followed by post-merge `gh run list --branch dev --limit 5` gate that captures `RUN_ID`. |
 
-All other docs-only intermediate commits (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) retain `bkit [skip build] bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow` commit (build/debug) and the squash-merge subject (ship) are unmarked and loud.
+All other docs-only intermediate commits (start-workflow, summary, install-skills, update-docs, archive, worktree-cleanup) retain `bkit [skip ci]` to save CI minutes. Only the trailing `close-workflow` commit (build/debug) and the squash-merge subject (ship) are unmarked and loud.
 
 **Commit-message tags reference (full table):** see `.bkit/workflows.md` § "CI / Vercel commit tags".
 

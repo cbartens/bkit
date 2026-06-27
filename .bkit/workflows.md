@@ -503,7 +503,7 @@ Every command has `## 🤖 Failure Path` section before Step 1. Triggered by any
 **Conditional handover** — runs ONLY if failure was triggered by max-retry exhaustion (`MAX_VERIFY_ATTEMPT` / `MAX_TEST_ATTEMPT` / `MAX_NORMAL_ATTEMPT` / `MAX_SOAK_ATTEMPT` / `MAX_MERGE_ATTEMPT` exceeded) **and** the worktree exists (the handover agent `cd`s into `.worktrees/{FID}`; `/bkit-debug` decides `DEBUG_MODE` in Step 1 before the worktree exists, so its Failure Path guards on `.worktrees/{FID}` existence before routing a mode-triggered handover — a pre-worktree failure with the mode already set goes straight to STOP):
 
 4. Invoke `@bkit-debug-abort-handover` with all relevant prior logs as Read context; Write `docs/plans/{YYYYMM}/logs/{FID}/{phase}-handover.md`.
-5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip build] bkit [skip ci]` → push with **EC-2 abort-guard**: before pushing, probe `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'`. Open PR found (non-empty result) → **do NOT push** the `[skip ci]` abort commit; preserve last validated remote HEAD and log `[bkit-ci-gate] abort-guard: open PR on branch — preserving last validated remote HEAD (no push)`. No open PR → push as normal. **Probe failed (non-zero exit) → inverted safe default: treat as "PR exists, do NOT push"** (cost-asymmetry: pushing a `[skip ci]` abort HEAD onto a live PR silently empties the PR's rollup; not-pushing on a no-PR branch is harmless) — log the probe failure with the `[bkit-ci-gate]` prefix.
+5. `git add -A` → commit `docs({FID}): {phase} aborted bkit [skip ci]` → push with **EC-2 abort-guard**: before pushing, probe `gh pr list --head "$(git branch --show-current)" --base dev --json number --jq '.[0].number'`. Open PR found (non-empty result) → **do NOT push** the `[skip ci]` abort commit; preserve last validated remote HEAD and log `[bkit-ci-gate] abort-guard: open PR on branch — preserving last validated remote HEAD (no push)`. No open PR → push as normal. **Probe failed (non-zero exit) → inverted safe default: treat as "PR exists, do NOT push"** (cost-asymmetry: pushing a `[skip ci]` abort HEAD onto a live PR silently empties the PR's rollup; not-pushing on a no-PR branch is harmless) — log the probe failure with the `[bkit-ci-gate]` prefix.
 6. Append `### Workflow Handover` block to workflow comment with handover blob link and verbatim body.
 
 7. **STOP** — no further downstream steps.
@@ -589,7 +589,7 @@ Each subsection below documents what command actually does — step list, subage
 | 5 — Design Review | `@bkit-design-review-1` ‖ `@bkit-design-review-2` (parallel) | `design-v1-draft.md`, `design-input.md` | `design-review-1.md`, `design-review-2.md` (opinion-only logs) | Effort-tier diversity (high vs medium); sibling-blind. `REVIEW_VERDICT` = worst of two. `FAIL` → Failure Path. |
 | 6 — Apply Review | `@bkit-design-update` | `design-v1-draft.md`, both reviews | `design-v2-reviewed.md` (versioned draft) | CRITICAL items always applied; OPTIONAL applied on consensus; OUT-OF-SCOPE deferred. |
 | 7 — Design Organise | `@bkit-design-organise` | `design-v2-reviewed.md` | `design-v3-organised.md` (versioned draft) | Decompose design into dependency-annotated workstreams (`WS-N`). `ORGANISE_VERDICT` = `FAIL` (cycles) → Failure Path. |
-| 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary bkit [skip build] bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
+| 8 — Summary | `@bkit-design-summary` | highest design-v* + glob design-* | `design-summary.md` | Commit `chore({FID}): summary bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 9 — Design Workstream Issues | — | `design-v3-organised.md` | tracker sub-issues + block-by edges, `status.jsonl` | Per `WS-N` block in `## Design Workstreams`: list existing sub-issues → existing match → sync comment (body untouched); else create sub-issue with `**Parent issue:**` + `**Parent design:**` + `**Workstream:**` + `**Requires:**` markers and inline `### Scope` / `### Rationale`. Single unified `WORKSTREAM_ISSUE_ID` map covers create + update branches. Second pass: add block-by edge per `Requires`. Idempotent; orphans get a `## Workstream Delete` comment, body untouched. |
 | 10 — Close Workflow | — | — | `{YYYYMM}/{FID}-design.md` (copy of v3) | Friction sweep + copy v3 to canonical bucket → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; phase label `Design` persists. Final return displays `design-summary.md` verbatim. |
 
@@ -613,7 +613,7 @@ Each subsection below documents what command actually does — step list, subage
 | 7 — Apply Scope | `@bkit-plan-update` | In-place edits; scope expansions → APPEND `docs/pending.md`. |
 | 8 — Check Complexity | `@bkit-plan-complexity-check` | `COMPLEXITY_VERDICT` ∈ {single, split}. |
 | 9 — Split Plan | `@bkit-plan-complexity-split` _(only if `split`)_ | Writes `{FID}-plan-N.md` sub-plans + `plan-split.md` log; self-verifies losslessness (`SPLIT_VERDICT` ∈ {PASS, FAIL}; `FAIL` → Failure Path). |
-| 10 — Summary | `@bkit-plan-summary` | Commit `chore({FID}): summary bkit [skip build] bkit [skip ci]` → push. |
+| 10 — Summary | `@bkit-plan-summary` | Commit `chore({FID}): summary bkit [skip ci]` → push. |
 | 11 — Close Workflow | — | Sync to `dev`, prune worktree, delete branches (same as `/bkit-design` Step 10). Set state `In Review`; phase label `Plan` persists. Final return displays `plan-summary.md` verbatim. |
 
 **Hard stop in Step 11 caution block:** "Plan requires human review. Do NOT invoke `/bkit-build`."
@@ -630,7 +630,7 @@ Each subsection below documents what command actually does — step list, subage
 | 1 — Start Workflow | — | Pre-flight: fetch `origin/dev`. Set label `Build`, `In Progress`. Check `relations.blocked_by` — any blocker not in `{Done, Cancelled}` → Failure Path with `Blocked by {BLOCKER_ID}`. Plan must exist at `docs/plans/{YYYYMM}/{FID}-plan.md` — else Failure Path with `Build requires plan.` NO commits on `dev` — `start-workflow` step entry deferred to Step 2 inside the worktree. |
 | 2 — Worktree Setup | — | Init `SUB_COUNT` (count `docs/plans/{YYYYMM}/{FID}-plan-*.md`), `VERIFY_ATTEMPT` = 1, `TEST_ATTEMPT` = 1. `build-input.md` includes the canonical plan. No path moves — plan stays at canonical bucket from design close. |
 | 3 — Branch Sync | — | `git fetch origin`; if `git log HEAD..origin/dev --oneline -- docs/` non-empty → merge `origin/dev` (prefer `dev` for `docs/` conflicts). |
-| 4 — Skills | `@bkit-build-install-skills` _(skip if input contains `[skills=false]`)_ | If new skills installed → commit `chore({FID}): install skills bkit [skip build] bkit [skip ci]`. |
+| 4 — Skills | `@bkit-build-install-skills` _(skip if input contains `[skills=false]`)_ | If new skills installed → commit `chore({FID}): install skills bkit [skip ci]`. |
 | 5 — Execute Plan | `@bkit-build-plan-execute` | Per sub-plan N: `build-plan-execute-N-log.md`. Single-attempt; writes stub-first then incremental `DONE` / `BLOCKED` log entries via `Bash echo >>`; writes source. Does NOT modify the sub-plan markdown — checkbox ticking is verify's job (per-task `Edit`-tick phase after impl is done is a known timeout vector; verify absorbs recovery). On timeout (`EXECUTE_VERDICT = PENDING`), no in-Step retry — the verify→remediate loop (Step 6 → Step 7, bounded by `MAX_VERIFY_ATTEMPT` = 3) absorbs the recovery via `bkit-build-plan-gaps-remediate`. `EXECUTE_VERDICT`: `PASS` → Step 6. Other → Failure Path. |
 | 6 — Verify Plan | `@bkit-build-plan-verify` | Per sub-plan N, attempt-numbered: `build-plan-verify-N-{VERIFY_ATTEMPT}.md`. Reads glob of execute attempts' `DONE —` lines + each task's `**Done when:**` line to cross-reference against `git diff`; ticks plan `[ ]`→`[x]` ONLY when task's `**Done when:**` criterion is satisfied in the codebase (NEVER on `DONE —` claim alone). Missing `**Done when:**` on any task → FAIL (template structure broken — remediation cannot recover, routes via Failure Path). `VERIFY_VERDICT` ∈ {PASS, CONCERNS, FAIL}. `PASS` → next N or Step 8. `CONCERNS` / `FAIL` → Step 7. Reads prior verify and remediate logs to know what was already verified. |
 | 7 — Remediate Gaps | `@bkit-build-plan-gaps-remediate` _(only if Step 6 CONCERNS or FAIL)_ | Attempt-numbered: `build-plan-gaps-remediate-N-{VERIFY_ATTEMPT}-log.md`. Stub-first artifact + flat append-only log (`DONE —` per gap fixed; `BLOCKED —` per blocked gap, appended via `Bash echo >>`); reads glob of own prior attempts to skip already-fixed gaps. Increment `VERIFY_ATTEMPT`; re-run Step 6. > `MAX_VERIFY_ATTEMPT` → Failure Path. |
@@ -713,7 +713,7 @@ Each subsection below documents what command actually does — step list, subage
 | 3 — Audits | `@bkit-audit-architecture` ‖ `-hotpath` ‖ `-config` ‖ `-reliability` ‖ `-observability` ‖ `-debt` ‖ `-dead-code` ‖ `-deps` ‖ `-security` ‖ `-tests` ‖ `-docs-drift` (parallel 11) | `audit-input.md` | 11 x `audit-{slug}.md` | Sibling-blind. Each auditor reads `.agents/docs.md` for project context (stack-aware report; stack-agnostic probes). Post-Step-3 assertion gate: for each slug verify file exists, non-empty, verdict header present. `LENS_VERDICT_WORST` = worst-of-11 (`FAIL > CONCERNS > PASS`); `MISSING`/`EMPTY` → `CONCERNS`-equivalent; `NO_VERDICT` → `FAIL`-equivalent → Failure Path. |
 | 4 — Synthesise | `@bkit-audit-synthesise` | glob `audit-*.md` | `audit-v1-synthesis.md` | Parse standard markdown finding headings via regex `^## \[(\w+)\]\[(\w+)\] (.+) — (.+)$`; dedup on `(class, normalized_location)` with 5-line bucket; severity max-wins; cross-audit confidence upgrade one tier. `SYNTHESIS_VERDICT` = FAIL → Failure Path. |
 | 5 — Organise | `@bkit-audit-organise` | `audit-v1-synthesis.md` | `audit-v2-ranked.md` + Linear sub-issues per workstream | Render severity x class matrix + ranked list + per-class appendix + workstreams. Post-step: orchestrator parses `## Workstreams` section and `save_issue` per `WS-{N}` with `parentId: {ISSUE_ID}` (existing match → `save_comment` sync). `ORGANISE_VERDICT` = FAIL (orphan correlation_id) → Failure Path. |
-| 6 — Summary | `@bkit-audit-summary` | highest `audit-v*` + glob `audit-*.md` | `audit-summary.md` | Subagent emits 500-token summary. Orchestrator appends Step 6 section to master Linear comment with `audit-summary.md` content verbatim. Commit `chore({FID}): summary bkit [skip build] bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
+| 6 — Summary | `@bkit-audit-summary` | highest `audit-v*` + glob `audit-*.md` | `audit-summary.md` | Subagent emits 500-token summary. Orchestrator appends Step 6 section to master Linear comment with `audit-summary.md` content verbatim. Commit `chore({FID}): summary bkit [skip ci]` → push. `SUMMARY_VERDICT` = FAIL → Failure Path. |
 | 7 — Close Workflow | — | — | `docs/audits/{FID}-audit.md` (copy of v2) | Friction sweep + copy v2 to `docs/audits/` → `cd $REPO_ROOT` → checkout `dev` → merge `feat/{FID}` → push `dev` → `git worktree remove` → delete local + remote `feat/{FID}` → `git worktree prune`. Set state `In Review`; NO phase label change (audit applies no label). |
 
 **Hard stop in Step 7 caution block:** "Audit requires human review. Do NOT invoke `/bkit-plan` or `/bkit-build`. Findings are advisory; act on them via the spawned Linear sub-issues or open follow-up issues."
@@ -914,21 +914,20 @@ Precedence: `bkit [force build]` on head commit wins.
 | Tag | Effect |
 | --- | --- |
 | `bkit [skip ci]` | GitHub Actions skip the workflow / `vercel-build` sets `run_level=none`. |
-| `bkit [skip build]` | Vercel ignore script cancels preview build; CI cap remains at partial tier. |
 | `bkit [force build]` | Forces full CI + Vercel build even on docs-only paths. Used by `/bkit-build` Step 16 when `supabase/migrations/` changed without it on HEAD. |
 
-**Docs-only commits:** workflows append BOTH `bkit [skip build]` and `bkit [skip ci]` — they are independent levers and both must be present for cleanest skip.
+**Docs-only commits:** workflows append `bkit [skip ci]` (CI suppression). The former `bkit [skip build]` Vercel-cancel lever was removed (#291) — a docs-only commit is not web-affected, so a host's affected-detection build-cancel (e.g. the turbo-affected `vercel-build-cancel.sh`) skips the preview build without it. Hosts that cancel ONLY on `[skip build]` will now build docs-only workflow commits; switch them to affected-detection.
 
 <!-- prettier-ignore -->
 | Workflow commit | Tags |
 | --- | --- |
-| `chore: pre-worktree uncommitted changes` (Step 2 of every phase) | `bkit [skip build] bkit [skip ci]` |
-| `chore: pre-worktree uncommitted changes` (Step 2 of every phase) | `bkit [skip build]` |
+| `chore: pre-worktree uncommitted changes` (ship Step 2) | `bkit [skip ci]` |
+| `chore({FID}): pre-worktree uncommitted changes` (design / plan / build Step 2) | none — feature-branch intermediate (#291 removed the prior `bkit [skip build]`) |
 | `chore({FID}): {step-slug}` for per-step in-worktree commits (e.g. `worktree-setup`, `branch-sync`, `install-skills`, `plan-execute sub-plan N`, `plan-verify sub-plan N attempt M`, `failure-diagnose attempt N`, `build-challenge attempt N`, `build-challenge-reconcile attempt N`, `build-challenge-remediate attempt N`, `build-challenge-tests`, `summary`, `create-pr`, ship `merge-pr attempt N`, ship `prune-skills`, ship `update-docs-summary`) | none — in-worktree, never visible to CI on `dev` |
-| `chore({FID}): summary bkit [skip build] bkit [skip ci]` (design Step 8 summary, plan Step 10 summary) | `bkit [skip build] bkit [skip ci]` |
+| `chore({FID}): summary bkit [skip ci]` (design Step 8 summary, plan Step 10 summary) | `bkit [skip ci]` |
 | `fix({FID}): {description}` (debug Step 5 failure-remediate) | none — Step 7 pushes this commit directly so `fix(...)` becomes the CI-triggering HEAD (dodges `^chore:`-prefix Vercel-ignore rules and partial-tier `decide`-step demotion). `{description}` derived from first `DONE — Step` line in `debug-failure-remediate-{NORMAL_ATTEMPT}-log.md`. Debug Step 7 adds NO intermediate `chore(...)` commit before push. |
 | `docs({FID}): ship DONE` (ship Step 13 close-workflow on `dev`) | `bkit [skip ci]` |
-| `docs({FID}): {phase} aborted` (Failure Path handover) | `bkit [skip build] bkit [skip ci]` |
+| `docs({FID}): {phase} aborted` (Failure Path handover) | `bkit [skip ci]` |
 | `chore({FID}): close-workflow` (build Step 18 — opted-in: `bkit [auto route]` suffix when issue carried `bkit:auto` at close time) | none on base commit; opted-in adds `bkit [auto route]` (loud, not a suppressor) — final HEAD on push, fires `pull_request` synchronize + CI auto-route gate |
 | `chore({FID}): close-workflow` (debug Step 12 PR-mode — opted-in) | none / `bkit [auto route]` (PR-mode, conditional) — same as build |
 | `chore({FID}): create-pr` (debug Step 12 local-mode — opted-in) | none / `bkit [auto route]` (local-mode, conditional) — CI-triggering HEAD in local-mode |
@@ -1003,7 +1002,7 @@ HEAD_MSG=$(git log -1 --pretty=%B)
 if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
   echo "HEAD-subject assertion FAILED: HEAD commit message contains a CI-suppressing token." >&2
   echo "Fix: ensure the final commit before push is the loud close-workflow commit (no skip token in subject OR body)." >&2
-  echo "Escape hatch: add 'bkit [force build]' to override Vercel-only skip tags." >&2
+  echo "Escape hatch: add 'bkit [force build]' to force a full build + CI." >&2
   exit 1
 fi
 
@@ -1011,16 +1010,16 @@ fi
 PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
 if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
   echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
-  echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+  echo "Fix: remove the suppressing tag from the PR title." >&2
   exit 1
 fi
 ```
 
 - **Deny-list tokens — HEAD message (subject + body):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`.
-- **Deny-list tokens — PR title additionally:** `[skip build]` (squash subject becomes `dev` HEAD; `[skip build]` there skips post-merge deploy).
+- **Deny-list tokens — PR title additionally:** `[skip build]` — defensive only. bkit no longer emits `[skip build]` (#291), but a stray / user-typed one in a PR title lands in the squash subject as `dev` HEAD and skips post-merge deploy on any host that still honors the tag; the guard rejects it.
 - **Legitimate loud tokens that pass automatically (deny-list, so no allow-list needed):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. None contain a suppressor substring.
 - **Hard-fail loud:** name the offending commit subject or PR title + the fix. Route to Failure Path. No silent auto-fix.
-- **Escape hatch:** `bkit [force build]` on HEAD overrides Vercel-only `[skip build]` and is not itself a suppressor.
+- **Escape hatch:** `bkit [force build]` on HEAD forces a full CI + host build and is not itself a suppressor.
 
 Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip ci]` HEADs intermediately (D2: `worktree-setup`/`create-pr` commits) and to `dev` (status bookkeeping). A blanket pre-push hook would wrongly block those legitimate pushes. Only the orchestrator knows which push is the final loud one.
 
@@ -1033,7 +1032,7 @@ Rationale: the invariant is **contextual** — bkit intentionally pushes `[skip 
 | `/bkit-ship` | 4 (merge-pr) | `gh pr merge --squash --body ""` — squash subject becomes dev HEAD, body empty | `gh pr merge` is the only API; empty body strips PR-body `bkit [skip ci]` from the squash subject. Followed by pre-existing `gh run list --branch dev --commit "$SQUASH_SHA"` gate (not a CI-Dispatch Gate) |
 | `/bkit-ship` | 10 / 11 / 13 (post-merge dev pushes) | Step 10 `docs({FID}): update-docs-summary`, Step 11 `chore({FID}): prune-skills`, Step 13 `docs({FID}): ship DONE bkit [skip ci]` | Post-merge docs-only; PR already merged, dev's CI fired by Step 6, no re-trigger needed. Per-step commits batched locally; single push to `dev` at Step 13 close-workflow. |
 
-All intermediate workflow commits (start-workflow, summary, create-pr, etc.) retain `bkit [skip build] bkit [skip ci]` — only the trailing `close-workflow` commit is unmarked, and it is the LAST commit before the final `git push`. This also fixes the prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
+All intermediate workflow commits (start-workflow, summary, create-pr, etc.) retain `bkit [skip ci]` — only the trailing `close-workflow` commit is unmarked, and it is the LAST commit before the final `git push`. This also fixes the prior latent bug where build Step 18 / debug Step 12 commits were never explicitly pushed.
 
 ## Permissions (`.claude/settings.json`)
 
@@ -1102,7 +1101,7 @@ When a tracker call creates a new issue, it MUST return a non-empty `id`. Empty/
 if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
   git status --short
   git add -- ':\!.DS_Store' ':\!*.log' ':\!*.swp' ':\!node_modules'
-  git commit -m "chore: pre-worktree uncommitted changes bkit [skip build] bkit [skip ci]"
+  git commit -m "chore: pre-worktree uncommitted changes bkit [skip ci]"
 fi
 ```
 
@@ -1173,7 +1172,7 @@ When writing or editing `.bkit/workflows/bkit-*.md` (canonical source — `bkit 
 - [ ] Loops cap at `MAX_*_ATTEMPT` constants; exhaustion → Failure Path; per-attempt logs use `-{N}` filename suffix.
 - [ ] Timeout guard captures `STEP_START` before each subagent / `pnpm turbo`; exceeded → Failure Path.
 - [ ] Final step (Close Workflow) marks `status:done`, releases `.lock`, sets state `In Review` (ship: state `Done`, swaps label `Ship` → `Merged`); non-ship phases update state only, phase label unchanged.
-- [ ] Docs-only commits include both `bkit [skip build]` and `bkit [skip ci]` (§ CI / Vercel commit tags).
+- [ ] Docs-only commits include `bkit [skip ci]` (§ CI / Vercel commit tags).
 - [ ] Branch eligibility check on phases that don't create their own branch (`/bkit-debug`, `/bkit-ship`).
 - [ ] Token efficient — tables > prose, `→` not `then`, no sub-bullets when a table works.
 - [ ] If new agent is introduced, add it to `.bkit/prompts.md` with frontmatter rationale and `maxTurns` calibration.

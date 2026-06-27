@@ -680,7 +680,7 @@ const BKIT_STUBS = [
     {
         id: "e2e",
         file: ".github/workflows/ci.yml",
-        description: "Run `pnpm test:e2e` gated on `should_run_e2e` (commit tag) or `needs_e2e` (auto-force-e2e). Pairs with vercel-await for PR-time runs against the preview deployment.",
+        description: "Run `pnpm test:e2e` gated on `should_run_full` (the `[force full]` commit/PR tag) or `needs_e2e` (auto-force-e2e). Pairs with vercel-await for PR-time runs against the preview deployment.",
     },
     {
         id: "smoke",
@@ -793,7 +793,7 @@ export function detectBkitStubs(cwd) {
                 id: "bkit-stub-pair-e2e-without-auto-force",
                 severity: "advisory",
                 detect: ".github/workflows/ci.yml has `Run E2E Tests` enabled but `bkit-stub:auto-force-e2e` is still commented.",
-                action: "E2E now requires `[force e2e]` in the commit/PR title on every run. Enable `bkit-stub:auto-force-e2e` to auto-trigger for PRs touching sensitive paths (auth, migrations, payment, api, server) without the manual tag.",
+                action: "E2E now requires `[force full]` in the commit/PR title on every run. Enable `bkit-stub:auto-force-e2e` to auto-trigger for PRs touching sensitive paths (auth, migrations, payment, api, server) without the manual tag.",
             });
         }
     }
@@ -941,7 +941,7 @@ export function detectGhaFloatingTags(cwd) {
 }
 /**
  * Detect whether the consumer composed a gate on bkit's `Detect Direct Push` step
- * outputs (`should_force_build` / `should_run_e2e`). The bkit ci.yml ships these
+ * outputs (`should_force_build` / `should_run_full`). The bkit ci.yml ships these
  * primitives only — without a consumer-side gate reading the outputs, the force-tag
  * system documented in deployments.md is documentation-only.
  *
@@ -968,6 +968,9 @@ export function detectRunLevelsNotComposed(cwd) {
     // off "bkit's region"; matching the read form is what distinguishes a consumer gate.
     const readTokens = [
         "steps.detect.outputs.should_force_build",
+        "steps.detect.outputs.should_run_full",
+        // Legacy (pre-#291 template emitted should_run_e2e for the removed [force e2e]);
+        // kept so the check doesn't false-advise consumers who composed on the old output.
         "steps.detect.outputs.should_run_e2e",
     ];
     const composesRunLevels = (content) => content
@@ -994,12 +997,12 @@ export function detectRunLevelsNotComposed(cwd) {
     return {
         id: "run-levels-not-composed",
         severity: "advisory",
-        detect: ".github/workflows/ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_e2e`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
+        detect: ".github/workflows/ci.yml ships bkit's `Detect Direct Push` step outputs (`should_force_build`, `should_run_full`, `cache.outputs.skip`) but no consumer-side workflow or step gates on them.",
         action: "`docs/deployments.md` documents bkit's none / partial / full run-level shape — the matrix is documentation-only until you compose at least one consumer-side gate. Examples:\n\n" +
             "  - A deploy job: `if: steps.detect.outputs.should_force_build == 'true' || github.ref == 'refs/heads/main'`\n" +
-            "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_e2e`).\n" +
+            "  - An E2E job: enable the `bkit-stub:e2e` block (which already gates on `should_run_full`).\n" +
             "  - A smoke workflow: copy the `bkit-stub:smoke` block to `.github/workflows/smoke.yml`.\n\n" +
-            "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force e2e]` tag detection.",
+            "If your consumer doesn't need run-level tiers (single-track CI, no preview deploys), dismiss by removing the `Detect Direct Push` step from ci.yml. Note this also disables `[force cache]` / `[force build]` / `[force full]` tag detection.",
     };
 }
 /**

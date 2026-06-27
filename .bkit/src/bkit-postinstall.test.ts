@@ -1386,12 +1386,23 @@ describe("detectRunLevelsNotComposed", () => {
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
       "      - name: Detect Direct Push\n" +
-        "      #   if: steps.detect.outputs.should_run_e2e == 'true'\n",
+        "      #   if: steps.detect.outputs.should_run_full == 'true'\n",
     );
     expect(detectRunLevelsNotComposed(tmpDir)).not.toBeNull();
   });
 
   it("returns null when a consumer enables an in-ci.yml gate reading the outputs", () => {
+    fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, ".github", "workflows", "ci.yml"),
+      "      - name: Detect Direct Push\n" +
+        "      - name: Run E2E Tests\n" +
+        "        if: steps.detect.outputs.should_run_full == 'true'\n",
+    );
+    expect(detectRunLevelsNotComposed(tmpDir)).toBeNull();
+  });
+
+  it("returns null for a legacy gate on the pre-#291 should_run_e2e output (backward-compat)", () => {
     fs.mkdirSync(path.join(tmpDir, ".github", "workflows"), { recursive: true });
     fs.writeFileSync(
       path.join(tmpDir, ".github", "workflows", "ci.yml"),
