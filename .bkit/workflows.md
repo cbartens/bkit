@@ -916,7 +916,7 @@ Precedence: `bkit [force build]` on head commit wins.
 | `bkit [skip ci]` | GitHub Actions skip the workflow / `vercel-build` sets `run_level=none`. |
 | `bkit [force build]` | Forces full CI + Vercel build even on docs-only paths. Used by `/bkit-build` Step 16 when `supabase/migrations/` changed without it on HEAD. |
 
-**Docs-only commits:** workflows append `bkit [skip ci]` (CI suppression). The former `bkit [skip build]` Vercel-cancel lever was removed (#291) — a docs-only commit is not web-affected, so a host's affected-detection build-cancel (e.g. the turbo-affected `vercel-build-cancel.sh`) skips the preview build without it. Hosts that cancel ONLY on `[skip build]` will now build docs-only workflow commits; switch them to affected-detection.
+**Docs-only commits:** workflows append `bkit [skip ci]` (CI suppression). The former `bkit [skip build]` build-cancel lever was removed (#291) — a docs-only commit is not app-affected, so a host's affected-detection build-cancel skips the build without it. Hosts that cancel ONLY on `[skip build]` will now build docs-only workflow commits; switch them to affected-detection.
 
 <!-- prettier-ignore -->
 | Workflow commit | Tags |
@@ -1008,15 +1008,14 @@ fi
 
 # PR-title clause: run at create-pr and ship squash
 PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
-if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
   echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
   echo "Fix: remove the suppressing tag from the PR title." >&2
   exit 1
 fi
 ```
 
-- **Deny-list tokens — HEAD message (subject + body):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]`.
-- **Deny-list tokens — PR title additionally:** `[skip build]` — defensive only. bkit no longer emits `[skip build]` (#291), but a stray / user-typed one in a PR title lands in the squash subject as `dev` HEAD and skips post-merge deploy on any host that still honors the tag; the guard rejects it.
+- **Deny-list tokens (HEAD message subject + body, AND PR title):** `[skip ci]`, `[ci skip]`, `[no ci]`, `[skip actions]`, `[actions skip]` — the GitHub-native CI suppressors. Both clauses enforce the same set. The stack-specific `[skip build]` is **not** checked (#291): it is a host build-cancel convention, not a platform-native CI suppressor, so it has no place in bkit's stack-agnostic gate contract.
 - **Legitimate loud tokens that pass automatically (deny-list, so no allow-list needed):** `bkit [auto route]`, `bkit [verbose ci]`, `bkit [force build]`. None contain a suppressor substring.
 - **Hard-fail loud:** name the offending commit subject or PR title + the fix. Route to Failure Path. No silent auto-fix.
 - **Escape hatch:** `bkit [force build]` on HEAD forces a full CI + host build and is not itself a suppressor.
