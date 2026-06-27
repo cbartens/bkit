@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -405,7 +405,7 @@ GitHub Actions suppresses both `pull_request` and `push` workflow runs when the 
 | --- | --- | --- |
 | `[skip ci]` / `[ci skip]` / `[no ci]` / `[skip actions]` / `[actions skip]` | YES — CI suppressor | GitHub Actions skips the workflow; `statusCheckRollup` empty. |
 | `bkit [skip ci]` | YES (substring match on `[skip ci]`) | bkit bookkeeping commits — `worktree-setup`, `create-pr`, `summary` (design/plan), status pushes to `dev`. Intentionally silent; never on CI-triggering HEAD. |
-| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. The former `bkit [skip build]` Vercel-cancel tag was removed (#291) — docs-only commits self-cancel via the host's affected-detection build-cancel. A stray `[skip build]` in a PR title is still rejected by the HEAD-Subject Assertion (defensive: it would skip post-merge deploy on hosts that honor it). |
+| `bkit [force build]` | NO (not a suppressor) | Forces full CI + Vercel build even on docs-only paths. Escape hatch for migrations/etc. The former `bkit [skip build]` build-cancel tag was removed (#291) — docs-only commits self-cancel via the host's affected-detection build-cancel; the HEAD-Subject Assertion no longer references it (stack-agnostic — it enforces only platform-native CI suppressors). |
 | `bkit [auto route]` | NO (not a suppressor) | Loud routing marker on close-workflow + debug re-trigger commits. Free-tier gate for `bkit-cloud.yml` CI auto-route. Present on opted-in close-workflow HEAD; treated as legitimate by the HEAD-Subject Assertion. |
 | `bkit [verbose ci]` | NO (not a suppressor) | Escalates CI log detail for one run (debug path). |
 

@@ -10,7 +10,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect reviewing a codebase against best practices and project goals.
 **Scope:** As specified by input or session prompt.

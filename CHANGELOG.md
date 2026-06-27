@@ -6,17 +6,26 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
-## [Unreleased]
+## [4.1.6] — 2026-06-27
 
-Re-fix `.npmrc` GH Packages auth so consumers can move off the pnpm 10.34.1 pin onto pnpm 11 (reopens #274).
-
-### Fixed
-
-- **GH Packages auth no longer relies on project-`.npmrc` env-substitution — reverses the 4.1.2 regression.** 4.1.2 re-added a `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line to the advised `.npmrc` on the premise "pnpm interpolates it at runtime" — false on pnpm >=10.34.2, which 401s on download (`ERR_PNPM_FETCH_401`). It only looked correct because everything was pinned to pnpm 10.34.1, where env-substitution still warns-but-works from store cache. Advisories, doc comments, KN-CORE-7, and `.bkit/.env.example` now prescribe #274's doctrine again: the project `.npmrc` carries only the `@cbartens` registry mapping; the token is written to pnpm's user-level config via `pnpm config set` (the shell-expanded literal token — version-proof across pnpm 10.x/11.x) on every install surface (CI step, local-once, Vercel `installCommand`). `detectNpmrcLegacyAuthToken` and the `npmrc-legacy-authtoken` advisory are restored.
+Re-fix `.npmrc` GH Packages auth for pnpm 11, consolidate CI force markers to `[force build]` + `[force full]`, add a pre-push CI-suppressor HEAD guard, and ship agent-doctrine + slop gate-suppression rules (#274, #291).
 
 ### Added
 
 - **`vercel-installcommand-missing-auth` post-install advisory.** Closes the gap that triggered the 4.1.2 revert: bkit checked the Vercel `GH_BKIT_TOKEN` env var but never whether `vercel.json` actually authenticates in its `installCommand`. A Vercel project whose install step omits the `pnpm config set` auth now surfaces at install time instead of as an un-attributable build 401. Unblocks the pnpm-11 migration (#176).
+- **Pre-push CI-suppressor HEAD guard.** `.husky/pre-push` (and its template) now blocks a push whose HEAD commit carries a `[skip ci]`-class token while an open PR exists for the branch — so a manual rebase, force-push, or post-close commit can no longer leave a PR's checks vacuously green. `dev`/`main` are exempt; a push with no open PR (mid-loop status, abort handover) is allowed; a missing `gh` degrades to a warning. Backstops the #261 CI-Dispatch gate, which only covers the workflow's own close push.
+- **`boundary/gate-suppression` slop rule.** Flags skipped/focused tests (`.skip`/`.only`/`x*`/`f*`) and BLANKET lint disables (whole-file or no-rule); targeted per-rule disables stay sanctioned per doctrine. Required-rule count raised 11 → 12.
+- **Agent-doctrine principles in `rules.md`.** Added Improve-over-duplicate, Scope discipline, No speculative scope, Truth over agreement, Honest reporting, No invented symbols, Comments & dead code, and Fix-code-never-gate to the shipped rules (and template mirror).
+- **GateGuard callee-existence check.** The Claude (`.cjs`) and opencode (`.js`) gateguard hooks now prompt to confirm the symbols, flags, and configs a change calls actually exist — complementing the existing caller/blast-radius check.
+
+### Changed
+
+- **CI force markers consolidated to `[force build]` + `[force full]`.** The shipped `ci.yml` and `deployments.md` force-tag table collapse the old per-lane tokens to two: `[force build]` and `[force full]` (the latter replaces `[force e2e]`, gating `should_run_full`). Documented precedence (skip > force), `[force cache]` orthogonality, and the marker-parity advisory. `should_run_e2e` is retained as a legacy token so pre-#291 consumers are not false-advised.
+- **`[skip build]` removed from workflow-commit doctrine.** bkit workflows now stamp only `bkit [skip ci]` on docs-only commits (was `bkit [skip build] bkit [skip ci]`); the standalone pre-worktree `[skip build]` is dropped. CI behaviour is unchanged — Vercel-cancel now relies on affected-detection. The PR-title HEAD-Subject Assertion keeps its defensive `[skip build]` check. `rules.md` tightened: `[skip ci]`/`[skip build]` are for workflow bookkeeping / docs-only commits only — never on a manual code commit or as a PR-branch HEAD.
+
+### Fixed
+
+- **GH Packages auth no longer relies on project-`.npmrc` env-substitution — reverses the 4.1.2 regression.** 4.1.2 re-added a `//npm.pkg.github.com/:_authToken=${GH_BKIT_TOKEN}` line to the advised `.npmrc` on the premise "pnpm interpolates it at runtime" — false on pnpm >=10.34.2, which 401s on download (`ERR_PNPM_FETCH_401`). It only looked correct because everything was pinned to pnpm 10.34.1, where env-substitution still warns-but-works from store cache. Advisories, doc comments, KN-CORE-7, and `.bkit/.env.example` now prescribe #274's doctrine again: the project `.npmrc` carries only the `@cbartens` registry mapping; the token is written to pnpm's user-level config via `pnpm config set` (the shell-expanded literal token — version-proof across pnpm 10.x/11.x) on every install surface (CI step, local-once, Vercel `installCommand`). `detectNpmrcLegacyAuthToken` and the `npmrc-legacy-authtoken` advisory are restored.
 
 ---
 

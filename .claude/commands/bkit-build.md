@@ -1,7 +1,7 @@
 ---
 description: "Build Feature — Autonomous implementation"
 ---
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Build Feature (Workflow 3/6)
 
@@ -915,7 +915,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 7. Run HEAD-Subject Assertion:
    ```bash
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
-   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
      echo "Fix: remove the suppressing tag from the PR title." >&2
      exit 1
@@ -968,7 +968,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
    # HEAD-Subject Assertion (HEAD clause): scan the realized full message (%B, subject + body) — GitHub
    # reads the whole commit message for skip tokens. Runs after commit, before the CI-triggering push.
    HEAD_MSG=$(git log -1 --pretty=%B)
-   if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+   if echo "$HEAD_MSG" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "HEAD-Subject Assertion FAILED: close-workflow HEAD message contains a CI-suppressing token." >&2; exit 1
    fi
    LOCK="$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock"

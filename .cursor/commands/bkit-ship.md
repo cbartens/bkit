@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.5 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
@@ -407,9 +407,9 @@
 3. Run HEAD-Subject Assertion:
    ```bash
    PR_TITLE=$(gh pr view {PR_NUMBER} --json title --jq .title)
-   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|\[skip build\]'; then
+   if echo "$PR_TITLE" | grep -iEq '\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]'; then
      echo "PR-title assertion FAILED: PR title '$PR_TITLE' contains a CI-suppressing token." >&2
-     echo "Fix: remove the suppressing tag from the PR title. Use 'bkit [force build]' if a Vercel-only skip is needed." >&2
+     echo "Fix: remove the suppressing tag from the PR title." >&2
      exit 1
    fi
    ```
