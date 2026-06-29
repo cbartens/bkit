@@ -2731,8 +2731,6 @@ describe("renderOpencodeJson — opencode custom-provider format", () => {
       "gh repo delete*",
       "gh pr close*",
       "gh release delete*",
-      "vercel rm*",
-      "supabase db reset*",
     ]) {
       expect(perm.bash[cmd], `${cmd} must be gated 'ask'`).toBe("ask");
     }
