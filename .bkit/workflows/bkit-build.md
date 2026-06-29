@@ -248,10 +248,13 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Long-branch advisory emitted
+
 <!-- bkit:tracker true start -->
+
 - [ ] Blocker check attempted (not blocked by any related issues)
 - [ ] Issue update attempted (phase label `bkit:build`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -373,8 +376,11 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Counters initialised (`SUB_COUNT` set, `VERIFY_ATTEMPT` = 0, `TEST_ATTEMPT` = 0, `CHALLENGE_REMEDIATE_ATTEMPT` = 0)
 - [ ] Artifact written (`build-input.md`, non-empty)
 - [ ] Workflow status updated (`build` `IN_PROGRESS`, steps `build-start-workflow` and `build-worktree-setup` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 2` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -412,8 +418,11 @@ description: "Build Feature — Autonomous implementation"
 - [ ] `docs/` not behind `origin/dev`
 - [ ] On correct worktree branch
 - [ ] Workflow status updated (step `build-branch-sync` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 3` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -455,8 +464,11 @@ description: "Build Feature — Autonomous implementation"
 - [ ] Artifact written (`build-install-skills.md`, non-empty)
 - [ ] New skills installed (or no new skills noted)
 - [ ] Workflow status updated (step `build-install-skills` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 4` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -509,8 +521,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdict extracted and valid (`EXECUTE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-plan-execute-{SUB_PLAN}-log.md`)
 - [ ] Workflow status updated (step `build-plan-execute` recorded with `parentSha`, `verdict`, `subPlan`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 5` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -562,8 +577,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdict extracted and valid, failures extracted (`VERIFY_VERDICT` in `PASS|CONCERNS|FAIL`; `VERIFY_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-{SUB_PLAN}-{VERIFY_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-plan-verify` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 6` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -620,8 +638,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Source files modified
 - [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `build-plan-gaps-remediate` recorded with `parentSha`, `verdict`, `attempt`, `subPlan`, `strategy`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 7` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -669,8 +690,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdict extracted and valid, failures extracted (`HOLISTIC_VERDICT` in `PASS|CONCERNS|FAIL`; `HOLISTIC_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-plan-verify-holistic.md`)
 - [ ] Workflow status updated (step `build-plan-verify-holistic` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 8` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -716,8 +740,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Subagents invoked (`@bkit-build-challenge-1`, `@bkit-build-challenge-2`, no inline work)
 - [ ] Artifacts written (`build-challenge-1.md` and `build-challenge-2.md`, non-empty)
 - [ ] Workflow status updated (step `build-challenge` recorded with `parentSha`, `attempt`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 9` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -766,8 +793,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdict extracted and valid, failures extracted (`CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`; `CHALLENGE_FAILURES`)
 - [ ] No PENDING placeholders remain (`build-challenge.md`)
 - [ ] Workflow status updated (step `build-challenge-reconcile` recorded with `parentSha`, `verdict`, `attempt`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 10` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -817,8 +847,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Source files modified or classify-gate FAIL recorded
 - [ ] Verdict extracted and valid (`REMEDIATE_CHALLENGE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-challenge-remediate` recorded with `parentSha`, `verdict`, `attempt`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 11` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -865,9 +898,13 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Test files created/updated
 - [ ] Verdict extracted and valid (`CHALLENGE_TESTS_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-challenge-tests` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 12` section)
+
 <!-- bkit:tracker true end -->
+
 - [ ] Routing applied (re-run Step 9 if `CHALLENGE_VERDICT` = FAIL; else Step 13)
 
 ---
@@ -930,8 +967,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Tests executed (turbo path if `turbo.json`)
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Workflow status updated (step `build-run-tests` recorded with `parentSha`, `verdict`, `scope`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 13` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -987,8 +1027,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Verdict extracted and valid (`DIAGNOSE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`build-failure-diagnose-{TEST_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `build-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 14` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -1034,8 +1077,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] Source files modified
 - [ ] Verdict extracted and valid (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `build-failure-remediate` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 15` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -1087,8 +1133,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] No PENDING placeholders remain (`build-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `build-summary` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 16` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -1171,8 +1220,11 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 - [ ] PR base verified (`PR_BASE` = dev)
 - [ ] HEAD-Subject Assertion passed
 - [ ] Workflow status updated (step `build-create-pr` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 17` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -1338,21 +1390,32 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
 
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
+
 <!-- bkit:tracker true start -->
+
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+
 <!-- bkit:tracker true end -->
+
 - [ ] HEAD-Subject Assertion passed
+
 <!-- bkit:tracker true start -->
+
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
+
 <!-- bkit:tracker true end -->
+
 - [ ] CI-Dispatch gate ran; ciDispatch verdict recorded on step-done (dispatched|self-healed|no-ci)
 - [ ] Workflow status updated (`build` `DONE`, step `build-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test, `ciDispatch` verdict)
 - [ ] Changes pushed to `feat/{FID}`
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`build-summary.md` content verbatim)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:build` unchanged)
 - [ ] Kill-switch propagation checked (post-push re-read of `bkit:auto` label on issue)
 - [ ] Artifact link list embedded in `Step 18` comment
 - [ ] Issue comment attempted (`Step 18` section)
+
 <!-- bkit:tracker true end -->

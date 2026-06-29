@@ -77,7 +77,7 @@ Two-layer separation per `.agents/workflows.md` § Two-Layer Separation Rules �
 - **Lens subagents (16, +5 over Pass 2)** — each forked from the `bkit-design-brainstorm-ideate-1` read-only-reviewer skeleton. **11 universal lenses unchanged** (`architecture`, `hotpath`, `config`, `reliability`, `observability`, `debt`, `dead-code`, `deps`, `security`, `tests`, `docs-drift`). **5 new lenses added** with new `requires:` frontmatter key:
 
 <!-- prettier-ignore -->
-  | Slug | `requires:` flag | Class | Tool surface | Universal-pattern probe (no library names) |
+| Slug | `requires:` flag | Class | Tool surface | Universal-pattern probe (no library names) |
   | --- | --- | --- | --- | --- |
   | `ui-ux` | `hasWebSurface` | maintainability | `Read, Grep, Glob, Write` | Responsive mechanisms (viewport meta, fluid units), typography floors (rem-based base, line-height), a11y (semantic landmarks, ARIA misuse, alt text, focus order), contrast-from-tokens (declared design tokens vs WCAG ratios), design-system adherence (component reuse vs ad-hoc style), i18n (string externalisation), layout-shift risks. |
   | `supply-chain` | `hasCi` (defaults true) | security | `Read, Grep, Glob, Bash` (allowlisted: `git log` / `git rev-parse` / `git cat-file` / `cat` / `jq` / `grep`; NEVER `git checkout` / `reset` / `push` / `commit`; `awk` dropped per review-1 OPTIONAL #2) | Pipeline hardening (unpinned Action SHAs, `pull_request_target` misuse, over-broad workflow token perms, secret-in-logs); supply chain (lockfile integrity, postinstall scripts, typosquat/dep-confusion signals, committed-secret git-history scan, SBOM/provenance gaps). |

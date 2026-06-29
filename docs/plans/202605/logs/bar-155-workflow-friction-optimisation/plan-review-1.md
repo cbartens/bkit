@@ -37,7 +37,7 @@ Failures: 4
 
 - **Retrofit `bkit-design-review-*` and `bkit-plan-review-*` parallel pairs with the `Parallel:` Contract guard** — the plan adds it only to new `bkit-build-challenge-1/-2`. Linear issue Out of Scope explicitly says no retrofit; plan correctly excludes. Out-of-scope.
 
-- **Auto-renumber KN-_ / DE-_ on rebase conflicts** — Linear-defined Out of Scope; plan correctly excludes.
+- **Auto-renumber KN-\_ / DE-\_ on rebase conflicts** — Linear-defined Out of Scope; plan correctly excludes.
 
 - **Replace `bkit install` mirror-regen with delta sync** — out of scope; plan correctly defers.
 

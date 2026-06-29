@@ -551,7 +551,7 @@ ONE criteria set, evaluated at TWO points (orchestrator at entry, diagnose subag
   accounting):
 
 <!-- prettier-ignore -->
-  | Site (`bkit-debug.md`) | Step | Current guard | Behaviour under `soak` |
+| Site (`bkit-debug.md`) | Step | Current guard | Behaviour under `soak` |
   | --- | --- | --- | --- | --- | --- | --- | --- | --- |
   | line 73 | Failure Path branch | routes to handover on `MAX_*` exceeded **or** `OBSERVE_MODE = analyse` | EXTEND: soak exhaustion (shared `MAX_DEBUG_ATTEMPT`) already routes here; no new condition needed, but confirm the soak `debug-soak` FAIL path reaches it; handover carries accumulated context + fixes-so-far. |
   | line 143-145 | Step 1 OBSERVE_MODE decision | sets off / instrument / analyse | ADD the orchestrator entry branch (criteria 1-2 + `LIVE_STACK = live`) and the `[soak]` override (above), before the attempt-exhaustion branch. |

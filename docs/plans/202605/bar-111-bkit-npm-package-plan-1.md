@@ -421,12 +421,8 @@ bkit/
     "lint": "eslint .",
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test",
   },
-  "devDependencies": {
-    /* tsup, typescript, vitest, eslint, @types/node — pin */
-  },
-  "dependencies": {
-    /* mri (or none) — minimise */
-  },
+  "devDependencies": {/* tsup, typescript, vitest, eslint, @types/node — pin */},
+  "dependencies": {/* mri (or none) — minimise */},
   "publishConfig": { "access": "public" },
 }
 ```

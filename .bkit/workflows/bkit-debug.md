@@ -235,9 +235,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] PR number extracted (`PR_NUMBER`, if `PUSH_MODE` = PR)
 - [ ] Debug attempt incremented (`DEBUG_ATTEMPT` = prior + 1, folded from status.jsonl; `1` if first run)
 - [ ] Debug mode decided and valid (`DEBUG_MODE` in `NORMAL|SOAK`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue update attempted (additive label `bkit:debug`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -348,8 +351,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Counters initialised (`NORMAL_ATTEMPT` = 0, `SOAK_ATTEMPT` = 0)
 - [ ] Artifact written (`debug-input-{DEBUG_ATTEMPT}.md`, non-empty)
 - [ ] Workflow status updated (`debug` `IN_PROGRESS` with `debugAttempt`, steps `debug-start-workflow` and `debug-worktree-setup` recorded with `parentSha`, `debug-worktree-setup` with `debugMode`, `pushMode`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 2` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -415,8 +421,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Test results extracted (`TEST_VERDICT`, `TEST_FAILURES`, `TEST_SCOPE`)
 - [ ] Empirical fail-then-pass observable when `live` in `TEST_SCOPE` (iteration-1 `TEST_VERDICT` = FAIL → later PASS)
 - [ ] Workflow status updated (step `debug-run-tests` recorded with `parentSha`, `verdict`, `scope`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 3` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -567,9 +576,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Runtime artifacts written (if output available)
 - [ ] Fetch verdict derived (`FETCH_VERDICT`)
 - [ ] Workflow status updated (step `debug-fetch-context` recorded with `parentSha`, `verdict`, `artifacts`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 4` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -629,8 +641,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Mode extracted and valid (`DIAGNOSE_MODE` in `NORMAL|SOAK`)
 - [ ] No PENDING placeholders remain (`debug-failure-diagnose-{NORMAL_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `debug-failure-diagnose` recorded with `parentSha`, `verdict`, `strategy`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 5` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -684,8 +699,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict extracted and valid (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Fix committed as `fix({FID}): {description}` (HEAD for the next Run Tests / Push)
 - [ ] Workflow status updated (step `debug-failure-remediate` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 6` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -741,8 +759,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict extracted and valid (`SOAK_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Fix committed as `fix({FID}): soak {description}`
 - [ ] Workflow status updated (step `debug-failure-soak` recorded with `parentSha`, `verdict`, `soakAttempt`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 7` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -788,8 +809,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Step 6 or Step 7 `fix({FID}): {description}` commit pushed as branch HEAD (no intermediate `chore` commit between fix and push)
 - [ ] PR title contains `[verbose ci]` (if `PUSH_MODE` = PR)
 - [ ] Workflow status updated (step `debug-push-remediation` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 8` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -841,8 +865,11 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `debug-summary` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 9` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -1154,14 +1181,22 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] All "Update:" and "Create:" artifacts from steps above exist on disk
 - [ ] Friction entries swept (`Recovery`, `Status` added/updated)
 - [ ] PR title `[verbose ci]` stripped (if `PUSH_MODE` = PR)
+
 <!-- bkit:tracker true start -->
+
 - [ ] `bkit:auto` presence re-read BEFORE close-workflow commit (pre-commit label read for marker sourcing)
+
 <!-- bkit:tracker true end -->
+
 - [ ] No-leak Assertion passed (no `[DEBUG-OBSERVE]` lines survive)
 - [ ] HEAD-Subject Assertion passed
+
 <!-- bkit:tracker true start -->
+
 - [ ] Marker `bkit [auto route]` present (if label `bkit:auto` present at close time)
+
 <!-- bkit:tracker true end -->
+
 - [ ] Trigger-PR determined (`TRIGGER_PR`)
 - [ ] If PR created (`PR_URL`, `PR_NUMBER` non-empty)
 - [ ] If PR created workflow status updated (step `debug-create-pr` recorded with `parentSha`, `ciDispatch` verdict)
@@ -1170,9 +1205,12 @@ description: "Debug Feature — Autonomous diagnosis and remediation"
 - [ ] Workflow status updated (`debug` `DONE`, step `debug-close-workflow` recorded with `parentSha`, `testsLiveSkipped` if no live test, `ciDispatch` verdict if PR-mode)
 - [ ] Workflow status committed on `feat/{FID}` (status.jsonl)
 - [ ] Final return displayed (`debug-summary.md` content verbatim)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:debug` unchanged)
 - [ ] Kill-switch propagation checked if `PR_NUMBER` set (`bkit:auto` label presence verified on issue)
 - [ ] Artifact link list embedded in `Step 10` comment
 - [ ] Issue comment attempted (`Step 10` section)
+
 <!-- bkit:tracker true end -->
