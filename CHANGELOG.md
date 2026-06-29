@@ -21,6 +21,10 @@ Collapse `.agents/docs.md` to a two-table model, move the consumer-owned guarant
 - **Stack-specific doc templates.** `data-pipeline.md`, `data-cron-jobs.md`, `notifications.md`, and `webhooks.md` are no longer seeded (template + copies removed; deletions now stick). The stack-agnostic `data-schema.md`, `styles.md`, and `warnings.md` remain universal/seeded. (#305)
 - **Stack-specific permission gates.** The Vercel (`vercel rm` / `remove`) and Supabase (`db reset`, `projects delete`) entries are removed from the `.claude/settings.json` ask-list and the `.opencode/opencode.json` bash map (template + live); the opencode↔claude gate-parity assertion is updated to match. Consumers add stack gates locally per stack-independence.
 
+### Fixed
+
+- **`bkit uninstall` no longer leaks comment-prefixed marker files.** Uninstall's `detectMarkerStyle` recognised only a bare `<!-- bkit:start -->` line, so a managed-text file whose markers carry a `# ` / `// ` comment prefix (e.g. the shell hook `preflight.sh`, which uses `# <!-- bkit:start -->`) was misread as 100% consumer content and preserved in full on uninstall — leaving the entire bkit hook body behind. It now matches the same comment prefixes `findAnchored` accepts, so the bkit block is stripped (and the file removed when only the block remains).
+
 ---
 
 ## [4.1.6] — 2026-06-27

@@ -113,6 +113,21 @@ describe("buildDecisionTable — markered-text format", () => {
     expect(entry).toBeDefined();
     expect(entry!.decision).toBe("preserve");
   });
+
+  it("markered-text file with comment-prefixed html markers (# <!-- bkit:start -->) → decision=strip-block", () => {
+    // Regression: detectMarkerStyle required a bare `<!-- bkit:start -->` line and
+    // missed the `# `-prefixed form used by shell hooks (preflight.sh), so the whole
+    // file was preserved on uninstall instead of having its block stripped (leak).
+    writeFile(
+      ".claude/hooks/preflight.sh",
+      "#!/usr/bin/env bash\n# header\n\n# <!-- bkit:start -->\nbkit hook body\n# <!-- bkit:end -->\n",
+    );
+    const table = buildDecisionTable(["claude"], makeCtx());
+    const entry = table.find((r) => r.file === ".claude/hooks/preflight.sh");
+    expect(entry).toBeDefined();
+    expect(entry!.format).toBe("markered-text");
+    expect(entry!.decision).toBe("strip-block");
+  });
 });
 
 // ---------------------------------------------------------------------------
