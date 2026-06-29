@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Worktree Sync (Utility Command)
 

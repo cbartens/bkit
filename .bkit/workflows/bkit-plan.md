@@ -191,9 +191,12 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
 - [ ] Parent FID extraction attempted (`PARENT_FID`, from issue description)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue update attempted (phase label `bkit:plan`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -289,8 +292,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-input.md`, non-empty)
 - [ ] Parent design appended (if present)
 - [ ] Workflow status updated (`plan` `IN_PROGRESS`, steps `plan-start-workflow` and `plan-worktree-setup` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 2` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -337,9 +343,12 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-v1-draft.md`, non-empty)
 - [ ] No PENDING placeholders remain (`plan-v1-draft.md`)
 - [ ] Workflow status updated (step `plan-generate` recorded with `parentSha`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -390,8 +399,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid, failures extracted (`REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`; `REVIEW_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-review-1.md`, `plan-review-2.md`, `plan-review-3.md`)
 - [ ] Workflow status updated (step `plan-review` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 4` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -434,8 +446,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v2-reviewed.md`)
 - [ ] Workflow status updated (step `plan-apply-review` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 5` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -482,8 +497,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid, failures extracted (`SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`; `SCOPE_FAILURES`)
 - [ ] No PENDING placeholders remain (`plan-scope-check-1.md` and `plan-scope-check-2.md`)
 - [ ] Workflow status updated (step `plan-scope-check` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 6` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -528,8 +546,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid (`APPLY_SCOPE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v3-checked.md`)
 - [ ] Workflow status updated (step `plan-apply-scope` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 7` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -570,8 +591,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Artifact written (`plan-complexity-check.md`, non-empty)
 - [ ] Verdict extracted and valid (`COMPLEXITY_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `plan-complexity-check` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 8` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -621,8 +645,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Verdict extracted and valid (`SPLIT_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`plan-v4-split.md`)
 - [ ] Workflow status updated (step `plan-complexity-split` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 9` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -677,8 +704,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] No PENDING placeholders remain (`plan-summary.md`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `plan-summary` recorded with `parentSha`, `verdict`)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue comment attempted (`Step 10` section)
+
 <!-- bkit:tracker true end -->
 
 ---
@@ -793,8 +823,11 @@ description: "Plan Feature — Autonomous plan generation"
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`plan-summary.md` content verbatim)
+
 <!-- bkit:tracker true start -->
+
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:plan` unchanged)
 - [ ] Artifact link list embedded in `Step 11` comment
 - [ ] Issue comment attempted (`Step 11` section)
+
 <!-- bkit:tracker true end -->

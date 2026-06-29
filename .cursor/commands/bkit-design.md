@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Design Feature (Workflow 1/6)
 
@@ -121,8 +121,11 @@
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
+
+
 - [ ] Issue update attempted (phase label `bkit:design`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+
 
 ---
 
@@ -209,7 +212,10 @@
 - [ ] Branch non-empty (`BRANCH`, updated to worktree branch)
 - [ ] Artifact written (`design-input.md`, non-empty)
 - [ ] Workflow status updated (`design` `IN_PROGRESS`, steps `design-start-workflow` and `design-worktree-setup` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 2` section)
+
 
 ---
 
@@ -250,8 +256,11 @@
 - [ ] Subagents invoked (`@bkit-design-brainstorm-ideate-1`, `@bkit-design-brainstorm-ideate-2`, `@bkit-design-brainstorm-ideate-3`, no inline work)
 - [ ] Artifacts written (`design-brainstorm-ideate-1.md`, `design-brainstorm-ideate-2.md`, `design-brainstorm-ideate-3.md`, non-empty)
 - [ ] Workflow status updated (step `design-brainstorm-ideate` recorded with `parentSha`)
+
+
 - [ ] Related-issues search attempted
 - [ ] Issue comment attempted (`Step 3` section)
+
 
 ---
 
@@ -283,7 +292,10 @@
 - [ ] Subagent invoked (`@bkit-design-generate`, no inline work)
 - [ ] Artifact written (`design-v1-draft.md`, non-empty)
 - [ ] Workflow status updated (step `design-generate` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 4` section)
+
 
 ---
 
@@ -326,7 +338,10 @@
 - [ ] No PENDING placeholders remain (`design-review-1.md` and `design-review-2.md`)
 - [ ] Routed correctly (FAIL → Failure Path; PASS/CONCERNS → Step 6)
 - [ ] Workflow status updated (step `design-review` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 5` section)
+
 
 ---
 
@@ -360,7 +375,10 @@
 - [ ] Artifact written (`design-v2-reviewed.md`, non-empty)
 - [ ] Verdict extracted and valid (`APPLY_REVIEW_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-apply-review` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 6` section)
+
 
 ---
 
@@ -395,7 +413,10 @@
 - [ ] Artifact written (`design-v3-organised.md`, non-empty)
 - [ ] Verdict extracted and valid (`ORGANISE_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (step `design-organise` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 7` section)
+
 
 ---
 
@@ -441,7 +462,10 @@
 - [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Summary commit pushed to branch
 - [ ] Workflow status updated (step `design-summary` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 8` section)
+
 
 ---
 
@@ -612,6 +636,9 @@
 - [ ] Changes merged to `dev` and pushed with `bkit [skip ci]`
 - [ ] Worktree removed and feature branch deleted
 - [ ] Final return displayed (`design-summary.md` content verbatim)
+
+
 - [ ] Issue update attempted (status/state `In Review`, phase label `bkit:design` unchanged)
 - [ ] Artifact link list embedded in `Step 10` comment
 - [ ] Issue comment attempted (`Step 10` section)
+

@@ -99,7 +99,11 @@ export interface UninstallResult {
  * Returns null if neither style is present.
  */
 function detectMarkerStyle(content: string): MarkerStyle | null {
-  if (/^<!-- bkit:start -->$/m.test(content)) return "html-comment";
+  // HTML markers may carry a `# ` / `// ` comment prefix so they survive inside
+  // shell / JS files (e.g. preflight.sh uses `# <!-- bkit:start -->`); match the
+  // same prefixes findAnchored/ALLOWED_PREFIXES allow. Checked FIRST so a prefixed
+  // HTML marker is never mistaken for the bare `# bkit:start` hash style.
+  if (/^(?:# |\/\/ )?<!-- bkit:start -->$/m.test(content)) return "html-comment";
   if (/^# bkit:start$/m.test(content)) return "hash-comment";
   return null;
 }
