@@ -12,6 +12,7 @@
 > - Only invoke skills relevant to current workflow/task/step.
 > - Discover via `npx skills find [query]` — do NOT hand-curate.
 > - Update when adopting/retiring core technologies.
+> - Local project skills → `Project Skills` below the bkit-managed block; Universal Skills table stays in-block.
 > - Managed via [skills.sh](https://skills.sh). Installed to `.agents/skills/`.
 
 ## Install / Update
@@ -32,6 +33,8 @@ Universal best-practice skills bkit recommends for every project.
 | `obra/superpowers` | brainstorming, writing-plans, executing-plans, systematic-debugging, test-driven-development, verification-before-completion, using-git-worktrees, finishing-a-development-branch, requesting-code-review, receiving-code-review, dispatching-parallel-agents, subagent-driven-development, writing-skills, using-superpowers | Agent best practices used by every bkit phase |
 | `vercel-labs/skills` | find-skills | Skill discovery meta-utility |
 
-## Project Skills
+> `Project Skills` below `bkit:end` is consumer-owned — `bkit install` never overwrites it, `bkit check` drift stays clean. Add project-specific skills there.
 
 <!-- bkit:end -->
+
+## Project Skills

@@ -9,7 +9,7 @@
 >
 > - Token-efficient dense phrasing; agent readers only.
 > - Before writing, cross-check `.agents/docs.md` — verify topic does NOT belong in other doc.
-> - Universal rules only inside the bkit block. Project-specific overrides go in `## Project` below the block.
+> - Local project rules/overrides → `Project Rules` below the bkit-managed block; universal rules stay in-block.
 
 ## Universal Rules
 
@@ -103,9 +103,11 @@
 - **Tests:** `*.test.ts` Vitest unit, `*.integration.test.ts` Vitest integration, `*.spec.ts` Playwright E2E.
 - **Logs:** `console.error("[{Context}] {Message}", {payload})` — `[]` around `{Context}` = load-bearing for log-drain regex.
 
-## Project Rules
+> `Project Rules` below `bkit:end` is consumer-owned — `bkit install` never overwrites it, `bkit check` drift stays clean. Add project-specific rules/overrides there.
 
 <!-- bkit:end -->
+
+## Project Rules
 
 ### bkit Repo Authoring
 
