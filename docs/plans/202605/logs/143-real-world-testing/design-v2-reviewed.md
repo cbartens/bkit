@@ -423,7 +423,7 @@ tier sequence differs per workflow and `test:real` appends to each as-is:
   the plan MUST encode:
 
 <!-- prettier-ignore -->
-  | Site (`bkit-debug.md`) | Step | Current guard | Behaviour under `soak` |
+| Site (`bkit-debug.md`) | Step | Current guard | Behaviour under `soak` |
   | --- | --- | --- | --- | --- | --- | --- | --- | --- |
   | line 73 | Failure Path branch | routes to handover on `MAX_*` exceeded **or** `OBSERVE_MODE = analyse` | EXTEND: soak exhaustion (`MAX_DEBUG_ATTEMPT`) already routes here; no new condition needed, but confirm the soak `debug-soak` FAIL path reaches it. |
   | line 143-145 | Step 1 OBSERVE_MODE decision | sets off / instrument / analyse | ADD the `OBSERVE_MODE_OVERRIDE = soak` branch (above). |
