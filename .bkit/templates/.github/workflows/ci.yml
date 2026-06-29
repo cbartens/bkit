@@ -50,7 +50,7 @@ jobs:
       GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
     # bkit:end verbose-ci-env
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Full history so slop:delta can materialise the PR base ref as a worktree.
           fetch-depth: 0
@@ -278,7 +278,7 @@ jobs:
       VERBOSE_CI: ${{ (contains(github.event.head_commit.message, '[verbose ci]') || contains(github.event.pull_request.title, '[verbose ci]')) && '1' || '' }}
       GH_BKIT_TOKEN: ${{ secrets.GH_BKIT_TOKEN }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           # Full history needed for E2E / supabase stubs when enabled.
           fetch-depth: 0
