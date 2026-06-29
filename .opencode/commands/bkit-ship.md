@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -152,8 +152,11 @@ $ARGUMENTS
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`, `BRANCH`, `FID`)
 - [ ] Issue ID resolved (`ISSUE_ID` non-empty when tracker wired; may be empty under `none`)
 - [ ] Lock acquired (`$REPO_ROOT/docs/plans/{YYYYMM}/logs/{FID}/.lock` exists)
+
+
 - [ ] Issue update attempted (phase label `bkit:ship`, status/state `In Progress`)
 - [ ] Issue comment attempted (`Step 1` section)
+
 
 ---
 
@@ -265,7 +268,10 @@ $ARGUMENTS
 - [ ] No PR CI failures confirmed
 - [ ] Artifact written (`ship-input.md`, non-empty)
 - [ ] Workflow status updated (`ship` `IN_PROGRESS`, steps `ship-start-workflow` and `ship-worktree-setup` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 2` section)
+
 
 ---
 
@@ -319,7 +325,10 @@ $ARGUMENTS
 - [ ] Verdict determined (`REGRESSION_VERDICT`)
 - [ ] Verdict extracted and valid (`REGRESSION_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-regression-guard` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 3` section)
+
 
 ---
 
@@ -357,7 +366,10 @@ $ARGUMENTS
 - [ ] Verdict extracted and valid (`RESOLVE_VERDICT` in `PASS|FAIL`)
 - [ ] Sentinel cleared on PASS
 - [ ] Workflow status updated (step `ship-conflict-resolve` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 4` section)
+
 
 ---
 
@@ -394,7 +406,10 @@ $ARGUMENTS
 - [ ] Artifact written (`ship-deferred-sweep.md`, non-empty)
 - [ ] Verdict extracted and valid (`SWEEP_VERDICT` in `PASS|FAIL`)
 - [ ] Workflow status updated (step `ship-deferred-sweep` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 5` section)
+
 
 ---
 
@@ -469,7 +484,10 @@ $ARGUMENTS
 - [ ] Verdict extracted and valid, failures extracted (`MERGE_VERDICT` in `PASS|FAIL`; `MERGE_FAILURES`)
 - [ ] HEAD on remote does NOT contain `bkit [skip ci]`
 - [ ] Workflow status updated (step `ship-merge-pr` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 6` section)
+
 
 ---
 
@@ -505,7 +523,10 @@ $ARGUMENTS
 - [ ] Verdict extracted and valid (`DIAGNOSE_VERDICT` in `PASS|FAIL`)
 - [ ] No PENDING placeholders remain (`ship-failure-diagnose-{MERGE_ATTEMPT}.md`)
 - [ ] Workflow status updated (step `ship-failure-diagnose` recorded with `parentSha`, `verdict`)
+
+
 - [ ] Issue comment attempted (`Step 7` section)
+
 
 ---
 
@@ -554,7 +575,10 @@ $ARGUMENTS
 - [ ] Source files modified
 - [ ] Verdict extracted and valid, strategy extracted (`REMEDIATE_VERDICT` in `PASS|CONCERNS|FAIL`; `STRATEGY`)
 - [ ] Workflow status updated (step `ship-failure-remediate` recorded with `parentSha`, `verdict`, `strategy`)
+
+
 - [ ] Issue comment attempted (`Step 8` section)
+
 
 ---
 
@@ -602,7 +626,10 @@ $ARGUMENTS
 - [ ] On `dev` branch
 - [ ] `dev` up to date with origin
 - [ ] Workflow status updated (step `ship-switch-to-dev` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 9` section)
+
 
 ---
 
@@ -663,7 +690,10 @@ $ARGUMENTS
 - [ ] Verdict extracted and valid (`UPDATE_DOCS_VERDICT` in `PASS|FAIL`)
 - [ ] Verdict extracted and valid (`SUMMARY_VERDICT` in `PASS|CONCERNS|FAIL`)
 - [ ] Workflow status updated (steps `ship-update-docs`, `ship-summary` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 10` section)
+
 
 ---
 
@@ -699,7 +729,10 @@ $ARGUMENTS
 - [ ] Feature-specific skills pruned
 - [ ] Logs at `docs/plans/{YYYYMM}/logs/{FID}/` retained for manual cleanup
 - [ ] Workflow status updated (step `ship-prune-skills` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 11` section)
+
 
 ---
 
@@ -746,7 +779,10 @@ $ARGUMENTS
 - [ ] Local `feat/{FID}` branch deleted (or already absent)
 - [ ] Remote `origin/feat/{FID}` branch deleted (or already absent)
 - [ ] Workflow status updated (step `ship-worktree-cleanup` recorded with `parentSha`)
+
+
 - [ ] Issue comment attempted (`Step 12` section)
+
 
 ---
 
@@ -824,6 +860,9 @@ $ARGUMENTS
 - [ ] Workflow status updated (`ship` `DONE`, step `ship-close-workflow` recorded with `parentSha`)
 - [ ] Changes pushed to `dev` with `bkit [skip ci]`
 - [ ] Final return displayed (`ship-summary.md` content verbatim)
+
+
 - [ ] Issue update attempted (phase label `bkit:merged`, status/state `In Review`; issue left open for human close)
 - [ ] Artifact link list embedded in `Step 13` comment
 - [ ] Issue comment attempted (`Step 13` section)
+

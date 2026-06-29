@@ -1,6 +1,6 @@
 {
   "name": "@cbartens/bkit",
-  "version": "4.1.6",
+  "version": "4.1.7",
   "private": false,
   "description": "Agent-stack consolidation CLI — distributed via GitHub Packages npm registry (@cbartens:registry=https://npm.pkg.github.com).",
   "type": "module",

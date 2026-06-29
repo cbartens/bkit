@@ -1,7 +1,7 @@
 ---
 description: "Auto — Phase-routed dispatch of any bkit phase"
 ---
-<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Auto
 
@@ -99,7 +99,10 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 - [ ] Placeholders non-empty (`OWNER_REPO`, `OWNER`, `REPO`)
 - [ ] Issue ID non-empty (`ISSUE_ID`, if tracker wired)
 - [ ] CI placeholders non-empty (`PR_NUMBER`, `PR_URL`, `BRANCH`, `HEAD_SHA`, `RUN_ID`, `FID`, if `MODE` = CI)
+
+
 - [ ] Issue comment attempted (`Step 1` section)
+
 
 ---
 
@@ -122,5 +125,7 @@ description: "Auto — Phase-routed dispatch of any bkit phase"
 
 
 - [ ] Issue comment attempted (`Step 2` section)
+
+
 - [ ] The phase skill matching `{PHASE}` was invoked with the correct argument (`{FID}` for ship/debug, `{ISSUE_ID}` for design/plan/build)
 - [ ] Orchestrator exits and the dispatched skill owns the session

@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.6 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Veteran reviewer probing diffs for bugs, edge-case failures, and broken error paths.
 **Scope:** As specified by input and Read/Update/Create section.
