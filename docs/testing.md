@@ -16,24 +16,28 @@
 
 ## CI test tiers (the bkit scaffold)
 
-CI runs the tiers through the core 4-job scaffold (full step-by-step in
-`.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE"; run-level shape in
-`deployments.md` § Run-level decision matrix):
+CI runs the tiers through the bkit scaffold — **one parallel lane (job) per tier**, not steps
+in one job (full step-by-step in `.github/workflows/ci.yml` § "FULL CI SCAFFOLD REFERENCE";
+run-level shape in `deployments.md` § Run-level decision matrix):
 
 - **`bkit-decide`** (always-on) computes `run_level` + emits the `bkit-test-plan`
   contract — _what should run_.
-- **`bkit-tests`** runs Unit → Integration → E2E (Integration / E2E gated on
-  `web_affected` / `run_e2e`).
-- **`bkit-tests-migrate`** (optional; DB repos) — an independent **sibling** of `bkit-tests`
+- **`bkit-tests-static` / `-unit` / `-integration` / `-e2e`** — one **lane per tier**, separate
+  parallel jobs (the shape bkit's own CI and consumers gether/fraser run, not steps in a
+  monolithic `bkit-tests`). Integration / E2E lanes gate on `web_affected` / `run_e2e`; each lane
+  emits its own executed-count for the capstone and (coverage tiers) posts its own coverage
+  comment. Start with `-static` + `-unit`, add a lane per tier you have (`deployments.md` §
+  Parallel test lanes).
+- **`bkit-tests-migrate`** (optional; DB repos) — an independent **sibling** lane
   that proves every migration replays from an **empty** database (+ the seed loads) on a fresh
   ephemeral instance. Always runs and reports a status, but self-skips the heavy steps when no
   migration/seed source changed; folds into the `bkit-tests-check` capstone (a red replay reds
   the build). See § Provision backing services fresh.
 - **`bkit-tests-live`** runs the `@live` tier against the deployed URL (gated on
   `run_live`; drop the whole job if you have no deploy).
-- **`bkit-tests-check`** is the capstone — it fails the run if any tier the plan
-  _expected_ was skipped, so a green required check means **validated**, not merely
-  "nothing failed". Make it the sole branch-protection required check.
+- **`bkit-tests-check`** is the capstone — it `needs:` **all** lanes and fails the run if any tier
+  the plan _expected_ was skipped or executed zero, so a green required check means **validated**,
+  not merely "nothing failed". Make it the sole branch-protection required check.
 
 ### Validated means executed, not "didn't fail"
 
@@ -162,6 +166,32 @@ Beyond the gates above, three practices raise confidence further — opt-in, not
 - **E2E sharding** (`--shard` matrix + report merge) cuts wall-clock on a large browser suite — but it is **gated on per-shard data isolation** (the unique-ID independence above). A single shared seed pins `workers: 1` and blocks sharding until the data is isolated.
 - **Bounded flaky-retry with tracking.** A capped retry on the flake-prone E2E tier is low-risk **only** when paired with explicit flake **tracking** — an auto-retry that silently passes hides a real regression, the inverse of "validated ≠ didn't fail".
 
+## Coverage on PRs
+
+Report vitest coverage on each PR **without a paid product or a third-party service** — the `bkit-stub:coverage` block in `.github/workflows/ci.yml` runs `davelosert/vitest-coverage-report-action` entirely inside Actions with `GITHUB_TOKEN`, posting sticky per-PR comments (safe for private repos; no coverage data leaves the runner). Replaces GitHub Code Quality's coverage-on-PR value (`deployments.md` § Disable GitHub Code Quality before GA billing) — **not** CodeQL security scanning, a separate product.
+
+**Per-tier, not merged.** Unit and integration are measured and commented **separately** (two runs into `coverage/unit` and `coverage/integration`, two comments keyed by a distinct `name:`). A single merged number is the weakest option: coverage is a **union**, so a line covered only by an integration test reads as covered and **hides a missing unit test** — a merged gate lets integration mask a hollow unit suite. The two numbers also have different denominators, so they can't be honestly combined into one.
+
+- **Report-only by default.** No `thresholds`, so coverage never reds the lane — enabling the block on an existing repo can't break it.
+- **Reporters are load-bearing.** The action reads `coverage-summary.json` (from the `json-summary` reporter, mandatory) and `coverage-final.json` (from `json`, required for `file-coverage-mode: changes`). Enable both in `coverage.reporter` or the step no-ops.
+- **Two runs, separate dirs.** `vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'` for unit; a second run into `coverage/integration` for the integration tier. Separate dirs also avoid the last-writer-wins **clobber** a second same-dir `--coverage` run would cause.
+- **Thresholds are opt-in and per tier:**
+  - **Unit = the gate.** Pass `--coverage.thresholds.branches=<current>` as a CLI flag on the **unit** run only — **branches** is the meaningful floor (line/statement % overstates confidence); set it to your **current** coverage and ratchet up. vitest coverage is per-**run** (root config), **not** per-project, so `projects` does **not** scope it and a `thresholds` block in `vitest.config` would red **both** runs — the per-run flag (or a second `vitest.<tier>.config.ts` run with `-c`) is what keeps the gate off integration. 80% is convention, not best practice — a fetishised high bar breeds assertion-free line-touching tests; the executed-≠-exercised rule (§ Validated means executed) matters far more than the number.
+  - **Integration = report-only.** Gate integration on **execution** (the capstone's `integration_ran > 0`), **not** a %. A whole-repo integration % is denominator-noise — integration covers boundaries/flows, not pure logic, and rarely drives every branch, so a hard threshold on it punishes the correct pyramid shape. If you want a real integration %, add `--coverage.include='src/server/**'` on the integration run (same CLI-flag idiom as `--exclude`) to scope it to the integration surface, **then** set a floor, or **ratchet from current** — never a number picked from thin air.
+- **Permissions.** The report steps need `pull-requests: write` — declare it at **job level** on the lane that posts. Job-level `permissions:` **replaces** the workflow-level block (not additive), and the SHA-cache step calls `gh run list`, so re-include `actions: read` too or it breaks. **Separate lanes:** with a lane per tier (recommended — see `deployments.md` § Parallel test lanes), each coverage comment posts from its own lane (unit-cov → `bkit-tests-unit`, integration-cov → `bkit-tests-integration`), so put the block on **each** lane that reports. With the combined starter, both live on `bkit-tests-unit`.
+- **Fork PRs.** `GITHUB_TOKEN` is read-only for PRs from a fork, so the steps fail — the shipped `head.repo == repo` guard skips them there; adopt the action's `workflow_run` two-workflow pattern if you must comment on fork PRs. The integration step is also guarded on `hashFiles(...)` so a repo with **no integration tier** skips it cleanly.
+- **Base-branch delta** (▲▼ vs the default branch) is **not** shipped by default — it needs the base's `coverage-summary.json` (a second run or a stored artifact); wire the action's `json-summary-compare-path` if you want it.
+
+### E2E coverage on PRs
+
+The **E2E tier** (`bkit-stub:e2e-coverage`) reports Playwright coverage the same free, in-Actions, private-repo-safe way — a **third** sticky comment keyed `name: e2e`, never merged into the unit/integration numbers. Unlike vitest there is **no `--coverage` flag**: Playwright is black-box and doesn't instrument your source, so it's a 3-part pipeline.
+
+- **Collect during the run.** Either an **Istanbul instrumented build** (`vite-plugin-istanbul` exposes `window.__coverage__`, scraped in a Playwright fixture — works on every browser) or the **V8 API** (`page.coverage`, Chromium-only, needs source maps). Istanbul is the cross-browser default.
+- **Report with Monocart.** `monocart-coverage-reports` (wired via the `monocart-reporter` Playwright reporter) ingests **either** V8 or Istanbul input and emits Istanbul-format `coverage/e2e/coverage-summary.json` + `coverage-final.json` — the **same two files** the vitest action reads (`reports: ['json-summary', 'json', 'lcov']`), so no new commenter is needed.
+- **Comment by reuse.** Point `davelosert/vitest-coverage-report-action@v2` at `coverage/e2e` with `name: e2e`. If Monocart's `coverage-final.json` isn't accepted for `file-coverage-mode: changes`, drop to `file-coverage-mode: all`, or comment via a cobertura action (`irongut/CodeCoverageSummary`) on Monocart's `cobertura` report.
+- **Report-only — no threshold by default.** A whole-app E2E % is denominator-noise (E2E exercises user **flows**, not every branch), so gate the tier on the **E2E step succeeding**, not a number. For a real E2E %, scope Monocart's `entryFilter`/`sourceFilter` to the surface E2E is meant to cover, **then** ratchet from current — never a picked number.
+- **Permissions/forks.** The E2E coverage report runs in the **`bkit-tests-e2e` lane** (or, with the combined starter, in `bkit-tests-unit`), and needs that lane's job-level `pull-requests: write` + `actions: read` + `contents: read` block, or the comment can't post. The `head.repo == repo` guard skips fork PRs; a `hashFiles('coverage/e2e/coverage-summary.json')` guard skips repos with no E2E coverage.
+
 ## CI verbosity (`[verbose ci]`)
 
 See `deployments.md` § Commit-message force tags for the marker mechanics (where to put it: PR title for feature-branch pushes, commit message for direct push to `dev` / `main`). This section covers the testing-specific knobs.
@@ -193,7 +223,7 @@ See `deployments.md` § Commit-message force tags for the marker mechanics (wher
 | Tier | Suffix | Scope | Where it runs |
 | --- | --- | --- | --- |
 | Unit | `*.test.ts` | Pure functions, single module. No subprocess, no `process.cwd()` change. | Pre-push + CI |
-| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI (excluded from pre-push) |
+| Integration | `*.integration.test.ts` | Multi-module wiring inside a process. May use `os.tmpdir()` + `process.chdir()`. May spawn `bkit` via `tsx`. | CI — `bkit-tests-integration` lane (excluded from pre-push) |
 | E2E | (none yet) | Full end-to-end against a real consumer repo. | Out of scope for bkit |
 | @live | (none) | Endpoint tests against a deployed URL (`test:live`). | `bkit-tests-live` job — N/A for bkit (no deploy) |
 
@@ -298,11 +328,12 @@ Always assert at least one positive signal (a known log prefix like `[bkit-insta
 
 ## CI execution
 
-`.github/workflows/ci.yml` runs a 4-job scaffold on every push to `dev`/`main` and PRs into them (bkit is single-package with no deploy, so there is no `bkit-tests-live`):
+`.github/workflows/ci.yml` runs a 5-job scaffold on every push to `dev`/`main` and PRs into them — **one parallel lane per tier**, dogfooding the separate-lane shape consumers run. bkit has no browser/DB/deploy, so there is no `bkit-tests-e2e`/`-migrate`/`-live`:
 
 1. **`bkit-decide`** (always-on) — reads markers, computes `run_level` (`[skip ci]` → none; PR / push-to-`main` / direct `dev` push → full; merged-PR `dev` push → light), emits the `bkit-test-plan` JSON + a `$GITHUB_STEP_SUMMARY` table.
 2. **`bkit-tests-static`** (`if: run_level != 'none'`) — static-analysis lane: `pnpm typecheck` → `pnpm format:check` → vale prose lint → `pnpm lint:slop` → slop delta (PR-only) → actionlint → `pnpm check:dist` (rebuilds `dist/`, fails on drift) → `pnpm bkit check` (drift gate). A SHA-cache step short-circuits a SHA already green in the last 7 days; `[force build]` / `[force cache]` bypass it.
-3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): vitest with JSON reporter to emit an executed-test count. Same SHA-cache short-circuit as the static lane.
-4. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, both `bkit-tests-static` and `bkit-tests-unit` succeeded **and unit executed > 0 tests** (the count comes from vitest's JSON reporter via `bkit-tests-unit`'s `tests_ran` output; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
+3. **`bkit-tests-unit`** (`if: run_level != 'none'`) — unit-test lane (parallel sibling of static): `vitest run --coverage` over the unit suite (`--exclude '**/*.integration.test.ts'`), **scoped per tier** via `--coverage.include` to the logic surface (all `.bkit/src` except the `bkit-modules` data registry), with a JSON reporter emitting `tests_ran`. **Gated on branch coverage** via a per-run `--coverage.thresholds.branches` flag (currently `65`, set just below current and ratcheted up; the flag lives on the unit run only — vitest coverage is per-run, so a `vitest.config` block would gate both lanes). On PRs it posts a `name: unit` coverage comment via `davelosert/vitest-coverage-report-action`. Needs the job-level `permissions:` block (`actions: read` + `contents: read` + `pull-requests: write`). Same SHA-cache short-circuit as static.
+4. **`bkit-tests-integration`** (`if: run_level != 'none'`) — integration-test lane (parallel sibling): `vitest run --coverage` over `*.integration.test.ts`, scoped via `--coverage.include` to the engine surface (`modules`/`install`/`upgrade`/`uninstall`), emitting its own `tests_ran`. **Report-only** (no threshold — a whole-repo integration % is denominator-noise and punishes the pyramid shape); posts a `name: integration` coverage comment. A separate lane per tier — mirrors how consumers (gether/fraser) run it and dogfoods the shipped scaffold. Own job-level `permissions:` + SHA-cache.
+5. **`bkit-tests-check`** (capstone, `if: !cancelled()`) — asserts `bkit-decide` succeeded and, when `run_level != none`, `bkit-tests-static` + `bkit-tests-unit` + `bkit-tests-integration` all succeeded **and unit + integration each executed > 0 tests** (per-lane `assert_ran` over each lane's `tests_ran`; a SHA-cache short-circuit (`cache_skip`) or `run_level=none` asserts nothing). This is the SOLE branch-protection required check (`.bkit/scripts/bkit-protect-main.sh`, `REQUIRED_JOB=bkit-tests-check`) — green here means the planned suite actually ran, not merely "nothing failed".
 
-Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the `bkit-tests` static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.
+Release workflow (`.github/workflows/release.yml`, tag-triggered) re-runs the static + test steps (typecheck → test → format:check → prose → slop → check:dist) before `npm publish`; the `pnpm bkit check` drift gate is intentionally omitted — the tagged tree should already match dev's clean state.

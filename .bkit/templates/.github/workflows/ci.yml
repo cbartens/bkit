@@ -421,6 +421,68 @@ jobs:
           fi
       # bkit:end ts-ci-steps
 
+      # bkit-stub:coverage — Report vitest coverage on PRs via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
+      #   1. devDep + config. Add `@vitest/coverage-v8` (pin to your vitest major) and a coverage block in vitest.config:
+      #        coverage: {
+      #          provider: 'v8',
+      #          reporter: ['text', 'json-summary', 'json'],   # json-summary + json are REQUIRED — the action reads
+      #          reportOnFailure: true,                         # coverage/coverage-summary.json AND coverage-final.json
+      #        }
+      #   2. TWO coverage runs into SEPARATE dirs (one merged run cannot produce two honest numbers — coverage is a union,
+      #      so a line covered only by integration reads as covered and hides a missing unit test):
+      #        unit:        vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'
+      #        integration: vitest run --coverage --coverage.reportsDirectory=coverage/integration <your integration selection>
+      #      Wire these into the "Run Vitest Tests" step(s) above (or your test / test:integration scripts). Separate dirs
+      #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
+      #   3. Thresholds (opt-in) live PER TIER, never merged:
+      #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
+      #               meaningful floor; line/statement % overstates confidence). Set it to your CURRENT coverage and
+      #               ratchet up. Example: --coverage.thresholds.branches=70. vitest coverage is per-RUN (root config),
+      #               NOT per-project — `projects` does NOT scope it, and a `thresholds` block in vitest.config reds BOTH
+      #               runs. Pass the floor as a CLI flag on the UNIT run only (it cannot leak to integration); reach for a
+      #               second vitest.<tier>.config.ts (run with -c) only if the per-run flags get unwieldy.
+      #        INTEGRATION = REPORT-ONLY, no threshold. Gate integration on EXECUTION (the capstone's integration_ran > 0),
+      #               not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic,
+      #               and rarely drives every branch). For a real integration %, add --coverage.include='src/server/**'
+      #               (a CLI flag on the integration run, same idiom as --exclude above) to scope it to the integration
+      #               surface THEN set a floor, or ratchet from current — never a picked number. See docs/testing.md § Coverage on PRs.
+      #   4. JOB-LEVEL permissions on bkit-tests-unit. Job-level REPLACES the workflow-level block (not additive), and the
+      #      Check SHA Cache step calls `gh run list`, so you MUST re-include actions: read or the cache step breaks:
+      #        permissions:
+      #          actions: read
+      #          contents: read
+      #          pull-requests: write     # required to post/update the sticky PR coverage comments
+      #   SEPARATE LANES: this stub wires both reports into bkit-tests-unit (the combined starter). If you run
+      #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + gether/fraser run; see the
+      #   FULL CI SCAFFOLD REFERENCE below), move the integration coverage run + its Report step + a pull-requests: write
+      #   permissions block into THAT lane instead. Each lane posts its own comment; the distinct name: keeps them apart.
+      #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so the steps fail — the head.repo == repo guard in the
+      #   if: below skips them there (or adopt the action's workflow_run two-workflow pattern to support forks).
+      #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
+      #   branch) needs the base's coverage-summary.json — see the action's json-summary-compare-path input (optional).
+      #   The action uses a floating @v2 tag to match this template's other stubs; best practice is to SHA-pin it to a
+      #   commit (with a # vX.Y.Z comment) per your security policy on enable, and let Renovate/Dependabot keep it current.
+      #   A distinct name: keys each sticky comment so the two do not collide.
+      # - name: Report Unit Coverage on PR
+      #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: unit
+      #     json-summary-path: coverage/unit/coverage-summary.json
+      #     json-final-path: coverage/unit/coverage-final.json
+      #     file-coverage-mode: changes          # per-file table limited to files changed in the PR
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Report Integration Coverage on PR
+      #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
+      #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: integration
+      #     json-summary-path: coverage/integration/coverage-summary.json
+      #     json-final-path: coverage/integration/coverage-final.json
+      #     file-coverage-mode: changes
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+
       # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
       # - name: Await Vercel Preview
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
@@ -476,6 +538,42 @@ jobs:
       # only) — NOT a CLI/top-level --grep, which also filters the auth/setup projects and breaks seeding.
       # Mechanism + turbo strict-env note: docs/testing.md § "E2E on PRs".
 
+      # bkit-stub:e2e-coverage — Report Playwright E2E code-coverage on PRs, free and entirely inside Actions (no third-party service, private-repo safe), consistent with bkit-stub:coverage above. Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so you wire a 3-part pipeline (collect -> report -> comment). To enable: build the pipeline below, uncomment the report step, delete this stub header.
+      #   1. COLLECT coverage during the E2E run — pick ONE route:
+      #      a. Istanbul instrumented build (cross-browser): add `vite-plugin-istanbul` so the app under test exposes
+      #         window.__coverage__, then scrape it in a Playwright fixture (afterEach/teardown) and pass it to Monocart.
+      #         Works on all browsers. Ref: mxschmitt/playwright-test-coverage.
+      #      b. V8 API (Chromium-only): page.coverage.startJSCoverage()/stopJSCoverage() in a fixture; needs source maps
+      #         to map back to source. Ref: @bgotink/playwright-coverage.
+      #   2. REPORT with Monocart (`monocart-coverage-reports`, wired via the `monocart-reporter` Playwright custom
+      #      reporter or the library directly). It ingests EITHER V8 or Istanbul input (auto-converts V8 -> Istanbul) and
+      #      emits the SAME two Istanbul-format files the davelosert action reads, so no new commenter is needed:
+      #        outputDir: 'coverage/e2e'
+      #        reports: ['json-summary', 'json', 'lcov']   # json-summary is load-bearing; json enables file-coverage-mode: changes
+      #   3. COMMENT by reusing davelosert/vitest-coverage-report-action@v2 (same action as bkit-stub:coverage) pointed at
+      #      coverage/e2e, with a DISTINCT name: e2e so its sticky comment does not collide with the unit/integration ones.
+      #      If Monocart's coverage-final.json is not accepted for file-coverage-mode: changes, drop to file-coverage-mode:
+      #      all, or comment via a cobertura commenter (irongut/CodeCoverageSummary on Monocart's `cobertura` report).
+      #   REPORT-ONLY — ship NO threshold. A whole-app E2E % is denominator-noise (E2E exercises user flows, not every
+      #   branch), so gate the tier on the E2E step succeeding, NOT on a number. For a real E2E %, scope Monocart's
+      #   entryFilter/sourceFilter to the surface E2E is meant to cover, THEN ratchet from current — never a picked number.
+      #   See docs/testing.md § E2E coverage on PRs.
+      #   Permissions/forks/pin: this step runs in the SAME bkit-tests-unit job as bkit-stub:coverage, so it REUSES that
+      #   stub's job-level permissions block (pull-requests: write + actions: read + contents: read) — if you enable
+      #   e2e-coverage WITHOUT the unit/integration coverage, add that same job-level block or the comment cannot post.
+      #   The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); @v2 floats to match this template's other
+      #   stubs — SHA-pin it to a commit (with a # vX.Y.Z comment) on enable per your security policy.
+      # - name: Report E2E Coverage on PR
+      #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
+      #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: e2e
+      #     json-summary-path: coverage/e2e/coverage-summary.json
+      #     json-final-path: coverage/e2e/coverage-final.json
+      #     file-coverage-mode: changes
+      #     github-token: ${{ secrets.GITHUB_TOKEN }}
+
       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
       # `if: always()` captures both failure AND job-timeout cancel: Playwright's HTML reporter
       # only finalises `playwright-report/index.html` at suite onEnd, but per-test trace.zip files
@@ -525,12 +623,17 @@ jobs:
 # partial/cached/light run is green by construction, NOT validated. bkit-decide plans
 # what should run; bkit-tests-check enforces it ran. green == validated.
 #
-# ORDER + gating (needs: + result guards):
+# ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
+# shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
+# NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo:
 #   bkit-decide                                              always-on, never skips
-#   bkit-tests          needs:[decide]                       if: run_level != 'none'
-#   bkit-tests-migrate  needs:[] (independent sibling)       always-on; heavy steps gated on migration/seed change
-#   bkit-tests-live     needs:[decide,tests]                 if: run_live && needs.bkit-tests.result=='success'
-#   bkit-tests-check    needs:[decide,tests,tests-migrate,tests-live]  if: ${{ !cancelled() }}
+#   bkit-tests-static       needs:[decide]                   if: run_level != 'none'  ┐
+#   bkit-tests-unit         needs:[decide]                   if: run_level != 'none'  │ parallel
+#   bkit-tests-integration  needs:[decide]                   if: run_level != 'none'  │ test lanes
+#   bkit-tests-e2e          needs:[decide]                   if: run_level != 'none'  │ (add the
+#   bkit-tests-migrate      needs:[] (independent sibling)   always-on; gated on migration/seed change ┘  tiers you have)
+#   bkit-tests-live         needs:[decide + all test lanes]  if: run_live && every test lane == 'success'
+#   bkit-tests-check        needs:[decide + ALL lanes]       if: ${{ !cancelled() }} — asserts each lane succeeded AND each tier's *_ran > 0
 #
 # `bkit install`/`upgrade` raises an advisory per `# bkit-stub:` sentinel below;
 # remove a sentinel header to dismiss (uncommenting alone does not).
@@ -559,18 +662,23 @@ jobs:
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
 #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
 #
-# === JOB 2: bkit-tests-static + bkit-tests-unit — the tiers ===
-#   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
-#   The starter ABOVE already ships two parallel lanes (bkit-tests-static + bkit-tests-unit).
-#   To scale further (integration, E2E), add more sibling lanes — the capstone needs: ALL
-#   lanes and EACH emits its own *_ran count. Detail + cost/mitigation: docs/deployments.md
-#   § Parallel test lanes.
-#   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
-#     integration_outcome: ${{ steps.integration.outcome }} ; e2e_outcome: ${{ steps.e2e.outcome }}
-#     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just
-#       that the step exited 0. A DECLARED tier (script/step exists) can execute ZERO and still go green: vitest --passWithNoTests,
-#       all-skipIf-gated, or `turbo run test:X` where no package declares test:X. Emit per tier from the runner's machine summary
-#       (vitest --reporter=json -> numPassedTests+numFailedTests; playwright --reporter=json -> stats.expected+unexpected). JOB 4 asserts >0.
+# === JOB 2: the test lanes (static / unit / integration / e2e) — ONE JOB PER TIER ===
+#   each: needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   Every tier is its OWN parallel LANE (job), NOT a step. This is what bkit dogfoods (its own
+#   .github/workflows/ci.yml runs bkit-tests-static + bkit-tests-unit + bkit-tests-integration as
+#   separate jobs) and what consumers gether/fraser run (+ bkit-tests-e2e). Separate lanes give each
+#   tier its own honest coverage number, its own executed-count, its own permissions, and true
+#   parallelism. Add only the lanes your repo has. Cost/mitigation: docs/deployments.md § Parallel test lanes.
+#   NON-HOLLOW outputs (REQUIRED — the capstone asserts via these): each lane emits its own <tier>_ran
+#     (tests_ran) + cache_skip. A DECLARED tier can execute ZERO and still go green (vitest
+#     --passWithNoTests / glob drift / all-skipped; `turbo run test:X` with no package declaring it),
+#     so emit the count from the runner's machine summary (vitest --reporter=json ->
+#     numPassedTests+numFailedTests; playwright --reporter=json -> stats.expected+unexpected) and
+#     JOB 4 asserts >0 PER LANE. See bkit's own bkit-tests-check for the assert_ran pattern.
+#   The step catalogue below lists EVERY step across all tiers in execution order — distribute them
+#   across the per-tier lanes (static gates -> bkit-tests-static; unit -> bkit-tests-unit; integration
+#   -> bkit-tests-integration; E2E + deploy-await -> bkit-tests-e2e), each lane doing its own checkout
+#   + setup + install.
 #   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the named verbose-ci-env block from the starter (preflight checks it by name).
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
@@ -602,6 +710,7 @@ jobs:
 #       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
 #       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
+#       - name: Report Coverage on PR # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e). With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
 #       - name: Build All Packages            # [D] source env first
 #       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
@@ -612,7 +721,30 @@ jobs:
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
-# === JOB 2b — migration replay gate (independent sibling of bkit-tests) ===
+# === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
+# bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
+# step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra
+# boundaries). Mirrors bkit's own bkit-tests-integration lane + consumers gether/fraser. Self-contained
+# (own checkout/setup/install); gate heavy steps on web_affected; emit integration_ran; the
+# bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
+#   bkit-tests-integration:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   #   own job-level permissions: { actions: read, contents: read, pull-requests: write } for the coverage comment.
+#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Vitest Integration Tests
+#       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
+#       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
+#
+# === JOB 2c — E2E lane (distribute JOB 2's E2E steps into their OWN job) ===
+# bkit-stub:bkit-tests-e2e — [E] the E2E (Playwright) tier as its OWN parallel lane. WHEN: you have a
+# browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
+# READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
+# bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
+#   bkit-tests-e2e:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 30
+#   #   own job-level permissions block (same three) for the coverage comment.
+#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
+#       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
+#       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
+#
+# === JOB 2b — migration replay gate (independent sibling of the test lanes) ===
 # bkit-stub:bkit-tests-migrate — [DB] prove every migration replays from an EMPTY database
 # (+ the seed loads) on a fresh ephemeral instance each run. WHEN: you have a migrations dir.
 # Catches what `migrate deploy` / `db push --linked` cannot: a stale-volume migration a warm
@@ -639,8 +771,8 @@ jobs:
 #
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
-# want post-deploy @live smoke. Sequential after bkit-tests. DROP if no deploy (bkit does).
-#   bkit-tests-live:  needs:[bkit-decide,bkit-tests]; if: run_live && needs.bkit-tests.result=='success'; timeout-minutes: 15
+# want post-deploy @live smoke. Sequential after ALL the test lanes. DROP if no deploy (bkit does).
+#   bkit-tests-live:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e]; if: run_live && every test lane's result=='success'; timeout-minutes: 15
 #     steps:
 #       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
 #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
@@ -663,12 +795,12 @@ jobs:
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
 # moment any tier is skippable. ~seconds, no checkout.
-#   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
+#   bkit-tests-check:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
-#       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome + *_ran counts. Assert + exit 1 on mismatch:
-#       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
-#       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
+#       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
+#       #   decide==success; run_level!=none => static+unit==success; web_affected => bkit-tests-integration==success (its LANE result);
+#       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
 #       #   bkit-tests-migrate==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),

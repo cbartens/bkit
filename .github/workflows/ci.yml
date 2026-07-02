@@ -26,7 +26,8 @@ jobs:
   # bkit is single-package, no deploy — web_affected/run_e2e/run_live are always false and
   # there's no turbo affected-graph. The full multi-tier decide ships to consumers in
   # .bkit/templates/.github/workflows/ci.yml; this dogfoods the marker + run_level +
-  # merged-PR-escalation core. Test lanes (bkit-tests-static, bkit-tests-unit) run in parallel.
+  # merged-PR-escalation core. Test lanes (bkit-tests-static, bkit-tests-unit,
+  # bkit-tests-integration) run in parallel; the capstone bkit-tests-check needs all three.
   bkit-decide:
     name: bkit-decide
     runs-on: ubuntu-latest
@@ -415,6 +416,13 @@ jobs:
     needs: [bkit-decide]
     if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
+    # Job-level permissions REPLACE the workflow-level block (they are not additive). The
+    # coverage report step needs pull-requests: write to post its PR comment; the Check SHA
+    # Cache step calls `gh run list`, so actions: read must be re-declared here or it breaks.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
@@ -458,25 +466,135 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Run Vitest Tests
+      # UNIT coverage run, scoped via --coverage.include to the logic surface (all .bkit/src except
+      # the bkit-modules data registry, which is exercised end-to-end, not unit-tested — vitest
+      # coverage is per-RUN, not per-project, so scoping is a CLI flag). UNIT is the GATE:
+      # --coverage.thresholds.branches=65 (set just below current, ratcheted up) reds the lane on a
+      # branch-coverage regression. Its parallel sibling bkit-tests-integration owns the integration
+      # tier (report-only) — SEPARATE lanes so each tier has its own honest number, its own
+      # executed-count, and mirrors how consumers (gether/fraser) run them. Dogfoods the per-tier
+      # bkit-stub:coverage scaffold shipped to consumers. See testing.md § Coverage on PRs.
+      - name: Run Vitest Unit Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
-          pnpm exec vitest run --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/vitest-result.json"
-          RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/vitest-result.json")
-          echo "ran=$RAN" >> "$GITHUB_OUTPUT"
-          echo "::notice::vitest executed $RAN test(s)."
+          pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/unit \
+            --exclude '**/*.integration.test.ts' \
+            --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' \
+            --coverage.thresholds.branches=65 \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
+          UNIT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit-result.json")
+          echo "ran=$UNIT_RAN" >> "$GITHUB_OUTPUT"
+          echo "::notice::vitest executed $UNIT_RAN unit test(s)."
 
-  # ── bkit-tests-check ── capstone; needs all lanes; if: !cancelled() (NOT always() — a
+      # Unit coverage comment on PRs (the COMMENT step never fails the lane; the unit RUN above gates
+      # branches via --coverage.thresholds.branches). A distinct name: keys the sticky comment so the
+      # unit / integration comments don't collide. The head.repo == repo guard skips fork PRs, where
+      # GITHUB_TOKEN is read-only and the comment would fail.
+      - name: Report Unit Coverage on PR
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+        with:
+          name: unit
+          json-summary-path: coverage/unit/coverage-summary.json
+          json-final-path: coverage/unit/coverage-final.json
+          file-coverage-mode: changes
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── bkit-tests-integration ── parallel sibling of static + unit (SEPARATE lane, matching how
+  # consumers gether/fraser run it). Owns the integration tier: runs *.integration.test.ts and
+  # reports integration coverage scoped to the engine surface (modules/install/upgrade/uninstall).
+  # REPORT-ONLY — no --coverage.thresholds (gated on EXECUTION via the capstone's integration_ran > 0,
+  # not a %): a hard integration % punishes the correct pyramid shape (testing.md § Coverage on PRs).
+  bkit-tests-integration:
+    name: bkit-tests-integration
+    needs: [bkit-decide]
+    if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
+    runs-on: ubuntu-latest
+    # Same job-level permissions rationale as bkit-tests-unit: pull-requests: write for the coverage
+    # comment; actions: read for the SHA-cache `gh run list`.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    outputs:
+      cache_skip: ${{ steps.cache.outputs.skip }}
+      tests_ran: ${{ steps.vitest.outputs.ran }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Check SHA Cache
+        id: cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.bkit-decide.outputs.plan }}
+        run: |
+          SKIP="false"
+          FORCE=$(echo "$PLAN" | jq -r '(.markers_present // []) | any(.[]; . == "force-build" or . == "force-cache")' 2>/dev/null || echo "false")
+          if [ "$FORCE" = "true" ]; then
+            echo "::notice::force marker present — ignoring SHA cache."
+          else
+            SINCE=$(date -u -d '7 days ago' +%FT%TZ 2>/dev/null || date -u -v -7d +%FT%TZ)
+            PRIOR=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$GITHUB_WORKFLOW" \
+              --status success \
+              --limit 50 \
+              --json headSha,createdAt \
+              --jq "[.[] | select(.headSha == \"$GITHUB_SHA\") | select(.createdAt > \"$SINCE\")] | length" \
+              2>/dev/null || echo 0)
+            if [ "${PRIOR:-0}" -gt 0 ]; then
+              SKIP="true"
+              echo "::notice::SHA $GITHUB_SHA has $PRIOR prior green run(s) since $SINCE — skipping suite."
+            fi
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+
+      - name: Install Dependencies
+        if: steps.cache.outputs.skip != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # INTEGRATION coverage run, scoped via --coverage.include to the engine surface
+      # (modules/install/upgrade/uninstall) so the number reflects the flows integration is meant to
+      # drive, not a whole-repo denominator. Report-only — NO --coverage.thresholds (see job header).
+      - name: Run Vitest Integration Tests
+        id: vitest
+        if: steps.cache.outputs.skip != 'true'
+        run: |
+          pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
+            integration.test \
+            --coverage.include='.bkit/src/bkit-{modules,install,upgrade,uninstall}.ts' \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/int-result.json"
+          INT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/int-result.json")
+          echo "ran=$INT_RAN" >> "$GITHUB_OUTPUT"
+          echo "::notice::vitest executed $INT_RAN integration test(s)."
+
+      - name: Report Integration Coverage on PR
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+        with:
+          name: integration
+          json-summary-path: coverage/integration/coverage-summary.json
+          json-final-path: coverage/integration/coverage-final.json
+          file-coverage-mode: changes
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── bkit-tests-check ── capstone; needs ALL test lanes; if: !cancelled() (NOT always() — a
   # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not
   # cancelled(), so real failures still fail loudly). Asserts the plan was honoured: bkit-decide
-  # succeeded and, when run_level != none, BOTH lanes succeeded AND unit executed >0 tests (not
-  # a vacuous green). bkit's SOLE branch-protection
-  # required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check) — green means
-  # "the planned suite ran and passed", not "nothing visibly failed".
+  # succeeded and, when run_level != none, ALL THREE test lanes (static / unit / integration)
+  # succeeded AND unit + integration each executed >0 tests (not a vacuous green). bkit's SOLE
+  # branch-protection required check (.bkit/scripts/bkit-protect-main.sh, REQUIRED_JOB=bkit-tests-check)
+  # — green means "the planned suite ran and passed", not "nothing visibly failed".
   bkit-tests-check:
     name: bkit-tests-check
-    needs: [bkit-decide, bkit-tests-static, bkit-tests-unit]
+    needs: [bkit-decide, bkit-tests-static, bkit-tests-unit, bkit-tests-integration]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -487,8 +605,11 @@ jobs:
           DECIDE_RESULT: ${{ needs.bkit-decide.result }}
           STATIC_RESULT: ${{ needs.bkit-tests-static.result }}
           UNIT_RESULT: ${{ needs.bkit-tests-unit.result }}
-          TESTS_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
-          CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
+          UNIT_RAN: ${{ needs.bkit-tests-unit.outputs.tests_ran }}
+          UNIT_CACHE_SKIP: ${{ needs.bkit-tests-unit.outputs.cache_skip }}
+          INTEGRATION_RESULT: ${{ needs.bkit-tests-integration.result }}
+          INTEGRATION_RAN: ${{ needs.bkit-tests-integration.outputs.tests_ran }}
+          INTEGRATION_CACHE_SKIP: ${{ needs.bkit-tests-integration.outputs.cache_skip }}
         run: |
           FAIL=0
           plan_run_level=$(echo "$PLAN" | jq -r '.run_level' 2>/dev/null || echo "")
@@ -504,32 +625,45 @@ jobs:
             echo "::error::plan.run_level=$plan_run_level but bkit-tests-unit result=$UNIT_RESULT"
             FAIL=1
           fi
-          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of the unit lane must have
-          # executed >0 tests — guards the green-with-zero hole (vitest exiting 0 having run
-          # nothing: --passWithNoTests / glob drift / all-skipped). cache_skip=true was already
-          # validated on the cached SHA, and run_level=none is a deliberate skip — both assert nothing.
-          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" = "success" ] && [ "$CACHE_SKIP" != "true" ]; then
-            case "$TESTS_RAN" in
+          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" != "success" ]; then
+            echo "::error::plan.run_level=$plan_run_level but bkit-tests-integration result=$INTEGRATION_RESULT"
+            FAIL=1
+          fi
+          # NON-HOLLOW: a real run (not a SHA-cache short-circuit) of a test lane must have executed
+          # >0 tests — guards the green-with-zero hole (vitest exiting 0 having run nothing:
+          # --passWithNoTests / glob drift / all-skipped). cache_skip=true was already validated on
+          # the cached SHA, and run_level=none is a deliberate skip — both assert nothing. Checked
+          # PER LANE (unit + integration) so a hollow either-tier is caught.
+          assert_ran() {
+            lane="$1"; ran="$2"
+            case "$ran" in
               ''|*[!0-9]*)
-                echo "::error::bkit-tests-unit succeeded but its executed-test count is non-numeric ('$TESTS_RAN') — cannot confirm tests ran."
+                echo "::error::$lane succeeded but its executed-test count is non-numeric ('$ran') — cannot confirm tests ran."
                 FAIL=1 ;;
               0)
-                echo "::error::bkit-tests-unit succeeded but executed 0 tests — vacuous green (expected >0)."
+                echo "::error::$lane succeeded but executed 0 tests — vacuous green (expected >0)."
                 FAIL=1 ;;
             esac
+          }
+          if [ "$plan_run_level" != "none" ] && [ "$UNIT_RESULT" = "success" ] && [ "$UNIT_CACHE_SKIP" != "true" ]; then
+            assert_ran "bkit-tests-unit" "$UNIT_RAN"
+          fi
+          if [ "$plan_run_level" != "none" ] && [ "$INTEGRATION_RESULT" = "success" ] && [ "$INTEGRATION_CACHE_SKIP" != "true" ]; then
+            assert_ran "bkit-tests-integration" "$INTEGRATION_RAN"
           fi
           if [ "$FAIL" = "1" ]; then
             echo "::error::bkit-tests-check FAILED — plan was not honoured. See above."
             exit 1
           fi
-          echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${TESTS_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
+          echo "✅ bkit-tests-check passed — planned suite ran (static=$STATIC_RESULT, unit=${UNIT_RAN:-cache-skip/none}, integration=${INTEGRATION_RAN:-cache-skip/none} tests) and succeeded (run_level=$plan_run_level)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONSUMER SCAFFOLD (not used by bkit). bkit ships the FULL multi-tier scaffold to
 # consumers in .bkit/templates/.github/workflows/ci.yml as `# bkit-stub:` blocks they
 # enable: turbo affected-graph (bkit-decide); integration + E2E + Vercel-await; the
 # push-only @live job (bkit-tests-live) — all N/A for single-package, no-deploy bkit.
-# bkit's own CI splits into parallel lanes (bkit-tests-static + bkit-tests-unit) to
-# dogfood the pattern recommended in the scaffold § Parallel test lanes.
+# bkit's own CI splits into parallel lanes (bkit-tests-static + bkit-tests-unit +
+# bkit-tests-integration) to dogfood the SEPARATE-lane-per-tier pattern consumers run
+# (gether/fraser); e2e/migrate/live lanes are template-only (bkit has no browser/DB/deploy).
 # `pnpm bkit install`/`upgrade` advise on each stub. See .bkit/src/bkit-postinstall.ts.
 # ─────────────────────────────────────────────────────────────────────────────
