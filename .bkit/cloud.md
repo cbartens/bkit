@@ -109,7 +109,7 @@ CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=70
 
 Claude pairs with the **GitHub** tracker (see § Cloud-agent support matrix), so no `LINEAR_API_KEY` / `LINEAR_ISSUE_ID`. Set `GH_MCP_TOKEN` for the GitHub MCP server; authenticate `gh` via `gh auth login --with-token` in a bootstrap hook (env vars are not visible during the setup script — see § Notes).
 
-Optional (debug-fetch — only if you use the `docs/observability.md` blocks; non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
+Optional (debug-fetch — only if you use the `docs/observability.md` blocks; the tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. These are cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
@@ -296,7 +296,7 @@ GH_BKIT_TOKEN=<classic PAT with read:packages — consumer repos only>
 
 `LINEAR_ISSUE_ID` is injected per-session by the Cursor / Linear integration — do not hardcode.
 
-Optional (debug-fetch — only if you use the `docs/observability.md` blocks; non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
+Optional (debug-fetch — only if you use the `docs/observability.md` blocks; the tokens below are **examples**, set whatever operator creds YOUR enabled blocks need. These are cloud-dashboard entries, not `.bkit/.env` — that file is bkit/agent tooling only. Non-secret selectors such as `VERCEL_SCOPE` / `SUPABASE_PROJECT_ID` commit directly in your copied block so cloud agents inherit them without a dashboard entry):
 
 ```
 VERCEL_TOKEN=<Vercel access token — https://vercel.com/account/settings/tokens>
