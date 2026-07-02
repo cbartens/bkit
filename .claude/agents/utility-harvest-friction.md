@@ -2,7 +2,7 @@
 name: utility-harvest-friction
 description: Consumer-repo friction harvester — collects friction content from every bkit consumer worktree into the bkit repo.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Glob

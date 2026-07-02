@@ -2,7 +2,7 @@
 name: bkit-utility-update-documentation
 description: Senior tech writer syncing project docs with system state after multiple plans.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep
@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior tech writer syncing project docs with system state after multiple plans.
 **Scope:** As specified by input or session prompt.

@@ -1344,6 +1344,64 @@ function hasExplicitDepUpdaterField(cwd) {
         return false;
     }
 }
+/** Parse the pnpm major from package.json `packageManager` (0 if absent / non-pnpm). */
+function readPnpmMajor(cwd) {
+    const pkgPath = path.join(cwd, "package.json");
+    if (!fs.existsSync(pkgPath))
+        return 0;
+    try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const pm = typeof pkg.packageManager === "string" ? pkg.packageManager : "";
+        const m = pm.match(/^pnpm@(\d+)/);
+        return m ? Number(m[1]) : 0;
+    }
+    catch {
+        return 0;
+    }
+}
+/**
+ * True when pnpm-workspace.yaml declares a top-level `minimumReleaseAge:` gate.
+ * Line-anchored top-level YAML key (column 0) — a `#`-prefixed comment mentioning
+ * the setting (e.g. a post-removal breadcrumb) does not match, so the advisory
+ * self-clears once the gate is removed. Absent / unreadable => false.
+ */
+function pnpmWorkspaceHasReleaseAgeGate(cwd) {
+    const wsPath = path.join(cwd, "pnpm-workspace.yaml");
+    if (!fs.existsSync(wsPath))
+        return false;
+    return /^minimumReleaseAge:/m.test(fs.readFileSync(wsPath, "utf-8"));
+}
+/**
+ * Advise dropping the per-install pnpm `minimumReleaseAge` gate when it is paired
+ * with Renovate on pnpm 11 — the combination OOMs Mend's low-RAM hosted Renovate
+ * microvm on a large monorepo (physical `kernel-out-of-memory` during
+ * `pnpm update --lockfile-only`, blocking every dependency PR). See #308.
+ *
+ * The shipped renovate.json5 now enforces release-age freshness in Renovate itself
+ * (`minimumReleaseAge: "1 day"` + a `PNPM_WORKERS`/`PNPM_MAX_WORKERS` memory cap),
+ * so the per-install pnpm gate is redundant for Renovate's PRs AND is the memory
+ * spike — removing it clears the OOM. Fires only when ALL hold:
+ *   - Renovate is the active updater (`.github/renovate.json5` present) — the OOM is
+ *     specific to Mend's runner; Dependabot consumers are on GitHub's runners.
+ *   - pnpm major >= 11 (package.json `packageManager`) — pnpm 10's regen was fine.
+ *   - `pnpm-workspace.yaml` declares a top-level `minimumReleaseAge:` key.
+ */
+export function buildPnpmReleaseAgeOomAdvisory(cwd) {
+    const renovateActive = fs.existsSync(path.join(cwd, ".github", "renovate.json5")) ||
+        fs.existsSync(path.join(cwd, ".github", "renovate.json"));
+    if (!renovateActive)
+        return null;
+    if (readPnpmMajor(cwd) < 11)
+        return null;
+    if (!pnpmWorkspaceHasReleaseAgeGate(cwd))
+        return null;
+    return {
+        id: "pnpm-release-age-gate-oom",
+        severity: "advisory",
+        detect: "pnpm-workspace.yaml declares a per-install `minimumReleaseAge` gate while Renovate is active on pnpm 11. On a large monorepo this OOMs Mend's low-RAM hosted Renovate runner during `pnpm update --lockfile-only` (physical `kernel-out-of-memory`), blocking every dependency PR.",
+        action: "The shipped renovate.json5 now enforces release-age freshness in Renovate itself (`minimumReleaseAge: \"1 day\"`, plus a `PNPM_WORKERS`/`PNPM_MAX_WORKERS` memory cap), so the per-install pnpm gate is redundant for Renovate's PRs and is the memory spike. Remove the gate from `pnpm-workspace.yaml` — the `minimumReleaseAge:` key and its `minimumReleaseAgeExclude:` list (the bkit-consumer default is `minimumReleaseAge: 1440` excluding `@cbartens/*`). Lowering the number does NOT help — the cost is the per-entry publish-timestamp lookup, not the threshold, so it must be removed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block. Trade-off: Renovate-only freshness gates only what Renovate proposes, not manual/transitive fresh installs. Config takes effect only once it reaches your default branch; verify against a live Renovate run. Detail: `docs/deployments.md` § Renovate pnpm-11 freshness gate & microvm memory.",
+    };
+}
 /**
  * Read `bkit.cloudAgents` from the consumer's package.json. Returns the value
  * or the default ("none") when absent / unreadable.
@@ -2159,6 +2217,10 @@ export function runPostInstallCheck(preflightAdvisories, ws, modules, cwd = proc
     const depUpdaterSetup = buildDepUpdaterSetupAdvisory(cwd);
     if (depUpdaterSetup)
         phase3.push(depUpdaterSetup);
+    // pnpm-11 + per-install release-age gate + Renovate OOMs Mend's microvm (#308).
+    const pnpmReleaseAgeOom = buildPnpmReleaseAgeOomAdvisory(cwd);
+    if (pnpmReleaseAgeOom)
+        phase3.push(pnpmReleaseAgeOom);
     const cloudSetup = buildCloudSetupAdvisory(cwd);
     if (cloudSetup)
         phase3.push(cloudSetup);

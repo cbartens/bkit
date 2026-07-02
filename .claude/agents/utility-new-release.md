@@ -2,7 +2,7 @@
 name: utility-new-release
 description: Cut and publish a new bkit release from dev → main + npm tag. Use when the user says "release X.Y.Z", "publish X.Y.Z", or "ship a new bkit version".
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Bash

@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Observability
 
@@ -18,7 +18,7 @@
 
 `/bkit-debug` runs **every** `bash` fenced block between `<!-- debug-fetch:start [name] -->` / `<!-- debug-fetch:end -->` that appears **after** `<!-- bkit:end -->` (this consumer-owned section). The bkit-shipped examples _inside_ the managed block above are reference-only and never executed. Per block the agent customises (severity / freshness / limit), executes, and writes stdout to `docs/plans/{YYYYMM}/logs/{FID}/debug-context-runtime-<name>-{DEBUG_ATTEMPT}.md` (unnamed block => `debug-context-runtime-{DEBUG_ATTEMPT}.md`).
 
-**Enabling:** copy an example block below to **after** `<!-- bkit:end -->`, then set its env vars. Each block self-gates — missing CLI / token prints a one-line `[debug-fetch:<name>] skipped — …` breadcrumb to stderr and exits 0 — so enable only the sources you use, and an empty source reads as "not wired up", not "no errors". Re-check after each upgrade: a freshly shipped example (e.g. a new `supabase` block) is inert until copied down. To intentionally enable none, add `<!-- debug-fetch:none intentional -->` after `<!-- bkit:end -->` to dismiss the bkit advisory.
+**Enabling:** copy an example block below to **after** `<!-- bkit:end -->`, then set its env vars. **Where to set the tokens (local):** put them wherever your repo already exposes env — typically an app env file such as `apps/web/.env.local` sourced by `.envrc` (the exact path varies by stack/consumer). These are app/stack observability creds, **not** bkit tooling, so they do **not** belong in `.bkit/.env`. Each block self-gates — missing CLI / token prints a one-line `[debug-fetch:<name>] skipped — …` breadcrumb to stderr and exits 0 — so enable only the sources you use, and an empty source reads as "not wired up", not "no errors". Re-check after each upgrade: a freshly shipped example (e.g. a new `supabase` block) is inert until copied down. To intentionally enable none, add `<!-- debug-fetch:none intentional -->` after `<!-- bkit:end -->` to dismiss the bkit advisory.
 
 **Cloud agents:** `/bkit-debug` also runs in Claude/Cursor cloud agents, which are headless and never see `.bkit/.env`. Authenticate non-interactively — set env tokens (`VERCEL_TOKEN`, `SUPABASE_ACCESS_TOKEN`) in the dashboard, never `vercel login`. Put each secret token in the cloud agent's dashboard env; non-secret selectors (scope / project ref / `--environment`) can be committed directly in your copied block so cloud agents inherit them. The token is identical across preview/prod — only the selector changes. (Authoring a block for another backend — `gcloud` / `aws` / `datadog` — self-gate on whatever credential it needs.)
 

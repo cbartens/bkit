@@ -9,7 +9,7 @@ tools:
   - Edit
   - Bash
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior editor merging review and scope critiques into the plan, no scope expansion.
 **Scope:** As specified by input and Read/Update/Create section.

@@ -2,7 +2,7 @@
 name: bkit-build-challenge-remediate
 description: Senior engineer applying targeted code fixes against a prioritised review report.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

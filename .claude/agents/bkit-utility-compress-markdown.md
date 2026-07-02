@@ -2,7 +2,7 @@
 name: bkit-utility-compress-markdown
 description: Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep
@@ -12,7 +12,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical editor compressing markdown without changing meaning, cadence, or load-bearing tokens.
 **Scope:** As specified by input or session prompt.

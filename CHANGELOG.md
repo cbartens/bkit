@@ -6,6 +6,25 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.8] — 2026-07-02
+
+Prevent Mend Renovate microvm OOM on pnpm-11 monorepos, pin the medium agent tier to Claude Sonnet 5, permit tracker CLI/HTTP shell-outs as an MCP backup, and scope `.bkit/.env` to bkit/agent tooling secrets only (#308, #205, #310).
+
+### Added
+
+- **`pnpm-release-age-gate-oom` postinstall advisory + Renovate worker caps.** Large pnpm-11 monorepos running the per-install pnpm `minimumReleaseAge` supply-chain gate OOM Mend's low-RAM hosted Renovate runner during `pnpm update --lockfile-only` (physical kernel-out-of-memory), blocking every dependency PR; CI/Vercel have more RAM and are unaffected. The canonical `renovate.json5` now caps pnpm's worker pool via `env: { PNPM_WORKERS, PNPM_MAX_WORKERS }` (allow-listed by Mend's `global:safeEnv`, so no admin `allowedEnv` change) and enforces freshness in Renovate itself via `minimumReleaseAge: "1 day"` (security / `osvVulnerabilityAlerts` PRs bypass by design, so CVE fixes are not delayed). The new advisory fires only on pnpm 11 + Renovate active + the pnpm-level gate present, and self-clears once the consumer drops that gate from `pnpm-workspace.yaml` (a shorter threshold does not help). Shipped `docs/deployments.md` gains the Renovate pnpm-11 guidance and KN-41 records it. (#308)
+
+### Changed
+
+- **Medium-tier agent model pinned to Claude Sonnet 5.** `claude-sonnet-4-6` → `claude-sonnet-5` (GA 2026-06-30, id `claude-sonnet-5`, verified live) on the Claude pin only — across `prompts.md` (effort→model table, Models Claude column, `/build` + `/ship` orchestrators, live model-ID verification note), the 17 `.bkit/prompts/*.md` frontmatter pins, the `.claude` `bkit-*` mirrors, and the hand-authored `utility-new-release` + `utility-harvest-friction` agents. `utility-pre-release-check` stays on `claude-opus-4-8`; the Cursor and non-Anthropic opencode provider columns are unchanged. (#205)
+- **Tracker MCP rule softened to MCP-first with a CLI/HTTP fallback.** `rules.md` (and the shipped template) no longer absolutely prohibit tracker CLI/HTTP shell-outs — they are permitted as a backup when the configured tracker MCP is unavailable (e.g. an empty `GH_MCP_TOKEN` under a Dock/launchd-launched Cursor). (#310)
+
+### Removed
+
+- **Stack-named debug-fetch creds dropped from `.bkit/.env`.** `VERCEL_TOKEN` / `SUPABASE_ACCESS_TOKEN` are removed from `.bkit/.env` and both `.env.example` files (template + own): they name a stack (breaking stack-independence) and already live in consumers' app env files (`apps/web/.env.{local,preview,…}`), which `.envrc` sources after `.bkit/.env` — so the seeds were shadowed and drifted on rotation. `docs/observability.md` now documents local token placement (app env file, as a stack-varying example); the `.bkit/.env.example` merge advisory and `cloud.md` debug-fetch blocks are updated to match. The `cloud-dashboard` postinstall advisory is intentionally kept.
+
+---
+
 ## [4.1.7] — 2026-06-29
 
 Collapse `.agents/docs.md` to a two-table model, move the consumer-owned guarantee inside each managed block, and scope the shipped surface to be stack-agnostic — trim stack-specific doc templates and permission gates, narrow the WebFetch allowlist to the bkit ecosystem (#304, #305).

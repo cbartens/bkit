@@ -2,7 +2,7 @@
 name: bkit-build-install-skills
 description: Senior technical lead matching feature requirements to relevant installable skills.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep
@@ -11,7 +11,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.
 **Scope:** As specified by input and Read/Update/Create section.

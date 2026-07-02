@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -236,6 +236,7 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 - Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
 - Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
 - Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
+- Caps pnpm's worker pool (`env: { PNPM_WORKERS, PNPM_MAX_WORKERS }`) and enforces release-age freshness in Renovate (`minimumReleaseAge: "1 day"`) — the pnpm-11 microvm-OOM mitigation. See § Renovate pnpm-11 freshness gate & microvm memory below; large monorepos on a pnpm-level `minimumReleaseAge` gate must also drop it to clear the OOM.
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
 - For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
 - Carries no private-registry token itself — the `hostRules` token anchor for `npm.pkg.github.com` is seeded into the consumer-owned `renovate-local.json5` instead, so it survives `bkit upgrade` (this file is canonical-overwrite and would clobber a token added here). You must provision a read token there to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
@@ -264,6 +265,17 @@ Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/ta
 Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps no longer read `encrypted` secrets from repo config — only dashboard secrets (the path above). The `encrypted` route is self-hosted only.
 
 This is part of Phase B activation; `pnpm bkit install --dependency=renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
+
+### Renovate pnpm-11 freshness gate & microvm memory
+
+The shipped `renovate.json5` carries two Renovate-scoped mitigations for a physical OOM (`Error: kernel-out-of-memory`) that large **pnpm 11** monorepos hit on Mend's low-RAM hosted runner during `pnpm update --lockfile-only`:
+
+- **(A) Worker cap** — `env: { PNPM_WORKERS: "1", PNPM_MAX_WORKERS: "1" }` bounds pnpm's worker-pool memory. Both vars are allow-listed by Mend's `global:safeEnv` preset (no admin `allowedEnv` change needed) and the cap touches only Renovate's runner, never CI/Vercel/local. `--lockfile-only` barely engages the worker pool, so this alone may **not** clear a metadata-driven OOM.
+- **(B) Renovate-native freshness** — `minimumReleaseAge: "1 day"` holds deps younger than 24h out of PRs with **no** per-install timestamp verification. Security / `osvVulnerabilityAlerts` PRs bypass it by design, so CVE fixes are never delayed.
+
+**Consumer action for (B) — this is the part that actually clears the OOM.** If you run a pnpm-level `minimumReleaseAge` gate in your **`pnpm-workspace.yaml`** (bkit ships the Renovate config, not this file), the OOM persists until you **remove** it. The two settings are independent: Renovate's `minimumReleaseAge` gates only Renovate's proposals; the pnpm gate is what verifies a publish timestamp for every dependency on every install and OOMs the microvm. Lowering it does not help — the memory cost is the per-entry lookup, not the threshold, so it must be removed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block, so the lockfile stays valid. `bkit install`/`upgrade` also surfaces this as the `pnpm-release-age-gate-oom` advisory.
+
+**Trade-off.** The pnpm gate aged **every** install (Renovate, CI, Vercel, local, and manual/transitive installs); Renovate-only freshness gates only what Renovate proposes. Accept a small reduction in supply-chain defense-in-depth in exchange for clearing the OOM and faster CI/Vercel builds — or keep the pnpm gate and rely on (A) alone. Either way, **verify against a live Renovate run** with the config on your default branch (Renovate reads config from there); the OOM cannot be reproduced or cleared from a local checkout.
 
 ### Customizing Renovate (renovate-local.json5)
 

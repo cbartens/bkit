@@ -2,7 +2,7 @@
 name: bkit-utility-update-references
 description: Senior technical writer maintaining consistent file-path references across markdown.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Glob
@@ -11,7 +11,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 50
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical writer maintaining consistent file-path references across markdown.
 **Scope:** As specified by input or session prompt.
