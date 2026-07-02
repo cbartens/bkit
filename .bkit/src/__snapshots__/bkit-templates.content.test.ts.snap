@@ -659,6 +659,16 @@ jobs:
 # bkit-stub:affected-graph — [M] turbo "what changed" engine (the Detect Affected Packages step).
 #       # Capture stdout/stderr SEPARATELY: 2>&1 merges turbo's banner into the JSON -> jq falls back to
 #       # [] = ghost-green. turbo error / no base / non-JSON -> global-dep fallback (web_affected=true). Drop for single-package.
+#       # GLOBAL-DEP OVER-TRIGGER (docs-only reds e2e): turbo attributes ANY changed root path that is NOT in a
+#       # workspace and NOT a declared globalDependency (docs/**, README, LICENSE, ...) to the root \`//\` package
+#       # with reason FileChanged. A \`global_dep_changed -> web_affected=true\` force keyed on ANY \`//\` FileChanged
+#       # therefore can't tell a real global-dep bump from a docs-only diff and over-triggers: web_affected=true
+#       # schedules e2e, the host cancels the docs-only preview (no deploy), and Await Deployment then reds e2e on
+#       # every docs push. FIX: gate the force on a REAL global-dep change — intersect the changed root files with
+#       # turbo.json globalDependencies/globalEnv (+ root lockfile/package.json) and force web_affected only on a
+#       # match; a non-triggering-root-only diff (docs/** etc.) must NOT force it (a docs-only-only guard is the
+#       # same idea but misses a root README-only change). See docs/deployments.md
+#       # § "turbo // over-triggers web_affected on docs-only diffs".
 #       - name: Detect Affected Packages     # [M] sets web_affected / global_dep_changed
 #       - name: Read Markers                 # [U] commit msg (push) / PR title (PR) via env: (injection-safe); [skip ci]/[skip actions] push-only
 #       - name: Decide Run                   # [U] Layer 1 (whether): [skip ci] or affected-empty -> run_level=none
