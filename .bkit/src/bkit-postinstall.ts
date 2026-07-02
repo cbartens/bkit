@@ -1457,6 +1457,18 @@ function readPnpmMajor(cwd: string): number {
 }
 
 /**
+ * True when pnpm-workspace.yaml declares a top-level `minimumReleaseAge:` gate.
+ * Line-anchored top-level YAML key (column 0) — a `#`-prefixed comment mentioning
+ * the setting (e.g. a post-removal breadcrumb) does not match, so the advisory
+ * self-clears once the gate is removed. Absent / unreadable => false.
+ */
+function pnpmWorkspaceHasReleaseAgeGate(cwd: string): boolean {
+  const wsPath = path.join(cwd, "pnpm-workspace.yaml");
+  if (!fs.existsSync(wsPath)) return false;
+  return /^minimumReleaseAge:/m.test(fs.readFileSync(wsPath, "utf-8"));
+}
+
+/**
  * Advise dropping the per-install pnpm `minimumReleaseAge` gate when it is paired
  * with Renovate on pnpm 11 — the combination OOMs Mend's low-RAM hosted Renovate
  * microvm on a large monorepo (physical `kernel-out-of-memory` during
@@ -1479,18 +1491,7 @@ export function buildPnpmReleaseAgeOomAdvisory(cwd: string): PreflightFinding | 
 
   if (readPnpmMajor(cwd) < 11) return null;
 
-  const wsPath = path.join(cwd, "pnpm-workspace.yaml");
-  if (!fs.existsSync(wsPath)) return null;
-  let ws: string;
-  try {
-    ws = fs.readFileSync(wsPath, "utf-8");
-  } catch {
-    return null;
-  }
-  // Line-anchored top-level YAML key (column 0) — a `#`-prefixed comment mentioning
-  // the setting (e.g. a post-removal breadcrumb) does not match, so the advisory
-  // self-clears once the gate is removed.
-  if (!/^minimumReleaseAge:/m.test(ws)) return null;
+  if (!pnpmWorkspaceHasReleaseAgeGate(cwd)) return null;
 
   return {
     id: "pnpm-release-age-gate-oom",
