@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Deployments
 
@@ -266,16 +266,16 @@ Do **not** use an `encrypted` block on Mend hosted: the Mend cloud apps no longe
 
 This is part of Phase B activation; `pnpm bkit install --dependency=renovate` prints it in the activation checklist. The `hostRules` anchor in `renovate-local.json5` is inert (no-op) until you uncomment the token, so it never breaks consumers who have not provisioned it yet — and because that file is consumer-owned (never overwritten), your activation is not clobbered on the next `bkit upgrade`.
 
-### Renovate pnpm-11 freshness gate & microvm memory (#308)
+### Renovate pnpm-11 freshness gate & microvm memory
 
-The shipped `renovate.json5` carries two Renovate-scoped mitigations for a physical OOM (`Error: kernel-out-of-memory`) that large **pnpm 11** monorepos hit on Mend's low-RAM hosted runner during `pnpm update --lockfile-only` (incident detail: `knowledge.md` § KN-41):
+The shipped `renovate.json5` carries two Renovate-scoped mitigations for a physical OOM (`Error: kernel-out-of-memory`) that large **pnpm 11** monorepos hit on Mend's low-RAM hosted runner during `pnpm update --lockfile-only`:
 
 - **(A) Worker cap** — `env: { PNPM_WORKERS: "1", PNPM_MAX_WORKERS: "1" }` bounds pnpm's worker-pool memory. Both vars are allow-listed by Mend's `global:safeEnv` preset (no admin `allowedEnv` change needed) and the cap touches only Renovate's runner, never CI/Vercel/local. `--lockfile-only` barely engages the worker pool, so this alone may **not** clear a metadata-driven OOM.
 - **(B) Renovate-native freshness** — `minimumReleaseAge: "1 day"` holds deps younger than 24h out of PRs with **no** per-install timestamp verification. Security / `osvVulnerabilityAlerts` PRs bypass it by design, so CVE fixes are never delayed.
 
-**Consumer action for (B).** The pnpm-level `minimumReleaseAge` gate lives in consumer-owned **`pnpm-workspace.yaml`** (bkit ships the Renovate config, not this file). The two are independent: the OOM persists until you **remove** the pnpm-level `minimumReleaseAge` — lowering it does not help, since the memory cost is the per-entry publish-timestamp lookup, not the threshold. Removing it is safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block, so the lockfile stays valid. `bkit install`/`upgrade` surfaces this as the `pnpm-release-age-gate-oom` advisory (fires only on pnpm 11 + Renovate active + the gate present).
+**Consumer action for (B) — this is the part that actually clears the OOM.** If you run a pnpm-level `minimumReleaseAge` gate in your **`pnpm-workspace.yaml`** (bkit ships the Renovate config, not this file), the OOM persists until you **remove** it. The two settings are independent: Renovate's `minimumReleaseAge` gates only Renovate's proposals; the pnpm gate is what verifies a publish timestamp for every dependency on every install and OOMs the microvm. Lowering it does not help — the memory cost is the per-entry lookup, not the threshold, so it must be removed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block, so the lockfile stays valid. `bkit install`/`upgrade` also surfaces this as the `pnpm-release-age-gate-oom` advisory.
 
-**Trade-off.** The pnpm gate aged **every** install (Renovate, CI, Vercel, local, and manual/transitive installs); Renovate-only freshness gates only what Renovate proposes. Accept a small reduction in supply-chain defense-in-depth in exchange for clearing the OOM and faster CI/Vercel builds — or keep the pnpm gate and rely on (A) alone. Either way, **verify against a live Renovate run** with the config on `main` (Renovate reads config from the default branch); the OOM cannot be reproduced or cleared from a local checkout.
+**Trade-off.** The pnpm gate aged **every** install (Renovate, CI, Vercel, local, and manual/transitive installs); Renovate-only freshness gates only what Renovate proposes. Accept a small reduction in supply-chain defense-in-depth in exchange for clearing the OOM and faster CI/Vercel builds — or keep the pnpm gate and rely on (A) alone. Either way, **verify against a live Renovate run** with the config on your default branch (Renovate reads config from there); the OOM cannot be reproduced or cleared from a local checkout.
 
 ### Customizing Renovate (renovate-local.json5)
 

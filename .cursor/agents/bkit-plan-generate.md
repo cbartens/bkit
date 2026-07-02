@@ -9,7 +9,7 @@ tools:
   - Write
   - Edit
 ---
-<!-- bkit:managed v4.1.7 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior architect translating design docs into chronological implementation plans.
 **Scope:** As specified by input and Read/Update/Create section.
