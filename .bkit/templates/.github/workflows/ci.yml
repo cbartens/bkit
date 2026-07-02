@@ -452,6 +452,10 @@ jobs:
       #          actions: read
       #          contents: read
       #          pull-requests: write     # required to post/update the sticky PR coverage comments
+      #   SEPARATE LANES: this stub wires both reports into bkit-tests-unit (the combined starter). If you run
+      #   integration as its OWN lane (bkit-tests-integration — the shape bkit's own CI + gether/fraser run; see the
+      #   FULL CI SCAFFOLD REFERENCE below), move the integration coverage run + its Report step + a pull-requests: write
+      #   permissions block into THAT lane instead. Each lane posts its own comment; the distinct name: keeps them apart.
       #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so the steps fail — the head.repo == repo guard in the
       #   if: below skips them there (or adopt the action's workflow_run two-workflow pattern to support forks).
       #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
@@ -619,12 +623,17 @@ jobs:
 # partial/cached/light run is green by construction, NOT validated. bkit-decide plans
 # what should run; bkit-tests-check enforces it ran. green == validated.
 #
-# ORDER + gating (needs: + result guards):
+# ORDER + gating (needs: + result guards). Each TIER is its own parallel LANE (job) — the proven
+# shape bkit's own ci.yml (bkit-tests-static/unit/integration) and consumers gether/fraser run;
+# NOT steps in one monolithic tests job. Bring a lane to life only if that tier applies to your repo:
 #   bkit-decide                                              always-on, never skips
-#   bkit-tests          needs:[decide]                       if: run_level != 'none'
-#   bkit-tests-migrate  needs:[] (independent sibling)       always-on; heavy steps gated on migration/seed change
-#   bkit-tests-live     needs:[decide,tests]                 if: run_live && needs.bkit-tests.result=='success'
-#   bkit-tests-check    needs:[decide,tests,tests-migrate,tests-live]  if: ${{ !cancelled() }}
+#   bkit-tests-static       needs:[decide]                   if: run_level != 'none'  ┐
+#   bkit-tests-unit         needs:[decide]                   if: run_level != 'none'  │ parallel
+#   bkit-tests-integration  needs:[decide]                   if: run_level != 'none'  │ test lanes
+#   bkit-tests-e2e          needs:[decide]                   if: run_level != 'none'  │ (add the
+#   bkit-tests-migrate      needs:[] (independent sibling)   always-on; gated on migration/seed change ┘  tiers you have)
+#   bkit-tests-live         needs:[decide + all test lanes]  if: run_live && every test lane == 'success'
+#   bkit-tests-check        needs:[decide + ALL lanes]       if: ${{ !cancelled() }} — asserts each lane succeeded AND each tier's *_ran > 0
 #
 # `bkit install`/`upgrade` raises an advisory per `# bkit-stub:` sentinel below;
 # remove a sentinel header to dismiss (uncommenting alone does not).
@@ -653,18 +662,23 @@ jobs:
 #       - name: Upload Test Plan             # [U] plan-table -> $GITHUB_STEP_SUMMARY (if: !cancelled())
 #       - name: Write Cancellation Notice    # [U] if: cancelled() — note instead of a blank summary
 #
-# === JOB 2: bkit-tests-static + bkit-tests-unit — the tiers ===
-#   needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
-#   The starter ABOVE already ships two parallel lanes (bkit-tests-static + bkit-tests-unit).
-#   To scale further (integration, E2E), add more sibling lanes — the capstone needs: ALL
-#   lanes and EACH emits its own *_ran count. Detail + cost/mitigation: docs/deployments.md
-#   § Parallel test lanes.
-#   outputs (REQUIRED — E2E/integration are STEPS not jobs, so the capstone asserts via these):
-#     integration_outcome: ${{ steps.integration.outcome }} ; e2e_outcome: ${{ steps.e2e.outcome }}
-#     EXECUTED COUNTS (the non-hollow signal): unit_ran/integration_ran/e2e_ran — how many tests each tier actually RAN, not just
-#       that the step exited 0. A DECLARED tier (script/step exists) can execute ZERO and still go green: vitest --passWithNoTests,
-#       all-skipIf-gated, or `turbo run test:X` where no package declares test:X. Emit per tier from the runner's machine summary
-#       (vitest --reporter=json -> numPassedTests+numFailedTests; playwright --reporter=json -> stats.expected+unexpected). JOB 4 asserts >0.
+# === JOB 2: the test lanes (static / unit / integration / e2e) — ONE JOB PER TIER ===
+#   each: needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   Every tier is its OWN parallel LANE (job), NOT a step. This is what bkit dogfoods (its own
+#   .github/workflows/ci.yml runs bkit-tests-static + bkit-tests-unit + bkit-tests-integration as
+#   separate jobs) and what consumers gether/fraser run (+ bkit-tests-e2e). Separate lanes give each
+#   tier its own honest coverage number, its own executed-count, its own permissions, and true
+#   parallelism. Add only the lanes your repo has. Cost/mitigation: docs/deployments.md § Parallel test lanes.
+#   NON-HOLLOW outputs (REQUIRED — the capstone asserts via these): each lane emits its own <tier>_ran
+#     (tests_ran) + cache_skip. A DECLARED tier can execute ZERO and still go green (vitest
+#     --passWithNoTests / glob drift / all-skipped; `turbo run test:X` with no package declaring it),
+#     so emit the count from the runner's machine summary (vitest --reporter=json ->
+#     numPassedTests+numFailedTests; playwright --reporter=json -> stats.expected+unexpected) and
+#     JOB 4 asserts >0 PER LANE. See bkit's own bkit-tests-check for the assert_ran pattern.
+#   The step catalogue below lists EVERY step across all tiers in execution order — distribute them
+#   across the per-tier lanes (static gates -> bkit-tests-static; unit -> bkit-tests-unit; integration
+#   -> bkit-tests-integration; E2E + deploy-await -> bkit-tests-e2e), each lane doing its own checkout
+#   + setup + install.
 #   env: [D] scope TURBO_TOKEN/VERCEL_*/SUPABASE_* here (least-privilege); KEEP the named verbose-ci-env block from the starter (preflight checks it by name).
 #     steps:
 #       - name: Checkout Repository          # [U] fetch-depth: 0 only if running slop-scan delta
@@ -696,7 +710,7 @@ jobs:
 #       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
 #       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
-#       - name: Report Unit/Integration Coverage # [U/PR] bkit-stub:coverage — two davelosert/vitest-coverage-report-action steps post per-tier coverage comments (report-only; unit gated on branches, integration gate-on-execution; needs pull-requests: write + json-summary/json reporters)
+#       - name: Report Coverage on PR # [U/PR] bkit-stub:coverage — davelosert/vitest-coverage-report-action posts a per-tier coverage comment (distinct name: unit|integration|e2e). With SEPARATE lanes each posts from its OWN lane: unit-cov here (gated on branches), integration-cov in bkit-tests-integration (report-only, gate-on-execution), e2e-cov in bkit-tests-e2e (bkit-stub:e2e-coverage, Monocart). Each lane needs job-level pull-requests: write + the json-summary/json reporters.
 #       - name: Build All Packages            # [D] source env first
 #       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
