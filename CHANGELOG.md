@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.9] — 2026-07-02
+
+Correct the `pnpm-release-age-gate-oom` advisory shipped in 4.1.8 — the fix is `minimumReleaseAge: 0`, not deleting the key — and make the detector value-aware (#308).
+
+### Fixed
+
+- **`pnpm-release-age-gate-oom` advisory recommended the wrong remediation.** 4.1.8 advised DELETING the pnpm-level `minimumReleaseAge` from `pnpm-workspace.yaml` to clear the Mend Renovate microvm OOM. That is wrong on pnpm 11: pnpm 11 defaults `minimumReleaseAge` to `1440` (pnpm 10 defaulted it off), so removing the key leaves the OOM-causing per-entry publish-timestamp verification live — and also strips any `minimumReleaseAgeExclude`, so same-day `@cbartens/*` installs then fail the gate. Only `minimumReleaseAge: 0` short-circuits the verification (proven: a `--frozen-lockfile` install drops from an OOM to ~3.7s). The advisory now recommends `minimumReleaseAge: 0` and its detector is value-aware — it fires on pnpm 11 + Renovate whenever the gate is active (key absent → the 1440 default, or any positive value) and clears only on an explicit `minimumReleaseAge: 0`, fixing both the false-fire on `: 0` and the false-negative on the absent-key default; it also now requires `pnpm-workspace.yaml` as a monorepo signal. The shipped `renovate.json5` comment, `docs/deployments.md` (template + own), and KN-41 (with a dated correction) are updated to match. (#308)
+
+---
+
 ## [4.1.8] — 2026-07-02
 
 Prevent Mend Renovate microvm OOM on pnpm-11 monorepos, pin the medium agent tier to Claude Sonnet 5, permit tracker CLI/HTTP shell-outs as an MCP backup, and scope `.bkit/.env` to bkit/agent tooling secrets only (#308, #205, #310).

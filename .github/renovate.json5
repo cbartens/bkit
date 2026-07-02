@@ -79,10 +79,12 @@
   //     verification — removing the memory spike at the source and speeding
   //     every CI/Vercel build. Security / osvVulnerabilityAlerts PRs bypass
   //     this by design, so CVE fixes are never delayed. To actually clear the
-  //     OOM the consumer must also DROP the pnpm-level `minimumReleaseAge` from
-  //     pnpm-workspace.yaml (a shorter threshold still does the full lookup),
-  //     which trades away defense-in-depth against manual/transitive fresh
-  //     installs. See docs/deployments.md § Renovate.
+  //     OOM the consumer must also set `minimumReleaseAge: 0` in
+  //     pnpm-workspace.yaml — pnpm 11 defaults the gate to 1440, so DELETING the
+  //     key leaves it active (and drops the @cbartens/* exclusion, breaking
+  //     same-day bkit upgrades); only 0 short-circuits the per-entry check. It
+  //     trades away pnpm-level defense against manual/transitive fresh installs.
+  //     See docs/deployments.md § Renovate pnpm-11 freshness gate & microvm memory.
   // ─────────────────────────────────────────────────────────────────────
   env: {
     PNPM_WORKERS: "1",

@@ -1,7 +1,7 @@
 ---
 description: "Ship Feature — Autonomous merge and archive"
 ---
-<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.9 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Ship Feature (Workflow 5/6)
 
