@@ -1182,7 +1182,7 @@ export function removeOrphanTemplatesDir(cwd: string, dryRun: boolean): void {
  * Returns "0.0.0" when unreadable (e.g. dev tree without a package.json at the
  * resolved root) — keeps the advisories artifact informational, not fatal.
  */
-function getInstallingVersion(): string {
+export function getInstallingVersion(): string {
   try {
     const pkgJsonPath = path.join(getPkgRoot(), "package.json");
     if (fs.existsSync(pkgJsonPath)) {
@@ -1200,7 +1200,7 @@ function getInstallingVersion(): string {
  * Reports current host+provider sampled from .opencode/opencode.json,
  * .claude/, and .cursor/ presence. Writes nothing.
  */
-function runStatus(cwd: string, logPrefix: string): void {
+export function runStatus(cwd: string, logPrefix: string): void {
   console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
   console.log(`${logPrefix} Working directory: ${cwd}`);
 
@@ -1288,7 +1288,7 @@ function runStatus(cwd: string, logPrefix: string): void {
  * source-rendered agents directory. Used by `bkit upgrade` to re-render (#251) only the
  * hosts the consumer actually opted into — never force-creating an opencode/cursor tree.
  */
-function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
+export function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
   const mods = new Set<ModuleFlag>();
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
@@ -1313,7 +1313,7 @@ function detectInstalledHostModules(cwd: string): Set<ModuleFlag> {
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
  */
-function detectInstalledModules(cwd: string): Set<ModuleFlag> {
+export function detectInstalledModules(cwd: string): Set<ModuleFlag> {
   const mods = new Set<ModuleFlag>(["core"]);
   if (fs.existsSync(path.join(cwd, ".claude", "agents"))) mods.add("claude");
   if (fs.existsSync(path.join(cwd, ".cursor", "agents"))) mods.add("cursor");
@@ -1347,7 +1347,7 @@ function detectInstalledModules(cwd: string): Set<ModuleFlag> {
  * recovery-hint text. Skips core (implicit), collapses the CI/quality modules to
  * --ci / --typescript / --tooling, and maps opt-ins to their value-flag spellings.
  */
-function modulesToCliFlags(
+export function modulesToCliFlags(
   mods: Set<ModuleFlag>,
   opencodeProvider: string | null,
   cloudVariant: CloudVariant | null,
@@ -1385,7 +1385,7 @@ function modulesToCliFlags(
  * The manifest value is validated against the allowlist so a hand-edited package.json cannot
  * smuggle an unsupported provider into the render path.
  */
-function detectOpencodeProvider(cwd: string): string | null {
+export function detectOpencodeProvider(cwd: string): string | null {
   const pkgPath = path.join(cwd, "package.json");
   if (fs.existsSync(pkgPath)) {
     try {
