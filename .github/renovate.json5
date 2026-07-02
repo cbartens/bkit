@@ -55,6 +55,41 @@
   // Conventional-commit prefix to match the rest of the repo history.
   commitMessagePrefix: "chore(deps):",
 
+  // ─────────────────────────────────────────────────────────────────────
+  // pnpm 11 supply-chain freshness + Renovate-runner memory ceiling (#308).
+  //
+  // On a large pnpm-11 monorepo, `pnpm update --lockfile-only` — especially
+  // alongside a pnpm-level `minimumReleaseAge` gate verifying publish
+  // timestamps for every lockfile entry — can exceed the physical memory of
+  // Mend's hosted microvm and fail the job with `kernel-out-of-memory` (a
+  // physical OOM, not a V8 heap limit), blocking every dependency PR. CI and
+  // Vercel pass because those runners have far more RAM. Two layered
+  // mitigations, both scoped to Renovate:
+  //
+  // (A) Cap pnpm's worker pool so peak memory stays bounded. PNPM_WORKERS /
+  //     PNPM_MAX_WORKERS are allow-listed by Mend's `global:safeEnv` preset, so
+  //     no admin `allowedEnv` change is needed; `env` scopes to Renovate's
+  //     runner only (CI/Vercel/local installs are untouched). Cheap and
+  //     reversible, but may NOT clear a metadata-driven OOM on its own —
+  //     `--lockfile-only` barely engages the worker pool.
+  //
+  // (B) Enforce release-age freshness in Renovate itself rather than the
+  //     per-install pnpm gate. `minimumReleaseAge: "1 day"` holds any dep
+  //     younger than 24h out of PRs, with NO per-install timestamp
+  //     verification — removing the memory spike at the source and speeding
+  //     every CI/Vercel build. Security / osvVulnerabilityAlerts PRs bypass
+  //     this by design, so CVE fixes are never delayed. To actually clear the
+  //     OOM the consumer must also DROP the pnpm-level `minimumReleaseAge` from
+  //     pnpm-workspace.yaml (a shorter threshold still does the full lookup),
+  //     which trades away defense-in-depth against manual/transitive fresh
+  //     installs. See docs/deployments.md § Renovate.
+  // ─────────────────────────────────────────────────────────────────────
+  env: {
+    PNPM_WORKERS: "1",
+    PNPM_MAX_WORKERS: "1",
+  },
+  minimumReleaseAge: "1 day",
+
   // Lockfile maintenance — picks up indirect-dependency updates that a
   // direct-dependency bump alone wouldn't catch. Same weekly slot.
   lockFileMaintenance: {

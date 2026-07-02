@@ -37,6 +37,7 @@ import {
   detectCiRouterSecrets,
   buildCloudDashboardsAdvisory,
   buildDepUpdaterSetupAdvisory,
+  buildPnpmReleaseAgeOomAdvisory,
   buildCloudSetupAdvisory,
   buildTrackerSetupAdvisory,
   detectRenderedPromptsStale,
@@ -1224,6 +1225,59 @@ describe("buildDepUpdaterSetupAdvisory", () => {
     const result = buildDepUpdaterSetupAdvisory(tmpDir);
     expect(result).not.toBeNull();
     expect(result!.id).toBe("dep-updater-renovate");
+  });
+});
+
+describe("buildPnpmReleaseAgeOomAdvisory", () => {
+  // Helper: write the affecting combination (renovate active + pnpm 11 + gate).
+  const seedGate = (mra = "minimumReleaseAge: 1440\n") => {
+    fs.mkdirSync(path.join(tmpDir, ".github"), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, ".github", "renovate.json5"), "{}\n");
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "pnpm@11.9.0" }),
+    );
+    fs.writeFileSync(path.join(tmpDir, "pnpm-workspace.yaml"), `packages:\n  - "apps/*"\n${mra}`);
+  };
+
+  it("fires when Renovate + pnpm 11 + a pnpm-level minimumReleaseAge gate coincide", () => {
+    seedGate();
+    const result = buildPnpmReleaseAgeOomAdvisory(tmpDir);
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe("pnpm-release-age-gate-oom");
+    expect(result!.severity).toBe("advisory");
+    expect(result!.action).toMatch(/Remove the gate from `pnpm-workspace\.yaml`/);
+  });
+
+  it("null when Renovate is not the active updater (Dependabot consumers unaffected)", () => {
+    seedGate();
+    fs.rmSync(path.join(tmpDir, ".github", "renovate.json5"));
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("null on pnpm 10 — the pnpm-10 regen path did not OOM", () => {
+    seedGate();
+    fs.writeFileSync(
+      path.join(tmpDir, "package.json"),
+      JSON.stringify({ name: "x", packageManager: "pnpm@10.18.0" }),
+    );
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("null when pnpm-workspace.yaml has no minimumReleaseAge gate", () => {
+    seedGate();
+    fs.writeFileSync(path.join(tmpDir, "pnpm-workspace.yaml"), 'packages:\n  - "apps/*"\n');
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("self-clears once the gate is removed (a #-comment breadcrumb does not re-fire)", () => {
+    seedGate("# re-add minimumReleaseAge: 1440 here if you want per-install gating\n");
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
+  });
+
+  it("does not mistake minimumReleaseAgeExclude for the gate key", () => {
+    seedGate('minimumReleaseAgeExclude:\n  - "@cbartens/*"\n');
+    expect(buildPnpmReleaseAgeOomAdvisory(tmpDir)).toBeNull();
   });
 });
 

@@ -159,6 +159,19 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     expect(content).toMatch(/enabled:\s*true/);
   });
 
+  it("ships the pnpm-11 OOM mitigation: worker-cap env + Renovate minimumReleaseAge (#308)", () => {
+    // Large pnpm-11 monorepos OOM Mend's microvm on `pnpm update --lockfile-only`
+    // when the per-install release-age gate verifies timestamps for every entry.
+    // (A) Cap pnpm's worker pool — PNPM_WORKERS/PNPM_MAX_WORKERS are allow-listed
+    // by Mend's global:safeEnv preset, so no admin `allowedEnv` change is needed.
+    expect(content).toMatch(
+      /env:\s*\{[\s\S]*?PNPM_WORKERS:\s*"1"[\s\S]*?PNPM_MAX_WORKERS:\s*"1"[\s\S]*?\}/,
+    );
+    // (B) Enforce release-age freshness in Renovate (no per-install verification).
+    // Security / osvVulnerabilityAlerts PRs bypass this by design → no CVE delay.
+    expect(content).toMatch(/minimumReleaseAge:\s*"1 day"/);
+  });
+
   it("ships a packageRule that suppresses consumer-side bumps on bkit-managed workflow files", () => {
     // Bkit owns bkit-cloud.yml — consumer Renovate must not touch it.
     expect(content).toMatch(/matchFileNames:[\s\S]*bkit-cloud\.yml[\s\S]*enabled:\s*false/);
