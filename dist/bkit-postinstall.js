@@ -1360,31 +1360,44 @@ function readPnpmMajor(cwd) {
     }
 }
 /**
- * True when pnpm-workspace.yaml declares a top-level `minimumReleaseAge:` gate.
- * Line-anchored top-level YAML key (column 0) — a `#`-prefixed comment mentioning
- * the setting (e.g. a post-removal breadcrumb) does not match, so the advisory
- * self-clears once the gate is removed. Absent / unreadable => false.
+ * True when the pnpm-level release-age gate is ACTIVE (OOM-causing) for this repo.
+ *
+ * pnpm 11 defaults `minimumReleaseAge` to 1440 (pnpm 10 defaulted to 0), so the
+ * per-entry publish-timestamp verification runs whenever the key is absent OR set
+ * to a positive value; ONLY an explicit `minimumReleaseAge: 0` short-circuits it.
+ * Deleting the key therefore does NOT disable the gate — pnpm falls back to 1440.
+ * Requires a pnpm-workspace.yaml (the monorepo signal; a single-package repo without
+ * one is out of the OOM scope). Line-anchored top-level YAML key (column 0), so a
+ * `#`-prefixed comment mentioning the setting is ignored. Absent file => false.
  */
-function pnpmWorkspaceHasReleaseAgeGate(cwd) {
+function pnpmReleaseAgeGateActive(cwd) {
     const wsPath = path.join(cwd, "pnpm-workspace.yaml");
     if (!fs.existsSync(wsPath))
         return false;
-    return /^minimumReleaseAge:/m.test(fs.readFileSync(wsPath, "utf-8"));
+    const ws = fs.readFileSync(wsPath, "utf-8");
+    const m = ws.match(/^minimumReleaseAge:[ \t]*(\d+)\b/m);
+    // No explicit key => pnpm 11's 1440 default is active. Explicit key => active
+    // unless it is exactly 0 (the only value that disables the verification).
+    if (!m)
+        return true;
+    return Number(m[1]) !== 0;
 }
 /**
- * Advise dropping the per-install pnpm `minimumReleaseAge` gate when it is paired
- * with Renovate on pnpm 11 — the combination OOMs Mend's low-RAM hosted Renovate
- * microvm on a large monorepo (physical `kernel-out-of-memory` during
- * `pnpm update --lockfile-only`, blocking every dependency PR). See #308.
+ * Advise disabling the per-install pnpm `minimumReleaseAge` gate (set it to `0`)
+ * when it is paired with Renovate on pnpm 11 — the gate's per-entry verification
+ * OOMs Mend's low-RAM hosted Renovate microvm on a large monorepo (physical
+ * `kernel-out-of-memory` during `pnpm update --lockfile-only`, blocking every
+ * dependency PR). See #308.
  *
- * The shipped renovate.json5 now enforces release-age freshness in Renovate itself
- * (`minimumReleaseAge: "1 day"` + a `PNPM_WORKERS`/`PNPM_MAX_WORKERS` memory cap),
- * so the per-install pnpm gate is redundant for Renovate's PRs AND is the memory
- * spike — removing it clears the OOM. Fires only when ALL hold:
+ * pnpm 11 turns this gate ON by default (`minimumReleaseAge: 1440`), so it is active
+ * even with no key set — the shipped renovate.json5 re-homes release-age freshness to
+ * Renovate itself (`minimumReleaseAge: "1 day"` + a `PNPM_WORKERS`/`PNPM_MAX_WORKERS`
+ * memory cap), making the per-install pnpm gate redundant for Renovate's PRs and the
+ * memory spike. Fires only when ALL hold:
  *   - Renovate is the active updater (`.github/renovate.json5` present) — the OOM is
  *     specific to Mend's runner; Dependabot consumers are on GitHub's runners.
- *   - pnpm major >= 11 (package.json `packageManager`) — pnpm 10's regen was fine.
- *   - `pnpm-workspace.yaml` declares a top-level `minimumReleaseAge:` key.
+ *   - pnpm major >= 11 (package.json `packageManager`) — pnpm 10 defaulted the gate off.
+ *   - the pnpm-level gate is ACTIVE (pnpm-workspace.yaml present and not `minimumReleaseAge: 0`).
  */
 export function buildPnpmReleaseAgeOomAdvisory(cwd) {
     const renovateActive = fs.existsSync(path.join(cwd, ".github", "renovate.json5")) ||
@@ -1393,13 +1406,13 @@ export function buildPnpmReleaseAgeOomAdvisory(cwd) {
         return null;
     if (readPnpmMajor(cwd) < 11)
         return null;
-    if (!pnpmWorkspaceHasReleaseAgeGate(cwd))
+    if (!pnpmReleaseAgeGateActive(cwd))
         return null;
     return {
         id: "pnpm-release-age-gate-oom",
         severity: "advisory",
-        detect: "pnpm-workspace.yaml declares a per-install `minimumReleaseAge` gate while Renovate is active on pnpm 11. On a large monorepo this OOMs Mend's low-RAM hosted Renovate runner during `pnpm update --lockfile-only` (physical `kernel-out-of-memory`), blocking every dependency PR.",
-        action: "The shipped renovate.json5 now enforces release-age freshness in Renovate itself (`minimumReleaseAge: \"1 day\"`, plus a `PNPM_WORKERS`/`PNPM_MAX_WORKERS` memory cap), so the per-install pnpm gate is redundant for Renovate's PRs and is the memory spike. Remove the gate from `pnpm-workspace.yaml` — the `minimumReleaseAge:` key and its `minimumReleaseAgeExclude:` list (the bkit-consumer default is `minimumReleaseAge: 1440` excluding `@cbartens/*`). Lowering the number does NOT help — the cost is the per-entry publish-timestamp lookup, not the threshold, so it must be removed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`'s `settings:` block. Trade-off: Renovate-only freshness gates only what Renovate proposes, not manual/transitive fresh installs. Config takes effect only once it reaches your default branch; verify against a live Renovate run. Detail: `docs/deployments.md` § Renovate pnpm-11 freshness gate & microvm memory.",
+        detect: "pnpm 11 defaults `minimumReleaseAge` to 1440 (the gate is active even with no key set) and Renovate is active. The gate verifies a publish timestamp for every dependency on every install, which OOMs Mend's low-RAM hosted Renovate runner on a large monorepo during `pnpm update --lockfile-only` (physical `kernel-out-of-memory`), blocking every dependency PR. `pnpm-workspace.yaml` does not disable it with `minimumReleaseAge: 0`.",
+        action: 'Set `minimumReleaseAge: 0` as a top-level key in `pnpm-workspace.yaml`. `0` short-circuits the per-entry verification entirely (fast install, no OOM). Do NOT just delete the key — pnpm 11 falls back to its `1440` default, so the gate (and the OOM) stay active, and you also lose any `minimumReleaseAgeExclude`, which makes same-day `@cbartens/bkit` upgrades fail the gate. Release-age freshness for dependency PRs is still enforced Renovate-side (`minimumReleaseAge: "1 day"` in the shipped renovate.json5); security / osvVulnerabilityAlerts PRs bypass it, so CVE fixes are not delayed. Safe for `--frozen-lockfile`: pnpm does not record `minimumReleaseAge` in `pnpm-lock.yaml`\'s `settings:` block. Trade-off: `minimumReleaseAge: 0` drops pnpm-level gating of manual/transitive fresh installs. Config takes effect only once it reaches your default branch; verify against a live Renovate run. Detail: `docs/deployments.md` § Renovate pnpm-11 freshness gate & microvm memory.',
     };
 }
 /**
