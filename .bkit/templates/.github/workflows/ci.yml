@@ -721,7 +721,30 @@ jobs:
 #       - name: Upload Playwright Report      # [E] if: always() — per-test trace.zip survives mid-suite cancel (HTML report finalises only at end)
 #       - name: Report Skipped Tests          # [E] if: always() && run_level=='light' — note E2E skipped on a light run
 #
-# === JOB 2b — migration replay gate (independent sibling of bkit-tests) ===
+# === JOB 2a — integration lane (distribute JOB 2's integration steps into their OWN job) ===
+# bkit-stub:bkit-tests-integration — [D] the integration tier as its OWN parallel lane (job), not a
+# step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra
+# boundaries). Mirrors bkit's own bkit-tests-integration lane + consumers gether/fraser. Self-contained
+# (own checkout/setup/install); gate heavy steps on web_affected; emit integration_ran; the
+# bkit-stub:coverage integration report (report-only, name: integration) posts from HERE, not bkit-tests-unit.
+#   bkit-tests-integration:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 20
+#   #   own job-level permissions: { actions: read, contents: read, pull-requests: write } for the coverage comment.
+#     steps: Checkout / Setup pnpm+Node / Install → Build (if needed) → Run Vitest Integration Tests
+#       (id: vitest; --continue so one failure doesn't mask the rest; --reporter=json → integration_ran) →
+#       Report Integration Coverage on PR (davelosert, name: integration). Step detail: JOB 2 catalogue above.
+#
+# === JOB 2c — E2E lane (distribute JOB 2's E2E steps into their OWN job) ===
+# bkit-stub:bkit-tests-e2e — [E] the E2E (Playwright) tier as its OWN parallel lane. WHEN: you have a
+# browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Self-contained; await the deploy
+# READY first (bkit-stub:vercel-await); gate on run_e2e && web_affected; emit e2e_ran; the
+# bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e) posts from HERE.
+#   bkit-tests-e2e:  needs:[bkit-decide]; if: run_level != 'none'; timeout-minutes: 30
+#   #   own job-level permissions block (same three) for the coverage comment.
+#     steps: Checkout / Setup / Install → Await Vercel Deployment → Run Playwright E2E Tests
+#       (id: e2e; if: run_e2e && web_affected; --reporter=json → e2e_ran; [verbose ci] adds --trace=on) →
+#       Report E2E Coverage on PR (bkit-stub:e2e-coverage) → Upload Playwright Report (if: always()). See JOB 2 catalogue.
+#
+# === JOB 2b — migration replay gate (independent sibling of the test lanes) ===
 # bkit-stub:bkit-tests-migrate — [DB] prove every migration replays from an EMPTY database
 # (+ the seed loads) on a fresh ephemeral instance each run. WHEN: you have a migrations dir.
 # Catches what `migrate deploy` / `db push --linked` cannot: a stale-volume migration a warm
@@ -748,8 +771,8 @@ jobs:
 #
 # === JOB 3 — @live canary ===
 # bkit-stub:bkit-tests-live — push-only @live vs the DEPLOYED url. WHEN: you have a deploy +
-# want post-deploy @live smoke. Sequential after bkit-tests. DROP if no deploy (bkit does).
-#   bkit-tests-live:  needs:[bkit-decide,bkit-tests]; if: run_live && needs.bkit-tests.result=='success'; timeout-minutes: 15
+# want post-deploy @live smoke. Sequential after ALL the test lanes. DROP if no deploy (bkit does).
+#   bkit-tests-live:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e]; if: run_live && every test lane's result=='success'; timeout-minutes: 15
 #     steps:
 #       - name: Checkout Repository / Setup pnpm / Setup Node / Configure Verbose CI / Install Dependencies   # [U] same setup chain as bkit-tests
 #       - name: Pull Vercel Env Vars         # [D] same branch-conditional env pull
@@ -772,12 +795,12 @@ jobs:
 # === JOB 4 — capstone (makes green == validated) ===
 # bkit-stub:bkit-tests-check — THE sole branch-protection required check. WHEN: always, the
 # moment any tier is skippable. ~seconds, no checkout.
-#   bkit-tests-check:  needs:[bkit-decide,bkit-tests,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
+#   bkit-tests-check:  needs:[bkit-decide,bkit-tests-static,bkit-tests-unit,bkit-tests-integration,bkit-tests-e2e,bkit-tests-migrate,bkit-tests-live]; if: ${{ !cancelled() }}; timeout-minutes: 2
 #   # !cancelled() NOT always(): a concurrency-cancel must not stamp a bogus failure (failure() is not cancelled(), so real failures still fail).
 #     steps:
-#       - name: Check Test Plan Followed     # env: PLAN + needs.*.result + integration_outcome/e2e_outcome + *_ran counts. Assert + exit 1 on mismatch:
-#       #   decide==success; run_level!=none => tests==success; web_affected => integration==success;
-#       #   run_e2e && web_affected => e2e==success (not skipped); run_live => tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
+#       - name: Check Test Plan Followed     # env: PLAN + each needs.<lane>.result + each lane's outputs.<tier>_ran count. Assert + exit 1 on mismatch:
+#       #   decide==success; run_level!=none => static+unit==success; web_affected => bkit-tests-integration==success (its LANE result);
+#       #   run_e2e && web_affected => bkit-tests-e2e==success (its LANE result, not skipped); run_live => bkit-tests-live==success; run_level==none ([skip ci]) asserts NOTHING.
 #       #   bkit-tests-migrate==success ALWAYS (independent of run_level — it self-skips the heavy steps when no migration/seed changed but still reports success; a failed replay reds the capstone).
 #       #   NON-HOLLOW (green==validated, not just "didn't fail"): for every tier that is DECLARED (entrypoint exists) AND planned-to-run, ALSO
 #       #   assert its executed count > 0 — unit_ran (run_level!=none), integration_ran (web_affected), e2e_ran (run_e2e&&web_affected),

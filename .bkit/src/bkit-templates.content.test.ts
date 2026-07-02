@@ -127,6 +127,13 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
   });
 
+  it("ships bkit-stub:bkit-tests-integration + bkit-tests-e2e lane stubs (separate-lane scaffold)", () => {
+    // Every tier lane gets the SAME stub treatment as migrate/live/check, so `bkit install`/check
+    // advise consumers to bring the integration + E2E lanes to life as their own parallel jobs.
+    expect(content).toContain("# bkit-stub:bkit-tests-integration");
+    expect(content).toContain("# bkit-stub:bkit-tests-e2e");
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });

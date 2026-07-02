@@ -797,13 +797,25 @@ const BKIT_STUBS: BkitStub[] = [
     id: "bkit-tests-check",
     file: ".github/workflows/ci.yml",
     description:
-      "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). Requires bkit-tests to export `integration_outcome` / `e2e_outcome` job outputs (E2E + integration are steps, not jobs).",
+      "Add the capstone job (`needs:` all tiers; `if: ${{ !cancelled() }}`) that asserts every tier the plan EXPECTED actually ran and passed (exit 1 on mismatch) — this is what makes 'green == validated'. Make it the SOLE branch-protection required check via `.bkit/scripts/bkit-protect-main.sh` (REQUIRED_JOB=bkit-tests-check), NOT bkit-decide (which is always green). With one lane per tier (recommended — the shape bkit/gether/fraser run), `needs:` EVERY test lane and assert each lane's `result` + its `<tier>_ran` count > 0 when planned (see bkit's own bkit-tests-check assert_ran); a repo that keeps tiers as steps asserts via `steps.<tier>.outcome` + step-emitted counts instead.",
   },
   {
     id: "bkit-tests-migrate",
     file: ".github/workflows/ci.yml",
     description:
-      "Add an independent sibling job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before bkit-tests (they share no state).",
+      "Add an independent sibling job that proves every migration replays from an EMPTY database (+ the seed loads) on a fresh ephemeral instance each run — the fresh-provision gate (docs/testing.md). Catches what `migrate deploy` / `db push` cannot: a stale-volume migration a warm `start` never re-applies, or a seed that aborts on an empty store. ALWAYS runs and reports a status (branch-protection-safe — never a perpetually-pending required check); the heavy steps self-skip when no migration/seed source changed, so a no-DB-change PR is a fast green. bkit owns the always-runs, path-detecting scaffold; supply your stack's reset+seed (Supabase: `supabase db reset --local`; Prisma: `prisma migrate reset`; Drizzle/raw: replay onto a throwaway DB then seed). Fold it into bkit-tests-check's `needs:` so a red replay reds the capstone — NOT in series before the test lanes (they share no state).",
+  },
+  {
+    id: "bkit-tests-integration",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Add the integration tier as its OWN parallel lane (job) — `bkit-tests-integration`, NOT a step in bkit-tests-unit. WHEN: you have *.integration.test.ts (multi-module wiring / real infra boundaries). This is the shape bkit's own CI and consumers gether/fraser run — separate lanes give each tier its own honest coverage number, executed-count, and permissions. Wiring: needs:[bkit-decide]; if run_level != 'none'; self-contained (own checkout/setup/install); gate the heavy steps on web_affected; emit `integration_ran` (vitest --reporter=json) so bkit-tests-check can assert it ran > 0. The bkit-stub:coverage integration report (davelosert, name: integration, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`.",
+  },
+  {
+    id: "bkit-tests-e2e",
+    file: ".github/workflows/ci.yml",
+    description:
+      "Add the E2E (Playwright) tier as its OWN parallel lane (job) — `bkit-tests-e2e`. WHEN: you have a browser E2E suite + a deploy/preview to hit. Mirrors gether/fraser. Wiring: needs:[bkit-decide]; if run_level != 'none'; self-contained (own checkout/setup/install); await the deploy READY first (bkit-stub:vercel-await); gate the run on run_e2e && web_affected; emit `e2e_ran` so bkit-tests-check can assert it ran > 0 when planned. The bkit-stub:e2e-coverage report (Monocart → davelosert, name: e2e, report-only) posts from THIS lane with its own job-level `pull-requests: write`. Fold the lane into bkit-tests-check's `needs:`. DROP if you have no browser E2E (bkit does).",
   },
 ];
 
