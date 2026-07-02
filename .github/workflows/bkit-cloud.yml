@@ -340,7 +340,11 @@ jobs:
       - name: Install opencode
         if: steps.gate.outputs.enabled == 'true' && steps.ctx.outputs.skip != 'true'
         run: |
-          curl -fsSL --retry 3 --retry-all-errors https://opencode.ai/install | bash
+          # Version-pinned: the bare `| bash` installs whatever opencode.ai/install resolves as "latest" at
+          # push time (unpinned remote code executing with the runner token). This file is bkit-managed and
+          # Renovate-ignored, so the pin is refreshed via `bkit install` on a bkit release — the same channel
+          # that carries the checkout/claude-code-action tag bumps in this file.
+          curl -fsSL --retry 3 --retry-all-errors https://opencode.ai/install | bash -s -- --version 1.17.13
           echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
 
       - name: Dispatch /bkit-auto on opencode runner

@@ -8,7 +8,7 @@ tools:
   - Glob
   - Write
 ---
-<!-- bkit:managed v4.1.9 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer estimating whether a plan fits a single high-quality execution session.
 **Scope:** As specified by input and Read/Update/Create section.

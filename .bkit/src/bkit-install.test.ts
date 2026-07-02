@@ -27,7 +27,15 @@ import {
   discardStaging,
   discardAllStaging,
   STAGING_ROOT,
+  detectInstalledModules,
+  detectInstalledHostModules,
+  detectOpencodeProvider,
+  detectOpencodeProviders,
+  modulesToCliFlags,
+  getInstallingVersion,
+  runStatus,
 } from "./bkit-install";
+import type { ModuleFlag } from "./bkit-cli";
 import { applyTokens } from "./bkit-tokens";
 
 // ---------------------------------------------------------------------------
@@ -1340,5 +1348,275 @@ describe("parseModelLookupForColumn regression — header-addressed", () => {
       if (cursorLookup.get(name) !== opencodeLookup.get(name)) diffCount++;
     }
     expect(diffCount).toBeGreaterThan(0);
+  });
+});
+
+describe("modulesToCliFlags — resolved module set → recovery-hint CLI flags", () => {
+  const flags = (
+    mods: ModuleFlag[],
+    provider: string | null = null,
+    cloud: "claude" | "cursor" | "opencode" | null = null,
+  ) => modulesToCliFlags(new Set<ModuleFlag>(mods), provider, cloud);
+
+  it("emits nothing for a core-only set (core is implicit)", () => {
+    expect(flags(["core"])).toBe("");
+  });
+
+  it("maps host modules to their flags", () => {
+    expect(flags(["core", "claude"])).toBe("--claude");
+    expect(flags(["core", "cursor"])).toBe("--cursor");
+  });
+
+  it("renders --opencode with the resolved provider, or a placeholder when unknown", () => {
+    expect(flags(["opencode"], "nvidia")).toBe("--opencode=nvidia");
+    expect(flags(["opencode"], null)).toBe("--opencode=<provider>");
+  });
+
+  it("collapses ci+lint+git-hooks to --tooling", () => {
+    expect(flags(["core", "ci", "lint", "git-hooks"])).toBe("--tooling");
+  });
+
+  it("maps a partial TS toolchain (lint or git-hooks) to --typescript", () => {
+    expect(flags(["lint"])).toBe("--typescript");
+    expect(flags(["git-hooks"])).toBe("--typescript");
+  });
+
+  it("maps agnostic ci alone to --ci", () => {
+    expect(flags(["ci"])).toBe("--ci");
+  });
+
+  it("maps dependency + cloud opt-ins (placeholder when the variant is unknown)", () => {
+    expect(flags(["renovate"])).toBe("--dependency=renovate");
+    expect(flags(["dependabot"])).toBe("--dependency=dependabot");
+    expect(flags(["cloud"], null, "cursor")).toBe("--auto=cursor");
+    expect(flags(["cloud"], null, null)).toBe("--auto=<variant>");
+  });
+
+  it("composes multiple modules in flag order", () => {
+    expect(flags(["core", "claude", "cursor", "ci", "lint", "git-hooks", "renovate"])).toBe(
+      "--claude --cursor --tooling --dependency=renovate",
+    );
+  });
+});
+
+describe("detectInstalledModules — sentinel-file module detection", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-detect-mods-"));
+  });
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+  const touch = (rel: string) => {
+    const p = path.join(cwd, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, "", "utf-8");
+  };
+  const mkdir = (rel: string) => fs.mkdirSync(path.join(cwd, rel), { recursive: true });
+
+  it("returns just core for an empty dir", () => {
+    expect([...detectInstalledModules(cwd)]).toEqual(["core"]);
+  });
+
+  it("detects each host module by its agents dir", () => {
+    mkdir(".claude/agents");
+    mkdir(".cursor/agents");
+    mkdir(".opencode/agents");
+    const mods = detectInstalledModules(cwd);
+    expect(mods.has("claude")).toBe(true);
+    expect(mods.has("cursor")).toBe(true);
+    expect(mods.has("opencode")).toBe(true);
+  });
+
+  it("detects ci via ci.yml", () => {
+    touch(".github/workflows/ci.yml");
+    expect(detectInstalledModules(cwd).has("ci")).toBe(true);
+  });
+
+  it("detects ci via .vale.ini alone (either sentinel)", () => {
+    touch(".vale.ini");
+    expect(detectInstalledModules(cwd).has("ci")).toBe(true);
+  });
+
+  it("detects lint via slop-scan.config.json", () => {
+    touch("slop-scan.config.json");
+    expect(detectInstalledModules(cwd).has("lint")).toBe(true);
+  });
+
+  it("detects lint via .prettierignore alone (either sentinel)", () => {
+    touch(".prettierignore");
+    expect(detectInstalledModules(cwd).has("lint")).toBe(true);
+  });
+
+  it("detects git-hooks via a husky pre-commit hook", () => {
+    touch(".husky/pre-commit");
+    expect(detectInstalledModules(cwd).has("git-hooks")).toBe(true);
+  });
+
+  it("detects git-hooks via pre-push alone (either sentinel)", () => {
+    touch(".husky/pre-push");
+    expect(detectInstalledModules(cwd).has("git-hooks")).toBe(true);
+  });
+});
+
+describe("detectInstalledHostModules — host detection for upgrade re-render", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-detect-hosts-"));
+  });
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it("returns an empty set when no host agents dir exists (never seeds core)", () => {
+    expect(detectInstalledHostModules(cwd).size).toBe(0);
+  });
+
+  it("detects only the hosts whose agents dir is present", () => {
+    fs.mkdirSync(path.join(cwd, ".claude", "agents"), { recursive: true });
+    fs.mkdirSync(path.join(cwd, ".opencode", "agents"), { recursive: true });
+    expect([...detectInstalledHostModules(cwd)].sort()).toEqual(["claude", "opencode"]);
+  });
+});
+
+describe("detectOpencodeProvider — provider resolution (manifest-first)", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-provider-"));
+  });
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+  const writePkg = (bkit: unknown) =>
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ bkit }), "utf-8");
+  const writeOpencodeJson = (obj: unknown) => {
+    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".opencode", "opencode.json"), JSON.stringify(obj), "utf-8");
+  };
+
+  it("returns null when neither package.json nor opencode.json exists", () => {
+    expect(detectOpencodeProvider(cwd)).toBeNull();
+  });
+
+  it("reads a valid bkit.opencodeProvider from package.json", () => {
+    writePkg({ opencodeProvider: "nvidia" });
+    expect(detectOpencodeProvider(cwd)).toBe("nvidia");
+  });
+
+  it("normalizes a legacy provider key (zen → opencode)", () => {
+    writePkg({ opencodeProvider: "zen" });
+    expect(detectOpencodeProvider(cwd)).toBe("opencode");
+  });
+
+  it("ignores an out-of-allowlist provider and falls through to null", () => {
+    writePkg({ opencodeProvider: "gpt-9" });
+    expect(detectOpencodeProvider(cwd)).toBeNull();
+  });
+
+  it("falls back to the first opencode.json provider key when the manifest is silent", () => {
+    writePkg({});
+    writeOpencodeJson({ provider: { nvidia: {} } });
+    expect(detectOpencodeProvider(cwd)).toBe("nvidia");
+  });
+
+  it("returns null on an unparseable package.json with no opencode.json", () => {
+    fs.writeFileSync(path.join(cwd, "package.json"), "{ not json", "utf-8");
+    expect(detectOpencodeProvider(cwd)).toBeNull();
+  });
+});
+
+describe("detectOpencodeProviders — all installed providers", () => {
+  let cwd: string;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-providers-"));
+  });
+  afterEach(() => {
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+  const writePkg = (bkit: unknown) =>
+    fs.writeFileSync(path.join(cwd, "package.json"), JSON.stringify({ bkit }), "utf-8");
+
+  it("returns [] when package.json is absent", () => {
+    expect(detectOpencodeProviders(cwd)).toEqual([]);
+  });
+
+  it("reads and allowlist-filters bkit.opencodeProviders, normalizing legacy keys", () => {
+    writePkg({ opencodeProviders: ["nvidia", "zen", "bogus"] });
+    expect(detectOpencodeProviders(cwd)).toEqual(["nvidia", "opencode"]);
+  });
+
+  it("falls back to the single bkit.opencodeProvider for legacy installs", () => {
+    writePkg({ opencodeProvider: "groq" });
+    expect(detectOpencodeProviders(cwd)).toEqual(["groq"]);
+  });
+
+  it("returns [] when neither a providers array nor a single provider is present", () => {
+    writePkg({});
+    expect(detectOpencodeProviders(cwd)).toEqual([]);
+  });
+});
+
+describe("getInstallingVersion — bkit's own version, best-effort", () => {
+  it("returns the semver from the installing package.json", () => {
+    expect(getInstallingVersion()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("runStatus — read-only host/provider status", () => {
+  let cwd: string;
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bkit-status-"));
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    logSpy.mockRestore();
+    fs.rmSync(cwd, { recursive: true, force: true });
+  });
+  const out = () => logSpy.mock.calls.map((c) => String(c[0])).join("\n");
+
+  it("reports every host absent for an empty dir", () => {
+    runStatus(cwd, "[bkit]");
+    expect(out()).toContain("claude:  absent");
+    expect(out()).toContain("cursor:  absent");
+    expect(out()).toMatch(/opencode: absent/);
+    expect(out()).toContain("Installed hosts: none");
+  });
+
+  it("reports installed hosts, the claude model from settings, and a multi-provider opencode line", () => {
+    fs.mkdirSync(path.join(cwd, ".claude"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, ".claude", "settings.json"),
+      JSON.stringify({ model: "claude-opus-4-8" }),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(cwd, ".cursor"), { recursive: true });
+    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, ".opencode", "opencode.json"),
+      JSON.stringify({ model: "nvidia/foo" }),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(cwd, "package.json"),
+      JSON.stringify({ bkit: { opencodeProviders: ["nvidia", "groq"] } }),
+      "utf-8",
+    );
+    runStatus(cwd, "[bkit]");
+    const o = out();
+    expect(o).toContain("claude:  INSTALLED");
+    expect(o).toContain("claude-opus-4-8");
+    expect(o).toContain("cursor:  INSTALLED");
+    expect(o).toContain("opencode: INSTALLED");
+    expect(o).toContain("providers:"); // plural label for >1 provider
+    expect(o).toContain("(active)");
+    expect(o).toContain("Installed hosts: claude, cursor, opencode");
+  });
+
+  it("surfaces a parse-error for a malformed opencode.json", () => {
+    fs.mkdirSync(path.join(cwd, ".opencode"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".opencode", "opencode.json"), "{ bad", "utf-8");
+    runStatus(cwd, "[bkit]");
+    expect(out()).toContain("parse-error");
   });
 });

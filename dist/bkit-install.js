@@ -1034,7 +1034,7 @@ export function removeOrphanTemplatesDir(cwd, dryRun) {
  * Returns "0.0.0" when unreadable (e.g. dev tree without a package.json at the
  * resolved root) — keeps the advisories artifact informational, not fatal.
  */
-function getInstallingVersion() {
+export function getInstallingVersion() {
     try {
         const pkgJsonPath = path.join(getPkgRoot(), "package.json");
         if (fs.existsSync(pkgJsonPath)) {
@@ -1052,7 +1052,7 @@ function getInstallingVersion() {
  * Reports current host+provider sampled from .opencode/opencode.json,
  * .claude/, and .cursor/ presence. Writes nothing.
  */
-function runStatus(cwd, logPrefix) {
+export function runStatus(cwd, logPrefix) {
     console.log(`${logPrefix} Host/provider status (read-only — no writes)`);
     console.log(`${logPrefix} Working directory: ${cwd}`);
     // --- claude host ---
@@ -1132,7 +1132,7 @@ function runStatus(cwd, logPrefix) {
  * source-rendered agents directory. Used by `bkit upgrade` to re-render (#251) only the
  * hosts the consumer actually opted into — never force-creating an opencode/cursor tree.
  */
-function detectInstalledHostModules(cwd) {
+export function detectInstalledHostModules(cwd) {
     const mods = new Set();
     if (fs.existsSync(path.join(cwd, ".claude", "agents")))
         mods.add("claude");
@@ -1159,7 +1159,7 @@ function detectInstalledHostModules(cwd) {
  * writeTier1 / reconcileOpencodeJson honour dryRun; ensureDir is dryRun-gated). The remaining
  * opt-ins (renovate/dependabot/cloud) stay out of the gate, matching prior behaviour.
  */
-function detectInstalledModules(cwd) {
+export function detectInstalledModules(cwd) {
     const mods = new Set(["core"]);
     if (fs.existsSync(path.join(cwd, ".claude", "agents")))
         mods.add("claude");
@@ -1189,7 +1189,7 @@ function detectInstalledModules(cwd) {
  * recovery-hint text. Skips core (implicit), collapses the CI/quality modules to
  * --ci / --typescript / --tooling, and maps opt-ins to their value-flag spellings.
  */
-function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
+export function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
     const out = [];
     if (mods.has("claude"))
         out.push("--claude");
@@ -1230,7 +1230,7 @@ function modulesToCliFlags(mods, opencodeProvider, cloudVariant) {
  * The manifest value is validated against the allowlist so a hand-edited package.json cannot
  * smuggle an unsupported provider into the render path.
  */
-function detectOpencodeProvider(cwd) {
+export function detectOpencodeProvider(cwd) {
     const pkgPath = path.join(cwd, "package.json");
     if (fs.existsSync(pkgPath)) {
         try {

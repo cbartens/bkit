@@ -268,6 +268,24 @@
       // Explicit false for the same greppability reason as the prod-minor rule.
       automerge: false,
     },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Docker base images — keeps the `FROM <image>:<tag>@sha256:<digest>`
+    // pins fresh on upstream releases and CVE disclosures (pairs with bkit's
+    // image-digest pinning in docs/deployments.md § GitHub Actions pinning).
+    // The tag must stay INLINE (`ubuntu:26.04@sha256:...`), not in a trailing
+    // comment, or the dockerfile manager can't map the digest to its tag.
+    // Reviewed manually — a base-image bump can shift the build toolchain.
+    // NOTE: version+checksum-paired installer fetches (e.g. the Vale tarball
+    // sha256, the pinned actionlint download-script SHA in ci.yml) are NOT
+    // Renovate-managed — it cannot recompute a tarball checksum — so bump those
+    // version+sha pairs by hand. See docs/deployments.md § GitHub Actions pinning.
+    // ─────────────────────────────────────────────────────────────────────
+    {
+      matchManagers: ["dockerfile"],
+      groupName: "docker images",
+      automerge: false,
+    },
   ],
 
   // Where to send PRs. `dev` per baseBranches above.

@@ -104,6 +104,36 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     });
   });
 
+  it("ships the bkit-stub:coverage block commented, per-tier (unit + integration reports)", () => {
+    // The sentinel must exist for the BKIT_STUBS advisory to fire, and BOTH per-tier report
+    // steps must ship COMMENTED (opt-in) so installing the scaffold can never red an existing repo.
+    expect(content).toContain("# bkit-stub:coverage");
+    expect(content).toContain("davelosert/vitest-coverage-report-action");
+    expect(content).toContain("# - name: Report Unit Coverage on PR");
+    expect(content).toContain("# - name: Report Integration Coverage on PR");
+    // Neither is an ACTIVE (uncommented) step — that would run coverage before the consumer
+    // opts in (and without the required json-summary/json reporters + permissions).
+    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
+  });
+
+  it("ships the bkit-stub:e2e-coverage block commented (Playwright E2E coverage report)", () => {
+    // Sentinel must exist for the bkit-stub-e2e-coverage advisory to fire, and the report step
+    // must ship COMMENTED (opt-in) — Playwright needs a collect+report pipeline the consumer wires.
+    expect(content).toContain("# bkit-stub:e2e-coverage");
+    expect(content).toContain("# - name: Report E2E Coverage on PR");
+    // Reuses the same commenter as bkit-stub:coverage, keyed to a distinct e2e sticky comment.
+    expect(content).toContain("davelosert/vitest-coverage-report-action");
+    // Not an ACTIVE (uncommented) step — it must never run before the consumer opts in.
+    expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
+  });
+
+  it("ships bkit-stub:bkit-tests-integration + bkit-tests-e2e lane stubs (separate-lane scaffold)", () => {
+    // Every tier lane gets the SAME stub treatment as migrate/live/check, so `bkit install`/check
+    // advise consumers to bring the integration + E2E lanes to life as their own parallel jobs.
+    expect(content).toContain("# bkit-stub:bkit-tests-integration");
+    expect(content).toContain("# bkit-stub:bkit-tests-e2e");
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });
