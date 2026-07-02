@@ -474,7 +474,12 @@ jobs:
       # surface (modules/install/upgrade/uninstall). Without this, both numbers use a tier-blind
       # whole-repo denominator and integration is denominator-noise. Dogfoods the per-tier
       # bkit-stub:coverage scaffold shipped to consumers. tests_ran is the SUM of both runs, so the
-      # capstone's executed-count gate is unchanged.
+      # capstone's executed-count gate is unchanged. UNIT is GATED on branch coverage via a per-run
+      # --coverage.thresholds.branches flag (set just below current and ratcheted up); the flag lives
+      # on the UNIT run ONLY, so it can never red the integration run (vitest coverage is per-run, so
+      # a vitest.config thresholds block would gate BOTH). INTEGRATION stays REPORT-ONLY — gated on
+      # execution, not a %, because a hard integration % punishes the correct pyramid shape
+      # (testing.md § Coverage on PRs).
       - name: Run Vitest Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
@@ -482,6 +487,7 @@ jobs:
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/unit \
             --exclude '**/*.integration.test.ts' \
             --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' \
+            --coverage.thresholds.branches=65 \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
             integration.test \
@@ -492,8 +498,9 @@ jobs:
           echo "ran=$((UNIT_RAN + INT_RAN))" >> "$GITHUB_OUTPUT"
           echo "::notice::vitest executed $UNIT_RAN unit + $INT_RAN integration test(s)."
 
-      # Two coverage comments on PRs (report-only — vitest.config sets no thresholds, so coverage
-      # never reds the lane), dogfooding the per-tier bkit-stub:coverage scaffold. A distinct name:
+      # Two coverage comments on PRs (the COMMENT steps never fail the lane; the unit RUN above gates
+      # branches via its --coverage.thresholds.branches flag, integration is report-only), dogfooding
+      # the per-tier bkit-stub:coverage scaffold. A distinct name:
       # keys each sticky comment so they don't collide. The head.repo == repo guard skips fork PRs,
       # where GITHUB_TOKEN is read-only and the comment would fail.
       - name: Report Unit Coverage on PR
