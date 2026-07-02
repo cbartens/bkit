@@ -437,13 +437,15 @@ jobs:
       #   3. Thresholds (opt-in) live PER TIER, never merged:
       #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
       #               meaningful floor; line/statement % overstates confidence). Set it to your CURRENT coverage and
-      #               ratchet up. Example: thresholds: { branches: 70 }. Use a unit-scoped config (or vitest `projects`)
-      #               so the integration run does NOT inherit it.
+      #               ratchet up. Example: --coverage.thresholds.branches=70. vitest coverage is per-RUN (root config),
+      #               NOT per-project — `projects` does NOT scope it, and a `thresholds` block in vitest.config reds BOTH
+      #               runs. Pass the floor as a CLI flag on the UNIT run only (it cannot leak to integration); reach for a
+      #               second vitest.<tier>.config.ts (run with -c) only if the per-run flags get unwieldy.
       #        INTEGRATION = REPORT-ONLY, no threshold. Gate integration on EXECUTION (the capstone's integration_ran > 0),
       #               not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic,
-      #               and rarely drives every branch). For a real integration %, scope coverage.include to the integration
-      #               surface (e.g. src/server/**, src/api/**) THEN set a floor, or ratchet from current — never a picked
-      #               number. See docs/testing.md § Coverage on PRs.
+      #               and rarely drives every branch). For a real integration %, add --coverage.include='src/server/**'
+      #               (a CLI flag on the integration run, same idiom as --exclude above) to scope it to the integration
+      #               surface THEN set a floor, or ratchet from current — never a picked number. See docs/testing.md § Coverage on PRs.
       #   4. JOB-LEVEL permissions on bkit-tests-unit. Job-level REPLACES the workflow-level block (not additive), and the
       #      Check SHA Cache step calls `gh run list`, so you MUST re-include actions: read or the cache step breaks:
       #        permissions:
