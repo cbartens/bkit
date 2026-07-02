@@ -12,7 +12,7 @@ tools:
   bash: true
 reasoningEffort: medium
 ---
-<!-- bkit:managed v4.1.8 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.9 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior security engineer auditing auth, secrets, validation, and data exposure.
 **Scope:** As specified by input or session prompt.
