@@ -415,6 +415,13 @@ jobs:
     needs: [bkit-decide]
     if: fromJSON(needs.bkit-decide.outputs.plan).run_level != 'none'
     runs-on: ubuntu-latest
+    # Job-level permissions REPLACE the workflow-level block (they are not additive). The
+    # coverage report step needs pull-requests: write to post its PR comment; the Check SHA
+    # Cache step calls `gh run list`, so actions: read must be re-declared here or it breaks.
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
     outputs:
       cache_skip: ${{ steps.cache.outputs.skip }}
       tests_ran: ${{ steps.vitest.outputs.ran }}
@@ -458,14 +465,49 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
+      # Two coverage runs into SEPARATE dirs so unit and integration each get their own honest
+      # number — a single merged run cannot, because coverage is a union: a line covered only by
+      # an integration test would read as covered and hide a missing unit test. Dogfoods the
+      # per-tier bkit-stub:coverage scaffold shipped to consumers. tests_ran is the SUM of both
+      # runs, so the capstone's executed-count gate is unchanged.
       - name: Run Vitest Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
-          pnpm exec vitest run --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/vitest-result.json"
-          RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/vitest-result.json")
-          echo "ran=$RAN" >> "$GITHUB_OUTPUT"
-          echo "::notice::vitest executed $RAN test(s)."
+          pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/unit \
+            --exclude '**/*.integration.test.ts' \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
+          pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
+            integration.test \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/int-result.json"
+          UNIT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit-result.json")
+          INT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/int-result.json")
+          echo "ran=$((UNIT_RAN + INT_RAN))" >> "$GITHUB_OUTPUT"
+          echo "::notice::vitest executed $UNIT_RAN unit + $INT_RAN integration test(s)."
+
+      # Two coverage comments on PRs (report-only — vitest.config sets no thresholds, so coverage
+      # never reds the lane), dogfooding the per-tier bkit-stub:coverage scaffold. A distinct name:
+      # keys each sticky comment so they don't collide. The head.repo == repo guard skips fork PRs,
+      # where GITHUB_TOKEN is read-only and the comment would fail.
+      - name: Report Unit Coverage on PR
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+        with:
+          name: unit
+          json-summary-path: coverage/unit/coverage-summary.json
+          json-final-path: coverage/unit/coverage-final.json
+          file-coverage-mode: changes
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Report Integration Coverage on PR
+        if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
+        with:
+          name: integration
+          json-summary-path: coverage/integration/coverage-summary.json
+          json-final-path: coverage/integration/coverage-final.json
+          file-coverage-mode: changes
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
   # ── bkit-tests-check ── capstone; needs all lanes; if: !cancelled() (NOT always() — a
   # concurrency-cancel must not stamp a bogus failure that blocks release PRs; failure() is not

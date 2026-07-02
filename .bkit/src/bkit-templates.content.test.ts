@@ -104,6 +104,18 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     });
   });
 
+  it("ships the bkit-stub:coverage block commented, per-tier (unit + integration reports)", () => {
+    // The sentinel must exist for the BKIT_STUBS advisory to fire, and BOTH per-tier report
+    // steps must ship COMMENTED (opt-in) so installing the scaffold can never red an existing repo.
+    expect(content).toContain("# bkit-stub:coverage");
+    expect(content).toContain("davelosert/vitest-coverage-report-action");
+    expect(content).toContain("# - name: Report Unit Coverage on PR");
+    expect(content).toContain("# - name: Report Integration Coverage on PR");
+    // Neither is an ACTIVE (uncommented) step — that would run coverage before the consumer
+    // opts in (and without the required json-summary/json reporters + permissions).
+    expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });

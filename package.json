@@ -57,6 +57,7 @@
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/picomatch": "^4.0.3",
+    "@vitest/coverage-v8": "^4.1.7",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.0",
     "prettier": "^3.5.3",

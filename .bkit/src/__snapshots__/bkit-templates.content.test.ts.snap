@@ -424,6 +424,62 @@ jobs:
           fi
       # bkit:end ts-ci-steps
 
+      # bkit-stub:coverage — Report vitest coverage on PRs via davelosert/vitest-coverage-report-action (free, runs entirely inside Actions with GITHUB_TOKEN — no third-party service, safe for private repos). Report-only by default: nothing fails the build until YOU set a threshold. PER-TIER: unit and integration are measured and commented SEPARATELY (a single merged number lets integration mask a hollow unit suite). To enable: make the edits below, uncomment the two steps, and delete this stub header.
+      #   1. devDep + config. Add \`@vitest/coverage-v8\` (pin to your vitest major) and a coverage block in vitest.config:
+      #        coverage: {
+      #          provider: 'v8',
+      #          reporter: ['text', 'json-summary', 'json'],   # json-summary + json are REQUIRED — the action reads
+      #          reportOnFailure: true,                         # coverage/coverage-summary.json AND coverage-final.json
+      #        }
+      #   2. TWO coverage runs into SEPARATE dirs (one merged run cannot produce two honest numbers — coverage is a union,
+      #      so a line covered only by integration reads as covered and hides a missing unit test):
+      #        unit:        vitest run --coverage --coverage.reportsDirectory=coverage/unit --exclude '**/*.integration.test.ts'
+      #        integration: vitest run --coverage --coverage.reportsDirectory=coverage/integration <your integration selection>
+      #      Wire these into the "Run Vitest Tests" step(s) above (or your test / test:integration scripts). Separate dirs
+      #      also avoid the clobber a second same-dir --coverage run would cause (last-writer-wins, not a merge).
+      #   3. Thresholds (opt-in) live PER TIER, never merged:
+      #        UNIT = the gate. Set coverage.thresholds.branches in the config your UNIT run uses (branches is the
+      #               meaningful floor; line/statement % overstates confidence). Set it to your CURRENT coverage and
+      #               ratchet up. Example: thresholds: { branches: 70 }. Use a unit-scoped config (or vitest \`projects\`)
+      #               so the integration run does NOT inherit it.
+      #        INTEGRATION = REPORT-ONLY, no threshold. Gate integration on EXECUTION (the capstone's integration_ran > 0),
+      #               not a %: a whole-repo integration % is denominator-noise (it covers boundaries/flows, not pure logic,
+      #               and rarely drives every branch). For a real integration %, scope coverage.include to the integration
+      #               surface (e.g. src/server/**, src/api/**) THEN set a floor, or ratchet from current — never a picked
+      #               number. See docs/testing.md § Coverage on PRs.
+      #   4. JOB-LEVEL permissions on bkit-tests-unit. Job-level REPLACES the workflow-level block (not additive), and the
+      #      Check SHA Cache step calls \`gh run list\`, so you MUST re-include actions: read or the cache step breaks:
+      #        permissions:
+      #          actions: read
+      #          contents: read
+      #          pull-requests: write     # required to post/update the sticky PR coverage comments
+      #   Fork PRs: GITHUB_TOKEN is read-only for PRs from a fork, so the steps fail — the head.repo == repo guard in the
+      #   if: below skips them there (or adopt the action's workflow_run two-workflow pattern to support forks).
+      #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
+      #   branch) needs the base's coverage-summary.json — see the action's json-summary-compare-path input (optional).
+      #   The action uses a floating @v2 tag to match this template's other stubs; best practice is to SHA-pin it to a
+      #   commit (with a # vX.Y.Z comment) per your security policy on enable, and let Renovate/Dependabot keep it current.
+      #   A distinct name: keys each sticky comment so the two do not collide.
+      # - name: Report Unit Coverage on PR
+      #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: unit
+      #     json-summary-path: coverage/unit/coverage-summary.json
+      #     json-final-path: coverage/unit/coverage-final.json
+      #     file-coverage-mode: changes          # per-file table limited to files changed in the PR
+      #     github-token: \${{ secrets.GITHUB_TOKEN }}
+      # - name: Report Integration Coverage on PR
+      #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
+      #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: integration
+      #     json-summary-path: coverage/integration/coverage-summary.json
+      #     json-final-path: coverage/integration/coverage-final.json
+      #     file-coverage-mode: changes
+      #     github-token: \${{ secrets.GITHUB_TOKEN }}
+
       # bkit-stub:vercel-await — Await Vercel preview deploy by commit SHA before E2E. To enable: uncomment the step below, set VERCEL_* secrets, delete this stub header.
       # - name: Await Vercel Preview
       #   if: github.event_name == 'pull_request' && steps.cache.outputs.skip != 'true'
@@ -605,6 +661,7 @@ jobs:
 #       # (JOB 3) against the REAL deployed schema — the stronger check once you have a deploy.
 #       - name: Run DB Tests (pgTAP)          # [DB] if: schema invariants matter; runs supabase/tests/*.sql
 #       - name: Run Vitest Unit Tests         # [U] the one tier every repo has (source CI_ENV_FILE if needed)
+#       - name: Report Unit/Integration Coverage # [U/PR] bkit-stub:coverage — two davelosert/vitest-coverage-report-action steps post per-tier coverage comments (report-only; unit gated on branches, integration gate-on-execution; needs pull-requests: write + json-summary/json reporters)
 #       - name: Build All Packages            # [D] source env first
 #       - name: Run Vitest Integration Tests  # [D] id: integration; if: web_affected; --continue (one failure must not mask the rest)
 #       - name: Await Vercel Deployment       # [D/E] if: full && web_affected — wait READY before E2E; CANCELED/ERROR/timeout = fail
