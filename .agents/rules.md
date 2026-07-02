@@ -54,7 +54,7 @@
 
 - **Plans:** Follow `docs/plans/template.md`. Canonical path `docs/plans/{YYYYMM}/{FID}-{plan,design}.md`; state in `logs/{FID}/status.jsonl`.
 - **Gates:** STOP at every gate. ALWAYS verify all steps before proceeding.
-- **Tracker MCP:** Issue update via configured MCP only; NO CLI/HTTP shell-outs.
+- **Tracker MCP:** Issue update via configured MCP only; use CLI/HTTP shell-outs as backup only.
 - **Tracker comments:** NEVER mention @claude or @cursor in comment body.
 
 ### Git, CI & Merges
