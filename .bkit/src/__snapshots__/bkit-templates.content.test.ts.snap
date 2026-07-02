@@ -535,6 +535,42 @@ jobs:
       # only) — NOT a CLI/top-level --grep, which also filters the auth/setup projects and breaks seeding.
       # Mechanism + turbo strict-env note: docs/testing.md § "E2E on PRs".
 
+      # bkit-stub:e2e-coverage — Report Playwright E2E code-coverage on PRs, free and entirely inside Actions (no third-party service, private-repo safe), consistent with bkit-stub:coverage above. Report-only by default. Unlike vitest there is NO --coverage flag: Playwright is black-box and does not instrument your source, so you wire a 3-part pipeline (collect -> report -> comment). To enable: build the pipeline below, uncomment the report step, delete this stub header.
+      #   1. COLLECT coverage during the E2E run — pick ONE route:
+      #      a. Istanbul instrumented build (cross-browser): add \`vite-plugin-istanbul\` so the app under test exposes
+      #         window.__coverage__, then scrape it in a Playwright fixture (afterEach/teardown) and pass it to Monocart.
+      #         Works on all browsers. Ref: mxschmitt/playwright-test-coverage.
+      #      b. V8 API (Chromium-only): page.coverage.startJSCoverage()/stopJSCoverage() in a fixture; needs source maps
+      #         to map back to source. Ref: @bgotink/playwright-coverage.
+      #   2. REPORT with Monocart (\`monocart-coverage-reports\`, wired via the \`monocart-reporter\` Playwright custom
+      #      reporter or the library directly). It ingests EITHER V8 or Istanbul input (auto-converts V8 -> Istanbul) and
+      #      emits the SAME two Istanbul-format files the davelosert action reads, so no new commenter is needed:
+      #        outputDir: 'coverage/e2e'
+      #        reports: ['json-summary', 'json', 'lcov']   # json-summary is load-bearing; json enables file-coverage-mode: changes
+      #   3. COMMENT by reusing davelosert/vitest-coverage-report-action@v2 (same action as bkit-stub:coverage) pointed at
+      #      coverage/e2e, with a DISTINCT name: e2e so its sticky comment does not collide with the unit/integration ones.
+      #      If Monocart's coverage-final.json is not accepted for file-coverage-mode: changes, drop to file-coverage-mode:
+      #      all, or comment via a cobertura commenter (irongut/CodeCoverageSummary on Monocart's \`cobertura\` report).
+      #   REPORT-ONLY — ship NO threshold. A whole-app E2E % is denominator-noise (E2E exercises user flows, not every
+      #   branch), so gate the tier on the E2E step succeeding, NOT on a number. For a real E2E %, scope Monocart's
+      #   entryFilter/sourceFilter to the surface E2E is meant to cover, THEN ratchet from current — never a picked number.
+      #   See docs/testing.md § E2E coverage on PRs.
+      #   Permissions/forks/pin: this step runs in the SAME bkit-tests-unit job as bkit-stub:coverage, so it REUSES that
+      #   stub's job-level permissions block (pull-requests: write + actions: read + contents: read) — if you enable
+      #   e2e-coverage WITHOUT the unit/integration coverage, add that same job-level block or the comment cannot post.
+      #   The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); @v2 floats to match this template's other
+      #   stubs — SHA-pin it to a commit (with a # vX.Y.Z comment) on enable per your security policy.
+      # - name: Report E2E Coverage on PR
+      #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
+      #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
+      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   with:
+      #     name: e2e
+      #     json-summary-path: coverage/e2e/coverage-summary.json
+      #     json-final-path: coverage/e2e/coverage-final.json
+      #     file-coverage-mode: changes
+      #     github-token: \${{ secrets.GITHUB_TOKEN }}
+
       # bkit-stub:e2e-artifacts — Upload Playwright report + per-test traces after E2E runs so /bkit-debug can fetch them. To enable: uncomment the step below and delete this stub header.
       # \`if: always()\` captures both failure AND job-timeout cancel: Playwright's HTML reporter
       # only finalises \`playwright-report/index.html\` at suite onEnd, but per-test trace.zip files

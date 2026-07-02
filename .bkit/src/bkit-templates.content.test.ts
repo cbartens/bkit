@@ -116,6 +116,17 @@ describe("consumer CI template (.bkit/templates/.github/workflows/ci.yml)", () =
     expect(content).not.toMatch(/^\s*- name: Report (Unit|Integration) Coverage on PR/m);
   });
 
+  it("ships the bkit-stub:e2e-coverage block commented (Playwright E2E coverage report)", () => {
+    // Sentinel must exist for the bkit-stub-e2e-coverage advisory to fire, and the report step
+    // must ship COMMENTED (opt-in) — Playwright needs a collect+report pipeline the consumer wires.
+    expect(content).toContain("# bkit-stub:e2e-coverage");
+    expect(content).toContain("# - name: Report E2E Coverage on PR");
+    // Reuses the same commenter as bkit-stub:coverage, keyed to a distinct e2e sticky comment.
+    expect(content).toContain("davelosert/vitest-coverage-report-action");
+    // Not an ACTIVE (uncommented) step — it must never run before the consumer opts in.
+    expect(content).not.toMatch(/^\s*- name: Report E2E Coverage on PR/m);
+  });
+
   it("snapshot matches expected template content (regression guard)", () => {
     expect(content).toMatchSnapshot();
   });
