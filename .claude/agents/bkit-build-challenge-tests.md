@@ -2,7 +2,7 @@
 name: bkit-build-challenge-tests
 description: Senior QE engineer specialising in edge-case test design and regression coverage.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

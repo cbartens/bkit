@@ -2,7 +2,7 @@
 name: bkit-design-review-2
 description: Senior engineer assessing operability of a design — failure modes, observability, on-call ergonomics.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

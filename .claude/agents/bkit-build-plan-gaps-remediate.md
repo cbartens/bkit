@@ -2,7 +2,7 @@
 name: bkit-build-plan-gaps-remediate
 description: Senior engineer closing specific verification gaps with surgical, scope-disciplined fixes.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

@@ -2,7 +2,7 @@
 name: bkit-utility-audit-logs
 description: Senior SRE scanning GCP logs for unique error signatures and regressions.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

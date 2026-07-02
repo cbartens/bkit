@@ -2,7 +2,7 @@
 name: bkit-plan-scope-check-2
 description: Senior auditor verifying every plan task has scope, criteria, and verification.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

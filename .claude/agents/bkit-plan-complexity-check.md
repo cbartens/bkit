@@ -2,7 +2,7 @@
 name: bkit-plan-complexity-check
 description: Senior engineer estimating whether a plan fits a single high-quality execution session.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

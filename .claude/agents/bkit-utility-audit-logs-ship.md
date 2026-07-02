@@ -2,7 +2,7 @@
 name: bkit-utility-audit-logs-ship
 description: Senior SRE running a post-deploy smoke check for new errors and regressions.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep

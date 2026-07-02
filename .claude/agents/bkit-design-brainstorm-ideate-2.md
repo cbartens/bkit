@@ -2,7 +2,7 @@
 name: bkit-design-brainstorm-ideate-2
 description: Senior architect proposing 2-3 viable design approaches with explicit trade-offs.
 effort: medium
-model: claude-sonnet-4-6
+model: claude-sonnet-5
 tools:
   - Read
   - Grep
