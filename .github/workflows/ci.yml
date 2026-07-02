@@ -467,18 +467,25 @@ jobs:
 
       # Two coverage runs into SEPARATE dirs so unit and integration each get their own honest
       # number — a single merged run cannot, because coverage is a union: a line covered only by
-      # an integration test would read as covered and hide a missing unit test. Dogfoods the
-      # per-tier bkit-stub:coverage scaffold shipped to consumers. tests_ran is the SUM of both
-      # runs, so the capstone's executed-count gate is unchanged.
+      # an integration test would read as covered and hide a missing unit test. Each run is SCOPED
+      # per tier via --coverage.include (the recommended approach — vitest coverage is per-RUN, not
+      # per-project): unit measures the logic surface (all .bkit/src except the bkit-modules data
+      # registry, which is exercised end-to-end, not unit-tested), integration measures the engine
+      # surface (modules/install/upgrade/uninstall). Without this, both numbers use a tier-blind
+      # whole-repo denominator and integration is denominator-noise. Dogfoods the per-tier
+      # bkit-stub:coverage scaffold shipped to consumers. tests_ran is the SUM of both runs, so the
+      # capstone's executed-count gate is unchanged.
       - name: Run Vitest Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/unit \
             --exclude '**/*.integration.test.ts' \
+            --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
           pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/integration \
             integration.test \
+            --coverage.include='.bkit/src/bkit-{modules,install,upgrade,uninstall}.ts' \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/int-result.json"
           UNIT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit-result.json")
           INT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/int-result.json")
