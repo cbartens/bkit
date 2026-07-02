@@ -216,7 +216,7 @@ Vercel **Deployment Checks** (Project Settings → Build & Deployment → Deploy
 ```yaml
 - name: Notify Vercel Deployment Check
   if: always()
-  uses: vercel/repository-dispatch/actions/status@v1
+  uses: vercel/repository-dispatch/actions/status@30f760c6640485cd92f8c785ef361382555fb712 # v1
   with:
     name: "Vercel - <project-name>: <capstone-job-name>"
 ```
@@ -230,21 +230,27 @@ GitHub **Code Quality** (coverage-on-PR + the _Code Quality: CodeQL_ runs) is fr
 
 ## GitHub Actions pinning
 
-Workflows with elevated permissions (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) MUST pin `uses:` to a 40-character commit SHA — never `@v{N}` floating tags. Floating tags are forgeable: a compromised maintainer can re-point `v4` at malicious code that runs on the next push.
+**Pin every third-party dependency to an immutable digest, and pair the pin with an updater.** A floating reference — a `@v{N}` action tag, an `ubuntu:26.04` image tag, an unversioned `curl … | bash` installer — is mutable: a compromised or coerced maintainer can re-point it at malicious code that runs on the next push with the runner's token. This is one exposure class across three surfaces:
 
-Resolve a SHA with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'`. Append a `# vX.Y.Z` comment so the version stays human-readable:
+- **Actions** — pin every `uses:` to a 40-character commit SHA, never `@v{N}`. Resolve it with `git ls-remote https://github.com/<owner>/<repo>.git 'refs/tags/vX.Y.Z'` and append a `# vX.Y.Z` comment so the version stays human-readable:
 
-```yaml
-- uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
-```
+  ```yaml
+  - uses: actions/checkout@a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e # v4.2.1
+  ```
 
-**Pair with an updater.** SHA-pinning freezes the workflow on the pinned version — without an updater, CVEs in those actions stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`. The shipped config:
+- **Container images** — pin `FROM` to a `sha256:` digest, keeping the tag **inline** so an updater can still track it (`FROM ubuntu:26.04@sha256:…`, not a bare `ubuntu:26.04` nor a digest with the tag in a trailing comment). Resolve with `docker pull <image>:<tag>` (prints `Digest:`).
+- **Downloaded installers / binaries** — a `curl … | bash` or release-tarball fetch must either pin its source to an immutable ref (a commit SHA in a `raw.githubusercontent.com` URL, not a mutable git tag) or verify a pinned `sha256sum` before executing/extracting, and pin the tool version explicitly rather than resolving "latest".
+
+Elevated-permission workflows (`packages: write`, `id-token: write`, `contents: write`, or deploy credentials) are where this is **especially critical** — a re-pointed ref there runs with those credentials — but the practice applies to **all** third-party refs, not only elevated ones.
+
+**Pair with an updater.** Pinning freezes each dependency on its pinned version — without an updater, CVEs in those pinned refs (actions, images, tools) stay un-patched indefinitely. Pinning without an updater is worse than not pinning. bkit ships two opt-in, mutually-exclusive paths: `pnpm bkit install --dependency=renovate` (recommended — phase-gated, monorepo-aware, lockfile maintenance) or `pnpm bkit install --dependency=dependabot` (alternative — first-party GitHub, no third-party trust surface, no App install). The canonical Renovate config (bkit-managed, auto-overwrite when opted in) lives at `.bkit/templates/.github/renovate.json5`. The shipped config:
 
 - Sets `baseBranches: ["dev"]` — bkit consumers gate `main` to PRs-from-`dev`-only, so Renovate PRs must land on `dev`. Mandatory; not optional. Paired with `useBaseBranchConfig: "merge"` so config edits committed to `dev` are honored for dev-targeted runs — **without it Renovate reads config only from the default branch (`main`), so any `renovate.json5` change on `dev` is silently ignored until released to `main`.** Bootstrap caveat: `useBaseBranchConfig` is itself read from `main`, so it needs one merge to `main` before dev-side config takes effect (see § Renovate activation below).
 - Runs weekly (`schedule: ["before 6am on Monday"]`) with lockfile maintenance. **All auto-mergeable non-major bumps collapse into a single `automerge: true` PR** (`groupName: "bkit: renovate non-major dependencies"`): devDependency minor+patch, production patches, `@types/*`, the eslint family, and the non-major bumps of the multi-package ecosystems (`@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*`). Rationale: every Renovate PR rewrites `pnpm-lock.yaml`, so several auto-merge PRs firing in one window force a serial rebase cascade that stalls `platformAutomerge` — one shared group means one lockfile mutation, one merge, no cascade. Reviewed separately, never auto-merged: production **minor** bumps; **all majors** (one PR each, `dep-major` label); and **ecosystem majors** — `@tanstack/*`, `vitest`/`@vitest/*`, `@playwright/*` are each grouped at the major level so a coordinated breaking bump lands in one reviewed PR (otherwise the peer-coupled halves split into separate per-package PRs and fail CI against each other).
 - Enables `osvVulnerabilityAlerts: true` so CVE-driven PRs fire immediately regardless of schedule.
 - Caps pnpm's worker pool (`env: { PNPM_WORKERS, PNPM_MAX_WORKERS }`) and enforces release-age freshness in Renovate (`minimumReleaseAge: "1 day"`) — the pnpm-11 microvm-OOM mitigation. See § Renovate pnpm-11 freshness gate & microvm memory below; large monorepos on a pnpm-level `minimumReleaseAge` gate must also drop it to clear the OOM.
 - For the `github-actions` ecosystem: `pinDigests: true` keeps every `uses:` line on a 40-character SHA + tag comment, refreshed on upstream releases and CVE disclosures.
+- For the `dockerfile` manager: image `FROM <image>:<tag>@sha256:<digest>` pins are refreshed on upstream releases and CVE disclosures (the tag stays inline so Renovate can map digest→tag). Installer fetches pinned by a paired **version + `sha256sum`** (the Vale tarball in `ci.yml`) or by a **commit SHA in a raw URL** (the actionlint download-script) are **not** Renovate-managed — it cannot recompute a tarball checksum — so bump those version/sha pairs by hand when you upgrade the tool.
 - For bkit-managed workflow files (`bkit-cloud.yml`): the file is listed in `ignorePaths` so Renovate never scans it — new SHAs/versions arrive via `bkit install`, not consumer Renovate. The `ignorePaths` entry is load-bearing: a packageRule `enabled: false` alone only suppresses _version updates_, but the `github-actions` manager still scans the file and applies tag→SHA `pinDigests`, which recreates a `chore(deps): Pin dependencies` PR on every scan. A `matchFileNames` + `enabled: false` packageRule is kept as a secondary guard.
 - Carries no private-registry token itself — the `hostRules` token anchor for `npm.pkg.github.com` is seeded into the consumer-owned `renovate-local.json5` instead, so it survives `bkit upgrade` (this file is canonical-overwrite and would clobber a token added here). You must provision a read token there to make Renovate's lockfile regeneration work (see § Renovate read-auth below). Without it, every dependency PR fails CI.
 - `extends` a consumer-owned local preset (`local>{{REPO_SLUG}}//.github/renovate-local.json5`) so you can add repo-specific rules that survive `bkit install`/`bkit upgrade` (see § Customizing Renovate below). `renovate.json5` itself is bkit-managed and rewritten on every `bkit install` — hand-edits there are clobbered.

@@ -11,7 +11,10 @@
 # Edit canonical via `.agents/templates/.cursor/Dockerfile` in the bkit repo;
 # never edit this generated mirror directly in consumer repos.
 
-FROM ubuntu:26.04
+# Base image digest-pinned — an `ubuntu:26.04` tag is mutable, so pinning the digest keeps builds
+# reproducible and the supply chain fixed. Refresh with `docker pull ubuntu:26.04` (prints `Digest:`),
+# or let Renovate's dockerfile manager bump it. Consumer-owned — repin to your own base as needed.
+FROM ubuntu:26.04@sha256:b7f48194d4d8b763a478a621cdc81c27be222ba2206ca3ca6bc42b49685f3d9e
 
 # --- Consumer-owned: base system + Node ------------------------------------
 # bkit's toolchain assumes curl, ca-certificates, and Node >=20 are on PATH

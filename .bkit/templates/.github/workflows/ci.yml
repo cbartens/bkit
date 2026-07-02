@@ -216,8 +216,12 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         env:
           VALE_VERSION: "3.9.1"
+          # sha256 of vale_${VALE_VERSION}_Linux_64-bit.tar.gz (from the release's checksums.txt).
+          # Bump alongside VALE_VERSION; verified before extract so a tampered/CDN-swapped tarball fails closed.
+          VALE_SHA256: "fbc2eb47d0b8c50220ed1a2c5c611fbe0904ed567d638143d482016a18fd2db0"
         run: |
           curl -fsSL --retry 3 --retry-all-errors "https://github.com/errata-ai/vale/releases/download/v${VALE_VERSION}/vale_${VALE_VERSION}_Linux_64-bit.tar.gz" -o "$RUNNER_TEMP/vale.tar.gz"
+          echo "${VALE_SHA256}  $RUNNER_TEMP/vale.tar.gz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/vale.tar.gz" -C "$RUNNER_TEMP" vale
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
           # vale sync pulls styles (write-good) from GitHub — retry to survive a transient CDN/network blip.
@@ -251,7 +255,9 @@ jobs:
       - name: Run Actionlint
         if: steps.cache.outputs.skip != 'true'
         run: |
-          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/v1.7.12/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
+          # Script pinned to the v1.7.12 commit SHA (the git tag is mutable/forgeable); the binary version
+          # is pinned separately via the 1.7.12 arg passed to the script below.
+          curl -sSfL --retry 3 --retry-all-errors https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash -o "$RUNNER_TEMP/download-actionlint.bash"
           # download-actionlint.bash fetches the binary from GitHub releases — retry to survive a transient CDN/network blip.
           for i in 1 2 3; do
             bash "$RUNNER_TEMP/download-actionlint.bash" 1.7.12 "$RUNNER_TEMP" && break
@@ -460,12 +466,12 @@ jobs:
       #   if: below skips them there (or adopt the action's workflow_run two-workflow pattern to support forks).
       #   Monorepo: set working-directory so the action finds the right report. Base-branch delta (up/down vs the default
       #   branch) needs the base's coverage-summary.json — see the action's json-summary-compare-path input (optional).
-      #   The action uses a floating @v2 tag to match this template's other stubs; best practice is to SHA-pin it to a
-      #   commit (with a # vX.Y.Z comment) per your security policy on enable, and let Renovate/Dependabot keep it current.
+      #   The action is SHA-pinned to a commit (# vX.Y.Z comment) per best practice; your updater (Renovate/Dependabot,
+      #   github-actions ecosystem) keeps the pin current — refresh the SHA if you enable this on a newer release.
       #   A distinct name: keys each sticky comment so the two do not collide.
       # - name: Report Unit Coverage on PR
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
       #   with:
       #     name: unit
       #     json-summary-path: coverage/unit/coverage-summary.json
@@ -475,7 +481,7 @@ jobs:
       # - name: Report Integration Coverage on PR
       #   # hashFiles guard: skip cleanly when the repo has no integration tier (no coverage/integration report produced).
       #   if: steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/integration/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
       #   with:
       #     name: integration
       #     json-summary-path: coverage/integration/coverage-summary.json
@@ -561,12 +567,12 @@ jobs:
       #   Permissions/forks/pin: this step runs in the SAME bkit-tests-unit job as bkit-stub:coverage, so it REUSES that
       #   stub's job-level permissions block (pull-requests: write + actions: read + contents: read) — if you enable
       #   e2e-coverage WITHOUT the unit/integration coverage, add that same job-level block or the comment cannot post.
-      #   The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); @v2 floats to match this template's other
-      #   stubs — SHA-pin it to a commit (with a # vX.Y.Z comment) on enable per your security policy.
+      #   The head.repo == repo guard skips fork PRs (read-only GITHUB_TOKEN); the action is SHA-pinned to a commit
+      #   (# vX.Y.Z comment) per best practice, kept current by your updater (Renovate/Dependabot).
       # - name: Report E2E Coverage on PR
       #   # Same gate as Run E2E Tests (coverage exists only if E2E ran); hashFiles skips repos that produced no E2E report.
       #   if: (steps.detect.outputs.should_run_full == 'true' || steps.e2e-paths.outputs.needs_e2e == 'true') && steps.cache.outputs.skip != 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('coverage/e2e/coverage-summary.json') != ''
-      #   uses: davelosert/vitest-coverage-report-action@v2
+      #   uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
       #   with:
       #     name: e2e
       #     json-summary-path: coverage/e2e/coverage-summary.json
@@ -582,7 +588,7 @@ jobs:
       # test-results/; sharded runs additionally write blob-report/ intermediate.
       # - name: Upload Playwright Artifacts
       #   if: always()
-      #   uses: actions/upload-artifact@v4
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       #   with:
       #     name: playwright-report
       #     path: |
@@ -604,7 +610,7 @@ jobs:
 #     if: github.event.workflow_run.conclusion == 'success'
 #     runs-on: ubuntu-latest
 #     steps:
-#       - uses: actions/checkout@v4
+#       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 #       - run: ./scripts/ci/smoke-test.sh
 
 # =============================================================================
