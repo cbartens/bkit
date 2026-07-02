@@ -13,7 +13,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.1.9 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior SRE running a post-deploy smoke check for new errors and regressions.
 **Scope:** As specified by input or session prompt.

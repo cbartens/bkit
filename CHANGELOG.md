@@ -6,6 +6,28 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.10] — 2026-07-03
+
+Ship the coverage-on-PR scaffold (free per-tier vitest + Playwright E2E coverage comments), split bkit's own CI into one lane per tier to dogfood the consumer shape, pin third-party supply-chain refs to immutable digests, and document turbo's `//` docs-only over-trigger (#312, #313, #314).
+
+### Added
+
+- **Coverage-on-PR scaffold (`bkit-stub:coverage`).** Free, per-tier vitest coverage comments on PRs via `davelosert/vitest-coverage-report-action` — runs entirely inside Actions with `GITHUB_TOKEN` (no third-party service, private-repo safe). Report-only by default; unit and integration are measured and commented **separately** (a single merged number lets integration mask a hollow unit suite — coverage is a union). Thresholds are opt-in and per-tier: unit is the branch-coverage gate (a `--coverage.thresholds.branches` CLI flag on the unit run only — vitest coverage is per-run, not per-`projects`), integration stays report-only and gates on execution (`integration_ran > 0`). (#312)
+- **Playwright E2E coverage-on-PR stub (`bkit-stub:e2e-coverage`).** The same report-only per-tier coverage comment for the E2E lane. Playwright is black-box (no `--coverage` flag), so the stub documents a collect → Monocart report → `davelosert` comment pipeline that emits the same Istanbul-format files the unit/integration reports use. Report-only, gated on the E2E step running rather than a percentage. (#313)
+- **Separate integration + E2E lane stubs (`bkit-stub:bkit-tests-integration` / `bkit-stub:bkit-tests-e2e`).** The scaffold reference now defines each test tier as its own parallel lane (job) — matching bkit's own CI and consumers gether/fraser — with the same stub + advisory treatment as the migrate / live / check tiers. (#312)
+
+### Changed
+
+- **bkit's own CI split into separate unit + integration lanes.** The monolithic `bkit-tests` job becomes parallel `bkit-tests-static` + `bkit-tests-unit` + `bkit-tests-integration` lanes to dogfood the one-lane-per-tier shape consumers run; the shipped docs + advisories align with the separate-lane doctrine, and bkit's own unit branch coverage is gated at 65% (integration stays report-only). (#312)
+- **Third-party supply-chain refs pinned to immutable digests.** Third-party GitHub Actions and downloaded scripts in the shipped CI reference and bkit's own workflows are pinned to immutable commit digests rather than mutable tags. (#314)
+- **turbo `//` over-triggers `web_affected` on docs-only diffs (documented).** The `bkit-stub:affected-graph` reference and `docs/deployments.md` now warn that turbo attributes non-workspace root paths (`docs/**`, `README`, …) to the root `//` package as `FileChanged`, so a bare `global_dep → web_affected=true` force reds the E2E lane on docs-only pushes (the host cancels the docs-only preview, then `Await Deployment` fails). The fix — gate the force on a real global-dep change by intersecting changed root files against `turbo.json` `globalDependencies`/`globalEnv` — is consumer-owned reference guidance.
+
+### Fixed
+
+- **Per-tier coverage scoping corrected.** Each tier's coverage is scoped via `--coverage.include` CLI flags, not vitest `projects` (which does not scope per-run coverage), and a `bkit-install.ts` unit-coverage gap is closed. (#312)
+
+---
+
 ## [4.1.9] — 2026-07-02
 
 Correct the `pnpm-release-age-gate-oom` advisory shipped in 4.1.8 — the fix is `minimumReleaseAge: 0`, not deleting the key — and make the detector value-aware (#308).

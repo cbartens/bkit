@@ -12,7 +12,7 @@ tools:
   - WebFetch
   - WebSearch
 ---
-<!-- bkit:managed v4.1.9 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior engineer assessing whether a design is buildable with the approved stack.
 **Scope:** As specified by input and Read/Update/Create section.
