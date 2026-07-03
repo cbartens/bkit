@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.11] — 2026-07-03
+
+Group `bkit design` workstreams under the parent's native milestone instead of sub-issues, and repair markdown-table corruption from a prettier-ignore table-splitter bug.
+
+### Changed
+
+- **`bkit design` assigns workstreams to a milestone, not sub-issues.** Step 9 now assigns each workstream issue to the MILESTONE-labelled parent's native milestone (GitHub) / project + project milestone (Linear) instead of attaching them as sub-issues. The parent must already carry the target — MCP cannot create milestones/projects, so an unset target is a Failure Path — and existing-workstream detection uses `search_issues` (GitHub) / `list_issues` project filter (Linear). Shipped across `.bkit/workflows/bkit-design.md` and the `.claude` / `.cursor` / `.opencode` command mirrors.
+
+### Fixed
+
+- **prettier-ignore table splitter corrupted escaped pipes.** The markdown table normaliser split rows on every `|`, turning an escaped literal pipe (`a\|b`) into a phantom column separator and corrupting cells across shipped docs (`.bkit/prompts.md`, `.bkit/providers.md`, `README.md`, `docs/deployments.md`) and plan logs. The splitter now splits on unescaped pipes only, and the previously-corrupted cells are repaired style-preservingly (adjacent bash-OR `\|\|`, spaced `\| `, and glued `\|` each restored to their original form).
+
+---
+
 ## [4.1.10] — 2026-07-03
 
 Ship the coverage-on-PR scaffold (free per-tier vitest + Playwright E2E coverage comments), split bkit's own CI into one lane per tier to dogfood the consumer shape, pin third-party supply-chain refs to immutable digests, and document turbo's `//` docs-only over-trigger (#312, #313, #314).
