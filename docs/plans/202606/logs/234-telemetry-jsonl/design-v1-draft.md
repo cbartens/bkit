@@ -76,7 +76,7 @@ One JSON object per line. All rows carry the same envelope; a `kind` discriminat
 | `kind` | string (closed enum) | Discriminator. Validated on append — unknown `kind` rejected, preventing the junk-drawer drift. |
 | `repo` | string | Origin repo (stamped on harvest dedupe + cross-repo analysis). |
 | `bkitVersion` | string | Stamped on every row; load-bearing for #183 release-attributed-regression join (`bkitVersion` → CHANGELOG). |
-| `workflow` | string? | design \ | plan \ | build \ | debug \ | ship (where applicable). |
+| `workflow` | string? | design \| plan \| build \| debug \| ship (where applicable). |
 | `subagent` | string? | Emitting subagent, if any. |
 | `severity` | string? | Where applicable. |
 | `references` | string[] | Outbound links (JSONL form of the legacy `Related:` field): issues, PRs, commit SHAs, FIDs, paths, sibling `ts`. |

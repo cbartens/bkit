@@ -180,7 +180,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 | `bkit-modules.ts:2075` "Do NOT add `GH_BKIT_TOKEN` … github.token" advisory line | App-required advisory text | DELETE | Same as above; advisory must state App + `/install-github-app` required (decision 2). |
 | Bare `Auto` label in `.agents/templates/.claude/hooks/preflight.sh:8,109-111` + `.agents/templates/.cursor/hooks/preflight.sh:8,96-98` | `bkit:auto` | DELETE | Label convention: `bkit:` prefix on every tracker (FINAL SCOPE Labels row; migrate bare `Auto`). |
 | Bare `Auto` in `bkit-modules.ts` advisory text — `bkit-cloud-setup` strings at `:2051` ("reads the `Auto` opt-in label"), `:2054` ("labelled `Auto` in Linear"), `:2055` ("carries the `Auto` label") | `bkit:auto` (fix-in-place) OR removed-with-branch | DELETE | R3-2: consumer-facing advisory shipped by bkit must say `bkit:auto` for consistency with the migrated hooks that check `bkit:auto`. These live in the `isLinearCloud` branch — reconcile with the cloud-split (cursor=linear): if the split removes the branch wholesale, the strings go with it; otherwise fix them in place. Either way they MUST NOT survive saying bare `Auto`. |
-| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\ | cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. |
+| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\|cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. |
 
 > [!CAUTION]
 > Each `DELETE` row is mirrored in `Architecture & Component Changes` and as a removal task in `Agent Execution Runbook`.
@@ -390,7 +390,7 @@ None.
 <!-- prettier-ignore -->
 | File | Change required |
 | --- | --- |
-| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\ | cursor`; remove `github.token`-only framing (lines 367, 369). |
+| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\|cursor`; remove `github.token`-only framing (lines 367, 369). |
 | `.agents/trackers.md` | Confirm `bkit:auto` consistency post-hook-migration; optional label-description rename (lines 78, 196). |
 | `docs/deployments.md` | § "CI trigger on final workflow push" (lines 309-321): document `bkit [auto route]` as a loud HEAD token (not a skip tag), worktree-setup/create-pr now carry `[skip ci]`, the two-tier CI auto-route gate, and point the contract at #184's shared assertion. **Reconcile BOTH existing drift directions in one pass:** add `worktree-setup` to the `:321` skip-tagged list (currently absent), and fix the `:318` close-workflow description (its named commit `chore({FID}): close-workflow status trigger CI` + "drops `bkit [skip build] bkit [skip ci]`" does not match the real `bkit-build.md:947` commit, which is `chore({FID}): close-workflow` with no tags to drop). Cross-link KN-11. |
 | `docs/decisions.md` | New ADR: bkit-cloud rebuilt on the Claude GitHub App (OIDC), cloud=claude/cursor split tracker-constrained, package.json-recorded enforcement, two-tier CI gate, `bkit [auto route]` marker. |

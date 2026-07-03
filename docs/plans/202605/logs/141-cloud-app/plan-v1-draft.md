@@ -164,7 +164,7 @@ A bkit consumer on a GitHub-tracker repo runs `bkit install --cloud=claude`, ins
 | `bkit-cloud.yml:22-25` "`github.token` handles all repo git/gh; no App" rationale (canonical + template) | App-auth framing (`id-token: write` + App required) | DELETE | FINAL SCOPE decision 1: delete the framing; commits/PRs/comments appear as the App. |
 | `bkit-modules.ts:2075` "Do NOT add `GH_BKIT_TOKEN` … github.token" advisory line | App-required advisory text | DELETE | Same as above; advisory must state App + `/install-github-app` required (decision 2). |
 | Bare `Auto` label in `.agents/templates/.claude/hooks/preflight.sh:8,109-111` + `.agents/templates/.cursor/hooks/preflight.sh:8,96-98` | `bkit:auto` | DELETE | Label convention: `bkit:` prefix on every tracker (FINAL SCOPE Labels row; migrate bare `Auto`). |
-| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\ | cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. |
+| Bare `--cloud` flag (value-less) `.agents/scripts/bkit-cli.ts` | `--cloud=claude\|cursor` value-bearing flag | DELETE | FINAL SCOPE decision 3: explicit variant, tracker-constrained. |
 
 > [!CAUTION]
 > Each `DELETE` row is mirrored in `Architecture & Component Changes` and as a removal task in `Agent Execution Runbook`.
@@ -354,7 +354,7 @@ None.
 <!-- prettier-ignore -->
 | File | Change required |
 | --- | --- |
-| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\ | cursor`; remove `github.token`-only framing (lines 367, 369). |
+| `.agents/cloud.md` | App = base requirement (matrix line 23, path E line 30); rewrite § Post-CI auto-routing for App-auth + two-tier `bkit [auto route]` gate; `--cloud=claude\|cursor`; remove `github.token`-only framing (lines 367, 369). |
 | `.agents/trackers.md` | Confirm `bkit:auto` consistency post-hook-migration; optional label-description rename (lines 78, 196). |
 | `docs/deployments.md` | § "CI trigger on final workflow push" (lines 309-321): document `bkit [auto route]` as a loud HEAD token (not a skip tag), worktree-setup/create-pr now carry `[skip ci]`, the two-tier CI auto-route gate, and point the contract at #184's shared assertion. |
 | `docs/decisions.md` | New ADR: bkit-cloud rebuilt on the Claude GitHub App (OIDC), cloud=claude/cursor split tracker-constrained, package.json-recorded enforcement, two-tier CI gate, `bkit [auto route]` marker. |

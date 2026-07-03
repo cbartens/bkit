@@ -9,7 +9,7 @@ Task 3 audit pass. Each file classified as (a) freeform multi-finding (Fix-1b ap
 | `bkit-utility-audit-security.md` | (b) | Same shape as codebase — whole-doc structured report to `security-audit.md` | No |
 | `bkit-utility-audit-tests.md` | (b) | Same shape — whole-doc structured report to `tests-audit.md` | No |
 | `bkit-utility-audit-logs.md` | (b) | Structured table-format report; update rules preserve existing annotations; whole-doc writer | No |
-| `bkit-utility-audit-logs-ship.md` | (b) | Stubbed verdict-bearing (`Verdict: HEALTHY\ | DEGRADED\ | BROKEN` + `<!-- verdict:end -->`); single-pass health check; Linear-bound output cap (`Output cap: MAX 500 token` per prompts.md rules) | No |
+| `bkit-utility-audit-logs-ship.md` | (b) | Stubbed verdict-bearing (`Verdict: HEALTHY\|DEGRADED\|BROKEN` + `<!-- verdict:end -->`); single-pass health check; Linear-bound output cap (`Output cap: MAX 500 token` per prompts.md rules) | No |
 | `bkit-utility-update-documentation.md` | (b) | Structured report listing files modified; no multi-finding accumulation | No |
 | `bkit-utility-update-references.md` | (b) | Structured report listing paths fixed; no multi-finding accumulation | No |
 | `bkit-utility-compress-markdown.md` | (b) | Single-pass compression; post-compression verification at end; no incremental multi-finding | No |

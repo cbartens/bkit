@@ -180,7 +180,7 @@ Future-phase recommendations (DO NOT include in this PR):
 | --- | --- | --- | --- |
 | `.agents/prompts/bkit-build-challenge.md` | `.agents/prompts/bkit-build-challenge-1.md`, `bkit-build-challenge-2.md`, `bkit-build-challenge-reconcile.md` | DELETE | Parallel-pair convention is canonical (matches `bkit-design-review-*`, `bkit-plan-review-*`, `bkit-plan-scope-check-*`). Single-reviewer shape is the regression. Atomic delete in same PR — `bkit-build.md` Step 9 swaps from single-agent invocation to parallel-pair invocation in the same edit. |
 | `bkit-build.md` Step 9 single-agent challenge invocation | Parallel-pair challenge + new Step 10 reconcile | DELETE (in-file rewrite) | Replaced verbatim by `bkit-design.md` Step 5 template (parallel pair) + `bkit-design.md` Step 6 / `bkit-plan.md` Step 5 template (apply via single reconciler). |
-| `bkit-ship.md` Step 2 `git rebase ... \ | \ | { echo "Rebase conflict — resolve manually"; exit 1; }` | Failure Path routing line | DELETE | Bare `exit 1` bypasses the workflow's `## 🤖 Failure Path` block, so existing handover machinery never fires. One-line replacement. |
+| `bkit-ship.md` Step 2 `git rebase ... \|\| { echo "Rebase conflict — resolve manually"; exit 1; }` | Failure Path routing line | DELETE | Bare `exit 1` bypasses the workflow's `## 🤖 Failure Path` block, so existing handover machinery never fires. One-line replacement. |
 | `.agents/prompts.md` row `bkit-build-challenge` | rows `bkit-build-challenge-1`, `-2`, `-reconcile` | DELETE | Index drift = regression per `bkit Repo Authoring` rules. |
 
 > [!CAUTION]

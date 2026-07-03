@@ -10,7 +10,7 @@ tools:
 permissionMode: acceptEdits
 maxTurns: 25
 ---
-<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.11 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior reviewer evaluating debug-loop outcome and remaining risk.
 **Scope:** As specified by input and Read/Update/Create section.

@@ -82,7 +82,7 @@ All six supersession rows from the master target files inside scope C (CLI redes
 | `parseArgs()` in `bkit-install.ts` (verb + `--host=` model) | **v4-3** |
 | `bkit-init.ts` file (84 LOC standalone) | **v4-3** (Task 4.4 deletes) |
 | CLI verb `bkit init` | **v4-3** (RETAIN-WITH-REASON deprecation stub) |
-| CLI flag `--host=claude\ | cursor` | **v4-3** (RETAIN-WITH-REASON deprecation stub) |
+| CLI flag `--host=claude\|cursor` | **v4-3** (RETAIN-WITH-REASON deprecation stub) |
 | `runHost()` in `bkit-install.ts` | **v4-3** (Task 4.5 verifies removal) |
 | `printUsage()` in `bkit-install.ts` (old help string) | **v4-3** (Task 4.3 verifies removal) |
 

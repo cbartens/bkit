@@ -167,9 +167,9 @@ existing reader. `realStack` cross-field invariant: `realStackVerdict` is only m
 <!-- prettier-ignore -->
 | Field | On step | Values | Meaning |
 | --- | --- | --- | --- |
-| `realStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \ | `absent` \ | `off` | Capability resolved once per run, reused by all downstream gates |
-| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \ | `pass` \ | `skip` | The fail-then-pass transition; `skip` when `realStack != live` |
-| `realStackVerdict` | `debug-run-tests`, `build-run-tests` | `PASS` \ | `FAIL` \ | `CONCERNS` \ | `skip` | Verdict of the `test:real` execution specifically (distinct from the suite-wide `verdict`) |
+| `realStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \| `absent` \| `off` | Capability resolved once per run, reused by all downstream gates |
+| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \| `pass` \| `skip` | The fail-then-pass transition; `skip` when `realStack != live` |
+| `realStackVerdict` | `debug-run-tests`, `build-run-tests` | `PASS` \| `FAIL` \| `CONCERNS` \| `skip` | Verdict of the `test:real` execution specifically (distinct from the suite-wide `verdict`) |
 | `realStackReason` | `debug-close-workflow`, `build-close-workflow` | string | Consumer-neutral reason logged when capability `absent`/`off` (no KN-/BAR- refs) |
 
 New step kinds (same envelope as existing steps — `step`, `status`, `verdict`, `attempt`,

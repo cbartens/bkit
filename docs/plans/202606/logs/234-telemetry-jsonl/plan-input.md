@@ -278,7 +278,7 @@ The system is a direct generalisation of the already-shipped per-FID `status.jso
 | Telemetry codec test | `.bkit/src/bkit-telemetry.test.ts` | Unit-tests fold/identity/validate per `kind`; parity test: a representative inline-jq-written row parses identically under `parse`. | P1 |
 | Data files | `.bkit/{stats,friction,deferrals,failures}.jsonl` (P1); `docs/{knowledge,decisions}.jsonl` (P5) | Append-only NDJSON ledgers. Git-tracked runtime content, NOT manifest entries. | P1 / P5 |
 | Workflow close-step writers | `.bkit/workflows/bkit-{design,plan,build,debug,ship}.md` | Inline `jq -nc … >> "$FILE"` blocks (mirroring `appendLine`/`fold`) that append rows at existing step boundaries. | P1, P3 |
-| Compliance grader | `.bkit/src/bkit-comply.ts` (+ `.test.ts`); new `comply` verb = **net-new CLI dispatch+parse plumbing** | Pure functions `(parentSha, phase, planPath) -> Violation[]`; deterministic, advisory; invoked via the fail-open idiom `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` in each close gate; emits `kind:"compliance"` rows; surfaces in `ship-summary.md`. | P2 |
+| Compliance grader | `.bkit/src/bkit-comply.ts` (+ `.test.ts`); new `comply` verb = **net-new CLI dispatch+parse plumbing** | Pure functions `(parentSha, phase, planPath) -> Violation[]`; deterministic, advisory; invoked via the fail-open idiom `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable, skipping"` in each close gate; emits `kind:"compliance"` rows; surfaces in `ship-summary.md`. | P2 |
 | Path-policy table | shared TS source (e.g. exported from `bkit-tiers.ts` or new `bkit-paths-policy.ts`) | Single protected-path table consumed by the grader directly and by `gateguard.cjs` via a **committed generated file** (`gate-paths.generated.cjs` or equiv) guarded by a drift test — NOT install-time codegen (no such precedent; `gateguard.cjs` is installed by byte-equal Tier-1 copy). See Decisions + Open Questions. | P2 |
 | Shell counter bus | shell helper invoked from workflows (`counter_init/inc/get/check_max`, `decide_next`) + `MAX_*` config | Deterministic prose→shell counter refactor; emits `kind:"counter"` rows into `stats.jsonl`; replaces LLM-written `attempt:N`. | P3 |
 | Harvest CLI | new `bkit` verb / utility script (replaces `utility-harvest-friction` agent) — **net-new CLI dispatch+parse plumbing** (not a `Verb`-union one-liner) | COPY-ONLY collector: reads `docs/bkit-consumers.md` → consumer worktrees → copies `.bkit/*.jsonl` into bkit; dedupe by per-`kind` composite; never writes/truncates consumer repos. | P4 |
@@ -309,7 +309,7 @@ One JSON object per line. All rows carry the same envelope; a `kind` discriminat
 | `kind` | string (closed enum) | Discriminator. Validated on append — unknown `kind` rejected, preventing the junk-drawer drift. |
 | `repo` | string | Origin repo (stamped on harvest dedupe + cross-repo analysis). |
 | `bkitVersion` | string | Stamped on every row; load-bearing for #183 release-attributed-regression join (`bkitVersion` → CHANGELOG). |
-| `workflow` | string? | design \ | plan \ | build \ | debug \ | ship (where applicable). |
+| `workflow` | string? | design \| plan \| build \| debug \| ship (where applicable). |
 | `subagent` | string? | Emitting subagent, if any. |
 | `severity` | string? | Where applicable. |
 | `references` | string[] | Outbound links (JSONL form of the legacy `Related:` field): issues, PRs, commit SHAs, FIDs, paths, sibling `ts`. |

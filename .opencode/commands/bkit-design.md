@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.11 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Session prompt:**
 
@@ -481,7 +481,7 @@ $ARGUMENTS
 **Run only if** uppercase `{LABELS}` contains MILESTONE **and** (`SUMMARY_VERDICT` = PASS **or** CONCERNS).
 
 1. Read `design-v3-organised.md` section `Suggested Workstreams`. For each workstream block `WS-{N}: {NAME}` → extract `{N}`, `{NAME}`, full `Scope` content as `{SCOPE}`, `Requires` values `[]` or `[WS-{N}, ...]` as `{REQUIRES}` , full `Rationale` content as `{RATIONALE}`. Set `WORKSTREAMS` array. **If** zero workstreams parsed → **Failure Path**.
-2. `mcp__github__issue_read({ method: "get_sub_issues", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, perPage: 100 })` → extract sub-issues array. Each entry has `number` (user-facing #N), `id` (internal node ID for sub-issue attach calls), `title`, `state`.
+2. `mcp__github__issue_read({ method: "get", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID} })` → extract `milestone.number` as `{MILESTONE_NUMBER}`, `milestone.title` as `{MILESTONE_TITLE}`. **If** `{MILESTONE_NUMBER}` empty → **Failure Path** with `Milestone not set on parent #{ISSUE_ID}`. Then `mcp__github__search_issues({ owner: "{OWNER}", repo: "{REPO}", query: "is:issue milestone:\"{MILESTONE_TITLE}\" in:title WS-", perPage: 100 })` → extract `items` array. Each entry has `number` (user-facing #N), `title`, `state`.
    → `EXISTING` map of `WS-{N}` → `{ id, title }` matched by `^WS-{N}:` prefix in title.
 3. Per workstream `WS-{N}` in `WORKSTREAMS`:
    - **If** `EXISTING[WS-{N}]` present → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{N}].id`.
@@ -499,9 +499,9 @@ $ARGUMENTS
      {RATIONALE}
      ```
      Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `EXISTING[WS-{N}].id`.
-   - **Else** → set `{SUB_TITLE}` = `WS-{N}: {NAME}`, `{SUB_BODY}` = description block below.
+   - **Else** → set `{WS_TITLE}` = `WS-{N}: {NAME}`, `{WS_BODY}` = description block below.
        
-     `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{SUB_TITLE}", body: "{SUB_BODY}", labels: ["bkit:design"] })` → capture `number` as `{SUB_ISSUE_NUMBER}`, `id` as `{SUB_ISSUE_NODE_ID}` → `mcp__github__sub_issue_write({ method: "add", owner: "{OWNER}", repo: "{REPO}", issue_number: {ISSUE_ID}, sub_issue_id: {SUB_ISSUE_NODE_ID} })` to attach as sub-issue of parent.
+     `mcp__github__issue_write({ method: "create", owner: "{OWNER}", repo: "{REPO}", title: "{WS_TITLE}", body: "{WS_BODY}", labels: ["bkit:design"], milestone: {MILESTONE_NUMBER} })` → capture `number` as `{WS_ISSUE_ID}`.
 
      Description block:
 
@@ -517,7 +517,7 @@ $ARGUMENTS
      {RATIONALE}
      ```
 
-     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `{SUB_ISSUE_NUMBER}`. **If** `{SUB_ISSUE_NUMBER}` empty → **Failure Path**.
+     Set `WORKSTREAM_ISSUE_ID[WS-{N}]` = `{WS_ISSUE_ID}`. **If** `{WS_ISSUE_ID}` empty → **Failure Path**.
 
 4. **For** each `EXISTING[WS-{K}]` whose `WS-{K}` is NOT in `WORKSTREAMS` → set `{TARGET_ISSUE_ID}` = `EXISTING[WS-{K}].id`.
     `mcp__github__add_issue_comment({ owner: "{OWNER}", repo: "{REPO}", issue_number: {TARGET_ISSUE_ID}, body: "{BODY}" })` — NEW comment on `{TARGET_ISSUE_ID}`.
@@ -555,7 +555,8 @@ $ARGUMENTS
 ### 🔒 Gate 9 — Design Workstream Issues
 
 - [ ] Workstreams parsed (`WORKSTREAMS` non-empty)
-- [ ] Existing children listed (sub-issues read attempted)
+- [ ] Parent milestone target read (assignment ref resolved)
+- [ ] Existing workstreams listed (milestone issues read attempted)
 - [ ] Per workstream resolved (`WORKSTREAM_ISSUE_ID` populated, no empty ids)
 - [ ] Stale children commented (orphaned workstreams notified)
 - [ ] Blocked-by edges attempted (per `Requires`)

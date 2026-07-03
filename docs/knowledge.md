@@ -1,6 +1,6 @@
 <!-- bkit:start -->
 
-<!-- bkit:managed v4.1.10 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.11 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Knowledge
 
@@ -679,3 +679,16 @@
 - **Scope:** consumer
 - **Source:** agent
 - **Related:** #308, `deployments.md` § Renovate, pnpm-11 migration (#176), DE (pnpm 10.34.3 auth regression).
+
+## KN-42: Pre-release `main`->`dev` backmerge with `-X ours` duplicates the `bkit:managed` version marker (2026-07-03)
+
+- **Category:** release
+- **Symptom:** After the release cutter's step-3 pre-release backmerge (`chore: backmerge main into dev pre-release`), an unpredictable subset of managed docs gains a DUPLICATE `<!-- bkit:managed vX ... -->` line — the new version marker immediately followed by the prior release's marker (e.g. `v4.1.10` then `v4.1.9`). Recurs on most releases (4.1.6 / 4.1.7 / 4.1.8 / 4.1.9 / 4.1.10 each needed a manual "remove duplicate bkit:managed marker after backmerge" fix); hits the frequently-edited living docs (`completed` / `decisions` / `knowledge` / `pending`) more than static ones. If unnoticed it ships two markers, and `bkit check`'s version-marker drift detection then flags the stale one.
+- **Root cause:** The backmerge used `git merge origin/main -X ours`. Relative to the merge base, BOTH sides changed the single marker line (dev: base->new version; main: base->prior version), which should conflict (and `-X ours` would pick dev). It does NOT register as a conflict: the two marker lines share an identical long prefix (`<!-- bkit:managed v4.1.`) and identical suffix, surrounded by identical blank-line / `# Title` context, so git's 3-way alignment treats dev's and main's marker lines as two INDEPENDENT insertions rather than one contested line. No conflict fires, so `-X ours` never resolves it and both lines survive. The hit subset varies because the alignment depends on each file's divergent body. Reproduced deterministically: `git merge-tree --write-tree -X ours <dev-tip> <main-release-squash>` emits the duplicate.
+- **Fix or rule:** Backmerge with `git merge origin/main -s ours`, NEVER `-X ours`. The pre-release precondition already requires everything on `origin/dev..origin/main` to be content-equivalent in dev (main carries only the prior `chore(release):` squash; dev is strictly ahead), so `-s ours` keeps dev's tree verbatim, records main as merged (so `origin/dev..origin/main` -> 0), and imports zero lines — removing the marker-alignment artifact entirely. Guard first: confirm `git log origin/dev..origin/main --oneline` lists ONLY prior release squash(es), and STOP if anything else appears (a real main-only change is the one thing `-s ours` would silently drop). Fixed in `.claude/agents/utility-new-release.md` step 3.
+- **Type:** gotcha
+- **Confidence:** high
+- **Severity:** medium
+- **Scope:** bkit-repo
+- **Source:** agent
+- **Related:** `utility-new-release.md` step 3; prior manual fixes 18e6fc73 / 1b69002f / 4c944bb8 / ae31f8a0 / 1ace7521 / a263e3ab.

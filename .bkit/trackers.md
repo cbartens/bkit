@@ -74,8 +74,8 @@ The per-tracker call sites are referenced across `.bkit/workflows.md` by these n
 | `issue-update-status` | Projects v2 board status (best-effort) | `projects_write` add/update item | no-op (state carries) | skip |
 | `comment-post-step` | NEW comment per workflow step | `add_issue_comment` | `save_comment` | skip |
 | `comment-on-issue` | NEW comment on an arbitrary issue | `add_issue_comment` (`{TARGET_ISSUE_ID}`) | `save_comment` (`{TARGET_ISSUE_ID}`) | skip |
-| `list-sub-issues` | Enumerate sub-issues of a parent | `issue_read` get_sub_issues | `list_issues` parentId | empty |
-| `create-sub-issue` | Create + attach a sub-issue | `issue_write` create + `sub_issue_write` add | `save_issue` parentId | skip |
+| `list-milestone-issues` | Enumerate workstream issues in the parent's milestone/project (design Step 9) | `search_issues` `milestone:"{title}"` | `list_issues` `projectId`+`projectMilestoneId` | empty |
+| `assign-milestone-issue` | Create a workstream issue assigned to the parent's milestone/project — never a sub-issue (design Step 9) | `issue_write` create + `milestone` number | `save_issue` `projectId`+`projectMilestoneId` | skip |
 | `set-blocked-by` | Set `blockedBy` edges | issue-body marker block | `save_issue` blockedBy | skip |
 | `issue-blockers-check` | Gate on open blockers | parse body marker → read states | `get_issue` relations | skip |
 | `kill-switch-check` | Terminate if `bkit:auto` absent | label check | label check | inactive |

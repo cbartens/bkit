@@ -197,10 +197,10 @@ existing reader. `realStack` cross-field invariant: `realStackVerdict` is only m
 <!-- prettier-ignore -->
 | Field | On step | Values | Meaning |
 | --- | --- | --- | --- |
-| `realStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \ | `absent` \ | `off` | Capability resolved once per run, reused by all downstream gates |
-| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \ | `pass` \ | `skip` | The fail-then-pass transition; `skip` when `realStack != live` |
-| `reproKind` | `debug-reproduce` (new) | `functional` \ | `infra` \ | `none` | Distinguishes a confirmed functional repro from an infra/credential failure (C6); `none` when `repro != fail`. Set by the §B classifier so the diagnose agent never anchors on an infra failure as ground truth. |
-| `realStackVerdict` | `debug-run-tests`, `build-run-tests`, `debug-soak` | `PASS` \ | `FAIL` \ | `CONCERNS` \ | `skip` | Verdict of the `test:real` execution specifically (distinct from the suite-wide `verdict`) |
+| `realStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \| `absent` \| `off` | Capability resolved once per run, reused by all downstream gates |
+| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \| `pass` \| `skip` | The fail-then-pass transition; `skip` when `realStack != live` |
+| `reproKind` | `debug-reproduce` (new) | `functional` \| `infra` \| `none` | Distinguishes a confirmed functional repro from an infra/credential failure (C6); `none` when `repro != fail`. Set by the §B classifier so the diagnose agent never anchors on an infra failure as ground truth. |
+| `realStackVerdict` | `debug-run-tests`, `build-run-tests`, `debug-soak` | `PASS` \| `FAIL` \| `CONCERNS` \| `skip` | Verdict of the `test:real` execution specifically (distinct from the suite-wide `verdict`) |
 | `realStackReason` | `debug-close-workflow`, `build-close-workflow` | string | Consumer-neutral reason logged when capability `absent`/`off`, OR a soak-to-off downgrade occurred (no KN-/BAR- refs) |
 | `soakDowngradeReason` | `debug-worktree-setup` | string (`real-stack-unavailable`) | Set when `OBSERVE_MODE = soak` was requested but `REAL_STACK != live`, forcing the soak→off downgrade (§D / C4) |
 | `soakIterations` | `debug-soak` | integer | Count of soak loop iterations consumed (lets an operator read progress / exhaustion from state without parsing the soak artifact; supports C2 exhaustion routing and O2) |

@@ -181,7 +181,7 @@ Master record of everything decided in this thread. **Nothing deferred** — all
 <!-- prettier-ignore -->
 | Layer | Files |
 | --- | --- |
-| Auth / install | `.github/workflows/bkit-cloud.yml` + `.agents/templates/.github/workflows/bkit-cloud.yml`; `renderCloudWorkflow` (id-token, drop Linear render branch + github.token framing); `bkit-modules.ts` (`runCloudModule` split, `MODULE_REGISTRY`, advisories, tracker/cloud enforcement); `bkit-cli.ts` (`--cloud=claude\ | cursor` parsing, help, OPTIN_MODULES); manifest |
+| Auth / install | `.github/workflows/bkit-cloud.yml` + `.agents/templates/.github/workflows/bkit-cloud.yml`; `renderCloudWorkflow` (id-token, drop Linear render branch + github.token framing); `bkit-modules.ts` (`runCloudModule` split, `MODULE_REGISTRY`, advisories, tracker/cloud enforcement); `bkit-cli.ts` (`--cloud=claude\|cursor` parsing, help, OPTIN_MODULES); manifest |
 | CI trigger discipline | `bkit-build.md` (`[skip ci]` on worktree-setup/create-pr; `bkit [auto route]` on close-workflow); `bkit-debug.md` (re-trigger marker + loud); `bkit-cloud.yml` (two-tier `if:` gate + in-job label re-check + concurrency key); `.agents/workflows/bkit-cloud.md` orchestrator (gates move to YAML; routing/status/comments stay) |
 | Shared invariant (#184) | new HEAD-subject assertion snippet; build/debug/ship close-workflow + PR-create steps invoke it |
 | Triggers | `.github/workflows/claude.yml` — `@claude /bkit-<phase>` dispatch as the App |

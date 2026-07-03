@@ -268,10 +268,10 @@ existing reader. `liveStack` cross-field invariant: `liveVerdict` is only meanin
 <!-- prettier-ignore -->
 | Field | On step | Values | Meaning |
 | --- | --- | --- | --- |
-| `liveStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \ | `absent` \ | `off` | Capability resolved once per run, reused by all downstream gates |
-| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \ | `pass` \ | `skip` | The fail-then-pass transition; `skip` when `liveStack != live` |
-| `reproKind` | `debug-reproduce` (new) | `functional` \ | `infra` \ | `none` | Distinguishes a confirmed functional repro from an infra/credential failure (C6); `none` when `repro != fail`. Set by the §B classifier so the diagnose agent never anchors on an infra failure as ground truth. |
-| `liveVerdict` | `debug-run-tests`, `build-run-tests`, `debug-soak` | `PASS` \ | `FAIL` \ | `CONCERNS` \ | `skip` | Verdict of the live test execution specifically (distinct from the suite-wide `verdict`) |
+| `liveStack` | `debug-worktree-setup`, `build-worktree-setup` | `live` \| `absent` \| `off` | Capability resolved once per run, reused by all downstream gates |
+| `repro` | `debug-reproduce` (new), and on `debug-run-tests` / `build-run-tests` | `fail` \| `pass` \| `skip` | The fail-then-pass transition; `skip` when `liveStack != live` |
+| `reproKind` | `debug-reproduce` (new) | `functional` \| `infra` \| `none` | Distinguishes a confirmed functional repro from an infra/credential failure (C6); `none` when `repro != fail`. Set by the §B classifier so the diagnose agent never anchors on an infra failure as ground truth. |
+| `liveVerdict` | `debug-run-tests`, `build-run-tests`, `debug-soak` | `PASS` \| `FAIL` \| `CONCERNS` \| `skip` | Verdict of the live test execution specifically (distinct from the suite-wide `verdict`) |
 | `failureSignatureMoved` | `debug-run-tests`, `debug-reproduce`, `debug-soak` | boolean | TRUE when a fix landed and the failure SIGNATURE moved to a NEW functional failure (the iterative-chain smell). Read by soak-routing criterion 3 (§D) across attempts to detect a bug chain mid-run. |
 | `liveReason` | `debug-close-workflow`, `build-close-workflow` | string | Consumer-neutral reason logged when capability `absent`/`off`, OR a soak-to-off downgrade occurred (no internal refs) |
 | `soakDowngradeReason` | `debug-worktree-setup` | string (`live-stack-unavailable`) | Set when `OBSERVE_MODE = soak` was requested but `LIVE_STACK != live`, forcing the soak->off downgrade (§D / C4) |

@@ -85,7 +85,7 @@ As a maintainer running bkit's plan/build/debug workflows, when my feature touch
 | Diagnose subagent detects the failure SIGNATURE moved mid-run | Emits machine-parseable `Handoff: soak` verdict; orchestrator switches REMAINING shared budget to soak IF budget remains AND `liveStack == live`; ONE-WAY only; the handoff diagnosis does NOT burn an attempt. |
 | Resume mid-run | `liveStack` resolved once and persisted; resumed workflow reads the same capability + `OBSERVE_MODE` (now incl. `soak`). |
 | Mislabeled mock suite declared as a `:live`/smoke script | Accepted residual limit — bkit cannot know which deps are external; surfaced as an open risk, not silently assumed away. |
-| Gate 4 verdict-enum collision | The `debug-reproduce` CONCERNS (`REPRO=pass` / `reproKind=infra`) rides the new `debug-reproduce` step's own verdict (`PASS \ | CONCERNS \ | skip`), NOT routed through Gate 4's narrower `DIAGNOSE_VERDICT in PASS\ | FAIL` assertion. Gate 4 is NOT widened (out of scope). |
+| Gate 4 verdict-enum collision | The `debug-reproduce` CONCERNS (`REPRO=pass` / `reproKind=infra`) rides the new `debug-reproduce` step's own verdict (`PASS \| CONCERNS \| skip`), NOT routed through Gate 4's narrower `DIAGNOSE_VERDICT in PASS\|FAIL` assertion. Gate 4 is NOT widened (out of scope). |
 
 ### Derived Test Matrix
 

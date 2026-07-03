@@ -6,12 +6,13 @@
 
 ## Headline
 
-| Scan                                                   | Findings | Repo score |
-| ------------------------------------------------------ | -------- | ---------- |
-| Baseline (config ON = what CI gates on)                | 12       | 39.00      |
-| Stripped (all overrides + suppressive ignores removed) | 27       | 109.13     |
-| **Suppressed by overrides/ignores**                    | **15**   | **70.13**  |
-| After slim                                             | 12       | 39.00      |
+<!-- prettier-ignore -->
+| Scan | Findings | Repo score |
+| --- | --- | --- |
+| Baseline (config ON = what CI gates on) | 12 | 39.00 |
+| Stripped (all overrides + suppressive ignores removed) | 27 | 109.13 |
+| **Suppressed by overrides/ignores** | **15** | **70.13** |
+| After slim | 12 | 39.00 |
 
 **Slim result:** suppression entries **9 -> 6** across **6 -> 5** override blocks; gated count and
 score unchanged (`slop:delta` vs `dev` = net 0, added 0 / resolved 0 / worsened 0). Two were removed
@@ -21,12 +22,13 @@ no concrete bug; three are architectural and flagged for sign-off below.
 
 ## What changed (this branch)
 
-| Action                                                                                                                                                                                          | Override touched               | Kind             |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ | ---------------- |
-| Removed stale block — both `*.bkit-slop-type-suppression.mjs` copies are scanned and clean (only `as any`/`as unknown as` hits are doc **comments** the rule ignores)                           | B (`.mjs` type-suppression)    | DELETE (stale)   |
-| **Fixed** test-teardown empty catch: `try{ unlinkSync }catch{}` -> `fs.rmSync(p,{force:true})` (force ignores ENOENT; no catch needed). Override no longer required                             | F (gateguard test empty-catch) | **FIX**          |
-| Dropped vacuous key — **0** test files trigger duplicate-function-signatures even when stripped                                                                                                 | A (test glob)                  | DELETE (vacuous) |
-| Narrowed `boundary/type-suppression` from `**/*.test.*` to the one fixture file that needs it (`bkit-slop-type-suppression.integration.test.ts`); accidental casts in any other test now caught | A -> precise block             | TIGHTEN          |
+<!-- prettier-ignore -->
+| Action | Override touched | Kind |
+| --- | --- | --- |
+| Removed stale block — both `*.bkit-slop-type-suppression.mjs` copies are scanned and clean (only `as any`/`as unknown as` hits are doc **comments** the rule ignores) | B (`.mjs` type-suppression) | DELETE (stale) |
+| **Fixed** test-teardown empty catch: `try{ unlinkSync }catch{}` -> `fs.rmSync(p,{force:true})` (force ignores ENOENT; no catch needed). Override no longer required | F (gateguard test empty-catch) | **FIX** |
+| Dropped vacuous key — **0** test files trigger duplicate-function-signatures even when stripped | A (test glob) | DELETE (vacuous) |
+| Narrowed `boundary/type-suppression` from `**/*.test.*` to the one fixture file that needs it (`bkit-slop-type-suppression.integration.test.ts`); accidental casts in any other test now caught | A -> precise block | TIGHTEN |
 
 Net: `slop-scan.config.json` overrides 6 -> 5 blocks (9 -> 6 rule-suppressions); 1 test file fixed
 in code; the broad test-cast exemption is now single-file.

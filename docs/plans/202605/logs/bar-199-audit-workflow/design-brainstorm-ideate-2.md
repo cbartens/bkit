@@ -55,15 +55,15 @@ Each lens prompt includes a **Probe Catalogue** table with columns: `Tool`, `Pat
 | Lens | Universal probes | Stack-conditional probes |
 | --- | --- | --- |
 | `arch` | `Grep` for circular imports via `import.*from.*['"]\.\.` fan-out analysis; `Glob` for entrypoint files matching `{index,main,app}.*{ts,js}` | If `"next"` in deps: probe `app/` vs `pages/` coexistence; server-only imports in client components |
-| `perf` | `Grep` top-level `require(` / `import` for heavy modules (e.g., `moment`, `lodash`); `Grep` `fs.readFileSync\ | execSync` inside async functions | If `"next"` in deps: `Grep serverExternalPackages` in `next.config.*` — this is the BAR-197 probe |
+| `perf` | `Grep` top-level `require(` / `import` for heavy modules (e.g., `moment`, `lodash`); `Grep` `fs.readFileSync\|execSync` inside async functions | If `"next"` in deps: `Grep serverExternalPackages` in `next.config.*` — this is the BAR-197 probe |
 | `config` | `Glob` `{tsconfig,package,next.config,vite.config,turbo}.{json,ts,mjs}` cross-check; `Grep` `"type": "module"` vs `.cjs` output targets | If monorepo: cross-package `tsconfig` `paths` divergence |
-| `reliability` | `Grep` `catch\s*\([^)]*\)\s*\{[^}]*\}` for empty/log-only catches; `Grep` `setInterval\ | setTimeout` without `clearInterval`/`clearTimeout` | If `"ioredis"\ | "bullmq"` in deps: probe unbounded queue patterns |
-| `observability` | `Grep` `console\.(log\ | error\ | warn)` vs structured-logging imports; `Grep` `password\ | token\ | secret\ | key` inside log calls (PII probe) | If `"@sentry/\ | @opentelemetry/"` in deps: probe missing `span.end()` / untraced critical paths |
-| `debt` | `Grep` `TODO\ | FIXME\ | HACK\ | XXX\ | workaround\ | band-aid` with line context; cross-ref against closed ticket IDs if `.agents/docs.md` present | None — universal |
+| `reliability` | `Grep` `catch\s*\([^)]*\)\s*\{[^}]*\}` for empty/log-only catches; `Grep` `setInterval\|setTimeout` without `clearInterval`/`clearTimeout` | If `"ioredis"\|"bullmq"` in deps: probe unbounded queue patterns |
+| `observability` | `Grep` `console\.(log\|error\|warn)` vs structured-logging imports; `Grep` `password\|token\|secret\|key` inside log calls (PII probe) | If `"@sentry/\|@opentelemetry/"` in deps: probe missing `span.end()` / untraced critical paths |
+| `debt` | `Grep` `TODO\|FIXME\|HACK\|XXX\|workaround\|band-aid` with line context; cross-ref against closed ticket IDs if `.agents/docs.md` present | None — universal |
 | `dead-code` | `Grep` exported symbols; `Glob` all source files; `Grep` for imports of each exported symbol (orphan detection heuristic) | If monorepo: cross-package export/import scanning |
-| `deps` | `Bash pnpm outdated --json`; `Bash pnpm audit --json`; `Grep` `"resolution":` in `pnpm-lock.yaml` for dual-version same-package | If `"esm"\ | "type":"module"` detected: `Grep require(` in `.mjs`/`.mts` for CJS traps — direct BAR-197 class |
-| `security` | `Grep execSync.*\$\{` for shell injection (KN-6 pattern); `Grep` `NEXT_PUBLIC_` for secrets leaked to client; `Grep` hardcoded tokens | If `"@clerk/"\ | "next-auth"` in deps: auth middleware coverage probe |
-| `tests` | `Glob` `*.test.ts` count vs source files; `Grep` `it.skip\ | xit\ | xdescribe` for persistent skips; `Grep` `expect(.*).toBeTruthy()` for weak assertions | If `"vitest"` in deps: probe for `vi.mock(` on every critical path (mocked-only critical paths per brief) |
+| `deps` | `Bash pnpm outdated --json`; `Bash pnpm audit --json`; `Grep` `"resolution":` in `pnpm-lock.yaml` for dual-version same-package | If `"esm"\|"type":"module"` detected: `Grep require(` in `.mjs`/`.mts` for CJS traps — direct BAR-197 class |
+| `security` | `Grep execSync.*\$\{` for shell injection (KN-6 pattern); `Grep` `NEXT_PUBLIC_` for secrets leaked to client; `Grep` hardcoded tokens | If `"@clerk/"\|"next-auth"` in deps: auth middleware coverage probe |
+| `tests` | `Glob` `*.test.ts` count vs source files; `Grep` `it.skip\|xit\|xdescribe` for persistent skips; `Grep` `expect(.*).toBeTruthy()` for weak assertions | If `"vitest"` in deps: probe for `vi.mock(` on every critical path (mocked-only critical paths per brief) |
 | `docs-drift` | `Grep` domains listed in `.agents/docs.md` vs source dirs; `Grep` file paths in docs that no longer exist; `Read .agents/docs.md` domain list vs actual source modules | None — universal |
 
 ### Per-finding schema
