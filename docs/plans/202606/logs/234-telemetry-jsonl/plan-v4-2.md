@@ -54,7 +54,7 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 <!-- prettier-ignore -->
 | Scenario | Expected Behavior |
 | --- | --- |
-| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
+| Grader missing / `dist/` stale / grader throws at close gate | Fail-open idiom `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable, skipping"` guarantees exit 0; advisory step never becomes a hard gate |
 | Reader meets a row with unknown (greater) `schemaVersion` | Warn-and-exclude (inherited from WS-1 codec); grader rows carry `schemaVersion` |
 
 ### Derived Test Matrix _(WS-2 portion)_
@@ -62,13 +62,13 @@ As a bkit maintainer, I run a workflow (design/plan/build/debug/ship) and at its
 <!-- prettier-ignore -->
 | Test description | Type | Target file |
 | --- | --- | --- |
-| Best-effort + fail-open idioms guarantee exit 0: forcing the grader-unavailable path (`\ | \ | echo "[bkit-comply] grader unavailable"`) leaves shell exit 0 (locked SC #4) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
+| Best-effort + fail-open idioms guarantee exit 0: forcing the grader-unavailable path (`\|\| echo "[bkit-comply] grader unavailable"`) leaves shell exit 0 (locked SC #4) | Unit (bats) **boundary: shell exit codes** | `scripts/tooling/telemetry-failopen.bats` |
 | Compliance grader pure fn `(parentSha, phase, planPath) -> Violation[]` flags `no-mirror-edit` + `skip-ci-not-head` deterministically | Unit (Vitest) | `.bkit/src/bkit-comply.test.ts` |
 | Grader emits one `kind:"compliance"` row per run×rule with `graderVersion` + `bkitVersion` | Unit (Vitest) | `.bkit/src/bkit-comply.test.ts` |
 | Grader run over a REAL `git diff parentSha..HEAD` in a temp git repo flags an injected mirror edit | Integration **boundary: git diff** (Vitest) | `.bkit/src/bkit-comply.integration.test.ts` |
 | `gate-paths.generated.cjs` drift test FAILS if the committed generated file diverges from the TS path-policy table | Unit (Vitest) | `.bkit/src/bkit-paths-policy.test.ts` |
 | `comply` verb parses `--phase` + dispatches; unknown sub-verb/flag exits cleanly | Unit (Vitest) | `.bkit/src/bkit-cli.test.ts` (extend) |
-| Close-gate wiring audit: EVERY wired close gate carries the fail-open `pnpm bkit comply --phase {p} \ | \ | echo "[bkit-comply] grader unavailable, skipping"` guard, and NO invocation sits on its own line under a bare `set -e` block that would defeat the `\ | \ | echo` (grep over workflow files) | Integration (Vitest grep over workflow files) | `.bkit/src/bkit-comply-gate-wiring.test.ts` |
+| Close-gate wiring audit: EVERY wired close gate carries the fail-open `pnpm bkit comply --phase {p} \|\| echo "[bkit-comply] grader unavailable, skipping"` guard, and NO invocation sits on its own line under a bare `set -e` block that would defeat the `\|\| echo` (grep over workflow files) | Integration (Vitest grep over workflow files) | `.bkit/src/bkit-comply-gate-wiring.test.ts` |
 
 ## Architecture & Component Changes (WS-2)
 

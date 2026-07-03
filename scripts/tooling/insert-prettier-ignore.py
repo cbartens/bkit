@@ -22,13 +22,21 @@ import sys
 from pathlib import Path
 
 SEPARATOR_CELL = re.compile(r"^:?-{1,}:?$")
+# Split a table row's inner body on column-delimiter pipes only. A pipe
+# escaped as `\|` is literal cell content (GFM) and must NOT split the row —
+# prettier preserves it, so we must too, else `a\|b` corrupts to `a\ | b`.
+UNESCAPED_PIPE = re.compile(r"(?<!\\)\|")
+
+
+def split_cells(inner: str) -> list[str]:
+    return [c.strip() for c in UNESCAPED_PIPE.split(inner)]
 
 
 def is_separator_row(line: str) -> bool:
     s = line.strip()
     if not s.startswith("|") or not s.endswith("|"):
         return False
-    cells = [c.strip() for c in s[1:-1].split("|")]
+    cells = split_cells(s[1:-1])
     if not cells:
         return False
     return all(SEPARATOR_CELL.match(c) for c in cells if c != "")
@@ -45,7 +53,7 @@ def strip_cell_padding(line: str) -> str:
     nl = "\n" if line.endswith("\n") else ""
     body = line.rstrip("\n").rstrip()
     leading_ws = line[: len(line) - len(line.lstrip(" "))]
-    cells = [c.strip() for c in body.strip()[1:-1].split("|")]
+    cells = split_cells(body.strip()[1:-1])
     return leading_ws + "| " + " | ".join(cells) + " |" + nl
 
 
@@ -55,7 +63,7 @@ def normalize_separator(line: str) -> str:
     nl = "\n" if line.endswith("\n") else ""
     body = line.rstrip("\n").strip()
     leading_ws = line[: len(line) - len(line.lstrip(" "))]
-    cells = [c.strip() for c in body[1:-1].split("|")]
+    cells = split_cells(body[1:-1])
     out = []
     for c in cells:
         left = c.startswith(":")

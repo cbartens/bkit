@@ -116,7 +116,7 @@ Each lens needs probes runnable with `Read`/`Grep`/`Glob`/`Bash` only (design §
 | `config` | Manifest/code divergence — diff `package.json` keys vs file references | Bash-feasible. |
 | `reliability` | `catch \(` / `unhandled rejection` / unbounded queues — grep + heuristics | Bash-feasible. False-positive prone — confidence:medium default. |
 | `observability` | Failure surfaces without logs — grep `catch \(.*\) {` followed by absence of `log` | Bash-feasible but pattern-fragile. |
-| `debt` | `TODO\ | FIXME\ | HACK\ | XXX\ | workaround\ | band-aid\ | recovery` + ticket-ID grep | Bash-feasible. Brief lists this verbatim. |
+| `debt` | `TODO\|FIXME\|HACK\|XXX\|workaround\|band-aid\|recovery` + ticket-ID grep | Bash-feasible. Brief lists this verbatim. |
 | `dead-code` | Unreferenced exports — `grep -L` against exported names | Bash-feasible but slow on large repos. **Cap risk** — could exceed 30-finding cap. |
 | `deps` | `pnpm outdated` / `pnpm audit` — Bash + JSON output | Bash-feasible (assumes consumer repo has pnpm; portability §6 holds because `pnpm` is bkit's stack but the lens uses STACK_FLAGS to detect npm/yarn/bun and skip if not pnpm). Design line 153 says `pnpm outdated/audit` unconditionally; needs STACK_FLAG gating to remain portable. **CONCERN**. |
 | `security` | Auth holes / shell injection (`execSync.*\${`) — grep | Bash-feasible. Note: `execSync.*${` example in design line 154 uses `$` which in bash double-quotes would interpolate; design draft contains this pattern in single backticks → in the actual prompt it must be in fenced block or escaped. |

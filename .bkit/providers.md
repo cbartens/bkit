@@ -241,7 +241,7 @@ GateGuard is a pre-edit advisory hook. On the first touch of a file per session 
 | --- | --- | --- |
 | File | `.claude/settings.json` → `permissions.{allow,deny,ask}` | `.cursor/settings.json` → `plugins.<name>.enabled` (per-plugin only); fine-grained file/bash gating not project-scoped — handled by Cursor UI/global config |
 | Granularity | Per-tool glob: `Bash(*)`, `Read(./.env)`, `WebFetch(domain:github.com)`, `Bash(rm -rf /*)` | Coarse per-plugin enable/disable |
-| Modes | `defaultMode: default \ | acceptEdits \ | plan \ | bypassPermissions` | Implicit per-mode (Composer / Agent / Background) |
+| Modes | `defaultMode: default \| acceptEdits \| plan \| bypassPermissions` | Implicit per-mode (Composer / Agent / Background) |
 | MCP server config | `.mcp.json` at repo root (`mcpServers.<name>.url`) | `.cursor/mcp.json` (same `mcpServers.<name>.url` shape) |
 
 **Install behaviour:** template drops, host-specific. No transform — these files have no canonical form.
@@ -322,7 +322,7 @@ The installed provider's model catalog changes over time. Look up available mode
 <!-- prettier-ignore -->
 | Provider | opus | sonnet | haiku | convergent | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `ollama-local` | `qwen3-coder:30b` (uniform — all tiers) | | | | One model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`; tiers differ only by `reasoningEffort`. |
+| `ollama-local` | `qwen3-coder:30b` (uniform — all tiers) |  |  |  | One model, memory-safe under `OLLAMA_MAX_LOADED_MODELS=1`; tiers differ only by `reasoningEffort`. |
 | `nvidia` | `moonshotai/kimi-k2.6` | `qwen/qwen3-coder-480b-a35b-instruct` | `openai/gpt-oss-20b` | `deepseek-ai/deepseek-v4-pro` | Full tier; hosted NIM. |
 | `openrouter` | `moonshotai/kimi-k2.6` | `qwen/qwen3-coder` | `openai/gpt-oss-20b` | `deepseek/deepseek-v3.2` | Matches nvidia opus/sonnet/haiku; no `deepseek-v4` → `v3.2` reasoner. |
 | `ollama` (cloud) | `kimi-k2.6` | `qwen3-coder:480b` | `gpt-oss:20b` | `deepseek-v4-pro` | Identical identities to nvidia. **opus+convergent (`kimi-k2.6`/`deepseek-v4-pro`) need a paid Ollama plan; sonnet+haiku validated free.** |

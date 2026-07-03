@@ -52,7 +52,7 @@ Each lens emits findings tagged `severity` (CRITICAL/HIGH/MEDIUM/LOW), `class` (
 | 4 | Error handling & failure modes | reliability | Silent swallows; broad catches; missing retries on idempotent ops; fallbacks that hide failures; unhandled rejections. |
 | 5 | Observability gaps (structural) | operability | Failure surfaces with no logs/metrics; missing context tags; PII in logs; absent tracing on critical paths. |
 | 6 | Resource lifecycle & concurrency | reliability | Unclosed handles; unbounded queues/caches; races on shared state; missing transactional boundaries. |
-| 7 | Debt markers & expired workarounds | maintainability | `TODO\ | FIXME\ | HACK\ | XXX\ | workaround\ | band-aid\ | recovery` + ticket-ID grep; markers pointing at closed/rolled-back tickets; workarounds without exit conditions; commented-out code. |
+| 7 | Debt markers & expired workarounds | maintainability | `TODO\|FIXME\|HACK\|XXX\|workaround\|band-aid\|recovery` + ticket-ID grep; markers pointing at closed/rolled-back tickets; workarounds without exit conditions; commented-out code. |
 | 8 | Dead / duplicate / over-abstracted code | maintainability | Unreferenced exports; orphan files; dupe utilities; single-caller wrappers; speculative generality. |
 | 9 | Dependency hygiene | compatibility | `pnpm outdated/audit`; workspace cross-version drift; ESM/CJS interop traps; unmaintained packages; types out of sync. |
 | 10 | Security posture | security | Auth holes; input validation; secrets handling; API exposure; data leakage; dep CVE surface. (Adapts `bkit-utility-audit-security`.) |
