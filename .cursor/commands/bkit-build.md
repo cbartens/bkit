@@ -1,4 +1,4 @@
-<!-- bkit:managed v4.1.11 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.1.12 — do NOT edit; run `bkit upgrade` to refresh -->
 
 # Build Feature (Workflow 3/6)
 
@@ -741,6 +741,8 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
       && { jq -e '.scripts["test:live"]' package.json >/dev/null 2>&1 || { [ -f turbo.json ] && pnpm turbo run test:live --dry-run >/dev/null 2>&1; }; }; then
      TESTS_LIVE=1
    fi
+   COV_UNIT=0
+   jq -e '.scripts["test:coverage:unit"]' package.json >/dev/null 2>&1 && COV_UNIT=1
    if [ -f turbo.json ]; then
      TEST_SCOPE="pnpm turbo lint typecheck test$([ "$TESTS_LIVE" = 1 ] && printf ' test:live') --filter='...[origin/dev]' --continue"
    else
@@ -749,6 +751,7 @@ Per-step summary file naming for sub-plan loop steps: `{step}-{SUB_PLAN}-{ATTEMP
        jq -e ".scripts[\"$s\"]" package.json >/dev/null 2>&1 && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm $s"
      done
    fi
+   [ "$COV_UNIT" = 1 ] && TEST_SCOPE="${TEST_SCOPE:+$TEST_SCOPE && }pnpm test:coverage:unit"
    echo "TEST_SCOPE=$TEST_SCOPE"
    eval "$TEST_SCOPE"
    ```

@@ -6,6 +6,20 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.1.12] — 2026-07-04
+
+Share the unit branch-coverage gate between CI and the `/bkit-build` pre-PR check via a single `test:coverage:unit` script, and add a memory-hygiene guideline to the shipped `CLAUDE.md`.
+
+### Added
+
+- **Memory-hygiene guideline in the shipped `CLAUDE.md`.** The template `CLAUDE.md` now tells Claude Code auto-memories (`MEMORY.md` + `memory/*.md`) to point at `docs/*.md` rather than duplicate them — save a pointer (path + section + one-line hook), never copy the fact, so the two cannot drift.
+
+### Changed
+
+- **Unit branch-coverage gate shared via a single `test:coverage:unit` script.** The unit-coverage command — scoped with `--coverage.include` to the logic surface and floored by `--coverage.thresholds.branches` — now lives in one `package.json` script that both the CI unit lane and the `/bkit-build` pre-PR gate (`bkit-build.md` Step 13) invoke. A coverage regression now fails in the worktree during build instead of only later on the PR, and the threshold is bumped in one place for both callers. The build workflow references the script by name (stack-agnostic): define the script and the gate engages, omit it and it no-ops. Shipped across `.bkit/templates/docs/testing.md`, `.bkit/workflows.md`, `.bkit/workflows/bkit-build.md`, and bkit's own CI + `package.json`.
+
+---
+
 ## [4.1.11] — 2026-07-03
 
 Group `bkit design` workstreams under the parent's native milestone instead of sub-issues, and repair markdown-table corruption from a prettier-ignore table-splitter bug.
