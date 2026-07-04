@@ -472,22 +472,23 @@ jobs:
         if: steps.cache.outputs.skip != 'true'
         run: pnpm install --frozen-lockfile
 
-      # UNIT coverage run, scoped via --coverage.include to the logic surface (all .bkit/src except
-      # the bkit-modules data registry, which is exercised end-to-end, not unit-tested — vitest
-      # coverage is per-RUN, not per-project, so scoping is a CLI flag). UNIT is the GATE:
-      # --coverage.thresholds.branches=65 (set just below current, ratcheted up) reds the lane on a
-      # branch-coverage regression. Its parallel sibling bkit-tests-integration owns the integration
-      # tier (report-only) — SEPARATE lanes so each tier has its own honest number, its own
-      # executed-count, and mirrors how consumers (gether/fraser) run them. Dogfoods the per-tier
+      # UNIT coverage run. The gate command itself — scoped via --coverage.include to the logic
+      # surface (all .bkit/src except the bkit-modules data registry, exercised end-to-end not
+      # unit-tested; vitest coverage is per-RUN not per-project, so scoping is a CLI flag) with the
+      # branch-coverage floor --coverage.thresholds.branches (set just below current, ratcheted up)
+      # that reds the lane on a regression — lives in the `test:coverage:unit` package.json script.
+      # SINGLE SOURCE: the /bkit-build pre-PR gate runs the SAME script (bkit-build.md Step 13), so a
+      # coverage drop fails in the worktree before this lane ever sees it; bump the threshold in
+      # package.json and both callers move together. This step only appends the JSON test reporter +
+      # outputFile for the executed-count below. Its parallel sibling bkit-tests-integration owns the
+      # integration tier (report-only) — SEPARATE lanes so each tier has its own honest number and
+      # executed-count, mirroring how consumers (gether/fraser) run them. Dogfoods the per-tier
       # bkit-stub:coverage scaffold shipped to consumers. See testing.md § Coverage on PRs.
       - name: Run Vitest Unit Tests
         id: vitest
         if: steps.cache.outputs.skip != 'true'
         run: |
-          pnpm exec vitest run --coverage --coverage.reportsDirectory=coverage/unit \
-            --exclude '**/*.integration.test.ts' \
-            --coverage.include='.bkit/src/bkit-{bkitignore,cli,install,launch,manifest,package-json,paths,postinstall,preflight,status,tiers,tokens,trackers,uninstall,upgrade,version}.ts' \
-            --coverage.thresholds.branches=65 \
+          pnpm test:coverage:unit \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/unit-result.json"
           UNIT_RAN=$(jq '[.numPassedTests, .numFailedTests] | add' "$RUNNER_TEMP/unit-result.json")
           echo "ran=$UNIT_RAN" >> "$GITHUB_OUTPUT"
