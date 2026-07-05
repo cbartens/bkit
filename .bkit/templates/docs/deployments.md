@@ -311,15 +311,30 @@ For repos that OOM on Mend's 3 GB hosted microvm (`Error: kernel-out-of-memory`,
 **Platform auth — a `GH_BKIT_TOKEN` secret, never `GITHUB_TOKEN`.** Set a repo secret `GH_BKIT_TOKEN`; the workflow authenticates Renovate with it. `GITHUB_TOKEN` does **not** work here: PRs opened under it do not trigger CI, so required checks never run and `platformAutomerge` / branch-protection never fire. Use a fine-grained PAT scoped to THIS repo:
 
 <!-- prettier-ignore -->
-| Fine-grained permission | Access |
+| Repository permission | Access |
 | --- | --- |
-| Contents | Read + Write |
-| Pull requests | Read + Write |
-| Workflows | Read + Write |
-| Issues | Read + Write |
-| Metadata | Read |
+| Contents | Read and write |
+| Pull requests | Read and write |
+| Workflows | Read and write |
+| Issues | Read and write |
+| Dependabot alerts | Read |
+| Metadata | Read-only |
 
-(Classic-PAT equivalent: `repo` + `workflow`.) If `GH_BKIT_TOKEN` is missing or under-scoped, no Renovate PRs open and the scheduled Actions run 401s. Keep it **separate** from `GH_BKIT_TOKEN_INSTALL` (which stays `read:packages`-only, least privilege — see § Renovate read-auth above). **Hardening (no annual PAT expiry):** swap the PAT for a self-managed GitHub App — store its `APP_ID` + private key as secrets and mint a short-lived installation token in the workflow via `actions/create-github-app-token`. This is NOT the one-click `/install-github-app` used for Claude (that OIDC broker is Anthropic-specific and has no Renovate equivalent).
+`Dependabot alerts: Read` lets Renovate read GitHub's vulnerability feed for security-fix PRs; without it the run logs a harmless `403` and relies on `osvVulnerabilityAlerts` (OSV) alone. (Classic-PAT equivalent: `repo` + `workflow`.) If `GH_BKIT_TOKEN` is missing or under-scoped, no Renovate PRs open and the scheduled Actions run 401s. Keep it **separate** from `GH_BKIT_TOKEN_INSTALL` (which stays `read:packages`-only, least privilege — see § Renovate read-auth above). **Hardening (no annual PAT expiry):** swap the PAT for a self-managed GitHub App — store its `APP_ID` + private key as secrets and mint a short-lived installation token in the workflow via `actions/create-github-app-token`. This is NOT the one-click `/install-github-app` used for Claude (that OIDC broker is Anthropic-specific and has no Renovate equivalent).
+
+**Commit author (`RENOVATE_GIT_AUTHOR`) — matters on org repos.** Renovate authors its branch commits from the token owner's email, read via the `Email addresses: Read` **Account** permission. That permission only exists on **personal-account** fine-grained PATs — an **org-owned** token has no such permission (only Organization + Repository permissions), so Renovate can't read an email and falls back to the Mend bot author (`renovate@whitesourcesoftware.com`), which shows commits as `Unverified`. The portable fix: set the repo **variable** `RENOVATE_GIT_AUTHOR` (Settings → Secrets and variables → Actions → **Variables**), e.g. `Renovate Bot <renovate@your-domain>`; the shipped workflow reads `${{ vars.RENOVATE_GIT_AUTHOR }}`. On a personal-account repo you can instead add `Email addresses: Read` to the token and leave the variable unset. (Cosmetic either way — commit attribution only.)
+
+**Enable GitHub's vulnerability feed — alerts ON, auto-fixes OFF.** For Renovate's security-fix PRs (and to clear the `Dependabot alerts` `403`), enable the detection feed but NOT Dependabot's own remediation. In **Settings → Advanced Security**:
+
+<!-- prettier-ignore -->
+| Setting | Set to | Why |
+| --- | --- | --- |
+| Dependency graph | **Enabled** | prerequisite for Dependabot alerts |
+| Dependabot alerts | **Enabled** | the vulnerability feed Renovate reads |
+| Dependabot security updates | **Disabled** | this makes _Dependabot_ open fix PRs — competing with Renovate. Renovate opens them itself |
+| Dependabot version updates | **Disabled** | the version-bump bot Renovate replaces (mutually exclusive) |
+
+The rule: **detection ON, auto-fixing OFF.** Dependabot feeds vulnerabilities to Renovate; Renovate does all the PR work. (Malware alerts / automatic dependency submission are harmless if you also want them.)
 
 **Private-registry auth — `RENOVATE_HOST_RULES`, keep the token line COMMENTED.** Self-hosted has no Mend dashboard, so the `{{ secrets.GH_BKIT_TOKEN_INSTALL }}` templating from § Renovate read-auth does not apply. The workflow instead injects the `@cbartens/bkit` read token via env:
 

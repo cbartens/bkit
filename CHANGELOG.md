@@ -6,6 +6,16 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.2.1] — 2026-07-05
+
+Document the exact GitHub token permissions and repository Advanced Security settings self-hosted Renovate needs (surfaced by bkit's own dry-run smoke), and wire `RENOVATE_GIT_AUTHOR` into the shipped workflow so org-owned tokens get correct commit authorship.
+
+### Changed
+
+- **Self-hosted Renovate — precise token scopes, repo Advanced Security settings, and `RENOVATE_GIT_AUTHOR`.** A live dry-run of bkit's own self-hosted Renovate surfaced two gaps the shipped guidance missed. Now documented across `.env.example`, `deployments.md` § Self-hosted Renovate, KN-CORE-10, and the install activation advisory, using the exact labels the GitHub UI shows: (1) the `GH_BKIT_TOKEN` fine-grained PAT needs **Dependabot alerts: Read** (else a non-fatal `403` on the alert feed — `osvVulnerabilityAlerts`/OSV still covers CVEs); (2) the repo must have **Dependency graph** + **Dependabot alerts** enabled but **Dependabot security updates** + **Dependabot version updates** disabled ("detection ON, auto-fixing OFF" — else Dependabot opens PRs competing with Renovate); (3) commit authorship — the `Email addresses: Read` **Account** permission exists only on personal-account tokens, so the shipped `renovate.yml` now reads `RENOVATE_GIT_AUTHOR` from a repo variable (`${{ vars.RENOVATE_GIT_AUTHOR }}`), the portable fix for org-owned tokens that can't grant it.
+
+---
+
 ## [4.2.0] — 2026-07-05
 
 Add a self-hosted Renovate runner (`bkit install --renovate=self`) for large monorepos that OOM on Mend's 3 GB hosted runner, and split the GitHub token scheme into a read-only install token and a general write token (the latter now also powers self-hosted Renovate). **Breaking:** the token rename requires a one-time secret rename on upgrade — a `gh-token-scheme-rename` advisory guides it (#325).

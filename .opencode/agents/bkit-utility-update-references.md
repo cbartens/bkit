@@ -10,7 +10,7 @@ tools:
   edit: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical writer maintaining consistent file-path references across markdown.
 **Scope:** As specified by input or session prompt.

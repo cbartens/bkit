@@ -10,7 +10,7 @@ tools:
   bash: true
 reasoningEffort: low
 ---
-<!-- bkit:managed v4.2.0 — do NOT edit; run `bkit upgrade` to refresh -->
+<!-- bkit:managed v4.2.1 — do NOT edit; run `bkit upgrade` to refresh -->
 
 **Role:** Senior technical lead matching feature requirements to relevant installable skills.
 **Scope:** As specified by input and Read/Update/Create section.

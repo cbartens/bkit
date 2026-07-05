@@ -318,6 +318,12 @@ describe("self-hosted renovate workflow template (.bkit/templates/.github/workfl
     expect(content).toMatch(/runs-on:\s*ubuntu-latest/);
   });
 
+  it("wires RENOVATE_GIT_AUTHOR from a repo variable (portable commit author for org repos)", () => {
+    // Org-owned fine-grained PATs have no Email-addresses permission, so Renovate can't
+    // read the token owner's email; the repo variable supplies the git author instead.
+    expect(content).toMatch(/RENOVATE_GIT_AUTHOR:\s*\$\{\{\s*vars\.RENOVATE_GIT_AUTHOR\s*\}\}/);
+  });
+
   it("wakes on a schedule cron + workflow_dispatch (logLevel / dryRun inputs)", () => {
     expect(content).toMatch(/schedule:/);
     expect(content).toMatch(/cron:/);
