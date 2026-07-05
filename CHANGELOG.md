@@ -6,6 +6,17 @@ Format: `## [version] — YYYY-MM-DD`
 
 ---
 
+## [4.2.2] — 2026-07-05
+
+Modernize the shipped `renovate.json5` to Renovate 41+ config keys and document the `Commit statuses` token permission — both surfaced by bkit's own self-hosted Renovate opening its first live PRs.
+
+### Fixed
+
+- **Deprecated Renovate config keys drove the Dependency Dashboard's "Config Migration Needed" prompt.** The shipped `renovate.json5` used `matchPackagePatterns` (five package-group rules) and `baseBranches`, both deprecated in Renovate 41+, so every consumer's Dependency Dashboard raised a "Config Migration Needed" checkbox. Migrated to `matchPackageNames` (glob form — `@types/**`, `@tanstack/**`, `vitest*`, etc.) and `baseBranchPatterns` — equivalent matching, verified with `renovate-config-validator` (migration now clean). Do NOT accept the migration via the dashboard checkbox: `renovate.json5` is Tier-1 canonical-overwrite, so a migration PR is clobbered on the next `bkit install`/`upgrade` — the fix ships in the template instead.
+- **Self-hosted Renovate needs `Commit statuses: Read and write` — without it PRs never open.** bkit's documented `GH_BKIT_TOKEN` scopes missed `Commit statuses`. A live run surfaced the exact failure mode: Renovate creates the `renovate/*` branch, then `403`s on `GET /commits/{sha}/statuses` and never opens the PR (symptom: a lone `renovate/*` branch, no PR, no CI run). Now documented across `.env.example`, `deployments.md` § Self-hosted Renovate (scopes table + prose), the install activation advisory, and KN-CORE-10 — including that fine-grained PATs have **no** `Checks` permission (check-run writes are GitHub-App-only), so commit statuses is the mechanism a PAT-based Renovate uses. Verified live: with the scope added, the `renovate/github-actions` PR opened and CI ran on it.
+
+---
+
 ## [4.2.1] — 2026-07-05
 
 Document the exact GitHub token permissions and repository Advanced Security settings self-hosted Renovate needs (surfaced by bkit's own dry-run smoke), and wire `RENOVATE_GIT_AUTHOR` into the shipped workflow so org-owned tokens get correct commit authorship.

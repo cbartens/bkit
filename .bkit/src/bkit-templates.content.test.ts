@@ -1,7 +1,7 @@
 // bkit-templates.content.test.ts — Snapshot/diff tests for seeded template files.
 // (BAR-138: verifies consumer CI template has been updated for registry-based auth)
 // Sibling of bkit-templates.test.ts which enforces marker PRESENCE; this file
-// enforces template CONTENT (GH_BKIT_TOKEN_INSTALL, renovate baseBranches, etc.).
+// enforces template CONTENT (GH_BKIT_TOKEN_INSTALL, renovate baseBranchPatterns, etc.).
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -149,8 +149,8 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
   });
 
   it("targets the dev branch (required for bkit branch-protection convention)", () => {
-    // Match either `baseBranches: ["dev"]` (one-line) or multiline; allow trailing comma.
-    expect(content).toMatch(/baseBranches:\s*\[\s*"dev"\s*,?\s*\]/);
+    // Match either `baseBranchPatterns: ["dev"]` (one-line) or multiline; allow trailing comma.
+    expect(content).toMatch(/baseBranchPatterns:\s*\[\s*"dev"\s*,?\s*\]/);
   });
 
   it("merges base-branch config so dev-side renovate.json5 edits take effect", () => {
@@ -277,7 +277,7 @@ describe("consumer renovate template (.bkit/templates/.github/renovate.json5)", 
     // never auto-merged). Guards against regressing to separate-named ecosystem
     // groups that auto-merge non-majors and re-enter the lockfile cascade.
     expect(content).toMatch(
-      /matchPackagePatterns:\s*\[\s*"\^vitest"[\s\S]*?matchUpdateTypes:\s*\[\s*"major"\s*\][\s\S]*?automerge:\s*false/,
+      /matchPackageNames:\s*\[\s*"vitest\*"[\s\S]*?matchUpdateTypes:\s*\[\s*"major"\s*\][\s\S]*?automerge:\s*false/,
     );
     // The bare auto-merging ecosystem group names must not reappear.
     expect(content).not.toMatch(/groupName:\s*"vitest"\s*,/);

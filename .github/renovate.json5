@@ -31,10 +31,10 @@
 
   // bkit consumers gate `main` to PRs-from-`dev`-only. Renovate must open
   // PRs against `dev`, not the default branch.
-  baseBranches: ["dev"],
+  baseBranchPatterns: ["dev"],
 
   // Renovate reads its config ONLY from the repository's default branch (`main`).
-  // With `baseBranches: ["dev"]` and this unset, edits to `renovate.json5` on `dev`
+  // With `baseBranchPatterns: ["dev"]` and this unset, edits to `renovate.json5` on `dev`
   // are invisible to Renovate — every config change would otherwise need a release
   // to `main` to take effect. `merge` layers `dev`'s config over `main`'s for the
   // dev-targeted runs, so ongoing config edits can live on `dev`. Bootstrap caveat:
@@ -49,7 +49,7 @@
 
   // CVE alerts → Renovate opens a PR immediately, bypassing the weekly schedule.
   // Equivalent to Dependabot's `automated-security-fixes` but routed to `dev`
-  // (via baseBranches above) so bkit branch protection accepts them.
+  // (via baseBranchPatterns above) so bkit branch protection accepts them.
   osvVulnerabilityAlerts: true,
 
   // Conventional-commit prefix to match the rest of the repo history.
@@ -217,14 +217,14 @@
     // majors rule (own PR, no auto-merge) instead of poisoning the group's
     // auto-merge — these pattern rules carry no updateType filter otherwise.
     {
-      matchPackagePatterns: ["^@types/"],
+      matchPackageNames: ["@types/**"],
       matchUpdateTypes: ["minor", "patch"],
       groupName: "non-major dependencies",
       automerge: true,
       platformAutomerge: true,
     },
     {
-      matchPackagePatterns: ["^eslint", "^@eslint/", "^@typescript-eslint/"],
+      matchPackageNames: ["eslint*", "@eslint/**", "@typescript-eslint/**"],
       matchUpdateTypes: ["minor", "patch"],
       groupName: "non-major dependencies",
       automerge: true,
@@ -239,19 +239,19 @@
     // Without the major scope each would split into a separate per-package PR
     // and the halves would fail CI against each other.
     {
-      matchPackagePatterns: ["^@tanstack/"],
+      matchPackageNames: ["@tanstack/**"],
       matchUpdateTypes: ["major"],
       groupName: "major tanstack",
       automerge: false,
     },
     {
-      matchPackagePatterns: ["^vitest", "^@vitest/"],
+      matchPackageNames: ["vitest*", "@vitest/**"],
       matchUpdateTypes: ["major"],
       groupName: "major vitest",
       automerge: false,
     },
     {
-      matchPackagePatterns: ["^@playwright/"],
+      matchPackageNames: ["@playwright/**"],
       matchUpdateTypes: ["major"],
       groupName: "major playwright",
       automerge: false,
@@ -291,7 +291,7 @@
     },
   ],
 
-  // Where to send PRs. `dev` per baseBranches above.
+  // Where to send PRs. `dev` per baseBranchPatterns above.
   // Auto-merge config: Renovate uses GitHub's native auto-merge when
   // `platformAutomerge: true` is set (above), which respects branch
   // protection — required checks must pass before auto-merge fires.
